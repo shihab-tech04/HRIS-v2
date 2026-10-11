@@ -36,9 +36,10 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const [isTenantDropdownOpen, setIsTenantDropdownOpen] = useState(false);
   const [isPersonaDropdownOpen, setIsPersonaDropdownOpen] = useState(false);
+  const [locale, setLocale] = useState<'EN' | 'BN'>('EN');
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-6 px-4 lg:px-8 h-16 bg-white border-b border-slate-200">
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-4 lg:gap-6 px-4 lg:px-8 h-[72px] bg-white border-b border-slate-200">
       {/* Zone 1: Brand & Tenant Context */}
       <div className="flex items-center gap-3 shrink-0">
         <button
@@ -116,7 +117,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Zone 2: Navigation Breadcrumbs Trail */}
-      <div className="hidden md:flex items-center flex-1 max-w-xl">
+      <div className="hidden xl:flex items-center flex-1 max-w-xl min-w-0">
         <Breadcrumbs items={breadcrumbs} />
       </div>
 
@@ -211,6 +212,17 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
+        {/* EN / BN Language expansion toggle for accessibility & locale testing */}
+        <button
+          type="button"
+          onClick={() => setLocale(l => l === 'EN' ? 'BN' : 'EN')}
+          className="min-h-8 px-2 py-1 text-xs font-semibold rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
+          title="Switch Language / ভাষা পরিবর্তন করুন (EN/BN text expansion test)"
+          aria-label="Toggle language between English and Bengali"
+        >
+          {locale === 'EN' ? 'EN' : 'বাংলা'}
+        </button>
+
         {/* Phase 1 Independent Audit Evidence Trigger */}
         <Button
           variant="secondary"
@@ -218,8 +230,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           onClick={onOpenAuditModal}
           icon={<FileCheck2 className="w-3.5 h-3.5 text-[#085587]" />}
         >
-          <span className="hidden sm:inline">Phase 1 Audit Report</span>
-          <span className="sm:hidden">Audit</span>
+          <span className="hidden sm:inline">{locale === 'EN' ? 'Phase 1 Audit Report' : 'পর্যায় ১ অডিট রিপোর্ট'}</span>
+          <span className="sm:hidden">{locale === 'EN' ? 'Audit' : 'অডিট'}</span>
         </Button>
       </div>
     </header>

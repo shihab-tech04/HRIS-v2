@@ -30,7 +30,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       />
 
       {/* Drawer */}
-      <div className="relative flex-1 flex flex-col max-w-xs w-full bg-slate-900 text-white z-10 shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mobile Navigation"
+        className="relative flex-1 flex flex-col max-w-xs w-full bg-slate-900 text-white z-10 shadow-2xl"
+      >
         <div className="flex items-center justify-between p-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs font-bold font-mono">
@@ -42,7 +47,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             type="button"
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-white rounded-md hover:bg-slate-800"
-            aria-label="Close navigation"
+            aria-label="Close navigation menu"
           >
             <X className="w-5 h-5" />
           </button>

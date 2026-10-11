@@ -92,8 +92,9 @@ export const designTokens = {
     },
   },
   spacing: {
-    sidebarWidth: '260px',
-    topBarHeight: '64px',
+    sidebarWidth: '256px',
+    sidebarCompactWidth: '111px',
+    topBarHeight: '72px',
     containerPadding: 'p-6 lg:p-8',
     gapSection: 'gap-6',
   },

@@ -178,7 +178,27 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   }
 
   if (checking) return <main className="min-h-screen grid place-items-center"><p>Checking session…</p></main>;
-  if (!user) return <SignIn onSuccess={setUser} />;
+  if (!user) {
+    const isDirectPreviewRequested = Boolean(
+      previewEnabled &&
+      typeof window !== 'undefined' &&
+      (window.location.search.includes('preview=true') ||
+       window.location.search.includes('view=preview') ||
+       window.location.hash === '#preview')
+    );
+    if (isDirectPreviewRequested) {
+      return (
+        <div className="min-h-screen bg-slate-50 text-slate-900">
+          <header className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-semibold flex items-center justify-between border-b border-amber-600">
+            <span>Design Preview &amp; E2E Testing Mode — Browser Layout &amp; Accessibility Sandbox</span>
+            <a href="/" className="underline text-xs hover:text-white">Live Sign-in</a>
+          </header>
+          {preview}
+        </div>
+      );
+    }
+    return <SignIn onSuccess={setUser} />;
+  }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
   const currentView = view === 'admin' && !canAdminSelectedTenant ? 'employee' : view;
