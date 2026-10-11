@@ -1,0 +1,7 @@
+{
+  "name": "Synesis HRIS 360°",
+  "description": "Enterprise multi-tenant HR operating system featuring employee-first identity, dual-view architecture, dynamic policy engine, and PostgreSQL RLS contracts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
