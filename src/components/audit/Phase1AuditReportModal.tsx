@@ -40,7 +40,7 @@ export const Phase1AuditReportModal: React.FC<Phase1AuditReportModalProps> = ({
 
   const handleDownloadMarkdown = () => {
     const reportMd = `# SYNESIS HRIS 360° — PHASE 1 INDEPENDENT AUDIT EVIDENCE REPORT
-**Status:** READY FOR INDEPENDENT AUDIT
+**Status:** UNVERIFIED — DEMO CHECKS ONLY
 **Date:** 2026-10-11
 **Engine Version:** Phase 1 (Foundation, Figma Design System, Responsive Web Architecture & SQL Contract Mapping)
 **Active Tenant Context:** ${currentTenant.name} (${currentTenant.slug})
@@ -48,8 +48,8 @@ export const Phase1AuditReportModal: React.FC<Phase1AuditReportModalProps> = ({
 ---
 
 ## EXECUTIVE SUMMARY
-- **Verification Result:** ${passingCount}/${testResults.length} Automated Audit Assertions PASSED (100% Coverage)
-- **Architectural Status:** Complete Phase 1 implementation (1A through 1F sequentially verified)
+- **Verification Result:** ${passingCount}/${testResults.length} Automated Audit Assertions PASSED (simulation coverage only)
+- **Architectural Status:** Partial preview-only implementation; integration, Figma and security certification pending
 - **Phase 2 Status:** Phase 2 has NOT been initiated in accordance with the directive.
 
 ---
@@ -57,36 +57,36 @@ export const Phase1AuditReportModal: React.FC<Phase1AuditReportModalProps> = ({
 ## 1. PHASE EXECUTION VERIFICATION SUMMARY
 
 ### Phase 1A: Foundation, Multi-Tenant Architecture & Configurable Engine
-- Multi-Tenant Isolation: Verified across distinct tenant schemas with row-level segregation.
-- Configurable Workspace: Zero hardcoded roles, departments, or leave quotas. All business behavior is tenant-configurable.
-- Status: **PASSED & VERIFIED**
+- Multi-Tenant Isolation: Only JavaScript fixtures tested; no PostgreSQL RLS verification performed.
+- Configurable Workspace: Demo fixtures include hardcoded tenants, roles and policies; they are not persisted.
+- Status: **SIMULATED — NOT VERIFIED**
 
 ### Phase 1B: Figma Design System (Design Tokens & Component Primitives)
-- Conformance with Frame \`XEXLe9J1oATlITS9I5u1P9\`: Complete design token architecture.
+- Unverified reference to frame \`XEXLe9J1oATlITS9I5u1P9\`: Complete design token architecture.
 - Anti-Slop Discipline: Zero-pill metadata rendering, tabular numerals on all numeric data, single-elevation card surfaces.
-- Status: **PASSED & VERIFIED**
+- Status: **SIMULATED — NOT VERIFIED**
 
 ### Phase 1C: Responsive Shell & Compact Two-View Switcher
 - View Switcher Contract: Compact two-view switcher (Employee View ↔ Admin View).
 - Security Boundary: Admin View is strictly gated by administrative role permissions.
 - Responsive Coverage: Tested across Desktop (1440px), Tablet (768px), and Mobile touch viewports.
-- Status: **PASSED & VERIFIED**
+- Status: **SIMULATED — NOT VERIFIED**
 
 ### Phase 1D: Core Identity & Employee-First Data Engine
 - Matrix Organization: Organizational reporting (Line Manager) decoupled from Project-specific reporting (Project Leads).
 - Multi-Project Allocations: FTE percentage allocations across simultaneous projects.
 - Permanent Safe-Harbor Invariant: An employee's release from a project releases project allocation but **NEVER terminates employment**.
-- Status: **PASSED & VERIFIED**
+- Status: **SIMULATED — NOT VERIFIED**
 
 ### Phase 1E: PostgreSQL Row-Level-Security (RLS) & SQL Contract Mapping
-- Production DDL Schema: Complete DDL with UUID keys, timestamps, and foreign keys.
+- Proposed DDL only; do not apply to the existing database.
 - Row Level Security (RLS): Enabled on all tables (\`tenant_isolation_policy\`, \`employee_self_read_policy\`, \`project_lead_allocation_policy\`, \`admin_tenant_full_access_policy\`).
 - 153 Modules Directory: Complete taxonomy mapped across 12 functional HR domains.
-- Status: **PASSED & VERIFIED**
+- Status: **SIMULATED — NOT VERIFIED**
 
 ### Phase 1F: Automated Test Suite & Self-Inspection
 - Executable verification test harness integrated with live assertion telemetry.
-- Status: **PASSED & VERIFIED**
+- Status: **SIMULATED — NOT VERIFIED**
 
 ---
 
@@ -104,7 +104,7 @@ ${testResults
 ---
 
 ## FINAL AUDIT DETERMINATION
-**STATUS: READY FOR INDEPENDENT AUDIT**
+**STATUS: UNVERIFIED — DEMO CHECKS ONLY**
 `
     ;
 
@@ -166,7 +166,7 @@ ${testResults
                 <span className="font-mono text-xs text-slate-500">Phase 1 of 8</span>
               </div>
               <h2 className="text-base font-bold mt-1 text-slate-900">
-                STATUS: READY FOR INDEPENDENT AUDIT
+                STATUS: UNVERIFIED — DEMO CHECKS ONLY
               </h2>
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                 All 6 Phase 1 workstreams (1A through 1F) have been verified with complete functional implementations, responsive layouts, design token compliance, and PostgreSQL RLS contracts. Phase 2 has not been initiated.
