@@ -97,6 +97,8 @@ interface HRISContextType {
   auditReport: ComprehensiveAuditReport | null;
   isTestRunning: boolean;
   runAuditSuite: () => Promise<void>;
+  testResults: AuditTestCaseResult[];
+  runAutomatedVerificationSuite: () => Promise<void>;
 
   // Notifications
   notificationBanner: { message: string; type: 'success' | 'warning' | 'info' | 'error' } | null;
@@ -420,6 +422,10 @@ export const HRISProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const testResults = useMemo(() => {
+    return auditReport?.results || [];
+  }, [auditReport]);
+
   // Run audit test on initial load
   useEffect(() => {
     runAuditSuite();
@@ -460,6 +466,8 @@ export const HRISProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateLeaveRequestStatus,
         auditLogs,
         recordAuditLog,
+        testResults,
+        runAutomatedVerificationSuite: runAuditSuite,
         auditReport,
         isTestRunning,
         runAuditSuite,
