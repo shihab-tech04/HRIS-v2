@@ -1,0 +1,60 @@
+name: Phase 2A isolated PostgreSQL execution
+on:
+  pull_request:
+    paths:
+      - 'supabase/staging/phase2a/**'
+      - 'tests/sql/phase2a/**'
+      - '.github/workflows/phase2a-postgres.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/staging/phase2a/**'
+      - 'tests/sql/phase2a/**'
+      - '.github/workflows/phase2a-postgres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase2a-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_phase2a
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d hris_phase2a"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Execute staged SQL and transaction/security checks
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: test_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: hris_phase2a
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/staging/phase2a/tenant_provisioning.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/staging/phase2a/first_admin_guard.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/verify_authorization.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/verify_provisioning.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/verify_admin_roles.sql
+      - name: Report boundaries
+        run: |
+          echo "Executed Phase 2A tenant SQL in synthetic PostgreSQL 17."
+          echo "No real Supabase Auth sessions; not production RLS certification."
+          echo "No production schema, accounts, data or service secrets used."
