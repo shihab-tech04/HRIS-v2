@@ -31,15 +31,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     departments,
     projects,
     auditLogs,
-    testResults,
+    auditReport,
   } = useHRIS();
 
   const totalFteAllocated = projects.reduce(
     (sum, p) => sum + (p.totalAllocatedFte || 0),
     0
   );
-
-  const passingTests = testResults.filter((t) => t.status === 'PASS').length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,7 +46,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#085587] bg-[#F0F7FB] px-2 py-0.5 rounded border border-[#BAE0F0]">
                 Tenant Administration Console
               </span>
               <span className="text-xs text-slate-400">·</span>
@@ -67,9 +65,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               variant="secondary"
               size="sm"
               onClick={onOpenAuditModal}
-              icon={<FileCheck2 className="w-3.5 h-3.5 text-blue-600" />}
+              icon={<FileCheck2 className="w-3.5 h-3.5 text-[#085587]" />}
             >
-              Phase 1 Audit Report ({passingTests}/{testResults.length} Tests)
+              Phase 1 Audit Report ({auditReport?.passedCount || 0}/{auditReport?.totalTests || 0} Verified)
             </Button>
             <Button
               variant="primary"
@@ -128,24 +126,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </span>
             <span className="text-xs text-slate-400">dynamic roles</span>
           </div>
-          <span className="text-[11px] text-blue-700 font-medium block mt-1">
+          <span className="text-[11px] text-[#085587] font-medium block mt-1">
             Zero hardcoded roles
           </span>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">PostgreSQL RLS Status</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-medium text-slate-500">PostgreSQL Contracts</span>
+            <ShieldCheck className="w-4 h-4 text-[#085587]" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono tabular-nums text-emerald-700">
-              Active
+            <span className="text-2xl font-bold font-mono tabular-nums text-[#085587]">
+              153
             </span>
-            <span className="text-xs text-slate-400">Row Level Security</span>
+            <span className="text-xs text-slate-400">Modules Mapped</span>
           </div>
-          <span className="text-[11px] text-slate-500 block mt-1 font-mono">
-            153 Modules in contract
+          <span className="text-[11px] text-amber-700 block mt-1 font-mono">
+            Simulation (Live DB: Phase 2)
           </span>
         </div>
       </div>

@@ -33,7 +33,7 @@ export const Input: React.FC<InputProps> = ({
         )}
         <input
           id={inputId}
-          className={`w-full text-xs text-slate-900 bg-white border rounded-md py-2 px-3 transition-colors placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 disabled:bg-slate-50 disabled:text-slate-400 ${
+          className={`w-full text-xs text-slate-900 bg-white border rounded-md py-2 px-3 transition-colors placeholder:text-slate-400 focus:outline-none focus:border-[#085587] focus:ring-1 focus:ring-[#085587] disabled:bg-slate-50 disabled:text-slate-400 ${
             icon ? 'pl-9' : ''
           } ${
             error ? 'border-red-500 focus:border-red-600 focus:ring-red-600' : 'border-slate-300'

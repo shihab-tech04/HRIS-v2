@@ -1,12 +1,37 @@
 /**
  * Synesis HRIS 360° — Database Contracts & PostgreSQL Row Level Security (RLS) Engine
  * Mapping 153 Modules across 12 Functional HR Domains with production-grade DDL.
+ * 
+ * AUDIT NOTICE (FINDING 2 REMEDIATION):
+ * - TARGET ARCHITECTURAL CONTRACT: The DDL below is an architectural contract specification.
+ * - UNAPPLIED TO PRODUCTION: Per directive, this speculative DDL has NOT been applied to production.
+ * - LOGICAL SIMULATION: Client-side RLS evaluation tests logical policy constraints only.
+ *   It does NOT constitute live database certification until verified against active PostgreSQL.
  */
 
 import { SQLContractModule } from '../types';
 
+export interface SupabaseAuditMetadata {
+  provider: string;
+  hasActiveConnection: boolean;
+  readOnlyAuditResult: string;
+  ddlAppliedToProduction: boolean;
+  persistenceReady: boolean;
+  unresolvedBlocker: string | null;
+}
+
+export const SUPABASE_PROJECT_AUDIT: SupabaseAuditMetadata = {
+  provider: 'Supabase / PostgreSQL',
+  hasActiveConnection: false,
+  readOnlyAuditResult: 'AUDIT COMPLETE: Environment inspected. No active SUPABASE_URL or API keys detected. Database is in read-only / unconfigured state. Speculative DDL has NOT been applied to production.',
+  ddlAppliedToProduction: false,
+  persistenceReady: false,
+  unresolvedBlocker: 'Supabase project credentials not configured in runtime environment. Database RLS testing remains logical simulation until credentials are provided.',
+};
+
 export const SQL_PRODUCTION_DDL = `-- ============================================================================
--- SYNESIS HRIS 360° — PRODUCTION POSTGRESQL DDL & ROW LEVEL SECURITY (RLS)
+-- SYNESIS HRIS 360° — TARGET ARCHITECTURAL POSTGRESQL DDL SPECIFICATION
+-- Status: Contract Specification (Not yet applied to live production database)
 -- Multi-Tenant Isolation, Employee-First Identity & Matrix Organization Engine
 -- ============================================================================
 
@@ -266,6 +291,8 @@ export interface RlsTestResult {
   actualOutcome: 'PERMITTED' | 'RESTRICTED' | 'ROW_FILTERED';
   status: 'PASS' | 'FAIL';
   details: string;
+  isLiveDatabaseTest: boolean;
+  testExecutionMode: 'CLIENT_LOGICAL_SIMULATION';
 }
 
 export function simulatePostgresRlsCheck(
@@ -292,7 +319,9 @@ export function simulatePostgresRlsCheck(
       expectedOutcome: 'RESTRICTED',
       actualOutcome: 'RESTRICTED',
       status: 'PASS',
-      details: 'Postgres RLS blocked query: target tenant_id does not match app.current_tenant_id token.'
+      details: 'Logical simulation verified: target tenant_id does not match app.current_tenant_id token. (Note: In-memory simulation; pending live pgTAP test).',
+      isLiveDatabaseTest: false,
+      testExecutionMode: 'CLIENT_LOGICAL_SIMULATION',
     };
   }
 
@@ -305,7 +334,9 @@ export function simulatePostgresRlsCheck(
       expectedOutcome: 'ROW_FILTERED',
       actualOutcome: 'ROW_FILTERED',
       status: 'PASS',
-      details: 'Platform Admin is isolated from tenant private employee records unless explicitly delegated.'
+      details: 'Logical simulation verified: Platform Admin is isolated from tenant private employee records unless explicitly delegated.',
+      isLiveDatabaseTest: false,
+      testExecutionMode: 'CLIENT_LOGICAL_SIMULATION',
     };
   }
 
@@ -318,7 +349,9 @@ export function simulatePostgresRlsCheck(
       expectedOutcome: 'PERMITTED',
       actualOutcome: 'PERMITTED',
       status: 'PASS',
-      details: 'Employee can read their own master profile, timesheets, and leave records.'
+      details: 'Logical simulation verified: Employee can read their own master profile, timesheets, and leave records.',
+      isLiveDatabaseTest: false,
+      testExecutionMode: 'CLIENT_LOGICAL_SIMULATION',
     };
   }
 
@@ -331,7 +364,9 @@ export function simulatePostgresRlsCheck(
       expectedOutcome: 'PERMITTED',
       actualOutcome: 'PERMITTED',
       status: 'PASS',
-      details: 'Project Lead permitted to view all members allocated to their project.'
+      details: 'Logical simulation verified: Project Lead permitted to view all members allocated to their project.',
+      isLiveDatabaseTest: false,
+      testExecutionMode: 'CLIENT_LOGICAL_SIMULATION',
     };
   }
 
@@ -344,7 +379,9 @@ export function simulatePostgresRlsCheck(
       expectedOutcome: 'PERMITTED',
       actualOutcome: 'PERMITTED',
       status: 'PASS',
-      details: 'Tenant Admin permitted full management access within tenant boundary.'
+      details: 'Logical simulation verified: Tenant Admin permitted full management access within tenant boundary.',
+      isLiveDatabaseTest: false,
+      testExecutionMode: 'CLIENT_LOGICAL_SIMULATION',
     };
   }
 
@@ -355,6 +392,8 @@ export function simulatePostgresRlsCheck(
     expectedOutcome: 'ROW_FILTERED',
     actualOutcome: 'ROW_FILTERED',
     status: 'PASS',
-    details: 'Rows outside authorized reporting line or allocation are filtered out.'
+    details: 'Logical simulation verified: Rows outside authorized reporting line or allocation are filtered out.',
+    isLiveDatabaseTest: false,
+    testExecutionMode: 'CLIENT_LOGICAL_SIMULATION',
   };
 }

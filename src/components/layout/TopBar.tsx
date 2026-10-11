@@ -55,7 +55,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             href="/"
             className="text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 flex items-center gap-1.5"
           >
-            <div className="w-6 h-6 rounded-md bg-slate-900 text-white flex items-center justify-center text-xs font-bold font-mono">
+            <div className="w-6 h-6 rounded-md bg-[#085587] text-white flex items-center justify-center text-xs font-bold font-mono shadow-xs">
               S
             </div>
             <span>Synesis HRIS</span>
@@ -92,7 +92,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setIsTenantDropdownOpen(false);
                     }}
                     className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
-                      t.id === currentTenant.id ? 'bg-blue-50/60 font-semibold text-blue-900' : 'text-slate-700'
+                      t.id === currentTenant.id ? 'bg-[#F0F7FB] font-semibold text-[#085587]' : 'text-slate-700'
                     }`}
                   >
                     <div className="truncate">
@@ -100,13 +100,18 @@ export const TopBar: React.FC<TopBarProps> = ({
                       <p className="text-[10px] text-slate-400 font-mono">{t.country} · {t.policies.currency}</p>
                     </div>
                     {t.id === currentTenant.id && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#085587] shrink-0" />
                     )}
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Transparent Persistence Mode Badge */}
+          <span className="hidden xl:inline text-[10px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+            Persistence: Dev Fixtures
+          </span>
         </div>
       </div>
 
@@ -140,7 +145,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             }
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap cursor-pointer select-none flex items-center gap-1 ${
               viewMode === 'admin'
-                ? 'bg-slate-900 text-white shadow-2xs font-semibold'
+                ? 'bg-[#085587] text-white shadow-2xs font-semibold'
                 : currentPersona.canAccessAdminView
                 ? 'text-slate-600 hover:text-slate-900'
                 : 'text-slate-400 opacity-60 cursor-not-allowed'
@@ -163,7 +168,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             }}
             className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
           >
-            <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-semibold">
+            <div className="w-5 h-5 rounded-full bg-[#085587] text-white flex items-center justify-center text-[10px] font-semibold">
               {currentPersona.avatarText}
             </div>
             <span className="hidden xl:inline max-w-[100px] truncate">{currentPersona.name}</span>
@@ -185,10 +190,10 @@ export const TopBar: React.FC<TopBarProps> = ({
                     setIsPersonaDropdownOpen(false);
                   }}
                   className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2.5 hover:bg-slate-50 transition-colors ${
-                    p.id === currentPersona.id ? 'bg-slate-50 font-semibold text-slate-900' : 'text-slate-700'
+                    p.id === currentPersona.id ? 'bg-[#F0F7FB] font-semibold text-slate-900' : 'text-slate-700'
                   }`}
                 >
-                  <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-semibold shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-[#085587] text-white flex items-center justify-center text-xs font-semibold shrink-0">
                     {p.avatarText}
                   </div>
                   <div className="truncate flex-1">
@@ -211,7 +216,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           variant="secondary"
           size="sm"
           onClick={onOpenAuditModal}
-          icon={<FileCheck2 className="w-3.5 h-3.5 text-blue-600" />}
+          icon={<FileCheck2 className="w-3.5 h-3.5 text-[#085587]" />}
         >
           <span className="hidden sm:inline">Phase 1 Audit Report</span>
           <span className="sm:hidden">Audit</span>

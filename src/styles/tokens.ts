@@ -1,6 +1,9 @@
 /**
  * Synesis HRIS 360° — Design System Tokens
- * Grounded in Figma Specification (Frame XEXLe9J1oATlITS9I5u1P9) & SaaS Constitution
+ * Grounded in Established Figma Design Direction:
+ * Typography: Poppins
+ * Primary Brand Hue: #085587 (Deep Corporate Sapphire/Ocean)
+ * Source Reference: Figma Frame XEXLe9J1oATlITS9I5u1P9 (Web view referenced; headless API unconfigured)
  */
 
 export const designTokens = {
@@ -16,8 +19,8 @@ export const designTokens = {
       card: '#FFFFFF',
       hover: '#F8FAFC',
       active: '#F1F5F9',
-      sidebar: '#0F172A',
-      sidebarSubtle: '#1E293B',
+      sidebar: '#083B5C', // Deep ocean navy harmonized with #085587
+      sidebarSubtle: '#05263D',
       border: '#E2E8F0',
       borderSubtle: '#F1F5F9',
       borderStrong: '#CBD5E1',
@@ -30,14 +33,22 @@ export const designTokens = {
       inverse: '#FFFFFF',
       inverseMuted: '#94A3B8',
     },
-    // 10% Accent Budget
+    // 10% Accent Budget — Grounded in Established #085587
     brand: {
-      50: '#EFF6FF',
-      100: '#DBEAFE',
-      500: '#3B82F6',
-      600: '#2563EB',
-      700: '#1D4ED8',
-      900: '#1E3A8A',
+      50: '#F0F7FB',
+      100: '#E0EFF7',
+      200: '#BAE0F0',
+      300: '#82C5E3',
+      400: '#44A5D3',
+      500: '#1E8AC2',
+      600: '#0E6EA6',
+      700: '#085587', // Primary Brand Color
+      800: '#074770',
+      900: '#083B5C',
+      950: '#05263D',
+      primary: '#085587',
+      hover: '#074770',
+      light: '#F0F7FB',
     },
     // Semantic States (strictly paired with visible text, never color alone)
     semantic: {
@@ -68,7 +79,7 @@ export const designTokens = {
     },
   },
   typography: {
-    fontSans: "'Plus Jakarta Sans', -apple-system, sans-serif",
+    fontSans: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif",
     fontMono: "'JetBrains Mono', monospace",
     scale: {
       display: 'text-2xl font-bold tracking-tight',

@@ -33,7 +33,7 @@ export const Select: React.FC<SelectProps> = ({
       )}
       <select
         id={selectId}
-        className={`w-full text-xs text-slate-900 bg-white border rounded-md py-2 px-3 transition-colors focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer ${
+        className={`w-full text-xs text-slate-900 bg-white border rounded-md py-2 px-3 transition-colors focus:outline-none focus:border-[#085587] focus:ring-1 focus:ring-[#085587] disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer ${
           error ? 'border-red-500' : 'border-slate-300'
         } ${className}`}
         {...props}
