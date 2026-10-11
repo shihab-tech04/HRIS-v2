@@ -22,11 +22,11 @@ export interface SupabaseAuditMetadata {
 
 export const SUPABASE_PROJECT_AUDIT: SupabaseAuditMetadata = {
   provider: 'Supabase / PostgreSQL',
-  hasActiveConnection: false,
-  readOnlyAuditResult: 'AUDIT COMPLETE: Environment inspected. No active SUPABASE_URL or API keys detected. Database is in read-only / unconfigured state. Speculative DDL has NOT been applied to production.',
+  hasActiveConnection: true,
+  readOnlyAuditResult: 'The live entry point has a public Supabase client configured and read-only queries. Actual authenticated browser queries, RLS negative cases, and write contracts are NOT verified by this preview report.',
   ddlAppliedToProduction: false,
   persistenceReady: false,
-  unresolvedBlocker: 'Supabase project credentials not configured in runtime environment. Database RLS testing remains logical simulation until credentials are provided.',
+  unresolvedBlocker: 'Requires authenticated account-based integration tests and tenant-scoped security verification; static preview simulations do not count.',
 };
 
 export const SQL_PRODUCTION_DDL = `-- ============================================================================
