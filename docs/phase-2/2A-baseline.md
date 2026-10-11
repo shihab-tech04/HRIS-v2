@@ -39,3 +39,11 @@
 - Invitations and account creation (2B), generalized multi-role RBAC (2C), module engine (2D), masters (2E), workflow engine (2F), audit certification (2G) are not claimed.
 - Production database schema/data and previously solved Phase 1 UX remain untouched.
 - Rollback staging functions only after reviewing dependencies; preserve locale data unless separately approved.
+
+## Existing production security-advisor baseline (read-only, 2026-10-11)
+
+- **24 INFO** findings: RLS enabled but no policies. These tables normally deny direct application access by default; this is a feature-access gap, not evidence of exposed data.
+- **1 WARN**: `candidate_public_jobs_source()` is an anonymous-executable SECURITY DEFINER function. It may be intentional for public job discovery; verify its payload and filtering before changing it.
+- **206 WARN**: authenticated-executable SECURITY DEFINER functions. This is a *review inventory*, not 206 proven vulnerabilities. Audit each privileged RPC's live-session, actor, tenant and permission checks before opening arbitrary SaaS tenants.
+
+Relevant Supabase guidance: https://supabase.com/docs/guides/database/functions and https://supabase.com/docs/guides/database/database-linter.
