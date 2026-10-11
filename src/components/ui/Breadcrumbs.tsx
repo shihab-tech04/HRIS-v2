@@ -26,7 +26,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items, className = '' 
               <button
                 type="button"
                 onClick={item.onClick}
-                className="text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap cursor-pointer"
+                className="min-h-8 inline-flex items-center px-1 text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap cursor-pointer"
               >
                 {item.label}
               </button>
