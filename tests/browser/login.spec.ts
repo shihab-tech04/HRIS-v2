@@ -27,3 +27,20 @@ test('sign-in form has labels, password masking and usable keyboard focus', asyn
   await password.fill('example-placeholder-do-not-submit');
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled();
 });
+
+test('Supabase sign-in errors are displayed and the form stays usable', async ({ page }) => {
+  await page.route('**/auth/v1/**', async route => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials' }),
+    });
+  });
+  await page.goto('/');
+  await page.getByLabel('Email').fill('example.invalid@example.org');
+  await page.getByLabel('Password').fill('not-a-real-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toContainText('Invalid login credentials');
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+  await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
+});
