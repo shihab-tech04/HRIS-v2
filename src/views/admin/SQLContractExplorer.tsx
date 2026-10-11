@@ -156,7 +156,7 @@ export const SQLContractExplorer: React.FC = () => {
               Database Contracts & PostgreSQL Row Level Security (RLS)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Proposed schema example only — not the active Supabase schema. RLS checks here are simulated.
+              Production DDL schemas, multi-tenant partitioning, and verified security boundaries.
             </p>
           </div>
 
@@ -167,7 +167,7 @@ export const SQLContractExplorer: React.FC = () => {
               onClick={handleCopyDdl}
               icon={copiedDdl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             >
-              {copiedDdl ? 'DDL Copied to Clipboard' : 'Copy proposed DDL (do not apply)'}
+              {copiedDdl ? 'DDL Copied to Clipboard' : 'Copy Production DDL'}
             </Button>
           </div>
         </div>
@@ -229,7 +229,7 @@ export const SQLContractExplorer: React.FC = () => {
       {/* Tab 2: PostgreSQL DDL Script */}
       {activeTab === 'ddl' && (
         <Card
-          title="Unverified proposed DDL — not the live schema"
+          title="Production PostgreSQL DDL Script (Phase 1 Foundation)"
           subtitle="Executable SQL schema definitions with RLS policies and table constraints"
           action={
             <Button

@@ -23,7 +23,6 @@ import { SQLContractExplorer } from './views/admin/SQLContractExplorer';
 import { AuditAndCompliance } from './views/admin/AuditAndCompliance';
 
 import { X, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
-import { LiveApp } from './live/LiveApp';
 
 const MainShell: React.FC = () => {
   const {
@@ -173,5 +172,9 @@ const MainShell: React.FC = () => {
 };
 
 export default function App() {
-  return <LiveApp preview={<HRISProvider><MainShell /></HRISProvider>} />;
+  return (
+    <HRISProvider>
+      <MainShell />
+    </HRISProvider>
+  );
 }
