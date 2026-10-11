@@ -53,7 +53,7 @@ export const Phase1AuditReportModal: React.FC<Phase1AuditReportModalProps> = ({
     const reportMd =
       auditReport?.summaryMarkdown ||
       `# SYNESIS HRIS 360° — PHASE 1 INDEPENDENT AUDIT EVIDENCE REPORT
-**Status:** READY FOR INDEPENDENT AUDIT
+**Status:** ${auditReport?.determination ?? 'NOT RUN'}
 **Date:** 2026-10-11
 **Engine Version:** Phase 1 (Foundation, Figma Design System, Responsive Web Architecture & SQL Contract Mapping)
 **Active Tenant Context:** ${currentTenant.name} (${currentTenant.slug})
@@ -61,11 +61,11 @@ export const Phase1AuditReportModal: React.FC<Phase1AuditReportModalProps> = ({
 ---
 
 ## EXECUTIVE SUMMARY
-- **Verification Result:** ${passedCount}/${totalCount} Verified Assertions
+- **Verification Result:** ${passedCount}/${totalCount} Source Assertions
 - **Qualified In-Memory Simulations:** ${qualifiedCount}
 - **Pending Environment Configuration:** ${blockedCount}
 - **Failed Invariants:** ${failedCount}
-- **Architectural Status:** Phase 1 executable frontend, design system & contracts complete. Phase 2 not initiated.
+- **Architectural Status:** Sample-only audit; live database, browser, complete responsive and Figma checks require independent evidence.
 
 ---
 
@@ -84,7 +84,7 @@ ${t.blockerDescription ? `- **Blocker:** ${t.blockerDescription}\n` : ''}`
 ---
 
 ## FINAL AUDIT DETERMINATION
-**STATUS: READY FOR INDEPENDENT AUDIT**
+**STATUS: PARTIALLY COMPLETED WITH BLOCKERS**
 `;
 
     const blob = new Blob([reportMd], { type: 'text/markdown' });
@@ -99,8 +99,8 @@ ${t.blockerDescription ? `- **Blocker:** ${t.blockerDescription}\n` : ''}`
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Phase 1 Independent Audit Evidence Report"
-      subtitle="Verification of Foundation, Figma Design System, Responsive Architecture & SQL Contracts"
+      title="Phase 1 Preview Checks — Not Certification"
+      subtitle="Source-level checks and unverified integration gaps; not independently certified"
       maxWidth="4xl"
       footer={
         <div className="flex items-center justify-between w-full">
@@ -143,10 +143,10 @@ ${t.blockerDescription ? `- **Blocker:** ${t.blockerDescription}\n` : ''}`
                 <span className="font-mono text-xs text-slate-500">Phase 1 of 8</span>
               </div>
               <h2 className="text-base font-bold mt-1 text-slate-900">
-                STATUS: READY FOR INDEPENDENT AUDIT
+                STATUS: {auditReport?.determination ?? 'NOT RUN'}
               </h2>
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                All 6 Phase 1 workstreams (1A through 1F) verified: Multi-tenant architecture, Figma/Poppins/#085587 design system tokens, responsive dual-view shell, employee-first matrix allocations, and 153 module PostgreSQL RLS DDL contracts. Blockers transparently cataloged for Phase 2. Phase 2 has NOT been initiated.
+                Only limited static assertions are verified. Supabase authentication, tenant isolation, design fidelity, responsive behavior, and original user stories require independent execution evidence.
               </p>
             </div>
           </div>
@@ -156,7 +156,7 @@ ${t.blockerDescription ? `- **Blocker:** ${t.blockerDescription}\n` : ''}`
               {passedCount}/{totalCount}
             </span>
             <span className="text-[10px] text-slate-500 uppercase font-semibold">
-              Verified Specs
+              Local Source Checks
             </span>
           </div>
         </div>
@@ -164,7 +164,7 @@ ${t.blockerDescription ? `- **Blocker:** ${t.blockerDescription}\n` : ''}`
         {/* Audit Metrics Breakdown */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">Verified Pass</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">Local Pass</span>
             <span className="text-xl font-bold font-mono text-emerald-800">{passedCount}</span>
           </div>
           <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg">
@@ -210,7 +210,7 @@ ${t.blockerDescription ? `- **Blocker:** ${t.blockerDescription}\n` : ''}`
           <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Phase 1E</span>
             <span className="text-xs font-semibold text-slate-900 block mt-0.5">PostgreSQL RLS Contracts</span>
-            <span className="text-[11px] text-emerald-700 font-medium block mt-1">153 Modules DDL & Policies</span>
+            <span className="text-[11px] text-emerald-700 font-medium block mt-1">Proposed SQL draft, not live</span>
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg">
