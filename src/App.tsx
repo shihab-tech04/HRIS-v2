@@ -75,7 +75,7 @@ const MainShell: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
+    <div className="min-h-screen min-w-0 flex flex-col bg-slate-50 text-slate-900 font-sans">
       {/* Top Bar with Top Bar Contract */}
       <TopBar
         breadcrumbs={breadcrumbs}
@@ -116,7 +116,7 @@ const MainShell: React.FC = () => {
       )}
 
       {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-w-0 overflow-hidden">
         {/* Desktop Sidebar */}
         <Sidebar
           currentTab={activeTab}
@@ -133,7 +133,7 @@ const MainShell: React.FC = () => {
         />
 
         {/* Viewport Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {viewMode === 'employee' ? (
             <>
               {employeeTab === 'employee_overview' && (

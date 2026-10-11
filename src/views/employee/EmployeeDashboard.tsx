@@ -38,18 +38,18 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       {/* Employee Identity Hero Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-2xs">
+      <div className="min-w-0 bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-2xs">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 items-start sm:items-center gap-3 sm:gap-4">
             <div className="w-16 h-16 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xl font-bold font-mono shrink-0 shadow-xs">
               {currentEmployee.firstName[0]}
               {currentEmployee.lastName[0]}
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 break-words">
                   {currentEmployee.firstName} {currentEmployee.lastName}
                 </h1>
                 <span className="text-xs text-slate-400">·</span>
@@ -61,7 +61,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
                 </Badge>
               </div>
 
-              <p className="text-xs text-slate-600 mt-1 font-medium">
+              <p className="text-xs text-slate-600 mt-1 font-medium break-words">
                 {currentEmployee.jobTitle}
                 <span className="text-slate-400 mx-1.5">/</span>
                 {currentEmployee.departmentName}
@@ -106,9 +106,9 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
       </div>
 
       {/* Grid: Matrix Allocations & Leave Balances */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Active Multi-Project Allocations */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
+        <div className="min-w-0 lg:col-span-2 flex flex-col gap-4">
           <Card
             title="My Matrix Project Allocations"
             subtitle="Demonstrating Dual Reporting: Distinct from your Departmental Manager"
@@ -128,10 +128,10 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
             ) : (
               <div className="flex flex-col divide-y divide-slate-100">
                 {currentEmployee.projectAllocations.map((alloc) => (
-                  <div key={alloc.id} className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between gap-4">
+                  <div key={alloc.id} className="py-3.5 first:pt-0 last:pb-0 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 sm:gap-4">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-900 truncate">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-900 break-words min-w-0">
                           {alloc.projectName}
                         </span>
                         <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
@@ -165,7 +165,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
           {/* Quick Notice: Safe Harbor Principle */}
           <div className="p-4 bg-blue-50/60 border border-blue-200/80 rounded-lg flex items-start gap-3">
             <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-            <div className="text-xs text-blue-900 leading-relaxed">
+            <div className="min-w-0 text-xs text-blue-900 leading-relaxed break-words">
               <strong>Employee-First Architecture:</strong> Your employment contract is anchored to the tenant organization (
               <strong>{currentTenant.name}</strong>). Releases from individual project allocations do not affect your active employment status.
             </div>
@@ -173,7 +173,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
         </div>
 
         {/* Right 1 Col: Leave Balances & Upcoming Time Off */}
-        <div className="flex flex-col gap-4">
+        <div className="min-w-0 flex flex-col gap-4">
           <Card
             title="Leave & Time Off Balances"
             subtitle={`Governed by ${currentTenant.name} policies`}
@@ -191,7 +191,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ onNavigate
               {leaveCategories.slice(0, 3).map((cat) => (
                 <div
                   key={cat.id}
-                  className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 flex items-center justify-between"
+                  className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2"
                 >
                   <div>
                     <span className="text-xs font-medium text-slate-900 block">{cat.name}</span>
