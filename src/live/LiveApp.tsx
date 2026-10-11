@@ -83,7 +83,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       else if (session?.user) {
         setUser(session.user);
         // Refresh effective roles when the authentication session rotates.
-        if (event === 'TOKEN_REFRESHED') setRefreshKey(key => key + 1);
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN' || event === 'USER_UPDATED') setRefreshKey(key => key + 1);
       }
     });
     return () => { active = false; authListener.subscription.unsubscribe(); };
