@@ -14,7 +14,7 @@ for (const width of widths) {
 
     // Verify zero horizontal overflow (critical responsive layout invariant)
     const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    expect(documentWidth).toBeLessThanOrEqual(width + 1);
+    expect(documentWidth, `Viewport ${width}px: document rendered ${documentWidth}px wide`).toBeLessThanOrEqual(width + 1);
 
     // Desktop viewports (>=1024px) should show the sidebar
     if (width >= 1024) {
@@ -140,7 +140,7 @@ test('all interactive buttons satisfy touch target sizing and accessibility role
     if (isVisible) {
       const box = await button.boundingBox();
       if (box) {
-        expect(box.height).toBeGreaterThanOrEqual(24);
+        expect(box.height, `Small target: ${await button.getAttribute('aria-label') || (await button.innerText()).slice(0, 48)}`).toBeGreaterThanOrEqual(24);
       }
     }
   }
