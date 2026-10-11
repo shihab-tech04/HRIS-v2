@@ -39,7 +39,7 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
         <div><label className="block text-sm font-medium mb-1" htmlFor="hris-email">Email</label><input required id="hris-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} className="w-full min-h-11 px-3 rounded-md border border-slate-300 focus:outline-2 focus:outline-blue-700" /></div>
         <div><label className="block text-sm font-medium mb-1" htmlFor="hris-password">Password</label><input required id="hris-password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="w-full min-h-11 px-3 rounded-md border border-slate-300 focus:outline-2 focus:outline-blue-700" /></div>
         {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
-        <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-50">{busy ? 'Signing in…' : 'Sign in'}</button>
+        <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-[#085587] hover:bg-[#074770] text-white font-semibold disabled:opacity-50">{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
     </div>
   </main>;
@@ -53,6 +53,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [adminAllowed, setAdminAllowed] = useState(false);
+  // Legacy permissions are globally stored, therefore valid for Synesis only.
+  const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
+  const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('employee');
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
@@ -78,25 +81,56 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     if (!user) { setTenants([]); setMemberships([]); setTenantId(''); setAdminAllowed(false); setRecords(empty()); return; }
     let active = true;
     setMembershipLoading(true);
+    setTenants([]);
+    setTenantId('');
+    setRecords(empty());
+    setAdminAllowed(false);
+    setView('employee');
     setError('');
     async function load() {
       try {
-        const result = await supabase.from('tenant_memberships').select('tenant_id,role,status').eq('user_id', user!.id);
-        if (result.error) throw result.error;
-        const mine = (result.data || []).filter(m => m.status.toLowerCase() === 'active');
-        const ids = mine.map(m => m.tenant_id);
-        const found = ids.length
-          ? await supabase.from('tenants').select('id,name,slug,timezone').eq('is_active', true).in('id', ids)
+        const [memberResult, employeeResult, adminResult] = await Promise.all([
+          supabase.from('tenant_memberships').select('tenant_id,role,status').eq('user_id', user!.id),
+          supabase.from('employees').select('tenant_id,employment_status').eq('user_id', user!.id),
+          supabase.from('admin_users').select('active').eq('user_id', user!.id).maybeSingle(),
+        ]);
+        if (memberResult.error) throw memberResult.error;
+        if (employeeResult.error) throw employeeResult.error;
+        if (adminResult.error) throw adminResult.error;
+
+        const mine = (memberResult.data || []).filter(m => m.status.toLowerCase() === 'active');
+        const ownedTenantIds = (employeeResult.data || [])
+          .filter(e => !['resigned','terminated'].includes(e.employment_status))
+          .map(e => e.tenant_id);
+        const permissions = await Promise.all(
+          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage']
+            .map(id => supabase.rpc('has_permission', { p_permission_id: id }))
+        );
+        const isLegacyAdmin = adminResult.data?.active === true &&
+          permissions.some(right => !right.error && right.data === true);
+        // Existing admin_users grants are specific to the legacy Synesis tenant:
+        // global roles are NOT valid for any other tenant.
+        const legacyTenant = isLegacyAdmin
+          ? await supabase.from('tenants').select('id').eq('slug','synesis-it').eq('is_active', true).maybeSingle()
+          : { data: null, error: null };
+        if (legacyTenant.error) throw legacyTenant.error;
+
+        const tenantIds = Array.from(new Set([
+          ...mine.map(m => m.tenant_id),
+          ...ownedTenantIds,
+          ...(legacyTenant.data?.id ? [legacyTenant.data.id] : []),
+        ]));
+        const found = tenantIds.length
+          ? await supabase.from('tenants').select('id,name,slug,timezone')
+              .eq('is_active', true).in('id', tenantIds)
           : { data: [] as Tenant[], error: null };
         if (found.error) throw found.error;
-        const rights = await Promise.all(['employees.view','employees.manage','organization.view','organization.manage','roles.manage'].map(
-          id => supabase.rpc('has_permission', { p_permission_id: id })
-        ));
         if (!active) return;
         setMemberships(mine);
         setTenants((found.data || []) as Tenant[]);
-        setTenantId(old => (found.data || []).some(t => t.id === old) ? old : (found.data?.[0]?.id || ''));
-        setAdminAllowed(rights.some(right => !right.error && right.data === true));
+        setTenantId(previous => (found.data || []).some(t => t.id === previous)
+          ? previous : (found.data?.[0]?.id || ''));
+        setAdminAllowed(isLegacyAdmin);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');
       } finally { if (active) setMembershipLoading(false); }
@@ -116,8 +150,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const [leaves, types, employees, departments] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
-          adminAllowed ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
-          adminAllowed ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
+          canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
+          canAdminSelectedTenant ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
         ]);
         const denied = [leaves, types, employees, departments].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -133,7 +167,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user?.id, tenantId, adminAllowed, refreshKey]);
+  }, [user?.id, tenantId, canAdminSelectedTenant, refreshKey]);
 
   async function signOut() {
     setView('employee');
@@ -147,7 +181,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   if (!user) return <SignIn onSuccess={setUser} />;
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
-  const currentView = view === 'admin' && !adminAllowed ? 'employee' : view;
+  const currentView = view === 'admin' && !canAdminSelectedTenant ? 'employee' : view;
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -158,17 +192,17 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     </header>
     <main className="max-w-7xl mx-auto p-4 sm:p-6">
       <div className="flex flex-wrap justify-between items-start gap-4 mb-5">
-        <div><p className="text-xs uppercase tracking-wide font-semibold text-blue-900">Supabase-connected foundation · read only</p><h1 className="text-2xl sm:text-3xl font-bold mt-1">{current?.name || 'Your organization'}</h1><p className="text-sm text-slate-600 mt-2">Only authorized live data is shown. HRIS write operations are not yet integrated.</p></div>
+        <div><p className="text-xs uppercase tracking-wide font-semibold text-blue-900">Supabase-connected foundation · read only</p><h1 className="text-2xl sm:text-3xl font-bold mt-1">{current?.name || 'Your organization'}</h1><p className="text-sm text-slate-600 mt-2">Authorized live data from Supabase. HRIS business write operations are not yet integrated.</p></div>
         {tenants.length > 1 && <div><label className="text-xs font-medium block mb-1" htmlFor="hris-tenant">Organization</label><select id="hris-tenant" value={tenantId} onChange={e => { setTenantId(e.target.value); setView('employee'); setRecords(empty()); }} className="border rounded-md px-3 min-h-11">{tenants.map(t => <option value={t.id} key={t.id}>{t.name}</option>)}</select></div>}
       </div>
       {membershipLoading && <p role="status" className="text-sm mb-4">Loading permitted organizations…</p>}
       {error && <p role="alert" className="p-3 mb-4 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm">{error}</p>}
-      {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No active HRIS tenant membership</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but this account has no active authorized organization. An administrator must provision membership in Supabase. Sample data is not substituted.</p></section>}
+      {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No authorized HRIS organization</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but no active tenant membership, linked employee, or authorized Synesis administrator scope was found. Contact your system administrator. No sample organization is substituted.</p></section>}
       {current && <>
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
-          <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-slate-900 text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
-          {adminAllowed && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-slate-900 text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
-          <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-slate-900 text-white' : 'min-h-10 px-3 rounded-md border'}>Design preview (sample)</button>
+          <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
+          {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
+          {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
           {currentView !== 'preview' && <button disabled={loading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
         </nav>
         {currentView === 'preview' ? <>
@@ -177,7 +211,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         </> : <>
           <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
             <div className="bg-white border rounded-lg p-4"><Database className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">SQL project</p><p className="font-semibold">hrmis-saas</p><p className="text-xs text-slate-500">Existing production schema, unchanged</p></div>
-            <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Verified membership</p><p className="font-semibold">{activeMembership?.role || 'Active member'}</p><p className="text-xs text-slate-500">{current.name}</p></div>
+            <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Verified membership</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? 'Legacy Synesis administrator' : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
             <div className="bg-white border rounded-lg p-4"><ShieldAlert className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Access model</p><p className="font-semibold">Supabase Auth + RLS</p><p className="text-xs text-slate-500">No service-role token in browser</p></div>
           </section>
           {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
