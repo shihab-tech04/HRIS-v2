@@ -16,7 +16,7 @@ The old sample-data UI remains accessible behind sign-in in **Design preview (sa
 
 The application uses only the public Supabase publishable key. No service-role, secret or admin tokens are shipped in browser code. API security must remain enforced in Supabase RLS.
 
-An existing Supabase Auth account with an **active tenant_memberships** row is required. If no such membership exists, the application reports lack of access without inventing a tenant.
+An authenticated account needs **an active tenant membership, a linked active employee record, or a verified active legacy Synesis administrator record with applicable permissions**. Global admin rights apply to the legacy Synesis tenant only, never to other tenants. No fake user or tenant is generated.
 
 ## Local development
 
@@ -54,3 +54,14 @@ We cannot verify Pages activation through the repository-source connector; see t
 - Figma pixel-fidelity, component regression, and broader test suites.
 
 See docs/phase-1/LIVE_CONNECTION_REPORT.md.
+
+
+## Phase 1 security/connection repair (2026-10-11)
+
+PR #2 restores real authorized access for the existing Synesis user model while keeping sample-data UX strictly a development preview. GitHub CI runs TypeScript, a production build, static SQL contract checks and real Chromium unauthenticated sign-in checks at 9 viewport widths (10 tests).
+
+Supabase applied two additive migrations in the repository's supabase/migrations folder. They add restrictive SELECT guards to employees, departments, leave_requests, and leave_types, plus linked-employee self-read policies. They also revoke anonymous EXECUTE on the new SECURITY DEFINER functions.
+
+This is NOT full multi-tenant RBAC, Figma fidelity, HRIS CRUD sync, or system certification. Authentication using an existing real account and multi-tenant negative tests remain pending.
+
+One-time Pages configuration may still require Settings → Pages → Build and deployment → GitHub Actions, otherwise automatic Jekyll publishing may conflict with the Vite build.

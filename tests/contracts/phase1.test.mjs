@@ -33,3 +33,9 @@ test('production deployment uses Vite build artifact rather than source tree', (
   assert.match(action, /path: dist/);
   assert.match(action, /GITHUB_PAGES:\s*'true'/);
 });
+
+test('anonymous RPC grants are revoked in the tracked compensating migration', () => {
+  const migration = source('supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql');
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.hris_own_employee_for_tenant\(uuid\) FROM anon;/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.hris_admin_can_read_tenant\(uuid, text\) FROM anon;/);
+});
