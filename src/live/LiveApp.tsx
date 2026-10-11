@@ -189,7 +189,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     if (isDirectPreviewRequested) {
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900">
-          <header className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-semibold flex items-center justify-between border-b border-amber-600">
+          <header className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-semibold flex flex-wrap items-center justify-between gap-2 border-b border-amber-600">
             <span>Design Preview &amp; E2E Testing Mode — Browser Layout &amp; Accessibility Sandbox</span>
             <a href="/" className="underline text-xs hover:text-white">Live Sign-in</a>
           </header>

@@ -43,11 +43,11 @@ test('navigation, view switching and sidebar collapse work correctly', async ({ 
 
   // Switch to Admin View
   await adminViewButton.click();
-  await expect(page.getByText('Tenant Administration')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByText('Tenant Administration')).toBeVisible();
 
   // Switch back to Employee View
   await page.getByRole('button', { name: 'Employee View' }).click();
-  await expect(page.getByText('Employee Self-Service')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByText('Employee Self-Service')).toBeVisible();
 
   // Test sidebar 111px compact mode toggle (Figma HR-mis-user frame alignment)
   const compactToggle = page.getByRole('button', { name: 'Collapse sidebar to 111px' });

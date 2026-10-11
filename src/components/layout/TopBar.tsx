@@ -39,7 +39,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [locale, setLocale] = useState<'EN' | 'BN'>('EN');
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-4 lg:gap-6 px-4 lg:px-8 h-[72px] bg-white border-b border-slate-200">
+    <header className="sticky top-0 z-30 flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 sm:gap-4 lg:gap-6 px-3 sm:px-4 lg:px-8 min-h-[72px] lg:h-[72px] py-2 lg:py-0 bg-white border-b border-slate-200">
       {/* Zone 1: Brand & Tenant Context */}
       <div className="flex items-center gap-3 shrink-0">
         <button
@@ -122,7 +122,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Zone 3: Compact Two-View Switcher, Persona & Audit Trigger */}
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 min-w-0 w-full lg:w-auto lg:shrink-0">
         {/* Compact Two-View Switcher (Figma pattern) */}
         <div className="flex items-center p-0.5 bg-slate-100 border border-slate-200 rounded-lg shadow-2xs">
           <button
