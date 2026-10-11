@@ -1,4 +1,4 @@
-name: Verify HRIS build
+name: Verify HRIS build and browser smoke
 on:
   pull_request:
     branches: [main]
@@ -17,5 +17,20 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript check
         run: npm run lint
+      - name: Contract source checks (not RLS runtime tests)
+        run: npm run test:contracts
       - name: Production bundle
         run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Actual browser responsive/sign-in smoke
+        run: npm run test:e2e
+      - name: Upload failing browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-failures
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore

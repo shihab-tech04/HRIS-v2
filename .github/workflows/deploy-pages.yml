@@ -20,12 +20,16 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: TypeScript check
-        run: npm run lint
-      - name: Bundle for GitHub Pages
+      - name: TypeScript and static contract checks
+        run: npm run lint && npm run test:contracts
+      - name: Build GitHub Pages application
         env:
           GITHUB_PAGES: 'true'
         run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke gate
+        run: npm run test:e2e
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
