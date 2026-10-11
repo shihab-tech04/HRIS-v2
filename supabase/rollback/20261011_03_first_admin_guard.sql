@@ -1,0 +1,5 @@
+-- Do not execute without a replacement guard:
+-- dropping the restrictive policy restores the original domain-based
+-- first-admin self-enrolment on tenants without active memberships.
+-- DROP POLICY hris_first_admin_platform_guard ON public.tenant_memberships;
+-- DROP FUNCTION public.hris_can_bootstrap_tenant_membership();
