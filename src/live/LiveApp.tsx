@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
@@ -23,12 +23,19 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
     event.preventDefault();
     setBusy(true);
     setError('');
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setBusy(false);
-    if (authError) { setError(authError.message); return; }
-    if (!data.user) { setError('No authenticated user was returned.'); return; }
-    setPassword('');
-    onSuccess(data.user);
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(), password,
+      });
+      if (authError) { setError(authError.message); return; }
+      if (!data.user) { setError('No authenticated user was returned.'); return; }
+      setPassword('');
+      onSuccess(data.user);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Authentication service is unavailable. Try again.');
+    } finally {
+      setBusy(false);
+    }
   }
   return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 w-full max-w-md">
@@ -60,6 +67,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const lastAccessUserId = useRef<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -72,20 +80,38 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if (event === 'SIGNED_OUT') setUser(null);
-      else if (session?.user) setUser(session.user);
+      else if (session?.user) {
+        setUser(session.user);
+        // Refresh effective roles when the authentication session rotates.
+        if (event === 'TOKEN_REFRESHED') setRefreshKey(key => key + 1);
+      }
     });
     return () => { active = false; authListener.subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {
-    if (!user) { setTenants([]); setMemberships([]); setTenantId(''); setAdminAllowed(false); setRecords(empty()); return; }
+    if (!user) {
+      lastAccessUserId.current = null;
+      setTenants([]);
+      setMemberships([]);
+      setTenantId('');
+      setAdminAllowed(false);
+      setRecords(empty());
+      setMembershipLoading(false);
+      setLoading(false);
+      return;
+    }
     let active = true;
+    const switchedIdentity = lastAccessUserId.current !== user.id;
+    lastAccessUserId.current = user.id;
     setMembershipLoading(true);
     setTenants([]);
-    setTenantId('');
     setRecords(empty());
     setAdminAllowed(false);
-    setView('employee');
+    if (switchedIdentity) {
+      setTenantId('');
+      setView('employee');
+    }
     setError('');
     async function load() {
       try {
@@ -137,11 +163,14 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     void load();
     return () => { active = false; };
-  }, [user?.id]);
+  }, [user?.id, refreshKey]);
 
   useEffect(() => {
     setRecords(empty()); // Never reuse another tenant's data after switching.
-    if (!user || !tenantId) return;
+    if (!user || !tenantId || membershipLoading || !tenants.some(t => t.id === tenantId)) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
     setError('');
@@ -167,7 +196,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user?.id, tenantId, canAdminSelectedTenant, refreshKey]);
+  }, [user?.id, tenantId, canAdminSelectedTenant, refreshKey, membershipLoading, tenants]);
 
   async function signOut() {
     setView('employee');
@@ -223,7 +252,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
           {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
           {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
-          {currentView !== 'preview' && <button disabled={loading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
+          {currentView !== 'preview' && <button disabled={loading || membershipLoading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
         </nav>
         {currentView === 'preview' ? <>
           <section role="status" className="p-4 bg-amber-50 border border-amber-300 rounded-lg mb-4"><h2 className="font-semibold text-amber-900">Design preview — NOT connected to SQL</h2><p className="text-sm text-amber-900 mt-1">All tenants, employees, roles, actions, audit logs, and security tests in the preview are simulated browser-only fixtures. Do not use for real HR administration.</p></section>
@@ -231,7 +260,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         </> : <>
           <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
             <div className="bg-white border rounded-lg p-4"><Database className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">SQL project</p><p className="font-semibold">hrmis-saas</p><p className="text-xs text-slate-500">Existing production schema, unchanged</p></div>
-            <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Verified membership</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? 'Legacy Synesis administrator' : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
+            <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Authorized access</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? 'Legacy Synesis administrator' : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
             <div className="bg-white border rounded-lg p-4"><ShieldAlert className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Access model</p><p className="font-semibold">Supabase Auth + RLS</p><p className="text-xs text-slate-500">No service-role token in browser</p></div>
           </section>
           {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

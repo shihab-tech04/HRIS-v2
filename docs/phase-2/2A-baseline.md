@@ -47,3 +47,13 @@
 - **206 WARN**: authenticated-executable SECURITY DEFINER functions. This is a *review inventory*, not 206 proven vulnerabilities. Audit each privileged RPC's live-session, actor, tenant and permission checks before opening arbitrary SaaS tenants.
 
 Relevant Supabase guidance: https://supabase.com/docs/guides/database/functions and https://supabase.com/docs/guides/database/database-linter.
+
+## Independent corrective audit — 2026-10-11
+
+- **Unchanged:** Phase 2A staging RPCs are not applied to production; production app does not mount its platform-tenant adapter.
+- **Defect found and corrected in staged SQL:** administrator assignment used to replace `hr_recruiter` with `hr_admin` because the membership key is `(tenant_id,user_id)`. A conflicting non-admin membership now fails transactionally rather than silently erasing the previous role. Supporting multiple concurrent roles is a 2C schema/authorization requirement.
+- **Defect found and corrected in live client:** Refresh re-read records without rechecking permissions/memberships. Refresh and session token rotation now revalidate access, clear previously loaded data, and preserve the selected tenant/view when the same user remains authorized. Switching accounts clears the old selected context.
+- **Network recovery:** sign-in now handles promise rejection and always releases the busy state. Browser test mocks unsuccessful Supabase authentication; it does not use actual identities.
+- **Security blocker:** existing production `membership_bootstrap_first_admin` RLS INSERT policy permits first-admin self-enrolment by a Synesis-domain identity when a tenant has no membership. Production currently has zero active memberships, making it especially important to review and replace that policy before arbitrary tenant provisioning. Do not quietly remove it until authenticated enrollment dependencies are tested.
+- **Verification boundaries:** Static SQL contract tests do not execute PostgreSQL RLS. Browser tests without real accounts do not certify authenticated SQL reads. No SQL DDL or production user mutation was performed for this corrective release.
+- **Applicant Portal:** intentionally excluded; it will be a separate user-created project at the recruitment phase.

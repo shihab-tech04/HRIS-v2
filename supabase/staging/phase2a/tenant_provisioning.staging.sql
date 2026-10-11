@@ -123,7 +123,12 @@ BEGIN
   INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   VALUES(p_tenant_id,p_user_id,'hr_admin','active')
   ON CONFLICT (tenant_id,user_id) DO UPDATE
-  SET role='hr_admin', status='active', updated_at=now();
+  SET status='active', updated_at=now()
+  WHERE public.tenant_memberships.role='hr_admin';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Existing membership cannot be converted to administrator until multi-role assignments are supported'
+      USING ERRCODE='23514';
+  END IF;
  ELSE
   SELECT m.status INTO v_existing FROM public.tenant_memberships m
    WHERE m.tenant_id=p_tenant_id AND m.user_id=p_user_id
