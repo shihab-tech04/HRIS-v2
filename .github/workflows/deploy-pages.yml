@@ -42,3 +42,57 @@ jobs:
     steps:
       - uses: actions/deploy-pages@v4
         id: deployment
+      - name: Verify published HRIS compiled assets
+        run: |
+          set -euo pipefail
+          base="https://shihab-tech04.github.io"
+          for attempt in $(seq 1 20); do
+            curl -fsSL -H 'Cache-Control: no-cache' "$base/HRIS-v2/?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/hris-live.html || true
+            if grep -Eq 'src="/HRIS-v2/assets/[^"]+\.js"' /tmp/hris-live.html &&
+               grep -Eq 'href="/HRIS-v2/assets/[^"]+\.css"' /tmp/hris-live.html; then
+              break
+            fi
+            sleep 3
+          done
+          grep -Eq 'src="/HRIS-v2/assets/[^"]+\.js"' /tmp/hris-live.html
+          grep -Eq 'href="/HRIS-v2/assets/[^"]+\.css"' /tmp/hris-live.html
+          js="$(grep -oE 'src="/HRIS-v2/assets/[^"]+\.js"' /tmp/hris-live.html | head -1 | cut -d '"' -f2)"
+          css="$(grep -oE 'href="/HRIS-v2/assets/[^"]+\.css"' /tmp/hris-live.html | head -1 | cut -d '"' -f2)"
+          curl -fsSL "$base$js" -o /tmp/hris-live.js
+          curl -fsSL "$base$css" -o /tmp/hris-live.css
+          test -s /tmp/hris-live.js
+          test -s /tmp/hris-live.css
+          grep -Fq 'Forgot password?' /tmp/hris-live.js
+          echo "PASS: live HRIS serves compiled JS/CSS and the password-reset entry"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install live browser verification dependencies
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Verify published login and recovery screen with Chromium
+        run: |
+          node --input-type=module <<'NODE'
+          import { chromium, expect } from '@playwright/test';
+          const browser = await chromium.launch();
+          try {
+            const page = await browser.newPage();
+            const errors = [];
+            page.on('pageerror', error => errors.push(error.message));
+            const response = await page.goto('https://shihab-tech04.github.io/HRIS-v2/', {
+              waitUntil: 'domcontentloaded',
+              timeout: 30000,
+            });
+            if (!response?.ok()) throw Error('Published HRIS returned HTTP ' + response?.status());
+            await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible({ timeout: 15000 });
+            await page.getByRole('button', { name: 'Forgot password?' }).click();
+            await expect(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible();
+            await expect(page.getByLabel('Account email')).toBeVisible();
+            await page.getByRole('button', { name: 'Back to sign in' }).click();
+            await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
+            if (errors.length) throw Error('Production React exceptions: ' + errors.join('; '));
+            console.log('PASS: published HRIS login and recovery UI rendered in real Chromium');
+          } finally {
+            await browser.close();
+          }
+          NODE
