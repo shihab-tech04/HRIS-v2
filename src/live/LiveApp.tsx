@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
@@ -14,12 +15,17 @@ type Records = { employees: Employee[]; departments: Department[]; leaves: Leave
 type View = 'employee' | 'admin' | 'preview';
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
-function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
+function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
+  onSuccess: (value: User) => void;
+  onRecoveryVerified: (value: User) => void;
+  recoveryLinkError?: string;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [forgotPassword, setForgotPassword] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(Boolean(recoveryLinkError));
+  useEffect(() => { if (recoveryLinkError) setForgotPassword(true); }, [recoveryLinkError]);
   const [resetRequested, setResetRequested] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,7 +52,13 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
     try {
       const callback = new URL(import.meta.env.BASE_URL || '/', window.location.origin).toString();
       const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: callback });
-      if (result.error) throw result.error;
+      if (result.error) {
+        if (/rate limit|only request this after|too many/i.test(result.error.message)) {
+          setError('Too many recovery requests. Wait a minute, then try again.');
+          return;
+        }
+        throw result.error;
+      }
       setResetRequested(true);
     } catch {
       setError('Unable to request a recovery link. Please try again later.');
@@ -56,12 +68,14 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
   }
   if (forgotPassword) return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4"><section className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-md">
     <h1 className="text-2xl font-bold">Reset your password</h1>
-    <p className="text-sm text-slate-600 mt-2">Request a recovery email for your HRIS account.</p>
+    <p className="text-sm text-slate-600 mt-2">Request a recovery email for the specific account you need to recover. Admin and Super Admin may use different email addresses.</p>
+    {recoveryLinkError && <p role="alert" className="mt-3 text-red-700 text-sm">{recoveryLinkError}</p>}
     {resetRequested ? <p role="status" className="mt-4 rounded-md bg-blue-50 p-3 text-sm">If an account exists for this email, a reset link has been requested.</p> : <form className="mt-5 space-y-4" onSubmit={requestRecovery}>
       <div><label htmlFor="recovery-email" className="block text-sm font-medium">Account email</label><input id="recovery-email" type="email" required autoComplete="email" className="border rounded-md px-3 min-h-11 w-full" value={email} onChange={e => setEmail(e.target.value)}/></div>
       {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
       <button disabled={busy} type="submit" className="min-h-11 rounded-md bg-[#085587] text-white w-full disabled:opacity-50">{busy ? 'Requesting…' : 'Send reset link'}</button>
     </form>}
+    <RecoveryLinkFallback onVerified={onRecoveryVerified} />
     <button type="button" className="min-h-11 mt-3 underline text-sm text-blue-800" onClick={() => { setForgotPassword(false); setResetRequested(false); setError(''); }}>Back to sign in</button>
   </section></main>;
   return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
@@ -115,6 +129,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [recoveryLinkError, setRecoveryLinkError] = useState('');
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -148,6 +163,33 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       }
     });
     return () => { active = false; authListener.subscription.unsubscribe(); };
+  }, []);
+
+  // The original Supabase email template currently redirects to localhost.
+  // Our fragment-based fallback uses a one-time recovery token without sending it to GitHub Pages.
+  useEffect(() => {
+    let active = true;
+    const query = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const code = query.get('error_code') || hash.get('error_code');
+    if (code) {
+      setRecoveryLinkError('Your recovery email link has expired or was already used. Request a new recovery email.');
+      window.history.replaceState(null, '', new URL(import.meta.env.BASE_URL || '/', window.location.origin).pathname);
+    }
+    const token = hash.get('recover_token');
+    if (token) {
+      window.history.replaceState(null, '', new URL(import.meta.env.BASE_URL || '/', window.location.origin).pathname);
+      if (token.length < 16 || token.length > 2048 || !/^[A-Za-z0-9._~-]+$/.test(token)) {
+        setRecoveryLinkError('This recovery link is invalid. Request a new email.');
+      } else {
+        void redeemRecoveryToken(token).then(account => {
+          if (active) { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }
+        }).catch(() => {
+          if (active) setRecoveryLinkError('This recovery link is expired or invalid. Request a fresh recovery email.');
+        });
+      }
+    }
+    return () => { active = false; };
   }, []);
 
   // Recheck access when a user returns to the workspace after permissions change.
@@ -297,7 +339,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         </div>
       );
     }
-    return <SignIn onSuccess={setUser} />;
+    return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError} onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
   }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
