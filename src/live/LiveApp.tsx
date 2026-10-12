@@ -4,7 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
-import { LiveSystemWorkspace } from './LiveSystemWorkspace';
+import { LiveHrisWorkspace } from './LiveHrisWorkspace';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
@@ -13,7 +13,13 @@ type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
 type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[] };
-type View = 'employee' | 'admin' | 'preview' | 'system';
+type View = 'employee' | 'preview' | 'system';
+type WorkspacePermissions = {
+  dashboard: boolean; attendance: boolean; attendanceReport: boolean; leave: boolean; leaveManage: boolean;
+};
+const noWorkspacePermissions: WorkspacePermissions = {
+  dashboard: false, attendance: false, attendanceReport: false, leave: false, leaveManage: false,
+};
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
 function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
@@ -137,6 +143,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [tenantId, setTenantId] = useState('');
   const [adminAllowed, setAdminAllowed] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [employeeTenantIds, setEmployeeTenantIds] = useState<string[]>([]);
+  const [employeeRpcAllowed, setEmployeeRpcAllowed] = useState(false);
+  const [workspacePermissions, setWorkspacePermissions] = useState(noWorkspacePermissions);
   // Legacy permissions are globally stored, therefore valid for Synesis only.
   const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
@@ -211,6 +220,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       setTenantId('');
       setAdminAllowed(false);
       setIsSuperAdmin(false);
+      setEmployeeTenantIds([]);
+      setEmployeeRpcAllowed(false);
+      setWorkspacePermissions(noWorkspacePermissions);
       setRecords(empty());
       setMembershipLoading(false);
       setLoading(false);
@@ -224,6 +236,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setRecords(empty());
     setAdminAllowed(false);
     setIsSuperAdmin(false);
+    setEmployeeTenantIds([]);
+    setEmployeeRpcAllowed(false);
+    setWorkspacePermissions(noWorkspacePermissions);
     if (switchedIdentity) {
       setTenantId('');
       // Start each authenticated identity in the authorized system workspace.
@@ -246,23 +261,44 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const ownedTenantIds = (employeeResult.data || [])
           .filter(e => !['resigned','terminated'].includes(e.employment_status))
           .map(e => e.tenant_id);
-        const permissions = await Promise.all(
-          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage']
-            .map(id => supabase.rpc('has_permission', { p_permission_id: id }))
-        );
-        const isLegacyAdmin = adminResult.data?.active === true &&
-          permissions.some(right => !right.error && right.data === true);
+        const permissionIds = [
+          'employees.view', 'employees.manage', 'organization.view', 'organization.manage', 'roles.manage',
+          'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view', 'leave.view', 'leave.manage',
+        ];
+        const permissionChecks = adminResult.data?.active === true
+          ? await Promise.all(permissionIds.map(id => supabase.rpc('has_permission', { p_permission_id: id })))
+          : [];
+        const granted = new Map(permissionIds.map((id, index) => [
+          id, !permissionChecks[index]?.error && permissionChecks[index]?.data === true,
+        ]));
+        const isLegacyAdmin = adminResult.data?.active === true && permissionIds.some(id => granted.get(id) === true);
         // Existing admin_users grants are specific to the legacy Synesis tenant:
         // global roles are NOT valid for any other tenant.
-        const legacyTenant = isLegacyAdmin
+        // The current employee summary RPCs require an active admin_users row
+        // and resolve their identity through the fixed Synesis tenant helper.
+        const legacyTenant = adminResult.data?.active === true
           ? await supabase.from('tenants').select('id').eq('slug','synesis-it').eq('is_active', true).maybeSingle()
           : { data: null, error: null };
         if (legacyTenant.error) throw legacyTenant.error;
+        const canUseEmployeeSummary = adminResult.data?.active === true && Boolean(
+          legacyTenant.data?.id && ownedTenantIds.includes(legacyTenant.data.id),
+        );
+
+        let effectiveWorkspacePermissions = noWorkspacePermissions;
+        if (legacyTenant.data?.id) {
+          effectiveWorkspacePermissions = {
+            dashboard: granted.get('dashboard.view') === true,
+            attendance: granted.get('attendance.view') === true || granted.get('attendance.manage') === true || granted.get('reports.view') === true,
+            attendanceReport: granted.get('reports.view') === true,
+            leave: granted.get('leave.view') === true || granted.get('leave.manage') === true,
+            leaveManage: granted.get('leave.manage') === true,
+          };
+        }
 
         const tenantIds = Array.from(new Set([
           ...mine.map(m => m.tenant_id),
           ...ownedTenantIds,
-          ...(legacyTenant.data?.id ? [legacyTenant.data.id] : []),
+          ...(legacyTenant.data?.id && (isLegacyAdmin || canUseEmployeeSummary) ? [legacyTenant.data.id] : []),
         ]));
         const found = tenantIds.length
           ? await supabase.from('tenants').select('id,name,slug,timezone')
@@ -272,6 +308,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         if (!active) return;
         setMemberships(mine);
         setTenants((found.data || []) as Tenant[]);
+        setEmployeeTenantIds(ownedTenantIds);
+        setEmployeeRpcAllowed(canUseEmployeeSummary);
+        setWorkspacePermissions(effectiveWorkspacePermissions);
         setTenantId(previous => (found.data || []).some(t => t.id === previous)
           ? previous : (found.data?.[0]?.id || ''));
         setAdminAllowed(isLegacyAdmin);
@@ -350,7 +389,30 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
-  const currentView = (view === 'admin' || view === 'system') && !canAdminSelectedTenant ? 'employee' : view;
+  const currentView = view === 'system' && !canAdminSelectedTenant ? 'employee' : view;
+  const opensAdminWorkspace = currentView === 'system' && canAdminSelectedTenant;
+  const opensEmployeeWorkspace = currentView === 'employee'
+    && employeeRpcAllowed
+    && current?.slug === 'synesis-it'
+    && employeeTenantIds.includes(tenantId);
+
+  if (current && (opensAdminWorkspace || opensEmployeeWorkspace)) {
+    return <LiveHrisWorkspace
+      userEmail={user.email || 'HRIS user'}
+      tenantId={tenantId}
+      tenantName={current.name}
+      tenants={tenants}
+      onTenantChange={nextTenantId => {
+        setTenantId(nextTenantId);
+        setView('employee');
+        setRecords(empty());
+      }}
+      onSignOut={() => { void signOut(); }}
+      isSuperAdmin={opensAdminWorkspace && isSuperAdmin}
+      isEmployee={current.slug === 'synesis-it' && employeeRpcAllowed && employeeTenantIds.includes(tenantId)}
+      permissions={opensAdminWorkspace ? workspacePermissions : noWorkspacePermissions}
+    />;
+  }
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -371,11 +433,10 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
           {canAdminSelectedTenant && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
           <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
-          {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
           {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
           {currentView !== 'preview' && <button disabled={loading || membershipLoading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
         </nav>
-        {currentView === 'system' ? <LiveSystemWorkspace tenantId={tenantId} tenantName={current.name} /> : currentView === 'preview' ? <>
+        {currentView === 'system' ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your authorized HRIS workspace…</p> : currentView === 'preview' ? <>
           <section role="status" className="p-4 bg-amber-50 border border-amber-300 rounded-lg mb-4"><h2 className="font-semibold text-amber-900">Design preview — NOT connected to SQL</h2><p className="text-sm text-amber-900 mt-1">All tenants, employees, roles, actions, audit logs, and security tests in the preview are simulated browser-only fixtures. Do not use for real HR administration.</p></section>
           <div className="border rounded-lg overflow-hidden">{preview}</div>
         </> : <>
