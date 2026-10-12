@@ -149,7 +149,7 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
   await page.getByLabel('Shift', { exact: true }).selectOption('a6666666-6666-4666-8666-666666666666');
   await page.getByLabel('Assignment date').fill(assignmentDate);
   await page.getByRole('button', { name: 'Assign shift', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Shift assigned to New Roster Employee.');
+  await expect(page.getByText('Shift assigned to New Roster Employee.', { exact: true })).toBeVisible();
   await expect(rosterTable.getByRole('row', { name: /New Roster Employee/ })).toContainText('Late Shift');
   expect(assignmentCalls.at(-1)).toMatchObject({ p_tenant_id: tenantId,
     p_employee_id: 'a7777777-7777-4777-8777-777777777777',

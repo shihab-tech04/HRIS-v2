@@ -169,6 +169,7 @@ const emails = [
   'manager-a@hris.test', 'manager-b@hris.test', 'no-permission@hris.test',
   'global-only@hris.test', 'tenant-viewer@hris.test',
   'employee-a@hris.test', 'employee-b@hris.test', 'manager-a2@hris.test',
+  'employee-clock@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -219,12 +220,14 @@ const tenantViewer = await signIn(emails[4]);
 const employeeA = await signIn(emails[5]);
 const employeeB = await signIn(emails[6]);
 const managerA2 = await signIn(emails[7]);
+const employeeClock = await signIn(emails[8]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -273,6 +276,7 @@ const ids = {
   attendanceUnauthorized: 'cccccccc-0000-4000-8000-000000000008',
   attendanceRevoked: 'cccccccc-0000-4000-8000-000000000009',
   attendanceRecord: 'bbbbbbbb-0000-4000-8000-000000000001',
+  clockEmployee: '55555555-5555-4555-8555-555555555560',
   tenantA: '11111111-1111-4111-8111-111111111111',
   tenantB: '22222222-2222-4222-8222-222222222222',
   leaveTypeA: '99999999-9999-4999-8999-999999999901',
@@ -309,6 +313,7 @@ FROM (VALUES
   ('public.hris_get_tenant_leave_data(uuid,date,date)'),
   ('public.hris_get_my_dashboard_data(uuid)'),
   ('public.hris_employee_submit_attendance_correction(uuid,jsonb)'),
+  ('public.hris_employee_record_attendance_event(uuid,text)'),
   ('public.hris_employee_submit_leave_request(uuid,jsonb)'),
   ('public.admin_resolve_leave_request(uuid,text,text)'),
   ('public.admin_resolve_attendance_correction(uuid,text,text)'),
@@ -535,6 +540,79 @@ record('Employee dashboard profile and date belong to the linked tenant-local em
   JSON.stringify({ employeeA: employeeSummaryA.employee, employeeB: employeeSummaryB.employee,
     dateA: employeeSummaryA.dashboard_date, dateB: employeeSummaryB.dashboard_date }));
 
+const clockOutBeforeCheckIn = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'check_out',
+});
+const clockRowsBefore = queryAdmin(`SELECT jsonb_build_object('count',count(*))
+  FROM public.attendance_records WHERE employee_id='${ids.clockEmployee}'::uuid`);
+record('Employee web clock-out before clock-in is denied without creating an attendance row',
+  Boolean(clockOutBeforeCheckIn.error) && clockRowsBefore.count === 0);
+
+const crossTenantClock = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantB, p_event: 'check_in',
+});
+const crossTenantClockRows = queryAdmin(`SELECT jsonb_build_object('count',count(*))
+  FROM public.attendance_records WHERE employee_id='${ids.clockEmployee}'::uuid`);
+record('Linked employee cannot create a web punch in another tenant',
+  Boolean(crossTenantClock.error) && crossTenantClockRows.count === 0);
+
+const unsupportedClockEvent = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'toggle',
+});
+record('Employee web punch rejects unsupported event names without creating a row',
+  Boolean(unsupportedClockEvent.error)
+  && queryAdmin(`SELECT jsonb_build_object('count',count(*)) FROM public.attendance_records
+    WHERE employee_id='${ids.clockEmployee}'::uuid`).count === 0);
+
+const clockInResult = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'check_in',
+});
+const clockInRecordId = clockInResult.data?.id;
+const clockInRecord = clockInRecordId ? tableRow('attendance_records', clockInRecordId) : null;
+record('Active linked employee clocks in using tenant-local date and safe attendance defaults with one audit event',
+  !clockInResult.error && clockInRecord?.tenant_id === ids.tenantA
+  && clockInRecord.employee_id === ids.clockEmployee
+  && clockInRecord.attendance_date === localCurrentDate
+  && Boolean(clockInRecord.check_in) && clockInRecord.check_out === null
+  && clockInRecord.work_mode === 'office' && clockInRecord.status === 'present'
+  && clockInRecord.source === 'employee'
+  && auditCount(clockInRecordId, 'attendance.web_check_in') === 1);
+
+const originalClockIn = clockInRecord?.check_in;
+const duplicateClockIn = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'check_in',
+});
+const afterDuplicateClockIn = clockInRecordId ? tableRow('attendance_records', clockInRecordId) : null;
+record('Duplicate employee clock-in is rejected without overwriting time or duplicating audit',
+  Boolean(duplicateClockIn.error) && afterDuplicateClockIn?.check_in === originalClockIn
+  && auditCount(clockInRecordId, 'attendance.web_check_in') === 1);
+
+const clockOutResult = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'check_out',
+});
+const afterClockOut = clockInRecordId ? tableRow('attendance_records', clockInRecordId) : null;
+record('Employee clocks out once and retains the original check-in with an audit event',
+  !clockOutResult.error && afterClockOut?.check_in === originalClockIn
+  && Boolean(afterClockOut?.check_out)
+  && new Date(afterClockOut.check_out).getTime() >= new Date(originalClockIn).getTime()
+  && auditCount(clockInRecordId, 'attendance.web_check_out') === 1);
+
+const duplicateClockOut = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'check_out',
+});
+const afterDuplicateClockOut = clockInRecordId ? tableRow('attendance_records', clockInRecordId) : null;
+record('Duplicate employee clock-out is rejected without overwriting time or duplicating audit',
+  Boolean(duplicateClockOut.error) && afterDuplicateClockOut?.check_out === afterClockOut?.check_out
+  && auditCount(clockInRecordId, 'attendance.web_check_out') === 1);
+
+const globalOnlyClock = await globalOnly.client.rpc('hris_employee_record_attendance_event', {
+  p_tenant_id: ids.tenantA, p_event: 'check_in',
+});
+record('Global role without an active linked employee cannot use employee web clock-in/out',
+  Boolean(globalOnlyClock.error)
+  && queryAdmin(`SELECT jsonb_build_object('count',count(*)) FROM public.attendance_records
+    WHERE employee_id='${ids.clockEmployee}'::uuid`).count === 1);
+
 const attendanceCorrectionSubmission = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
   p_tenant_id: ids.tenantA,
   p_payload: {
@@ -735,12 +813,12 @@ record('Tenant B dashboard, attendance and leave RPCs return tenant B data only'
   && attendanceDataB.records[0].tenant_id === ids.tenantB
   && leaveDataB.requests.length === 2
   && leaveDataB.requests.every(request => request.tenant_id === ids.tenantB));
-const dashboardAValid = Number(dashboardA.team_members) === 5
+const dashboardAValid = Number(dashboardA.team_members) === 6
   && dashboardA.dashboard_date === localCurrentDate
-  && Number(dashboardA.attendance_today) === 4
-  && Number(dashboardA.present_today) === 2
+  && Number(dashboardA.attendance_today) === 5
+  && Number(dashboardA.present_today) === 3
   && Number(dashboardA.absent_today) === 1
-  && Number(dashboardA.wfo_today) === 2
+  && Number(dashboardA.wfo_today) === 3
   && Number(dashboardA.wfh_today) === 1
   && Number(dashboardA.client_meeting_today) === 1
   && Number(dashboardA.on_leave_today) === 2

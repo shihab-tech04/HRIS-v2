@@ -1330,6 +1330,9 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
   const [loadedTenantId, setLoadedTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [attendanceAction, setAttendanceAction] = useState<'check_in' | 'check_out' | null>(null);
+  const [attendanceActionError, setAttendanceActionError] = useState('');
+  const [attendanceActionSuccess, setAttendanceActionSuccess] = useState('');
   const [activePanel, setActivePanel] = useState<EmployeePanelId>('working-hours');
   const requestSequence = useRef(0);
 
@@ -1355,6 +1358,26 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
       setError(cause instanceof Error ? cause.message : 'Unable to load your HRIS summary.');
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
+    }
+  }
+
+  async function recordAttendanceEvent(event: 'check_in' | 'check_out') {
+    if (attendanceAction) return;
+    setAttendanceAction(event);
+    setAttendanceActionError('');
+    setAttendanceActionSuccess('');
+    try {
+      const { error: rpcError } = await supabase.rpc('hris_employee_record_attendance_event', {
+        p_tenant_id: tenantId,
+        p_event: event,
+      });
+      if (rpcError) throw rpcError;
+      setAttendanceActionSuccess(event === 'check_in' ? 'You are checked in for today.' : 'You are checked out for today.');
+      await load(false);
+    } catch (cause) {
+      setAttendanceActionError(cause instanceof Error ? cause.message : 'Unable to update your attendance. Please retry.');
+    } finally {
+      setAttendanceAction(null);
     }
   }
 
@@ -1426,6 +1449,19 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
               <div><p className="text-xs text-slate-500">Check out</p><p className="mt-1 text-sm font-medium">{displayTime(todayRecord.check_out)}</p></div>
               <div><p className="text-xs text-slate-500">Work location</p><p className="mt-1 text-sm font-medium">{displayWorkMode(todayRecord.work_mode)}</p></div>
             </div> : <p className="mt-3 text-sm text-slate-600">No attendance record is available for this date. Your work schedule is not included in this summary.</p>}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+              <p className="text-sm text-slate-600">{todayRecord?.check_out
+                ? `Attendance recorded through ${displayTime(todayRecord.check_out)}`
+                : todayRecord?.check_in ? `Checked in at ${displayTime(todayRecord.check_in)}` : 'You have not checked in today.'}</p>
+              {!todayRecord?.check_out && <button type="button" disabled={loading || attendanceAction !== null}
+                onClick={() => void recordAttendanceEvent(todayRecord?.check_in ? 'check_out' : 'check_in')}
+                className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:cursor-wait disabled:opacity-60">
+                {attendanceAction ? (attendanceAction === 'check_in' ? 'Checking in…' : 'Checking out…')
+                  : todayRecord?.check_in ? 'Check out' : 'Check in'}
+              </button>}
+            </div>
+            {attendanceActionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{attendanceActionError}</p>}
+            {attendanceActionSuccess && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{attendanceActionSuccess}</p>}
           </section>
 
           <section aria-labelledby="employee-insights-heading" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

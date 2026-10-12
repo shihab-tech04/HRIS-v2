@@ -28,6 +28,8 @@ test('linked employee can complete the private evidence leave request on mobile'
   let submitted = false;
   let correctionSubmitted = false;
   let correctionPayload: Record<string, unknown> | null = null;
+  let attendanceState: 'not-started' | 'checked-in' | 'checked-out' = 'not-started';
+  const attendanceEventPayloads: Record<string, unknown>[] = [];
   const externalRequests: string[] = [];
 
   // Any request outside the local app must be handled by one of the explicit
@@ -83,10 +85,11 @@ test('linked employee can complete the private evidence leave request on mobile'
           official_email: user.email, designation_title: 'Product Designer', department_name: 'Experience Design',
         },
         dashboard_date: '2026-10-12',
-        attendance: { records: [{
+        attendance: { records: attendanceState === 'not-started' ? [] : [{
           id: 'f6666666-6666-4666-8666-666666666666', attendance_date: '2026-10-12',
-          status: 'present', check_in: '2026-10-12T03:00:00.000Z', check_out: '2026-10-12T11:30:00.000Z',
-          work_mode: 'office', work_hours: 8.5,
+          status: 'present', check_in: '2026-10-12T03:00:00.000Z',
+          check_out: attendanceState === 'checked-out' ? '2026-10-12T11:30:00.000Z' : null,
+          work_mode: 'office', work_hours: attendanceState === 'checked-out' ? 8.5 : null,
         }], corrections: correctionSubmitted ? [{
           id: 'f8888888-8888-4888-8888-888888888888', attendance_date: '2026-10-12',
           requested_check_in: '2026-10-12T03:15:00.000Z', reason: 'Synthetic missed punch correction',
@@ -107,6 +110,16 @@ test('linked employee can complete the private evidence leave request on mobile'
       correctionPayload = request.postDataJSON() as Record<string, unknown>;
       correctionSubmitted = true;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('f8888888-8888-4888-8888-888888888888') });
+    } else if (endpoint === 'hris_employee_record_attendance_event') {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      attendanceEventPayloads.push(payload);
+      attendanceState = payload.p_event === 'check_in' ? 'checked-in' : 'checked-out';
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: 'f6666666-6666-4666-8666-666666666666', tenant_id: tenantId,
+        attendance_date: '2026-10-12', check_in: '2026-10-12T03:00:00.000Z',
+        check_out: attendanceState === 'checked-out' ? '2026-10-12T11:30:00.000Z' : null,
+        work_mode: 'office', status: 'present',
+      }) });
     } else if (endpoint === 'tenant_memberships') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
         { tenant_id: tenantId, role: 'synthetic_employee', status: 'active' },
@@ -142,6 +155,17 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByRole('heading', { name: 'Synthetic Employee' })).toBeVisible();
   await expect(page.getByText('Product Designer')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Today’s attendance' })).toBeVisible();
+  await expect(page.getByText('You have not checked in today.')).toBeVisible();
+  await page.getByRole('button', { name: 'Check in', exact: true }).click();
+  await expect(page.getByText('You are checked in for today.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check out', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Check out', exact: true }).click();
+  await expect(page.getByText('You are checked out for today.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check in', exact: true })).toHaveCount(0);
+  expect(attendanceEventPayloads).toEqual([
+    { p_tenant_id: tenantId, p_event: 'check_in' },
+    { p_tenant_id: tenantId, p_event: 'check_out' },
+  ]);
   await expect(page.getByText('8.5 hr')).toBeVisible();
   const dashboardTabs = page.getByRole('group', { name: 'Personal dashboard views' });
   await expect(dashboardTabs.getByRole('button', { name: 'Working hours' })).toBeVisible();
@@ -160,8 +184,10 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByRole('heading', { name: 'Request time off' })).toBeVisible();
   await page.getByRole('button', { name: 'Working hours' }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-dashboard-desktop-20261012.png'), fullPage: true });
   await page.setViewportSize({ width: 375, height: 812 });
+  await page.evaluate(() => window.scrollTo(0, 0));
   const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(documentWidth).toBeLessThanOrEqual(376);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-dashboard-mobile-20261012.png'), fullPage: true });
@@ -173,7 +199,7 @@ test('linked employee can complete the private evidence leave request on mobile'
   await page.getByLabel('Requested check-in').fill('09:15');
   await correctionDialog.getByLabel(/Reason/).fill('Synthetic missed punch correction');
   await correctionDialog.getByRole('button', { name: 'Send request', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Attendance correction submitted for review.');
+  await expect(page.getByText('Attendance correction submitted for review.', { exact: true })).toBeVisible();
   await expect(page.getByRole('row', { name: /Synthetic missed punch correction/ })).toBeVisible();
   expect(correctionPayload).toEqual({
     p_tenant_id: tenantId,
