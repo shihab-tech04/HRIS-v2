@@ -29,6 +29,17 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     full_name: 'Synthetic Late Employee', employee_number: 'ATT-002', status: 'late', work_hours: 8.3,
   };
   const allAttendance = [syntheticAttendance, syntheticLateAttendance];
+  const correctionRequests = [
+    { id: 'e7777777-7777-4777-8777-777777777777', employee_id: syntheticAttendance.employee_id,
+      employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-12',
+      requested_check_in: '2026-10-12T03:15:00.000Z', requested_check_out: null, requested_work_mode: null,
+      reason: 'Synthetic missed punch approval', status: 'pending' },
+    { id: 'e8888888-8888-4888-8888-888888888888', employee_id: syntheticAttendance.employee_id,
+      employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-11',
+      requested_check_in: null, requested_check_out: '2026-10-11T11:30:00.000Z', requested_work_mode: null,
+      reason: 'Synthetic missed punch rejection', status: 'pending' },
+  ];
+  const correctionDecisions: Record<string, unknown>[] = [];
 
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -71,8 +82,16 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
         ? [{ employee_id: syntheticAttendance.employee_id, employee_number: 'ATT-001', employee_name: 'Aggregate decoy',
           department_name: 'Experience Design', designation_title: 'UX Designer', attendance_days: 999, office_hours: 999, working_hours: 999, deviation: 0 }]
         : { records: body.p_status && body.p_status !== 'all'
-          ? allAttendance.filter(row => row.status === body.p_status) : allAttendance, corrections: [] };
+          ? allAttendance.filter(row => row.status === body.p_status) : allAttendance, corrections: correctionRequests };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+      return;
+    }
+    if (endpoint === 'admin_resolve_attendance_correction') {
+      const decision = request.postDataJSON() as Record<string, unknown>;
+      correctionDecisions.push(decision);
+      const target = correctionRequests.find(item => item.id === decision.p_id);
+      if (target) target.status = String(decision.p_decision);
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       return;
     }
     if (endpoint === 'tenant_memberships') {
@@ -96,7 +115,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Attendance Report' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
-  const row = page.getByRole('row', { name: /Synthetic Attendance Employee/ });
+  const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
   await expect(row).toContainText('ATT-001');
   await expect(row).toContainText('UX Designer');
   await expect(row).toContainText('Experience Design');
@@ -104,6 +123,21 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(row).toContainText('Office');
   await expect(row).toContainText('8.56');
   await expect(page.getByText('Aggregate decoy')).toHaveCount(0);
+  const correctionCard = page.getByRole('heading', { name: 'Attendance correction requests' }).locator('xpath=..');
+  const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
+  await expect(approvalRow).toContainText('09:15');
+  await approvalRow.getByRole('button', { name: 'Approve' }).click();
+  await expect(page.getByText('Attendance correction approved.', { exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toContainText('approved');
+  const rejectionRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
+  page.once('dialog', dialog => dialog.accept());
+  await rejectionRow.getByRole('button', { name: 'Reject' }).click();
+  await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toContainText('rejected');
+  expect(correctionDecisions).toEqual([
+    { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
+    { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: null },
+  ]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261012.png'), fullPage: true });

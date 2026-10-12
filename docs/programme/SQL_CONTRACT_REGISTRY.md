@@ -1,6 +1,6 @@
 # SQL Contract Registry
 
-**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 17:07 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
+**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 17:14 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
 
 | Function | Observed input/output | Permission and scope | Acceptance state |
 |---|---|---|---|
@@ -28,5 +28,5 @@ The following definitions are in `supabase/migrations/20261012091930_hris_tenant
 | `hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)` | Tenant-scoped attendance, corrections and report data. | Two-tenant read and cross-tenant RPC denial. |
 | `hris_get_tenant_leave_data(uuid,date,date)` | Tenant-scoped leave request and type payload. | Two-tenant read and cross-tenant RPC denial. |
 | `hris_get_my_dashboard_data(uuid)` | Own attendance and correction history, balances, leave request history, applicable active leave types and tenant calendar context; requires an active linked employee. | Own-row, correction history scope, cross-tenant and termination checks. |
-| `hris_employee_submit_attendance_correction(uuid,jsonb)` | Binds correction requests to the active employee and tenant; interprets requested times in tenant-local time; validates changed fields and reason; records a pending correction and audit event. | Local Auth/RLS verifies same-tenant submission, local-time conversion, audit, empty-change rejection and cross-tenant denial; Chromium verifies submit and request history. |
+| `hris_employee_submit_attendance_correction(uuid,jsonb)` | Binds correction requests to the active employee and tenant; interprets requested times in tenant-local time; validates changed fields and reason; records a pending correction and audit event. | Local Auth/RLS verifies same-tenant submission, local-time conversion, audit, empty-change rejection and cross-tenant denial; Chromium verifies employee submission/history and manager approve/reject with refreshed statuses. |
 | `hris_employee_submit_leave_request(uuid,jsonb)` | Tenant-checked employee submission with notice, eligibility, evidence ownership, date/holiday/weekly-off, overlap, balance, pending ledger and audit checks. | Required-proof, storage privacy, duplicate, pending balance and manager approval journey. |

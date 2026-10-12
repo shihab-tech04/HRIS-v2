@@ -1,6 +1,6 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 17:07 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 17:14 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
 ## Verified source and code
 
@@ -9,6 +9,7 @@
 - Main: live permission-gated HRIS workspace, tenant-scoped manager RPCs, employee self-service, private leave request flow and attendance correction request/history. The new tenant-membership migration remains a local release candidate and has not been applied to production.
 - Candidate: submitted vacancy search and stale-response fixes; production build is public-only.
 - Main `npm run check` passed at this checkpoint (TypeScript, 26 contract tests, Vite build). Candidate lint, four contract tests, and public-only build passed at the previous checkpoint; Candidate is unchanged. Main retains the >500 kB chunk warning; Candidate has a Vite config-loader warning.
+- Full Main Chromium suite passed 37/37; `tests/browser/attendance-information.spec.ts` covers both manager correction decisions, rejection confirmation and refreshed status. All browser service calls are mocked and external requests are blocked.
 - The isolated local Supabase Auth/RLS suite passed 47/47 checks using eight synthetic Auth users across two tenants, including two separate tenant-A managers for concurrent decisions. It exercised effective RPC ACLs, membership role IDs, tenant denial, global-role-only denial, employee own summary/correction submission/history, termination and session revocation, private evidence storage, leave submission/approval, attendance correction variants, audit, balance rollback and concurrency. The tracked candidate migration and both exact staged approval SQL files were applied only to the scratch stack. Test runner: `tests/sql/isolated-auth/run-local.mjs`.
 - Ordinary linked employees use `hris_get_my_dashboard_data(uuid)` and may submit leave through `hris_employee_submit_leave_request(uuid,jsonb)` and attendance corrections through `hris_employee_submit_attendance_correction(uuid,jsonb)`. The legacy employee RPCs remain unchanged and are not used by the new personal workspace.
 - A follow-up read-only production inspection confirmed own-row RLS for `employees`, `leave_requests`, and `leave_types`, while attendance and leave-balance policies still use the active-admin resolver. The `holidays_read` policy has no tenant predicate; current UI reads stay on tenant-scoped RPCs. No database settings or data were changed.
