@@ -72,6 +72,18 @@ test('attendance report filter disclosure keeps its controlled panel target moun
   assert.match(browser, /attendance-filters/);
 });
 
+test('shared CSV export neutralizes formula-leading text while preserving numeric literals', () => {
+  const start = workspace.indexOf('function csvCell(');
+  const end = workspace.indexOf('\nfunction downloadCsv', start);
+  const cell = workspace.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(cell, /startsWithFormula/);
+  assert.match(cell, /isNumericLiteral/);
+  assert.match(cell, /safeText/);
+  assert.match(browser, /'=HYPERLINK/);
+  assert.match(browser, /"-0\.7"/);
+});
+
 test('Figma Apply Filter commits aggregate date and Team drafts together', () => {
   assert.match(workspace, /value=\{aggregateOnly \? draftFrom : from\}/);
   assert.match(workspace, /value=\{aggregateOnly \? draftTo : to\}/);

@@ -83,7 +83,9 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
       attendanceCalls.push(body);
       const data = body.p_report === true
         ? [
-          { employee_id: syntheticAttendance.employee_id, employee_number: 'ATT-001', employee_name: 'Aggregate Report Employee',
+          { employee_id: syntheticAttendance.employee_id,
+            employee_number: body.p_search === 'Formula' ? '=HYPERLINK("https://example.invalid","Open")' : 'ATT-001',
+            employee_name: 'Aggregate Report Employee',
             department_name: 'Experience Design', designation_title: 'UX Designer', team_name: 'Synthetic Product Team', attendance_days: 999, office_hours: 45, working_hours: 46.48, deviation: 1.48 },
           { employee_id: syntheticLateAttendance.employee_id, employee_number: 'ATT-002', employee_name: 'Aggregate Negative Employee',
             department_name: 'Experience Design', designation_title: 'UX Designer', team_name: 'Synthetic Design Team', attendance_days: 999, office_hours: 45, working_hours: 44.3, deviation: -0.7 },
@@ -298,5 +300,17 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await page.getByRole('region', { name: 'Scrollable attendance report table' }).evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261012.png'), fullPage: true });
+  await page.getByLabel('Search employees').fill('Formula');
+  await page.getByLabel('Search employees').press('Enter');
+  await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Formula')).toBe(true);
+  await expect(page.getByRole('row', { name: /Aggregate Report Employee/ })).toContainText('=HYPERLINK');
+  const formulaDownloadWaiter = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Report', exact: true }).click();
+  const formulaDownload = await formulaDownloadWaiter;
+  const formulaStream = await formulaDownload.createReadStream();
+  let formulaCsv = '';
+  if (formulaStream) for await (const chunk of formulaStream) formulaCsv += chunk.toString();
+  expect(formulaCsv).toContain("\"'=HYPERLINK(");
+  expect(formulaCsv).toContain('"-0.7"');
   expect(externalRequests).toEqual([]);
 });
