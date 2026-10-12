@@ -1,15 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 18:09 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 18:19 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 08 web clock-in/out
+## Current checkpoint — Phase 08 attendance report
 
-- Feature commit: `66d0a12b92f7dca38331848da82ab0d4da9acbf3`; 32/32 contracts, TypeScript/build pass, 38/38 Chromium tests and 63/63 disposable local Auth/RLS checks pass. Vite still reports a 719.12 kB minified JavaScript chunk advisory.
+- Latest feature commit: `2d55ff93146445f6aaf799acb26b9e7149c52338` (Figma-aligned `reports.view` attendance report). Employee web clock-in/out commit: `66d0a12b92f7dca38331848da82ab0d4da9acbf3`. Current verification: 32/32 contracts, TypeScript/build pass, 38/38 Chromium, 63/63 local Auth/RLS on the unchanged SQL baseline. Vite still reports a 721.16 kB minified JavaScript chunk advisory.
 - The five prior tenant-security failures all pass. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
-- Since the 14:20 baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`, source/test changes total 21 paths, +5,808/−55. Full path list and test scope are in `EXECUTION_CHECKPOINT_20261012_1810.md` and `ACCEPTANCE_EVIDENCE_20261012_1810.md`.
+- Since the 14:20 baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`, source/test changes total 21 paths, +5,882/−55. Full path list and current test scope are in `EXECUTION_CHECKPOINT_20261012_1820.md` and `ACCEPTANCE_EVIDENCE_20261012_1820.md`.
 - The owner reports the canonical catalogue as 1,047 stories/153 modules, expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The mounted `sources/` directory is empty, so 0/1,047 are mapped to recovered story text and 1,047 remain pending verification. The local JSON remains only an empty tracking skeleton.
-- A versioned source snapshot was uploaded to the connected account-owned Drive folder `HRMIS Preservation 2026-10-11` (folder ID `1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V`). Archive SHA-256: `2ef450ec10293e2cdd666af20d2691427d35ca07c8a6bc3ad1e7b9a212046144`; Drive read-back size and SHA-256 matched the local ZIP. Checkpoint and acceptance Markdown readbacks matched exactly. See `DRIVE_PRESERVATION_RECEIPT_20261012_1810.md`.
-- Next work: continue Phase 08 attendance journeys and Figma-aligned screens from existing scoped contracts while resolving the source mount; do not infer story IDs or publish.
+- The 18:10 source snapshot in the connected account-owned Drive preservation folder is verified at 1,943,960 bytes and SHA-256 `2ef450ec10293e2cdd666af20d2691427d35ca07c8a6bc3ad1e7b9a212046144`. This newer report checkpoint is being versioned separately; earlier records are retained.
+- Next work: continue Phase 08 attendance workflows and inspect the existing schema for a valid employee/team relationship before extending the report response. Do not infer story IDs or publish.
 
 ## Historical detail from the 17:50 checkpoint
 

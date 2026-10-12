@@ -1,6 +1,6 @@
 # SQL Contract Registry
 
-**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 18:09 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
+**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 18:19 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
 
 | Function | Observed input/output | Permission and scope | Acceptance state |
 |---|---|---|---|
@@ -25,7 +25,7 @@ The following definitions are in `supabase/migrations/20261012091930_hris_tenant
 |---|---|---|
 | `has_tenant_permission(uuid,text)` | Grants a permission only through an active tenant membership whose `role` resolves to an active `roles.id` and matching `role_permissions` row; requires a live Auth session and active tenant. | Tenant A/B positive and negative checks; inactive membership revocation; global role alone denied. |
 | `hris_get_tenant_dashboard_summary(uuid)` | Tenant-scoped summary without the global candidate-account count. | Two-tenant RPC scope and cross-tenant denial. |
-| `hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)` | Tenant-scoped attendance, corrections and report data. | Two-tenant read and cross-tenant RPC denial. |
+| `hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)` | Tenant-scoped detail/correction data for attendance viewers/managers or aggregate report rows for `reports.view`. | 63/63 isolated Auth/RLS checks remain passing. Chromium verifies the detail+correction path and the Figma node `17:28320` report-only path including date filters, output, signed deviations and CSV. The aggregate response omits team names and photos; no such values are inferred. |
 | `hris_get_tenant_leave_data(uuid,date,date)` | Tenant-scoped leave request and type payload. | Two-tenant read and cross-tenant RPC denial. |
 | `hris_get_my_dashboard_data(uuid)` | Own attendance and correction history, balances, leave request history, applicable active leave types and tenant calendar context; requires an active linked employee. | Own-row, correction history scope, cross-tenant and termination checks. |
 | `hris_employee_submit_attendance_correction(uuid,jsonb)` | Binds correction requests to the active employee and tenant; interprets requested times in tenant-local time; validates changed fields and reason; records a pending correction and audit event. | Local Auth/RLS verifies same-tenant submission, local-time conversion, audit, empty-change rejection and cross-tenant denial; Chromium verifies employee submission/history and manager approve/reject with refreshed statuses. |
