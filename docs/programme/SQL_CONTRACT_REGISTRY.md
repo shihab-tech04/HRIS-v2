@@ -1,6 +1,6 @@
 # SQL Contract Registry
 
-**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 17:14 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
+**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 17:25 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
 
 | Function | Observed input/output | Permission and scope | Acceptance state |
 |---|---|---|---|
@@ -29,4 +29,5 @@ The following definitions are in `supabase/migrations/20261012091930_hris_tenant
 | `hris_get_tenant_leave_data(uuid,date,date)` | Tenant-scoped leave request and type payload. | Two-tenant read and cross-tenant RPC denial. |
 | `hris_get_my_dashboard_data(uuid)` | Own attendance and correction history, balances, leave request history, applicable active leave types and tenant calendar context; requires an active linked employee. | Own-row, correction history scope, cross-tenant and termination checks. |
 | `hris_employee_submit_attendance_correction(uuid,jsonb)` | Binds correction requests to the active employee and tenant; interprets requested times in tenant-local time; validates changed fields and reason; records a pending correction and audit event. | Local Auth/RLS verifies same-tenant submission, local-time conversion, audit, empty-change rejection and cross-tenant denial; Chromium verifies employee submission/history and manager approve/reject with refreshed statuses. |
+| `hris_get_tenant_shift_roster_data(uuid,date,date,text)` | Read-only table result for explicit employee/day shift assignments with employee, department, shift, time, break, grace and status details. Requires `attendance.view` or `attendance.manage` through active tenant membership; every join is pinned to the requested tenant. | 50/50 isolated Auth/RLS checks pass, including tenant A/B, viewer/search, cross-tenant/global-role-only denial, date validation and function grants. Chromium roster journey passes 1/1; assignment writes are not included. |
 | `hris_employee_submit_leave_request(uuid,jsonb)` | Tenant-checked employee submission with notice, eligibility, evidence ownership, date/holiday/weekly-off, overlap, balance, pending ledger and audit checks. | Required-proof, storage privacy, duplicate, pending balance and manager approval journey. |

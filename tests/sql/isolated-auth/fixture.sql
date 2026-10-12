@@ -34,6 +34,7 @@ DROP TABLE IF EXISTS public.leave_types CASCADE;
 DROP TABLE IF EXISTS public.holidays CASCADE;
 DROP TABLE IF EXISTS public.designations CASCADE;
 DROP TABLE IF EXISTS public.departments CASCADE;
+DROP TABLE IF EXISTS public.employee_shift_assignments CASCADE;
 DROP TABLE IF EXISTS public.employees CASCADE;
 DROP TABLE IF EXISTS public.shifts CASCADE;
 DROP TABLE IF EXISTS public.admin_audit_logs CASCADE;
@@ -97,8 +98,15 @@ CREATE TABLE public.tenant_memberships (
 CREATE TABLE public.shifts (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Synthetic Shift',
+  code text NOT NULL DEFAULT 'SYN',
+  start_time time NOT NULL DEFAULT '09:00',
+  end_time time NOT NULL DEFAULT '17:00',
+  grace_minutes integer NOT NULL DEFAULT 0,
+  break_minutes integer NOT NULL DEFAULT 0,
   weekly_off_days integer[] NOT NULL DEFAULT '{}',
   full_day_hours numeric,
+  half_day_hours numeric NOT NULL DEFAULT 4,
   active boolean NOT NULL DEFAULT true
 );
 
@@ -131,6 +139,19 @@ CREATE TABLE public.employees (
   gender text,
   employment_status text NOT NULL DEFAULT 'active',
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.employee_shift_assignments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  shift_id uuid NOT NULL,
+  assignment_date date NOT NULL,
+  status text NOT NULL DEFAULT 'scheduled',
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, employee_id, assignment_date)
 );
 
 CREATE TABLE public.holidays (
@@ -505,9 +526,9 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '22222222-2222-4222-8222-222222222222',id,'qa_tenant_viewer_b','active'
   FROM auth.users WHERE email='tenant-viewer@hris.test';
 
-INSERT INTO public.shifts(id,tenant_id,weekly_off_days,active) VALUES
-  ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111',ARRAY[0,6],true),
-  ('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222',ARRAY[0,6],true);
+INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minutes,break_minutes,weekly_off_days,full_day_hours,active) VALUES
+  ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','Synthetic Day Shift','QA-DAY','09:00','17:00',10,60,ARRAY[0,6],8,true),
+  ('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222','Synthetic Tenant B Shift','QA-B','10:00','18:00',5,45,ARRAY[0,6],8,true);
 INSERT INTO public.departments(id,tenant_id,name,code) VALUES
   ('eeeeeeee-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','QA A department','QA-A'),
   ('eeeeeeee-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','QA B department','QA-B');
@@ -523,6 +544,9 @@ INSERT INTO public.employees(id,tenant_id,employee_number,full_name,official_ema
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+INSERT INTO public.employee_shift_assignments(tenant_id,employee_id,shift_id,assignment_date,status) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','33333333-3333-4333-8333-333333333333',(now() AT TIME ZONE 'Asia/Dhaka')::date,'scheduled'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','44444444-4444-4444-8444-444444444444',(now() AT TIME ZONE 'Asia/Dhaka')::date,'scheduled');
 INSERT INTO public.holidays(id,tenant_id,name,start_date,end_date,active)
   VALUES('77777777-7777-4777-8777-777777777777','11111111-1111-4111-8111-111111111111',
     'Synthetic QA holiday','2026-10-13','2026-10-13',true);

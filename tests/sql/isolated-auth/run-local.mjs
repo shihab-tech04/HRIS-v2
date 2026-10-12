@@ -223,6 +223,7 @@ for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -301,6 +302,7 @@ FROM (VALUES
   ('public.has_tenant_permission(uuid,text)'),
   ('public.hris_get_tenant_dashboard_summary(uuid)'),
   ('public.hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)'),
+  ('public.hris_get_tenant_shift_roster_data(uuid,date,date,text)'),
   ('public.hris_get_tenant_leave_data(uuid,date,date)'),
   ('public.hris_get_my_dashboard_data(uuid)'),
   ('public.hris_employee_submit_attendance_correction(uuid,jsonb)'),
@@ -315,6 +317,37 @@ record('Tenant and employee RPC grants exclude anon and permit authenticated/ser
   Object.values(functionGrantMatrix).every(grants => grants.anon === false
     && grants.authenticated === true && grants.service_role === true),
   JSON.stringify(functionGrantMatrix));
+
+const rosterA = queryAs(managerA, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.assignment_date,r.full_name),'[]'::jsonb)
+  FROM public.hris_get_tenant_shift_roster_data('${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL) r`);
+const rosterB = queryAs(managerB, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.assignment_date,r.full_name),'[]'::jsonb)
+  FROM public.hris_get_tenant_shift_roster_data('${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL) r`);
+record('Roster RPC returns assigned employee and shift details for the active tenant only',
+  rosterA.length === 1 && rosterA[0].employee_number === 'QA-A-001'
+  && rosterA[0].shift_name === 'Synthetic Day Shift'
+  && rosterB.length === 1 && rosterB[0].employee_number === 'QA-B-001'
+  && rosterB[0].shift_name === 'Synthetic Tenant B Shift',
+  JSON.stringify({ tenantA: rosterA, tenantB: rosterB }));
+
+const rosterCrossTenant = attemptAs(managerB,
+  `SELECT * FROM public.hris_get_tenant_shift_roster_data('${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL)`);
+const rosterGlobalOnly = attemptAs(globalOnly,
+  `SELECT * FROM public.hris_get_tenant_shift_roster_data('${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL)`);
+record('Roster RPC denies cross-tenant and global-role-only access',
+  !rosterCrossTenant.ok && !rosterGlobalOnly.ok,
+  `tenant B=${rosterCrossTenant.ok ? 'allowed' : 'denied'}, global-only=${rosterGlobalOnly.ok ? 'allowed' : 'denied'}`);
+
+const rosterViewerB = queryAs(tenantViewer,
+  `SELECT count(*)::integer FROM public.hris_get_tenant_shift_roster_data('${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,'QA-B-001')`);
+const rosterSearchMismatch = queryAs(managerA,
+  `SELECT count(*)::integer FROM public.hris_get_tenant_shift_roster_data('${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,'no matching shift')`);
+const rosterBadRange = attemptAs(managerA,
+  `SELECT * FROM public.hris_get_tenant_shift_roster_data('${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date - 1,NULL)`);
+record('Roster RPC supports tenant-viewer search and rejects an inverted date range',
+  rosterViewerB === 1 && rosterSearchMismatch === 0
+  && !rosterBadRange.ok,
+  JSON.stringify({ viewerSearch: rosterViewerB, emptySearch: rosterSearchMismatch,
+    invertedRangeRejected: !rosterBadRange.ok }));
 
 const tenantBAuth = queryAs(managerB, `SELECT jsonb_build_object(
   'legacy_permission',public.has_permission('leave.manage'),

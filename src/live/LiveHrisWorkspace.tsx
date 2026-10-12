@@ -17,7 +17,7 @@ type PermissionSet = {
   leave: boolean;
   leaveManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'leave' | 'my-dashboard';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'my-dashboard';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -108,6 +108,12 @@ function localIsoDate(date: Date): string {
 function startOfRecentWeek(): string {
   const date = new Date();
   date.setDate(date.getDate() - 6);
+  return localIsoDate(date);
+}
+
+function endOfUpcomingWeek(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 6);
   return localIsoDate(date);
 }
 
@@ -507,6 +513,117 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         </table>
       </div>}
     </div>
+  </section>;
+}
+
+function ShiftRoster({ tenantId }: { tenantId: string }) {
+  const [assignments, setAssignments] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [from, setFrom] = useState(() => localIsoDate(new Date()));
+  const [to, setTo] = useState(endOfUpcomingWeek);
+  const [search, setSearch] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const requestSequence = useRef(0);
+
+  async function load() {
+    const requestId = ++requestSequence.current;
+    setLoading(true);
+    setError('');
+    setAssignments([]);
+    try {
+      if (!from || !to || from > to) throw new Error('Choose a valid roster date range.');
+      const result = await supabase.rpc('hris_get_tenant_shift_roster_data', {
+        p_tenant_id: tenantId,
+        p_start: from,
+        p_end: to,
+        p_search: submittedSearch || null,
+      });
+      if (result.error) throw result.error;
+      if (!Array.isArray(result.data)) throw new Error('Roster service returned an invalid response.');
+      if (requestId !== requestSequence.current) return;
+      setAssignments(asRows(result.data));
+    } catch (cause) {
+      if (requestId !== requestSequence.current) return;
+      setAssignments([]);
+      setError(cause instanceof Error ? cause.message : 'Unable to load the authorized shift roster.');
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [tenantId, from, to, submittedSearch]);
+
+  function downloadRoster() {
+    downloadCsv(`shift-roster-${from}-to-${to}.csv`,
+      ['Date', 'Employee number', 'Employee', 'Department', 'Shift', 'Code', 'Start', 'End', 'Break minutes', 'Grace minutes', 'Status'],
+      assignments.map(row => [row.assignment_date, row.employee_number, row.full_name, row.department_name,
+        row.shift_name, row.shift_code, row.start_time, row.end_time, row.break_minutes,
+        row.grace_minutes, row.assignment_status]));
+  }
+
+  return <section aria-labelledby="shift-roster-heading" className="space-y-4">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div><h2 id="shift-roster-heading" className="text-2xl font-semibold text-[#1E1B39]">Shift roster</h2>
+        <p className="mt-1 text-sm text-[#86929E]">Scheduled employee shifts for {tenantId ? 'this organization' : 'the selected organization'}</p></div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={loading || !assignments.length} onClick={downloadRoster}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+          <Download className="h-4 w-4" /> Export CSV
+        </button>
+        <button type="button" disabled={loading} onClick={() => void load()}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" /> Refresh
+        </button>
+      </div>
+    </div>
+
+    <form className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4"
+      onSubmit={event => { event.preventDefault(); setSubmittedSearch(search.trim()); }}>
+      <div><label htmlFor="roster-start" className="mb-1 block text-xs font-medium text-slate-600">From</label>
+        <input id="roster-start" type="date" value={from} onChange={event => setFrom(event.target.value)}
+          className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+      <div><label htmlFor="roster-end" className="mb-1 block text-xs font-medium text-slate-600">To</label>
+        <input id="roster-end" type="date" value={to} onChange={event => setTo(event.target.value)}
+          className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+      <div><label htmlFor="roster-search" className="mb-1 block text-xs font-medium text-slate-600">Employee or shift</label>
+        <input id="roster-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
+          placeholder="Search name, ID, or shift" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+      <div className="flex items-end"><button type="submit" className="min-h-11 w-full rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770]">Apply filters</button></div>
+    </form>
+
+    {error && <StatusMessage error={error} onRetry={() => void load()} />}
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm">Loading authorized shift assignments…</p>
+      : <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 text-sm">
+          <p className="font-medium text-slate-800">Roster assignments</p>
+          <p className="text-slate-500">{assignments.length} {assignments.length === 1 ? 'shift' : 'shifts'} · {displayShortDate(from)} – {displayShortDate(to)}</p>
+        </div>
+        {!assignments.length ? <div className="p-6 text-center">
+          <CalendarDays className="mx-auto h-7 w-7 text-[#085587]" />
+          <p className="mt-2 font-medium text-slate-800">No shift assignments found</p>
+          <p className="mt-1 text-sm text-slate-600">Try another date range or search term. No schedule data is substituted.</p>
+        </div> : <div className="overflow-x-auto" role="region" aria-label="Shift roster assignments" tabIndex={0}>
+          <table className="w-full min-w-[920px] text-left text-sm" aria-label="Shift roster assignments">
+            <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
+              {['Date', 'Employee', 'Department', 'Shift', 'Hours', 'Break', 'Grace', 'Status'].map(label =>
+                <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">{assignments.map((row, index) => <tr key={String(row.assignment_id || index)}>
+              <td className="whitespace-nowrap px-3 py-3">{displayAttendanceDate(row.assignment_date)}</td>
+              <td className="px-3 py-3"><span className="block font-medium text-slate-900">{display(row.full_name)}</span><span className="text-xs text-slate-500">{display(row.employee_number)}</span></td>
+              <td className="px-3 py-3">{display(row.department_name)}</td>
+              <td className="px-3 py-3"><span className="block font-medium">{display(row.shift_name)}</span><span className="text-xs text-slate-500">{display(row.shift_code)}</span></td>
+              <td className="whitespace-nowrap px-3 py-3">{String(row.start_time || '—').slice(0, 5)} – {String(row.end_time || '—').slice(0, 5)}</td>
+              <td className="px-3 py-3">{display(row.break_minutes)} min</td><td className="px-3 py-3">{display(row.grace_minutes)} min</td>
+              <td className="px-3 py-3"><span className="inline-flex rounded-full bg-[#EFF7F8] px-2.5 py-1 text-xs font-medium capitalize text-[#085587]">{display(row.assignment_status)}</span></td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+      </div>}
   </section>;
 }
 
@@ -1193,6 +1310,7 @@ export function LiveHrisWorkspace({
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
     if (permissions.dashboard) items.push({ id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.attendance) items.push({ id: 'attendance', label: 'Attendance', icon: <CalendarDays className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.attendanceView || permissions.attendanceManage) items.push({ id: 'shift-roster', label: 'Roster', icon: <Clock3 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.leave) items.push({ id: 'leave', label: 'Leave', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     return items;
@@ -1249,6 +1367,7 @@ export function LiveHrisWorkspace({
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
           />}
+          {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
