@@ -128,6 +128,13 @@ test('manager filters the leave queue and completes approval and rejection actio
   expect(decisions).toHaveLength(1);
 
   await table.getByRole('button', { name: 'Reject' }).click();
+  const escapedRejection = page.getByRole('dialog', { name: 'Reject leave request' });
+  await page.keyboard.press('Escape');
+  await expect(escapedRejection).toBeHidden();
+  await expect(table.getByRole('button', { name: 'Reject' })).toBeFocused();
+  expect(decisions).toHaveLength(1);
+
+  await table.getByRole('button', { name: 'Reject' }).click();
   const confirmedRejection = page.getByRole('dialog', { name: 'Reject leave request' });
   await confirmedRejection.getByLabel('Decision note (optional)').fill('Please correct the requested dates before resubmitting.');
   await confirmedRejection.getByRole('button', { name: 'Reject request' }).click();
