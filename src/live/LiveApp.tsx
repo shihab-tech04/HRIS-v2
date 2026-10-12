@@ -4,6 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
+import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
@@ -12,7 +13,7 @@ type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
 type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[] };
-type View = 'employee' | 'admin' | 'preview';
+type View = 'employee' | 'admin' | 'preview' | 'system';
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
 function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
@@ -135,10 +136,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [adminAllowed, setAdminAllowed] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   // Legacy permissions are globally stored, therefore valid for Synesis only.
   const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
-  const [view, setView] = useState<View>('employee');
+  const [view, setView] = useState<View>('system');
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -208,6 +210,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       setMemberships([]);
       setTenantId('');
       setAdminAllowed(false);
+      setIsSuperAdmin(false);
       setRecords(empty());
       setMembershipLoading(false);
       setLoading(false);
@@ -220,9 +223,12 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setTenants([]);
     setRecords(empty());
     setAdminAllowed(false);
+    setIsSuperAdmin(false);
     if (switchedIdentity) {
       setTenantId('');
-      setView('employee');
+      // Start each authenticated identity in the authorized system workspace.
+      // Non-admin sessions are still restricted to Employee View by currentView.
+      setView('system');
     }
     setError('');
     async function load() {
@@ -230,7 +236,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const [memberResult, employeeResult, adminResult] = await Promise.all([
           supabase.from('tenant_memberships').select('tenant_id,role,status').eq('user_id', user!.id),
           supabase.from('employees').select('tenant_id,employment_status').eq('user_id', user!.id),
-          supabase.from('admin_users').select('active').eq('user_id', user!.id).maybeSingle(),
+          supabase.from('admin_users').select('active,is_super_admin').eq('user_id', user!.id).maybeSingle(),
         ]);
         if (memberResult.error) throw memberResult.error;
         if (employeeResult.error) throw employeeResult.error;
@@ -269,6 +275,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         setTenantId(previous => (found.data || []).some(t => t.id === previous)
           ? previous : (found.data?.[0]?.id || ''));
         setAdminAllowed(isLegacyAdmin);
+        setIsSuperAdmin(isLegacyAdmin && adminResult.data?.is_super_admin === true);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');
       } finally { if (active) setMembershipLoading(false); }
@@ -343,7 +350,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
-  const currentView = view === 'admin' && !canAdminSelectedTenant ? 'employee' : view;
+  const currentView = (view === 'admin' || view === 'system') && !canAdminSelectedTenant ? 'employee' : view;
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -354,7 +361,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     </header>
     <main className="max-w-7xl mx-auto p-4 sm:p-6">
       <div className="flex flex-wrap justify-between items-start gap-4 mb-5">
-        <div><p className="text-xs uppercase tracking-wide font-semibold text-blue-900">Supabase-connected foundation · read only</p><h1 className="text-2xl sm:text-3xl font-bold mt-1">{current?.name || 'Your organization'}</h1><p className="text-sm text-slate-600 mt-2">Authorized live data from Supabase. HRIS business write operations are not yet integrated.</p></div>
+        <div><p className="text-xs uppercase tracking-wide font-semibold text-blue-900">{currentView === 'system' ? 'Authenticated HRIS system workspace' : 'Supabase-connected foundation · read only'}</p><h1 className="text-2xl sm:text-3xl font-bold mt-1">{current?.name || 'Your organization'}</h1><p className="text-sm text-slate-600 mt-2">{currentView === 'system' ? 'System navigation with RLS-authorized live records. Modules without verified production workflows are clearly identified.' : 'Authorized live data from Supabase. HRIS business write operations are not yet integrated.'}</p></div>
         {tenants.length > 1 && <div><label className="text-xs font-medium block mb-1" htmlFor="hris-tenant">Organization</label><select id="hris-tenant" value={tenantId} onChange={e => { setTenantId(e.target.value); setView('employee'); setRecords(empty()); }} className="border rounded-md px-3 min-h-11">{tenants.map(t => <option value={t.id} key={t.id}>{t.name}</option>)}</select></div>}
       </div>
       {membershipLoading && <p role="status" className="text-sm mb-4">Loading permitted organizations…</p>}
@@ -362,18 +369,19 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No authorized HRIS organization</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but no active tenant membership, linked employee, or authorized Synesis administrator scope was found. Contact your system administrator. No sample organization is substituted.</p></section>}
       {current && <>
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
+          {canAdminSelectedTenant && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
           <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
           {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
           {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
           {currentView !== 'preview' && <button disabled={loading || membershipLoading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
         </nav>
-        {currentView === 'preview' ? <>
+        {currentView === 'system' ? <LiveSystemWorkspace tenantId={tenantId} tenantName={current.name} /> : currentView === 'preview' ? <>
           <section role="status" className="p-4 bg-amber-50 border border-amber-300 rounded-lg mb-4"><h2 className="font-semibold text-amber-900">Design preview — NOT connected to SQL</h2><p className="text-sm text-amber-900 mt-1">All tenants, employees, roles, actions, audit logs, and security tests in the preview are simulated browser-only fixtures. Do not use for real HR administration.</p></section>
           <div className="border rounded-lg overflow-hidden">{preview}</div>
         </> : <>
           <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
             <div className="bg-white border rounded-lg p-4"><Database className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">SQL project</p><p className="font-semibold">hrmis-saas</p><p className="text-xs text-slate-500">Existing production schema, unchanged</p></div>
-            <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Authorized access</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? 'Legacy Synesis administrator' : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
+            <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Authorized access</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? (isSuperAdmin ? 'Super Administrator' : 'Synesis administrator') : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
             <div className="bg-white border rounded-lg p-4"><ShieldAlert className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Access model</p><p className="font-semibold">Supabase Auth + RLS</p><p className="text-xs text-slate-500">No service-role token in browser</p></div>
           </section>
           {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
