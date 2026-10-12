@@ -1638,7 +1638,7 @@ function EmployeeTimesheets({ tenantId, tenantName }: { tenantId: string; tenant
                 {Boolean(row.resolution_note) && <p className="mt-2 text-sm text-slate-600">Reviewer note: {display(row.resolution_note)}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
-                {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy} onClick={() => editTimesheet(row)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">Edit draft</button>}
+                {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy} onClick={() => editTimesheet(row)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{status === 'rejected' ? 'Revise timesheet' : 'Edit draft'}</button>}
                 {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy || rowEntries.length === 0} onClick={() => void submitTimesheet(timesheetId)} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{actionBusy ? 'Submitting…' : 'Submit timesheet'}</button>}
               </div>
             </div>

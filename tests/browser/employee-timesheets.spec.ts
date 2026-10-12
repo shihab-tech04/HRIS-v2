@@ -22,6 +22,7 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
   let failNextContext = true;
   let saved = false;
   let submitted = false;
+  let rejected = false;
   let savedPayload: Record<string, unknown> | null = null;
   const rpcPayloads: { endpoint: string; body: Record<string, unknown> }[] = [];
   const externalRequests: string[] = [];
@@ -73,8 +74,8 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
         timesheets: saved ? [{
           id: timesheetId, period_type: String(savedPayload?.p_period_type || 'weekly'),
           period_start: String(savedPayload?.p_start || '2026-10-05'), period_end: String(savedPayload?.p_end || '2026-10-11'),
-          status: submitted ? 'submitted' : 'draft', submitted_at: submitted ? '2026-10-12T10:30:00Z' : null,
-          resolved_at: null, resolution_note: null,
+          status: rejected ? 'rejected' : submitted ? 'submitted' : 'draft', submitted_at: submitted ? '2026-10-12T10:30:00Z' : null,
+          resolved_at: rejected ? '2026-10-12T11:30:00Z' : null, resolution_note: rejected ? 'Please correct the logged hours before resubmitting.' : null,
           entries: (Array.isArray(savedPayload?.p_entries) ? savedPayload.p_entries : []).map((entry, index) => {
             const value = entry as Record<string, unknown>;
             return { id: `f6666666-6666-4666-8666-66666666666${index}`, activity_id: value.activity_id,
@@ -89,6 +90,8 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
       rpcPayloads.push({ endpoint, body });
       savedPayload = body;
       saved = true;
+      submitted = false;
+      rejected = false;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(timesheetId) });
     }
     if (endpoint === 'hris_submit_my_timesheet') {
@@ -160,7 +163,23 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
   await expect(timesheetCard.getByText('submitted', { exact: true })).toBeVisible();
   await expect(timesheetCard.getByRole('button', { name: 'Submit timesheet' })).toHaveCount(0);
 
-  expect(rpcPayloads.map(item => item.endpoint)).toEqual(['hris_save_my_timesheet', 'hris_save_my_timesheet', 'hris_submit_my_timesheet']);
+  rejected = true;
+  submitted = false;
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(timesheetCard.getByText('rejected', { exact: true })).toBeVisible();
+  await expect(timesheetCard).toContainText('Please correct the logged hours before resubmitting.');
+  await timesheetCard.getByRole('button', { name: 'Revise timesheet' }).click();
+  await page.getByLabel('Hours', { exact: true }).nth(1).fill('2.75');
+  await expect(page.getByText('6.25 / 24 hours')).toBeVisible();
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(timesheetCard.getByText('draft', { exact: true })).toBeVisible();
+  await timesheetCard.getByRole('button', { name: 'Submit timesheet' }).click();
+  await expect(timesheetCard.getByText('submitted', { exact: true })).toBeVisible();
+
+  expect(rpcPayloads.map(item => item.endpoint)).toEqual([
+    'hris_save_my_timesheet', 'hris_save_my_timesheet', 'hris_submit_my_timesheet',
+    'hris_save_my_timesheet', 'hris_submit_my_timesheet',
+  ]);
   expect(rpcPayloads[0].body).toMatchObject({ p_tenant_id: tenantId, p_id: null, p_period_type: 'weekly' });
   expect(rpcPayloads[0].body.p_entries).toEqual([
     { activity_id: activityId, work_date: rpcPayloads[0].body.p_start, hours: 3.5, note: 'Synthetic implementation work' },
@@ -172,5 +191,11 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
     { activity_id: activityId, work_date: rpcPayloads[1].body.p_start, hours: 2.5, note: null },
   ]);
   expect(rpcPayloads[2].body).toEqual({ p_tenant_id: tenantId, p_id: timesheetId });
+  expect(rpcPayloads[3].body).toMatchObject({ p_tenant_id: tenantId, p_id: timesheetId, p_period_type: 'weekly' });
+  expect(rpcPayloads[3].body.p_entries).toEqual([
+    { activity_id: activityId, work_date: rpcPayloads[3].body.p_start, hours: 3.5, note: 'Synthetic implementation work' },
+    { activity_id: activityId, work_date: rpcPayloads[3].body.p_start, hours: 2.75, note: null },
+  ]);
+  expect(rpcPayloads[4].body).toEqual({ p_tenant_id: tenantId, p_id: timesheetId });
   expect(externalRequests).toEqual([]);
 });
