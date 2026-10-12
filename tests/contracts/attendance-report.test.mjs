@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261012183000_hris_attendance_report_team_name.sql', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+const searchAsset = readFileSync(new URL('../../src/assets/attendance-search.svg', import.meta.url), 'utf8');
+const downloadAsset = readFileSync(new URL('../../src/assets/attendance-download.png', import.meta.url));
+const filterAsset = readFileSync(new URL('../../src/assets/attendance-filter.svg', import.meta.url), 'utf8');
 const teamSortAsset = readFileSync(new URL('../../src/assets/attendance-team-sort.svg', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/attendance-information.spec.ts', import.meta.url), 'utf8');
@@ -42,6 +45,24 @@ test('Figma Team Name sort order is accessible and shared by table and CSV', () 
   assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);
   assert.match(browser, /Sort by Team Name ascending/);
   assert.match(browser, /Sort by Team Name descending/);
+});
+
+test('Figma report toolbar uses exact local icons, order, and component dimensions', () => {
+  const start = workspace.indexOf('<form aria-label="Attendance report controls"');
+  const end = workspace.indexOf('</form>', start);
+  assert.ok(start >= 0 && end > start);
+  const toolbar = workspace.slice(start, end);
+  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf('aria-label="Filters"'));
+  assert.match(toolbar, /lg:w-\[334px\]/);
+  assert.match(toolbar, /lg:w-\[184px\]/);
+  assert.match(toolbar, /w-16/);
+  assert.match(toolbar, /attendanceSearchIcon/);
+  assert.match(toolbar, /attendanceDownloadIcon/);
+  assert.match(toolbar, /attendanceFilterIcon/);
+  assert.match(searchAsset, /width="12\.4444" height="12\.4444"/);
+  assert.match(filterAsset, /width="18" height="18"/);
+  assert.deepEqual([...downloadAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.match(browser, /controlBounds/);
 });
 
 test('Figma Apply Filter commits aggregate date and Team drafts together', () => {

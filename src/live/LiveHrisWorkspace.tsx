@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import attendanceDownloadIcon from '../assets/attendance-download.png';
+import attendanceFilterIcon from '../assets/attendance-filter.svg';
+import attendanceSearchIcon from '../assets/attendance-search.svg';
 import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
 import {
   Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
@@ -465,15 +468,15 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
       {aggregateOnly && <form aria-label="Attendance report controls" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
         <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search…" className="min-h-12 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm" />
+          <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2" />
+          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search...." className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-3 text-sm placeholder:text-[#86929E]" />
           <button type="submit" className="sr-only">Search employees</button>
         </div>
-        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50" aria-label="Filters">
-          <SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Filters</span>
+        <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-[14px] text-sm text-[#86929E] disabled:opacity-50 lg:w-[184px]">
+          <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> Download Report
         </button>
-        <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-600 disabled:opacity-50">
-          <Download className="h-4 w-4" /> Download Report
+        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label="Filters">
+          <img src={attendanceFilterIcon} alt="" /><span className="sr-only">Filters</span>
         </button>
       </form>}
     </div>

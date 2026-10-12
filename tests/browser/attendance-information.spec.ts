@@ -178,6 +178,31 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
   const reportTable = page.getByRole('table', { name: 'Attendance summary by employee' });
   await expect(reportTable).toBeVisible();
+  const reportControls = page.getByRole('form', { name: 'Attendance report controls' });
+  const reportSearch = reportControls.getByLabel('Search employees');
+  const toolbarDownload = reportControls.getByRole('button', { name: 'Download Report', exact: true });
+  const toolbarFilters = reportControls.getByRole('button', { name: 'Filters', exact: true });
+  const controlBounds = await Promise.all([reportSearch, toolbarDownload, toolbarFilters].map(locator =>
+    locator.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, width: bounds.width };
+    })));
+  expect(Math.abs(controlBounds[0].width - 334)).toBeLessThan(0.1);
+  expect(Math.abs(controlBounds[1].width - 184)).toBeLessThan(0.1);
+  expect(Math.abs(controlBounds[2].width - 64)).toBeLessThan(0.1);
+  expect(controlBounds[0].x).toBeLessThan(controlBounds[1].x);
+  expect(controlBounds[1].x).toBeLessThan(controlBounds[2].x);
+  const readIconBounds = (index: number) => reportControls.locator('img').nth(index).evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return { width: bounds.width, height: bounds.height };
+  });
+  const searchIconBounds = await readIconBounds(0);
+  const downloadIconBounds = await readIconBounds(1);
+  const filterIconBounds = await readIconBounds(2);
+  expect(Math.abs(searchIconBounds.width - 12.4444)).toBeLessThan(0.1);
+  expect(Math.abs(downloadIconBounds.width - 10)).toBeLessThan(0.1);
+  expect(Math.abs(downloadIconBounds.height - 12)).toBeLessThan(0.1);
+  expect(Math.abs(filterIconBounds.width - 18)).toBeLessThan(0.1);
   const positiveRow = reportTable.getByRole('row', { name: /Aggregate Report Employee/ });
   const negativeRow = reportTable.getByRole('row', { name: /Aggregate Negative Employee/ });
   await expect(positiveRow).toContainText('UX Designer');
