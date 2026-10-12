@@ -10,12 +10,14 @@
 - Candidate: submitted vacancy search and stale-response fixes; production build is public-only.
 - Main `npm run check` passed (TypeScript, 21 contract tests, Vite build). Candidate lint, four contract tests, and public-only build passed. Main retains the existing large-chunk warning; Candidate has a Vite config-loader warning.
 - Employee summary RPCs are routed only when the account has an active `admin_users` row and the selected employee tenant is the fixed `synesis-it` scope. Ordinary linked employees remain on the existing RLS-backed read view; the SQL-level restriction and route gate are recorded.
+- A follow-up read-only production inspection confirmed own-row RLS for `employees`, `leave_requests`, and `leave_types`, while attendance and leave-balance policies still use the active-admin resolver. The `holidays_read` policy has no tenant predicate; current UI reads stay on tenant-scoped RPCs. No database settings or data were changed.
 - `release/2026-10-12/CHECKPOINT_STATUS.md` and `CHECKPOINT_MANIFEST.json` contain full checkpoint evidence; archive is `HRIS360_RECOVERY_CHECKPOINT_20261012_NOT_FOR_RELEASE.zip`.
 
 ## Unresolved inputs / environment
 
 - The user-supplied master implementation directive is available and remains authoritative. The original 1,047-row story ledger is not available. The expected GitHub read returned HTTP 403 for a suspended account; Drive/local recovery searches found no canonical story file.
 - A local Docker daemon is unavailable. No disposable Supabase branch has been created; the cost lookup awaits user selection of organization.
+- Supabase currently lists no development branches for `hrmis-saas`, so there is no existing isolated branch to reuse.
 - Automatic approval review rejected replacing the existing Drive archive because ownership/destination verification for the private source ZIP was insufficient. The original Drive archive and matching text sidecars remain; the refreshed local checkpoint is not uploaded.
 - No authenticated browser test account, password-recovery email journey, or Figma role-specific comparison has been executed.
 
