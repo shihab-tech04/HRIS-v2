@@ -52,7 +52,8 @@ test('a recovery callback offers password replacement without creating an HRIS a
   await page.getByLabel('New password').fill('short');
   await page.getByLabel('Confirm password').fill('short');
   await page.getByRole('button', { name: 'Update password' }).click();
-  await expect(page.getByRole('alert')).toContainText('at least 12 characters');
+  // HTML minLength prevents submission before the React validator is invoked.
+  expect(await page.getByLabel('New password').evaluate((el: HTMLInputElement) => el.validity.tooShort)).toBe(true);
   expect(attemptedUpdate).toBe(0);
 
   await page.getByLabel('New password').fill('a-long-and-new-test-password');
