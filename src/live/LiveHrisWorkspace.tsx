@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
-  Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  Activity, ArrowDownUp, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users, X, XCircle,
 } from 'lucide-react';
@@ -317,6 +317,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('');
   const [appliedTeamFilter, setAppliedTeamFilter] = useState('');
+  const [teamSortDirection, setTeamSortDirection] = useState<'asc' | 'desc' | null>(null);
   const [status, setStatus] = useState('all');
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -426,11 +427,19 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     return options;
   }, [aggregateOnly, currentRecords]);
   const filteredRows = useMemo(() => {
-    if (!aggregateOnly || !appliedTeamFilter) return currentRecords;
-    return currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
+    const matchingRows = !aggregateOnly || !appliedTeamFilter ? currentRecords : currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
       ? !String(row.team_name ?? '').trim()
       : String(row.team_name ?? '').trim() === appliedTeamFilter);
-  }, [aggregateOnly, appliedTeamFilter, currentRecords]);
+    if (!aggregateOnly || !teamSortDirection) return matchingRows;
+    const direction = teamSortDirection === 'asc' ? 1 : -1;
+    return matchingRows.map((row, index) => ({ row, index })).sort((left, right) => {
+      const leftTeam = String(left.row.team_name ?? '').trim();
+      const rightTeam = String(right.row.team_name ?? '').trim();
+      if (!leftTeam && rightTeam) return 1;
+      if (leftTeam && !rightTeam) return -1;
+      return leftTeam.localeCompare(rightTeam, undefined, { sensitivity: 'base' }) * direction || left.index - right.index;
+    }).map(item => item.row);
+  }, [aggregateOnly, appliedTeamFilter, currentRecords, teamSortDirection]);
   const rows = filteredRows;
 
   return <section aria-labelledby="attendance-report-heading" className="space-y-4">
@@ -523,7 +532,16 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
         <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-2' : 'min-w-[1160px] border-spacing-0'}`}>
           <thead className="bg-white text-xs text-slate-500"><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" className="border-b border-slate-200 px-4 py-4 font-medium">{label}</th>)}
+            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="border-b border-slate-200 px-4 py-4 font-medium">
+              {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">
+                <span>{label}</span>
+                <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
+                  aria-label={`Sort by Team Name ${teamSortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                  className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
+                  <ArrowDownUp aria-hidden="true" className="h-3.5 w-3.5" />
+                </button>
+              </div> : label}
+            </th>)}
           </tr></thead>
           <tbody>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;

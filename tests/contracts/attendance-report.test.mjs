@@ -31,6 +31,14 @@ test('Figma team filter applies to visible attendance rows and CSV exports', () 
   assert.match(browser, /expect\(filteredCsv\)\.not\.toContain\('Synthetic Product Team'\)/);
 });
 
+test('Figma Team Name sort order is accessible and shared by table and CSV', () => {
+  assert.match(workspace, /setTeamSortDirection\(value => value === 'asc' \? 'desc' : 'asc'\)/);
+  assert.match(workspace, /aria-sort=\{aggregateOnly && label === 'Team Name'/);
+  assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);
+  assert.match(browser, /Sort by Team Name ascending/);
+  assert.match(browser, /Sort by Team Name descending/);
+});
+
 test('synthetic RLS fixture covers valid and cross-tenant employee team references', () => {
   assert.match(fixture, /CREATE TABLE public\.teams/);
   assert.match(fixture, /team_id uuid REFERENCES public\.teams\(id\)/);
