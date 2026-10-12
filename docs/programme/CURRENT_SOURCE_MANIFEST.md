@@ -1,6 +1,6 @@
 # Current Source Manifest
 
-**Recorded:** 2026-10-12. **State:** recovery changes are committed on local-only branches.
+**Recorded:** 2026-10-12. **State:** recovery checkpoint is committed locally; current Main implementation work is uncommitted on its local-only branch. Candidate is unchanged.
 
 | Application | Repository | Local branch | Verified remote base | Local source root |
 |---|---|---|---|---|
@@ -11,9 +11,9 @@ The connected GitHub API confirmed these are the current `main` commits. Recover
 
 ## Checkpoint changes
 
-- Main: permission-gated `LiveHrisWorkspace` using existing dashboard, attendance, report, employee-summary and leave-list RPCs; existing unsupported values and leave decisions remain unavailable. Employee summary is constrained to the observed active-admin/Synesis RPC contract. Approval SQL fixes are staged outside `supabase/migrations`.
+- Main: permission-gated `LiveHrisWorkspace` using tenant-scoped manager RPCs and an own-employee dashboard/leave request flow. The additive migration at `supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql` is a local release candidate. Approval replacements remain in `supabase/staging/approval-resolution/` and are not deployed.
 - Candidate: submitted-search behavior, stale-request protection, saved-job request isolation, Internship filter and removal of unsupported monthly salary wording. `esbuild` range updated to resolve the Vite peer conflict.
-- Main and Candidate code changes are detailed in the local recovery checkpoint at `release/2026-10-12/CHECKPOINT_STATUS.md`.
+- The existing recovery commit and current uncommitted Main changes are detailed in `docs/programme/LOCAL_CHECKPOINT.md`; Candidate remains at the verified remote base with its prior local recovery commit.
 
 ## Preservation and release boundary
 

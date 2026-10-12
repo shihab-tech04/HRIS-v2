@@ -13,16 +13,18 @@ test('approval fixes remain staged outside the production migration directory', 
 });
 
 test('leave resolution locks only a pending request from the authorized tenant', () => {
-  assert.match(leaveSql, /public\.is_live_session\(\).*public\.has_permission\('leave\.manage'\)/s);
-  assert.match(leaveSql, /WHERE id=p_id AND tenant_id=v_tenant AND status='pending' FOR UPDATE/);
+  assert.match(leaveSql, /public\.is_live_session\(\)[\s\S]*public\.has_tenant_permission\(r\.tenant_id,\s*'leave\.manage'\)/);
+  assert.match(leaveSql, /WHERE id=p_id AND status='pending' FOR UPDATE/);
+  assert.match(leaveSql, /v_tenant := r\.tenant_id/);
   assert.match(leaveSql, /WHERE e\.id=r\.employee_id AND e\.tenant_id=v_tenant/);
   assert.match(leaveSql, /WHERE employee_id=r\.employee_id AND tenant_id=v_tenant/);
   assert.match(leaveSql, /resolved_by=auth\.uid\(\),resolved_at=now\(\)/);
 });
 
 test('attendance resolution is tenant-scoped and preserves unrequested existing fields', () => {
-  assert.match(attendanceSql, /public\.is_live_session\(\).*public\.has_permission\('attendance\.manage'\)/s);
-  assert.match(attendanceSql, /WHERE id=p_id AND tenant_id=v_tenant AND status='pending' FOR UPDATE/);
+  assert.match(attendanceSql, /public\.is_live_session\(\)[\s\S]*public\.has_tenant_permission\(v_request\.tenant_id,'attendance\.manage'\)/);
+  assert.match(attendanceSql, /WHERE id=p_id AND status='pending' FOR UPDATE/);
+  assert.match(attendanceSql, /v_tenant := v_request\.tenant_id/);
   assert.match(attendanceSql, /WHERE tenant_id=v_tenant AND employee_id=v_request\.employee_id[\s\S]*FOR UPDATE/);
   assert.match(attendanceSql, /COALESCE\(v_request\.requested_check_in,v_current\.check_in\)/);
   assert.match(attendanceSql, /COALESCE\(v_request\.requested_check_out,v_current\.check_out\)/);

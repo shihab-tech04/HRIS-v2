@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION public.admin_resolve_leave_request(
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'pg_catalog', 'public', 'auth' AS $function$
 DECLARE
-  v_tenant uuid := public.synesis_tenant_id();
+  v_tenant uuid;
   r public.leave_requests%rowtype;
   v_off integer[] := '{}'::integer[];
   v_year integer;
@@ -17,17 +17,18 @@ DECLARE
   v_yto date;
   v_ydays numeric;
 BEGIN
-  IF NOT public.is_live_session() OR NOT public.has_permission('leave.manage') THEN
+  IF NOT public.is_live_session() THEN
     RAISE EXCEPTION 'Active leave management permission required.' USING errcode='42501';
   END IF;
   IF p_decision NOT IN ('approved','rejected') THEN
     RAISE EXCEPTION 'Decision must be approved or rejected.' USING errcode='22000';
   END IF;
   SELECT * INTO r FROM public.leave_requests
-  WHERE id=p_id AND tenant_id=v_tenant AND status='pending' FOR UPDATE;
-  IF NOT FOUND THEN
+  WHERE id=p_id AND status='pending' FOR UPDATE;
+  IF NOT FOUND OR NOT public.has_tenant_permission(r.tenant_id, 'leave.manage') THEN
     RAISE EXCEPTION 'Pending leave request not found in authorized organization.' USING errcode='P0002';
   END IF;
+  v_tenant := r.tenant_id;
 
   SELECT COALESCE(s.weekly_off_days,'{}'::integer[]) INTO v_off
   FROM public.employees e

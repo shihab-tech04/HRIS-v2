@@ -1,6 +1,6 @@
 # Approval resolution fixes — isolated test plan
 
-**State: staged for isolated validation. Do not apply to production.** The SQL candidates live in `supabase/staging/approval-resolution/`, outside the tracked production migration directory. Their comments preserve the existing execute grants and require Auth/RLS certification.
+**State: LOCAL SQL/AUTH CASES PASS (42/42); NOT production-certified.** The exact SQL candidates live in `supabase/staging/approval-resolution/`, outside the production migration directory. They were applied only to a disposable local Supabase CLI stack together with the current tenant-membership release candidate. Do not apply to production as part of this checkpoint.
 
 ## Why these changes are staged
 
@@ -10,7 +10,7 @@
 
 ## Test environment
 
-Use a disposable Supabase branch or local Supabase stack that matches the current production schema. Do not seed production employee data. Create synthetic records for two tenants, two employees, one leave request, one attendance record, and corresponding correction requests. Exercise the functions through real Supabase Auth sessions and the authenticated database role.
+Use a disposable Supabase branch or local Supabase stack that matches the current production schema. Do not seed production employee data. The executed run used a free local CLI stack at API/database ports 55421/55422, eight synthetic Auth identities across two tenants, two employees, two distinct tenant-A managers, one private scratch evidence bucket, and synthetic leave/attendance requests. The runner refuses a non-empty Auth service, mismatched ports, a non-empty bucket, or a different Docker context. The existing `colima-t` Auth runtime was left untouched.
 
 Before applying the candidates, record the baseline function definitions, execute grants, relevant policies, and migration version. Apply both candidate files only in that isolated target.
 
@@ -34,6 +34,6 @@ Before applying the candidates, record the baseline function definitions, execut
 
 ## Acceptance evidence
 
-Capture positive and negative SQL results, before/after row snapshots, audit rows, effective grants, and authenticated browser outcomes. Repeat the existing-record and one-field cases against older synthetic rows. Record the database version and test commit.
+Executed the plan with `node tests/sql/isolated-auth/run-local.mjs`; the latest run passed 42/42 checks. Evidence includes positive/negative two-tenant queries, effective `EXECUTE` privilege readback (`anon=false`, `authenticated=true`, `service_role=true` for the tested functions), before/after request/balance/attendance rows, audit counts, inactive membership and revoked-session denials, and concurrency from two different managers. Check-in-only, check-out-only, and work-mode-only corrections preserved omitted fields; a missing attendance row was created through the existing save contract. The runner also covered the exact staged SQL files.
 
-The Node contract test checks only source-level predicates, lock statements, audit calls, and grant preservation. It is not a substitute for these database and Auth tests. Keep the UI decision controls unavailable until all cases pass and the isolated function/grant readback matches the candidate.
+The run is local synthetic acceptance only. It does not certify authenticated browser journeys, all schema policies, all SECURITY DEFINER functions, or the 1,047-story catalogue. Production schema, data, grants and Auth settings were not changed. The Node source-contract suite remains a separate check.

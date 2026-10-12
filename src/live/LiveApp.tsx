@@ -15,10 +15,12 @@ type LeaveType = { id: string; name: string; annual_entitlement: number | null }
 type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[] };
 type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
-  dashboard: boolean; attendance: boolean; attendanceReport: boolean; leave: boolean; leaveManage: boolean;
+  dashboard: boolean; attendance: boolean; attendanceManage: boolean;
+  attendanceReport: boolean; leave: boolean; leaveManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
-  dashboard: false, attendance: false, attendanceReport: false, leave: false, leaveManage: false,
+  dashboard: false, attendance: false, attendanceManage: false,
+  attendanceReport: false, leave: false, leaveManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -141,13 +143,13 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState('');
-  const [adminAllowed, setAdminAllowed] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [employeeTenantIds, setEmployeeTenantIds] = useState<string[]>([]);
-  const [employeeRpcAllowed, setEmployeeRpcAllowed] = useState(false);
-  const [workspacePermissions, setWorkspacePermissions] = useState(noWorkspacePermissions);
-  // Legacy permissions are globally stored, therefore valid for Synesis only.
-  const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
+  const [tenantWorkspacePermissions, setTenantWorkspacePermissions] = useState<Record<string, WorkspacePermissions>>({});
+  const workspacePermissions = tenantWorkspacePermissions[tenantId] || noWorkspacePermissions;
+  const canAdminSelectedTenant = tenants.some(t => t.id === tenantId) && (
+    workspacePermissions.dashboard || workspacePermissions.attendance || workspacePermissions.leave
+  );
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
   const [records, setRecords] = useState<Records>(empty);
@@ -218,11 +220,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       setTenants([]);
       setMemberships([]);
       setTenantId('');
-      setAdminAllowed(false);
       setIsSuperAdmin(false);
       setEmployeeTenantIds([]);
-      setEmployeeRpcAllowed(false);
-      setWorkspacePermissions(noWorkspacePermissions);
+      setTenantWorkspacePermissions({});
       setRecords(empty());
       setMembershipLoading(false);
       setLoading(false);
@@ -234,11 +234,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setMembershipLoading(true);
     setTenants([]);
     setRecords(empty());
-    setAdminAllowed(false);
     setIsSuperAdmin(false);
     setEmployeeTenantIds([]);
-    setEmployeeRpcAllowed(false);
-    setWorkspacePermissions(noWorkspacePermissions);
+    setTenantWorkspacePermissions({});
     if (switchedIdentity) {
       setTenantId('');
       // Start each authenticated identity in the authorized system workspace.
@@ -262,44 +260,30 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           .filter(e => !['resigned','terminated'].includes(e.employment_status))
           .map(e => e.tenant_id);
         const permissionIds = [
-          'employees.view', 'employees.manage', 'organization.view', 'organization.manage', 'roles.manage',
-          'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view', 'leave.view', 'leave.manage',
+          'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view',
+          'leave.view', 'leave.manage',
         ];
-        const permissionChecks = adminResult.data?.active === true
-          ? await Promise.all(permissionIds.map(id => supabase.rpc('has_permission', { p_permission_id: id })))
-          : [];
-        const granted = new Map(permissionIds.map((id, index) => [
-          id, !permissionChecks[index]?.error && permissionChecks[index]?.data === true,
-        ]));
-        const isLegacyAdmin = adminResult.data?.active === true && permissionIds.some(id => granted.get(id) === true);
-        // Existing admin_users grants are specific to the legacy Synesis tenant:
-        // global roles are NOT valid for any other tenant.
-        // The current employee summary RPCs require an active admin_users row
-        // and resolve their identity through the fixed Synesis tenant helper.
-        const legacyTenant = adminResult.data?.active === true
-          ? await supabase.from('tenants').select('id').eq('slug','synesis-it').eq('is_active', true).maybeSingle()
-          : { data: null, error: null };
-        if (legacyTenant.error) throw legacyTenant.error;
-        const canUseEmployeeSummary = adminResult.data?.active === true && Boolean(
-          legacyTenant.data?.id && ownedTenantIds.includes(legacyTenant.data.id),
-        );
+        const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
+          const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
+            p_tenant_id: membership.tenant_id,
+            p_permission_id,
+          })));
+          const grants = new Map(permissionIds.map((id, index) => [
+            id, !checks[index]?.error && checks[index]?.data === true,
+          ]));
+          return [membership.tenant_id, {
+            dashboard: grants.get('dashboard.view') === true,
+            attendance: grants.get('attendance.view') === true || grants.get('attendance.manage') === true
+              || grants.get('reports.view') === true,
+            attendanceManage: grants.get('attendance.manage') === true,
+            attendanceReport: grants.get('reports.view') === true,
+            leave: grants.get('leave.view') === true || grants.get('leave.manage') === true,
+            leaveManage: grants.get('leave.manage') === true,
+          } satisfies WorkspacePermissions] as const;
+        }));
+        const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
 
-        let effectiveWorkspacePermissions = noWorkspacePermissions;
-        if (legacyTenant.data?.id) {
-          effectiveWorkspacePermissions = {
-            dashboard: granted.get('dashboard.view') === true,
-            attendance: granted.get('attendance.view') === true || granted.get('attendance.manage') === true || granted.get('reports.view') === true,
-            attendanceReport: granted.get('reports.view') === true,
-            leave: granted.get('leave.view') === true || granted.get('leave.manage') === true,
-            leaveManage: granted.get('leave.manage') === true,
-          };
-        }
-
-        const tenantIds = Array.from(new Set([
-          ...mine.map(m => m.tenant_id),
-          ...ownedTenantIds,
-          ...(legacyTenant.data?.id && (isLegacyAdmin || canUseEmployeeSummary) ? [legacyTenant.data.id] : []),
-        ]));
+        const tenantIds = Array.from(new Set([...mine.map(m => m.tenant_id), ...ownedTenantIds]));
         const found = tenantIds.length
           ? await supabase.from('tenants').select('id,name,slug,timezone')
               .eq('is_active', true).in('id', tenantIds)
@@ -309,12 +293,10 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         setMemberships(mine);
         setTenants((found.data || []) as Tenant[]);
         setEmployeeTenantIds(ownedTenantIds);
-        setEmployeeRpcAllowed(canUseEmployeeSummary);
-        setWorkspacePermissions(effectiveWorkspacePermissions);
+        setTenantWorkspacePermissions(tenantPermissions);
         setTenantId(previous => (found.data || []).some(t => t.id === previous)
           ? previous : (found.data?.[0]?.id || ''));
-        setAdminAllowed(isLegacyAdmin);
-        setIsSuperAdmin(isLegacyAdmin && adminResult.data?.is_super_admin === true);
+        setIsSuperAdmin(adminResult.data?.active === true && adminResult.data?.is_super_admin === true);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');
       } finally { if (active) setMembershipLoading(false); }
@@ -392,12 +374,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const currentView = view === 'system' && !canAdminSelectedTenant ? 'employee' : view;
   const opensAdminWorkspace = currentView === 'system' && canAdminSelectedTenant;
   const opensEmployeeWorkspace = currentView === 'employee'
-    && employeeRpcAllowed
-    && current?.slug === 'synesis-it'
     && employeeTenantIds.includes(tenantId);
 
   if (current && (opensAdminWorkspace || opensEmployeeWorkspace)) {
     return <LiveHrisWorkspace
+      userId={user.id}
       userEmail={user.email || 'HRIS user'}
       tenantId={tenantId}
       tenantName={current.name}
@@ -409,7 +390,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       }}
       onSignOut={() => { void signOut(); }}
       isSuperAdmin={opensAdminWorkspace && isSuperAdmin}
-      isEmployee={current.slug === 'synesis-it' && employeeRpcAllowed && employeeTenantIds.includes(tenantId)}
+      isEmployee={employeeTenantIds.includes(tenantId)}
       permissions={opensAdminWorkspace ? workspacePermissions : noWorkspacePermissions}
     />;
   }

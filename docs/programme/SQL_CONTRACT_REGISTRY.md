@@ -8,11 +8,24 @@
 | `admin_get_attendance(date,date,text,text)` | JSON object with `records` and `corrections` | Requires `attendance.view` or `attendance.manage`; scoped to `synesis_tenant_id`. | Read path inspected; correction writes not isolated-tested. |
 | `admin_get_attendance_report(text,date,date,text)` | JSON array for observed weekly modes | Requires `reports.view`; tenant scoped. | Read path inspected; report edge cases not accepted. |
 | `admin_get_leave_data(date,date)` | JSON object | Requires a supported leave read/manage permission. | Read path inspected; leave decision actions remain gated. |
-| `employee_for_auth_user()` | Returns an employee UUID or null | Requires a matching employee for `auth.uid()` and active `admin_users` row in the fixed active `synesis-it` tenant. | Inspected read-only; this prevents ordinary linked employees from using the current employee summary RPCs. |
-| `employee_get_my_attendance_v3(date,date)` | JSON object | Calls `employee_for_auth_user()` and requires an active live session; no tenant argument. | Inspected read-only; client access is restricted to the observed Synesis contract. |
-| `employee_get_leave_context()` | JSON object with leave types, balances, requests, holidays and weekly off days | Calls `employee_for_auth_user()` and `synesis_tenant_id()`; requires active live session; no tenant argument. | Inspected read-only; ordinary employee support remains a backend gap. |
+| `employee_for_auth_user()` | Returns an employee UUID or null | Legacy helper requires a matching employee for `auth.uid()` and active `admin_users` row in the fixed active `synesis-it` tenant. | Inspected read-only; the new employee workspace uses a separate tenant-scoped helper and does not call this legacy path. |
+| `employee_get_my_attendance_v3(date,date)` | JSON object | Calls `employee_for_auth_user()` and requires an active live session; no tenant argument. | Legacy contract retained; new ordinary employee view no longer calls it. |
+| `employee_get_leave_context()` | JSON object with leave types, balances, requests, holidays and weekly off days | Calls `employee_for_auth_user()` and `synesis_tenant_id()`; requires active live session; no tenant argument. | Legacy contract retained; new ordinary employee view no longer calls it. |
 | `synesis_tenant_id()` | Returns UUID for active `synesis-it` tenant | Fixed legacy tenant lookup. | Inspected read-only; not a general multi-tenant selector. |
-| `admin_resolve_leave_request(...)` | Existing decision function | Observed pending-row lookup lacks tenant predicate. | Replacement staged only; isolated tests required. |
-| `admin_resolve_attendance_correction(...)` | Existing decision function | Observed pending-row lookup lacks tenant predicate; existing replacement also needs to preserve omitted fields on partial correction. | Replacement staged only; isolated tests required. |
+| `admin_resolve_leave_request(...)` | Existing decision function | Production definition inspected read-only; pending-row lookup lacks tenant predicate. | Exact staged replacement passed local two-tenant, balance, holiday/year, rollback, concurrency, audit and Auth denial cases; not applied to production. |
+| `admin_resolve_attendance_correction(...)` | Existing decision function | Production definition inspected read-only; pending-row lookup lacks tenant predicate. | Exact staged replacement passed local tenant denial, partial-field, missing-row, concurrency, audit and Auth denial cases; not applied to production. |
 
-Production migration history contained 105 applied entries at inspection; Main tracks five migration files. This discrepancy is not reconciled. The two proposed approval fixes are under `supabase/staging/approval-resolution/`, outside the production migration directory. Do not move or apply them to production until they pass the isolated plan and release approval.
+Production migration history contained 105 applied entries at inspection; Main tracks five migration files. This discrepancy is not reconciled. The two proposed approval fixes are under `supabase/staging/approval-resolution/`, outside the production migration directory. They passed the isolated plan but remain unapproved for production until all release gates pass.
+
+## Local release-candidate contracts
+
+The following definitions are in `supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql`. The migration and both staged approval files were applied only to the disposable local Supabase stack for the 42/42 Auth/RLS acceptance run. None has been applied to `hrmis-saas`.
+
+| Function | Contract | Local evidence |
+|---|---|---|
+| `has_tenant_permission(uuid,text)` | Grants a permission only through an active tenant membership whose `role` resolves to an active `roles.id` and matching `role_permissions` row; requires a live Auth session and active tenant. | Tenant A/B positive and negative checks; inactive membership revocation; global role alone denied. |
+| `hris_get_tenant_dashboard_summary(uuid)` | Tenant-scoped summary without the global candidate-account count. | Two-tenant RPC scope and cross-tenant denial. |
+| `hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)` | Tenant-scoped attendance, corrections and report data. | Two-tenant read and cross-tenant RPC denial. |
+| `hris_get_tenant_leave_data(uuid,date,date)` | Tenant-scoped leave request and type payload. | Two-tenant read and cross-tenant RPC denial. |
+| `hris_get_my_dashboard_data(uuid)` | Own attendance, balances, request history, applicable active leave types and tenant calendar context; requires an active linked employee. | Own-row, cross-tenant and termination checks. |
+| `hris_employee_submit_leave_request(uuid,jsonb)` | Tenant-checked employee submission with notice, eligibility, evidence ownership, date/holiday/weekly-off, overlap, balance, pending ledger and audit checks. | Required-proof, storage privacy, duplicate, pending balance and manager approval journey. |
