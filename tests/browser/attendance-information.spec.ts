@@ -30,7 +30,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     full_name: 'Synthetic Late Employee', employee_number: 'ATT-002', status: 'late', work_hours: 8.3,
   };
   const allAttendance = [syntheticAttendance, syntheticLateAttendance];
-  const correctionRequests = [
+  const correctionRequests: Record<string, unknown>[] = [
     { id: 'e7777777-7777-4777-8777-777777777777', employee_id: syntheticAttendance.employee_id,
       employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-12',
       requested_check_in: '2026-10-12T03:15:00.000Z', requested_check_out: null, requested_work_mode: null,
@@ -99,7 +99,10 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
       const decision = request.postDataJSON() as Record<string, unknown>;
       correctionDecisions.push(decision);
       const target = correctionRequests.find(item => item.id === decision.p_id);
-      if (target) target.status = String(decision.p_decision);
+      if (target) {
+        target.status = String(decision.p_decision);
+        target.resolution_note = typeof decision.p_note === 'string' ? decision.p_note : undefined;
+      }
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       return;
     }
@@ -139,13 +142,31 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(page.getByText('Attendance correction approved.', { exact: true })).toBeVisible();
   await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toContainText('approved');
   const rejectionRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
-  page.once('dialog', dialog => dialog.accept());
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
+  const rejectionDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
+  await expect(rejectionDialog).toContainText('Synthetic Attendance Employee');
+  await rejectionDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(rejectionDialog).toBeHidden();
+  expect(correctionDecisions).toHaveLength(1);
+
+  await rejectionRow.getByRole('button', { name: 'Reject' }).click();
+  const escapedDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
+  await page.keyboard.press('Escape');
+  await expect(escapedDialog).toBeHidden();
+  await expect(rejectionRow.getByRole('button', { name: 'Reject' })).toBeFocused();
+  expect(correctionDecisions).toHaveLength(1);
+
+  await rejectionRow.getByRole('button', { name: 'Reject' }).click();
+  const confirmedDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
+  await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
+  await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
-  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toContainText('rejected');
+  const rejectedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
+  await expect(rejectedRow).toContainText('rejected');
+  await expect(rejectedRow).toContainText('Decision note: Please include the missing punch time.');
   expect(correctionDecisions).toEqual([
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
-    { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: null },
+    { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },
   ]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);

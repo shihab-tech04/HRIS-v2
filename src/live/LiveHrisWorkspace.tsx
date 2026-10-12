@@ -333,8 +333,16 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [resolvingCorrectionId, setResolvingCorrectionId] = useState('');
+  const [rejectingCorrection, setRejectingCorrection] = useState<AttendanceRecord | null>(null);
+  const [correctionResolutionNote, setCorrectionResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const requestSequence = useRef(0);
+  const rejectionDialogRef = useRef<HTMLDivElement>(null);
+  const rejectionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const resolvingCorrectionIdRef = useRef('');
+  const activeTenantId = useRef(tenantId);
+  activeTenantId.current = tenantId;
+  resolvingCorrectionIdRef.current = resolvingCorrectionId;
   const showDetails = canView || canManage;
   const aggregateOnly = canReport && !showDetails;
 
@@ -392,6 +400,41 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   }, [tenantId, from, to, submittedSearch, status, canReport, canView, canManage]);
 
   useEffect(() => {
+    setResolvingCorrectionId(''); setRejectingCorrection(null); setCorrectionResolutionNote(''); setActionMessage('');
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!rejectingCorrection) return;
+    const dialog = rejectionDialogRef.current;
+    const focusable = (): HTMLElement[] => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) || []);
+    focusable()[0]?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !resolvingCorrectionIdRef.current) {
+        setRejectingCorrection(null); setCorrectionResolutionNote('');
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (rejectionTriggerRef.current?.isConnected) rejectionTriggerRef.current.focus();
+      else document.getElementById('attendance-report-heading')?.focus();
+    };
+  }, [rejectingCorrection]);
+
+  useEffect(() => {
     setSelectedTeamFilter('');
     setAppliedTeamFilter('');
   }, [tenantId, submittedSearch]);
@@ -407,20 +450,28 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     setAppliedTeamFilter(selectedTeamFilter);
   }
 
-  async function resolveCorrection(id: string, decision: 'approved' | 'rejected') {
+  async function resolveCorrection(id: string, decision: 'approved' | 'rejected', note: string | null = null) {
     if (resolvingCorrectionId) return;
-    if (decision === 'rejected' && !window.confirm('Reject this attendance correction?')) return;
+    const actionTenantId = tenantId;
     setResolvingCorrectionId(id); setActionMessage(''); setError('');
     try {
       const { error: rpcError } = await supabase.rpc('admin_resolve_attendance_correction', {
-        p_id: id, p_decision: decision, p_note: null,
+        p_id: id, p_decision: decision, p_note: note?.trim() || null,
       });
       if (rpcError) throw rpcError;
+      if (activeTenantId.current !== actionTenantId) return;
       setActionMessage(`Attendance correction ${decision}.`);
+      if (decision === 'rejected') {
+        setRejectingCorrection(null);
+        setCorrectionResolutionNote('');
+      }
       await load();
+      if (decision === 'rejected') document.getElementById('attendance-report-heading')?.focus();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to resolve this correction.');
-    } finally { setResolvingCorrectionId(''); }
+      if (activeTenantId.current === actionTenantId) setError(cause instanceof Error ? cause.message : 'Unable to resolve this correction.');
+    } finally {
+      if (activeTenantId.current === actionTenantId) setResolvingCorrectionId('');
+    }
   }
 
   function exportReport() {
@@ -469,7 +520,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
 
   return <section aria-labelledby="attendance-report-heading" className="space-y-4">
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
-      <div><h2 id="attendance-report-heading" className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
+      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
         {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
       {aggregateOnly && <form aria-label="Attendance report controls" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
         <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
@@ -538,21 +589,48 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
               item.requested_work_mode ? `Mode ${String(item.requested_work_mode)}` : '',
             ].filter(Boolean).join(' · ') || '—'}</td>
             <td className="px-3 py-3">{display(item.reason)}</td>
-            <td className="px-3 py-3 capitalize">{display(item.status)}</td>
+            <td className="px-3 py-3 capitalize"><span>{display(item.status)}</span>
+              {Boolean(item.resolution_note) && <span className="mt-1 block normal-case whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(item.resolution_note)}</span>}
+            </td>
             {canManage && <td className="px-3 py-3">
               {item.status === 'pending' ? <div className="flex gap-2">
                 <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(item.id), 'approved')}
                   className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
                   {resolvingCorrectionId === item.id ? 'Saving…' : 'Approve'}
                 </button>
-                <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(item.id), 'rejected')}
-                  className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50">Reject</button>
+                <button type="button" disabled={Boolean(resolvingCorrectionId)}
+                  className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
+                  onClick={event => { rejectionTriggerRef.current = event.currentTarget; setCorrectionResolutionNote(''); setError(''); setActionMessage(''); setRejectingCorrection(item); }}>Reject</button>
               </div> : '—'}
             </td>}
           </tr>)}</tbody>
         </table>
       </div>
     </section>}
+    {currentTenantReady && rejectingCorrection && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
+      onMouseDown={event => { if (event.target === event.currentTarget && !resolvingCorrectionId) { setRejectingCorrection(null); setCorrectionResolutionNote(''); } }}>
+      <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-rejection-heading" aria-describedby="attendance-rejection-description"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <h3 id="attendance-rejection-heading" className="font-semibold text-slate-900">Reject attendance correction</h3>
+          <p id="attendance-rejection-description" className="mt-1 text-sm text-slate-600">{display(rejectingCorrection.full_name)} · {display(rejectingCorrection.attendance_date)}</p>
+          <p className="mt-1 text-xs text-slate-500">{display(rejectingCorrection.reason)}</p>
+        </div>
+        <div className="space-y-3 p-5">
+          {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">Decision note <span className="font-normal text-slate-500">(optional)</span></label>
+          <textarea id="attendance-rejection-note" rows={4} value={correctionResolutionNote} onChange={event => setCorrectionResolutionNote(event.target.value)} disabled={Boolean(resolvingCorrectionId)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-60" />
+          <p className="text-xs text-slate-500">The employee can see this note with the decision in their correction history.</p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
+          <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => { setRejectingCorrection(null); setCorrectionResolutionNote(''); }}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">Cancel</button>
+          <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(rejectingCorrection.id), 'rejected', correctionResolutionNote)}
+            className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{resolvingCorrectionId ? 'Saving…' : 'Reject correction'}</button>
+        </div>
+      </div>
+    </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
         <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-2' : 'min-w-[1160px] border-spacing-0'}`}>
