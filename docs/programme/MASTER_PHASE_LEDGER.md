@@ -10,7 +10,7 @@ This ledger records evidence available in the current Main and Candidate source 
 | 01 | Architecture and integration blueprint | PARTIAL | Authenticated route and existing RPC contracts inspected. A route-level workspace correction is present; full architecture/story mapping is not accepted. |
 | 02 | Figma design system and UX foundation | PARTIAL | Managerial dashboard reference inspected. Candidate/Super Admin reference recovery and actual React-to-Figma screenshot comparison are outstanding. |
 | 03 | SaaS platform and tenant lifecycle | NOT VERIFIED | No tenant provisioning or cross-tenant browser acceptance in this checkpoint. |
-| 04 | Authentication, roles, permissions and security | NOT VERIFIED | Permission-gated code and source contracts exist; real Auth, RLS, role and negative authorization journeys were not run. |
+| 04 | Authentication, roles, permissions and security | NOT VERIFIED | Permission-gated code and source contracts exist; real Auth, RLS, role and negative authorization journeys were not run. Read-only production review found 20 tenant-keyed tables without tenant-scoped SELECT guards for legacy global permissions and 207 SECURITY DEFINER advisor notices; see `SUPABASE_SECURITY_ADVISOR_20261012.md`. |
 | 05 | Organization, people and employee master data | NOT VERIFIED | Employee summary screens are restricted to the observed active-admin/Synesis employee contract; general employee and CRUD journeys were not accepted. |
 | 06 | Recruitment administration and Candidate integration | NOT VERIFIED | Candidate public search fixes were made; the recruitment lifecycle and Main/Candidate integration were not accepted. |
 | 07 | Onboarding and employee conversion | NOT VERIFIED | No complete candidate-to-employee journey was run. |
@@ -25,7 +25,7 @@ This ledger records evidence available in the current Main and Candidate source 
 | 16 | Communication, notifications and task engine | NOT VERIFIED | No delivery or retry acceptance in this checkpoint. |
 | 17 | Dashboards, analytics and reporting | PARTIAL | Existing dashboard, attendance report and employee summary RPCs are used; unsupported dashboard metrics are omitted. Full Figma and role acceptance is outstanding. |
 | 18 | Mobile, EN/BN, accessibility and UX refinement | NOT VERIFIED | Responsive code builds; representative widths, Bengali expansion, keyboard, accessibility and visual acceptance were not completed. |
-| 19 | Data migrations, security and cross-system certification | NOT VERIFIED | Production was not changed. Staged approval SQL has not passed isolated database/Auth acceptance. |
+| 19 | Data migrations, security and cross-system certification | NOT VERIFIED | Production was not changed. Staged approval SQL has not passed isolated database/Auth acceptance; tenant RLS, exposed SECURITY DEFINER functions, public Candidate columns, and Auth leaked-password settings need review. |
 | 20 | Canonical story coverage and gap-closure loops | BLOCKED | The original 1,047-row ledger is unavailable; zero stories are mapped and accepted here. |
 | 21 | Final release candidate and one-time publication | BLOCKED | No final backup certification, GitHub publication, deployment or production acceptance occurred. |
 

@@ -11,6 +11,7 @@
 - Main `npm run check` passed (TypeScript, 21 contract tests, Vite build). Candidate lint, four contract tests, and public-only build passed. Main retains the existing large-chunk warning; Candidate has a Vite config-loader warning.
 - Employee summary RPCs are routed only when the account has an active `admin_users` row and the selected employee tenant is the fixed `synesis-it` scope. Ordinary linked employees remain on the existing RLS-backed read view; the SQL-level restriction and route gate are recorded.
 - A follow-up read-only production inspection confirmed own-row RLS for `employees`, `leave_requests`, and `leave_types`, while attendance and leave-balance policies still use the active-admin resolver. The `holidays_read` policy has no tenant predicate; current UI reads stay on tenant-scoped RPCs. No database settings or data were changed.
+- Supabase security advisors reported 20 tenant-keyed tables with authenticated reads not scoped by tenant, 207 authenticated-executable SECURITY DEFINER functions, one anon Candidate jobs source, 24 RLS-enabled tables without policies (no anon/authenticated SELECT grants), and leaked-password protection disabled. Details and exact table list are in `docs/programme/SUPABASE_SECURITY_ADVISOR_20261012.md`.
 - `release/2026-10-12/CHECKPOINT_STATUS.md` and `CHECKPOINT_MANIFEST.json` contain full checkpoint evidence; archive is `HRIS360_RECOVERY_CHECKPOINT_20261012_NOT_FOR_RELEASE.zip`.
 
 ## Unresolved inputs / environment
