@@ -21,7 +21,7 @@ type PermissionSet = {
   leave: boolean;
   leaveManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'my-dashboard' | 'my-leave';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'my-dashboard' | 'my-leave' | 'my-timesheets';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -1357,6 +1357,291 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
   </section>;
 }
 
+type TimesheetDraftEntry = { activity_id: string; work_date: string; hours: string; note: string };
+
+function addLocalDays(value: string, count: number): string {
+  const date = new Date(`${value}T12:00:00`);
+  date.setDate(date.getDate() + count);
+  return localIsoDate(date);
+}
+
+function EmployeeTimesheets({ tenantId, tenantName }: { tenantId: string; tenantName: string }) {
+  const [activities, setActivities] = useState<Record<string, unknown>[]>([]);
+  const [timesheets, setTimesheets] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [periodType, setPeriodType] = useState<'daily' | 'weekly'>('weekly');
+  const [periodStart, setPeriodStart] = useState(() => startOfRecentWeek());
+  const [periodEnd, setPeriodEnd] = useState(() => localIsoDate(new Date()));
+  const [entries, setEntries] = useState<TimesheetDraftEntry[]>([]);
+  const [formError, setFormError] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const loadSequence = useRef(0);
+  const activeTenantId = useRef(tenantId);
+
+  async function load(showLoading = true) {
+    const sequence = ++loadSequence.current;
+    const requestedTenant = tenantId;
+    activeTenantId.current = requestedTenant;
+    if (showLoading) setLoading(true);
+    setError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_get_my_timesheet_context', {
+        p_tenant_id: requestedTenant,
+      });
+      if (rpcError) throw rpcError;
+      const context = asObject(data);
+      if (!context || !Array.isArray(context.activities) || !Array.isArray(context.timesheets)) {
+        throw new Error('Timesheet service returned an invalid response.');
+      }
+      if (sequence !== loadSequence.current || activeTenantId.current !== requestedTenant) return;
+      setActivities(asRows(context.activities));
+      setTimesheets(asRows(context.timesheets));
+    } catch (cause) {
+      if (sequence !== loadSequence.current || activeTenantId.current !== requestedTenant) return;
+      const detail = asObject(cause)?.message;
+      setError(cause instanceof Error ? cause.message : typeof detail === 'string' ? detail : 'Unable to load your timesheets.');
+    } finally {
+      if (sequence === loadSequence.current && activeTenantId.current === requestedTenant) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    activeTenantId.current = tenantId;
+    setActivities([]);
+    setTimesheets([]);
+    setEditorOpen(false);
+    setError('');
+    setSuccess('');
+    void load();
+    return () => { loadSequence.current += 1; };
+  }, [tenantId]);
+
+  function openNewTimesheet() {
+    const end = localIsoDate(new Date());
+    setEditingId(null);
+    setPeriodType('weekly');
+    setPeriodStart(addLocalDays(end, -6));
+    setPeriodEnd(end);
+    setEntries([]);
+    setFormError('');
+    setSuccess('');
+    setEditorOpen(true);
+  }
+
+  function editTimesheet(row: Record<string, unknown>) {
+    setEditingId(String(row.id));
+    setPeriodType(row.period_type === 'daily' ? 'daily' : 'weekly');
+    setPeriodStart(String(row.period_start || ''));
+    setPeriodEnd(String(row.period_end || ''));
+    setEntries(asRows(row.entries).map(entry => ({
+      activity_id: String(entry.activity_id || ''),
+      work_date: String(entry.work_date || ''),
+      hours: entry.hours === null || entry.hours === undefined ? '' : String(entry.hours),
+      note: String(entry.note || ''),
+    })));
+    setFormError('');
+    setSuccess('');
+    setEditorOpen(true);
+  }
+
+  function changePeriodType(next: 'daily' | 'weekly') {
+    setPeriodType(next);
+    setPeriodEnd(next === 'daily' ? periodStart : addLocalDays(periodStart, 6));
+  }
+
+  function updateEntry(index: number, patch: Partial<TimesheetDraftEntry>) {
+    setEntries(current => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...patch } : entry));
+  }
+
+  function validateEntries(): { activity_id: string; work_date: string; hours: number; note: string | null }[] | null {
+    if (!periodStart || !periodEnd || periodStart > periodEnd) {
+      setFormError('The period end date must be on or after its start date.'); return null;
+    }
+    const spanDays = (Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86_400_000;
+    if (periodType === 'daily' && spanDays !== 0) {
+      setFormError('A daily timesheet must use one date.'); return null;
+    }
+    if (periodType === 'weekly' && (spanDays < 0 || spanDays > 6)) {
+      setFormError('A weekly timesheet can cover up to seven consecutive dates.'); return null;
+    }
+    if (entries.some(entry => !entry.activity_id || !entry.work_date || !entry.hours.trim())) {
+      setFormError('Complete the activity, work date, and hours for each entry.'); return null;
+    }
+    const normalized = entries.map(entry => ({
+      activity_id: entry.activity_id,
+      work_date: entry.work_date,
+      hours: Number(entry.hours),
+      note: entry.note.trim() || null,
+    }));
+    if (normalized.some(entry => !Number.isFinite(entry.hours) || entry.hours <= 0 || entry.hours > 24)) {
+      setFormError('Enter hours greater than zero and no more than 24 per entry.'); return null;
+    }
+    if (normalized.some(entry => entry.work_date < periodStart || entry.work_date > periodEnd)) {
+      setFormError('Each work date must fall inside the selected period.'); return null;
+    }
+    const totals = new Map<string, number>();
+    normalized.forEach(entry => totals.set(entry.work_date, (totals.get(entry.work_date) || 0) + entry.hours));
+    if (Array.from(totals.values()).some(total => total > 24)) {
+      setFormError('A day cannot contain more than 24 total hours.'); return null;
+    }
+    setFormError('');
+    return normalized;
+  }
+
+  async function saveDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (actionBusy) return;
+    const normalized = validateEntries();
+    if (!normalized) return;
+    setActionBusy(true); setFormError(''); setError(''); setSuccess('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_save_my_timesheet', {
+        p_tenant_id: tenantId,
+        p_id: editingId,
+        p_period_type: periodType,
+        p_start: periodStart,
+        p_end: periodEnd,
+        p_entries: normalized,
+      });
+      if (rpcError) throw rpcError;
+      if (!data) throw new Error('The draft was not confirmed. Refresh your timesheet list and try again.');
+      setEditorOpen(false);
+      setEditingId(null);
+      await load(false);
+      setSuccess('Timesheet draft saved.');
+    } catch (cause) {
+      const detail = asObject(cause)?.message;
+      setFormError(cause instanceof Error ? cause.message : typeof detail === 'string' ? detail : 'Unable to save this timesheet.');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function submitTimesheet(id: string) {
+    if (actionBusy) return;
+    setActionBusy(true); setError(''); setSuccess('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_submit_my_timesheet', {
+        p_tenant_id: tenantId, p_id: id,
+      });
+      if (rpcError) throw rpcError;
+      if (!data) throw new Error('Submission was not confirmed. Refresh and check the timesheet status.');
+      await load(false);
+      setSuccess('Timesheet submitted for review.');
+    } catch (cause) {
+      const detail = asObject(cause)?.message;
+      setError(cause instanceof Error ? cause.message : typeof detail === 'string' ? detail : 'Unable to submit this timesheet.');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  function totalHours(row: Record<string, unknown>): number {
+    return asRows(row.entries).reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
+  }
+
+  const currentTenantDataReady = !loading && !error;
+  return <section aria-labelledby="my-timesheets-heading" className="space-y-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div><h2 id="my-timesheets-heading" className="text-2xl font-medium text-[#49454F]">My timesheets</h2>
+        <p className="mt-1 text-sm text-slate-500">Record and submit your work hours for {tenantName}</p></div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={loading || actionBusy} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" /> Refresh
+        </button>
+        <button type="button" disabled={loading || actionBusy || activities.length === 0} onClick={openNewTimesheet} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:opacity-50">
+          <ClipboardList className="h-4 w-4" /> New timesheet
+        </button>
+      </div>
+    </div>
+    {error && <StatusMessage error={error} onRetry={() => void load()} />}
+    {success && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{success}</p>}
+    {loading && <p role="status" className="rounded-lg border border-slate-200 bg-white p-5 text-sm">Loading your timesheets…</p>}
+    {currentTenantDataReady && <>
+      {activities.length === 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Your organization has no active timesheet activities yet. Ask an administrator to configure them before recording hours.</p>}
+      {editorOpen && <section aria-labelledby="timesheet-editor-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div><h3 id="timesheet-editor-heading" className="font-semibold text-[#08263D]">{editingId ? 'Edit timesheet draft' : 'New timesheet draft'}</h3>
+            <p className="mt-1 text-xs text-slate-500">Drafts can be changed until they are submitted.</p></div>
+          <button type="button" disabled={actionBusy} onClick={() => { setEditorOpen(false); setFormError(''); }} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">Cancel</button>
+        </div>
+        <form onSubmit={event => void saveDraft(event)} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><label htmlFor="timesheet-period-type" className="mb-1 block text-xs font-medium text-slate-600">Period type</label>
+              <select id="timesheet-period-type" value={periodType} onChange={event => changePeriodType(event.target.value === 'daily' ? 'daily' : 'weekly')} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                <option value="weekly">Weekly</option><option value="daily">Daily</option>
+              </select></div>
+            <div><label htmlFor="timesheet-period-start" className="mb-1 block text-xs font-medium text-slate-600">Period start</label>
+              <input id="timesheet-period-start" type="date" required value={periodStart} onChange={event => { setPeriodStart(event.target.value); if (periodType === 'daily') setPeriodEnd(event.target.value); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+            <div><label htmlFor="timesheet-period-end" className="mb-1 block text-xs font-medium text-slate-600">Period end</label>
+              <input id="timesheet-period-end" type="date" required value={periodEnd} onChange={event => setPeriodEnd(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-slate-800">Work entries</h4>
+              <button type="button" disabled={actionBusy} onClick={() => setEntries(current => [...current, { activity_id: '', work_date: periodStart, hours: '', note: '' }])} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">Add entry</button>
+            </div>
+            {entries.length === 0 ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No work entries yet. You can save an empty draft and add entries later.</p> : entries.map((entry, index) => <div key={index} className="grid min-w-0 gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.4fr)_minmax(140px,0.8fr)_minmax(110px,0.5fr)_minmax(180px,1.2fr)_auto]">
+              <div className="min-w-0"><label htmlFor={`timesheet-activity-${index}`} className="mb-1 block text-xs font-medium text-slate-600">Activity</label>
+                <select id={`timesheet-activity-${index}`} value={entry.activity_id} onChange={event => updateEntry(index, { activity_id: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                  <option value="">Choose activity</option>{activities.map((activity, activityIndex) => <option key={String(activity.id || activityIndex)} value={String(activity.id || '')}>{display(activity.name)} · {display(activity.code)}</option>)}
+                </select></div>
+              <div><label htmlFor={`timesheet-date-${index}`} className="mb-1 block text-xs font-medium text-slate-600">Work date</label>
+                <input id={`timesheet-date-${index}`} type="date" value={entry.work_date} onChange={event => updateEntry(index, { work_date: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <div><label htmlFor={`timesheet-hours-${index}`} className="mb-1 block text-xs font-medium text-slate-600">Hours</label>
+                <input id={`timesheet-hours-${index}`} type="number" min="0.01" max="24" step="0.01" value={entry.hours} onChange={event => updateEntry(index, { hours: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <div><label htmlFor={`timesheet-note-${index}`} className="mb-1 block text-xs font-medium text-slate-600">Note (optional)</label>
+                <input id={`timesheet-note-${index}`} type="text" maxLength={1000} value={entry.note} onChange={event => updateEntry(index, { note: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <div className="flex items-end"><button type="button" disabled={actionBusy} onClick={() => setEntries(current => current.filter((_, entryIndex) => entryIndex !== index))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-rose-700 disabled:opacity-50 sm:w-auto">Remove</button></div>
+            </div>)}
+          </div>
+          {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{formError}</p>}
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+            <button type="button" disabled={actionBusy} onClick={() => setEditorOpen(false)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={actionBusy} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:opacity-50">{actionBusy ? 'Saving…' : 'Save draft'}</button>
+          </div>
+        </form>
+      </section>}
+      <section aria-labelledby="timesheet-history-heading" className="space-y-3">
+        <div><h3 id="timesheet-history-heading" className="font-semibold text-[#08263D]">Timesheet history</h3>
+          <p className="mt-1 text-xs text-slate-500">Only timesheets linked to your employee profile are shown.</p></div>
+        {timesheets.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No timesheets have been saved for this organization.</p> : timesheets.map((row, index) => {
+          const status = String(row.status || 'draft').toLowerCase();
+          const rowEntries = asRows(row.entries);
+          const statusStyle = status === 'approved' ? 'bg-emerald-50 text-emerald-800'
+            : status === 'rejected' ? 'bg-rose-50 text-rose-800'
+              : status === 'submitted' ? 'bg-blue-50 text-blue-800' : 'bg-slate-100 text-slate-700';
+          const timesheetId = String(row.id || index);
+          return <article key={timesheetId} aria-label={`Timesheet ${displayShortDate(row.period_start)} to ${displayShortDate(row.period_end)}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold text-slate-900">{row.period_type === 'daily' ? 'Daily' : 'Weekly'} period · {displayShortDate(row.period_start)} – {displayShortDate(row.period_end)}</h4>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusStyle}`}>{status}</span></div>
+                <p className="mt-1 text-sm text-slate-600">{totalHours(row).toFixed(2).replace(/\.00$/, '')} total hours · {rowEntries.length} {rowEntries.length === 1 ? 'entry' : 'entries'}</p>
+                {Boolean(row.resolution_note) && <p className="mt-2 text-sm text-slate-600">Reviewer note: {display(row.resolution_note)}</p>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy} onClick={() => editTimesheet(row)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">Edit draft</button>}
+                {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy || rowEntries.length === 0} onClick={() => void submitTimesheet(timesheetId)} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{actionBusy ? 'Submitting…' : 'Submit timesheet'}</button>}
+              </div>
+            </div>
+            {rowEntries.length > 0 && <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+              {rowEntries.map((entry, entryIndex) => <div key={String(entry.id || entryIndex)} className="grid min-w-0 gap-1 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-4">
+                <p className="min-w-0 break-words font-medium text-slate-800">{display(entry.activity_name)}{entry.activity_code ? ` · ${String(entry.activity_code)}` : ''}</p>
+                <p className="text-slate-600">{displayShortDate(entry.work_date)}</p><p className="tabular-nums text-slate-700">{display(entry.hours)} hr</p>
+                {Boolean(entry.note) && <p className="text-xs text-slate-500 sm:col-span-3">{display(entry.note)}</p>}
+              </div>)}
+            </div>}
+          </article>;
+        })}
+      </section>
+    </>}
+  </section>;
+}
+
 type EmployeePanelId = 'working-hours' | 'work-location' | 'leave-type' | 'check-in-times';
 
 function PersonalAttendanceCorrections({
@@ -1758,6 +2043,7 @@ export function LiveHrisWorkspace({
     if (permissions.leave) items.push({ id: 'leave', label: 'Leave', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     return items;
   }, [permissions, isEmployee]);
 
@@ -1816,6 +2102,7 @@ export function LiveHrisWorkspace({
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
+          {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>

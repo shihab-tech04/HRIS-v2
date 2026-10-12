@@ -79,3 +79,17 @@ test('employee leave requests upload private evidence and submit through the ten
   assert.match(workspace, /item\.reason/);
   assert.match(workspace, /onRefresh=\{\(\) => load\(false\)\}/);
 });
+
+test('employee timesheets use tenant-bound RPCs, row-level security, and accessible draft controls', () => {
+  assert.match(workspace, /id: 'my-timesheets', label: 'My Timesheets'/);
+  assert.match(workspace, /page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId=\{tenantId\}/);
+  assert.match(workspace, /rpc\('hris_get_my_timesheet_context',[\s\S]*?p_tenant_id: requestedTenant/);
+  assert.match(workspace, /rpc\('hris_save_my_timesheet',[\s\S]*?p_tenant_id: tenantId/);
+  assert.match(workspace, /rpc\('hris_submit_my_timesheet',[\s\S]*?p_tenant_id: tenantId/);
+  assert.match(workspace, /activeTenantId\.current !== requestedTenant/);
+  assert.match(workspace, /A day cannot contain more than 24 total hours/);
+  assert.match(workspace, /Submit timesheet/);
+  assert.doesNotMatch(workspace, /rpc\('employee_get_timesheet_context'/);
+  assert.doesNotMatch(workspace, /rpc\('employee_save_timesheet'/);
+  assert.doesNotMatch(workspace, /rpc\('employee_submit_timesheet'/);
+});

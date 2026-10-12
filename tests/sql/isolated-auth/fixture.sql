@@ -17,6 +17,9 @@ DROP POLICY IF EXISTS hris_leave_evidence_delete_tenant_guard ON storage.objects
 DROP FUNCTION IF EXISTS public.admin_resolve_attendance_correction(uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.admin_resolve_leave_request(uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.admin_save_attendance(uuid,date,jsonb) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_my_timesheet_context(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_submit_my_timesheet(uuid,uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_admin_can_read_tenant(uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_is_active_tenant_member(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_own_employee_for_tenant(uuid) CASCADE;
@@ -42,6 +45,9 @@ DROP TABLE IF EXISTS public.payslips CASCADE;
 DROP TABLE IF EXISTS public.performance_cycles CASCADE;
 DROP TABLE IF EXISTS public.performance_goals CASCADE;
 DROP TABLE IF EXISTS public.project_performance_reviews CASCADE;
+DROP TABLE IF EXISTS public.timesheet_entries CASCADE;
+DROP TABLE IF EXISTS public.timesheets CASCADE;
+DROP TABLE IF EXISTS public.timesheet_activities CASCADE;
 DROP TABLE IF EXISTS public.service_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_types CASCADE;
@@ -317,6 +323,38 @@ CREATE TABLE public.performance_goals (
 CREATE TABLE public.project_performance_reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
   employee_id uuid, project_manager_employee_id uuid
+);
+CREATE TABLE public.timesheet_activities (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  activity_type text NOT NULL CHECK (activity_type IN ('project','client','task','activity')),
+  name text NOT NULL,
+  code text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  UNIQUE (tenant_id, code)
+);
+CREATE TABLE public.timesheets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  period_type text NOT NULL CHECK (period_type IN ('daily','weekly')),
+  period_start date NOT NULL,
+  period_end date NOT NULL CHECK (period_end >= period_start),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected')),
+  submitted_at timestamptz,
+  resolved_at timestamptz,
+  resolution_note text,
+  resolved_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, employee_id, period_type, period_start, period_end)
+);
+CREATE TABLE public.timesheet_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  timesheet_id uuid NOT NULL REFERENCES public.timesheets(id) ON DELETE CASCADE,
+  activity_id uuid NOT NULL REFERENCES public.timesheet_activities(id),
+  work_date date NOT NULL,
+  hours numeric(5,2) NOT NULL CHECK (hours > 0 AND hours <= 24),
+  note text
 );
 CREATE TABLE public.service_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
@@ -631,13 +669,15 @@ GRANT SELECT ON public.employees,public.departments,public.designations,public.l
   public.grades,public.holidays,public.hr_policies,public.manpower_requisitions,public.notices,
   public.org_locations,public.pay_periods,public.payslips,public.performance_cycles,
   public.performance_goals,public.project_performance_reviews,public.service_requests,
-  public.shifts,public.teams TO authenticated,anon;
+  public.shifts,public.teams,public.timesheet_activities,public.timesheets,
+  public.timesheet_entries TO authenticated,anon;
 GRANT ALL ON public.tenants,public.admin_users,public.roles,public.permissions,
   public.role_permissions,public.user_roles,public.tenant_memberships,public.shifts,
   public.departments,public.designations,public.employees,public.holidays,public.leave_types,
   public.leave_requests,public.employee_leave_balances,
   public.attendance_records,public.attendance_corrections,public.admin_audit_logs
   TO service_role;
+GRANT ALL ON public.timesheet_activities,public.timesheets,public.timesheet_entries TO service_role;
 
 INSERT INTO public.tenants(id,slug,code,name,is_active) VALUES
   ('11111111-1111-4111-8111-111111111111','synesis-it','SYN','Synthetic Synesis',true),
@@ -727,6 +767,16 @@ INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,offi
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+INSERT INTO public.timesheet_activities(id,tenant_id,activity_type,name,code,active) VALUES
+  ('88888888-8888-4888-8888-888888888901','11111111-1111-4111-8111-111111111111','activity','QA A Delivery','QA-A-DELIVERY',true),
+  ('88888888-8888-4888-8888-888888888902','22222222-2222-4222-8222-222222222222','activity','QA B Delivery','QA-B-DELIVERY',true),
+  ('88888888-8888-4888-8888-888888888903','11111111-1111-4111-8111-111111111111','task','Inactive QA A Task','QA-A-INACTIVE',false);
+INSERT INTO public.timesheets(id,tenant_id,employee_id,period_type,period_start,period_end,status) VALUES
+  ('77777777-7777-4777-8777-777777777701','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','weekly','2026-10-05','2026-10-11','draft'),
+  ('77777777-7777-4777-8777-777777777702','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','weekly','2026-10-05','2026-10-11','draft');
+INSERT INTO public.timesheet_entries(timesheet_id,activity_id,work_date,hours,note) VALUES
+  ('77777777-7777-4777-8777-777777777701','88888888-8888-4888-8888-888888888901','2026-10-06',4,'Synthetic A entry'),
+  ('77777777-7777-4777-8777-777777777702','88888888-8888-4888-8888-888888888902','2026-10-06',5,'Synthetic B entry');
 INSERT INTO public.confirmation_reviews(tenant_id,employee_id) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');

@@ -149,6 +149,18 @@ function resolveAttendance(session, id, decision, note = null) {
   return queryAs(session, `SELECT public.admin_resolve_attendance_correction(${sqlLiteral(id)}::uuid, ${sqlLiteral(decision)}, ${quoteNote(note)})::jsonb`);
 }
 
+function saveTimesheet(session, tenantId, id, periodType, startDate, endDate, entries) {
+  return queryAs(session, `SELECT jsonb_build_object('id', public.hris_save_my_timesheet(
+    ${sqlLiteral(tenantId)}::uuid, ${id ? `${sqlLiteral(id)}::uuid` : 'NULL::uuid'},
+    ${sqlLiteral(periodType)}, ${sqlLiteral(startDate)}::date, ${sqlLiteral(endDate)}::date,
+    ${sqlLiteral(JSON.stringify(entries))}::jsonb))`);
+}
+
+function submitTimesheet(session, tenantId, id) {
+  return queryAs(session, `SELECT jsonb_build_object('id', public.hris_submit_my_timesheet(
+    ${sqlLiteral(tenantId)}::uuid, ${sqlLiteral(id)}::uuid))`);
+}
+
 function tableRow(table, id) {
   const allowed = new Set(['leave_requests', 'attendance_records', 'attendance_corrections', 'employee_shift_assignments']);
   if (!allowed.has(table)) throw new Error(`Unexpected local fixture table: ${table}`);
@@ -235,6 +247,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -358,6 +371,9 @@ FROM (VALUES
   ('public.hris_employee_submit_attendance_correction(uuid,jsonb)'),
   ('public.hris_employee_record_attendance_event(uuid,text)'),
   ('public.hris_employee_submit_leave_request(uuid,jsonb)'),
+  ('public.hris_get_my_timesheet_context(uuid)'),
+  ('public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)'),
+  ('public.hris_submit_my_timesheet(uuid,uuid)'),
   ('public.admin_resolve_leave_request(uuid,text,text)'),
   ('public.admin_resolve_attendance_correction(uuid,text,text)'),
   ('public.hris_can_access_leave_evidence(text,text)'),
@@ -711,6 +727,117 @@ record('Employee self-service exposes only its linked tenant and denies other te
   && employeeTenantRows.request_tenants[0] === ids.tenantA
   && !employeeCrossTenantSummary.ok,
   JSON.stringify({ tenantRows: employeeTenantRows, crossTenantCallDenied: !employeeCrossTenantSummary.ok }));
+
+const timesheetContextA = queryAs(employeeA,
+  `SELECT public.hris_get_my_timesheet_context('${ids.tenantA}'::uuid)`);
+const timesheetContextB = queryAs(employeeB,
+  `SELECT public.hris_get_my_timesheet_context('${ids.tenantB}'::uuid)`);
+const timesheetDirectTableRead = queryAs(employeeA, `SELECT jsonb_build_object(
+  'activities',(SELECT count(*) FROM public.timesheet_activities),
+  'timesheets',(SELECT count(*) FROM public.timesheets),
+  'entries',(SELECT count(*) FROM public.timesheet_entries))`);
+record('Timesheet context returns each linked employee’s own tenant activities and rows while RLS denies direct table reads',
+  timesheetContextA.employee_id === '55555555-5555-4555-8555-555555555555'
+    && timesheetContextA.activities.length === 1
+    && timesheetContextA.activities[0].id === '88888888-8888-4888-8888-888888888901'
+    && timesheetContextA.timesheets.length === 1
+    && timesheetContextA.timesheets[0].id === '77777777-7777-4777-8777-777777777701'
+    && timesheetContextB.employee_id === '66666666-6666-4666-8666-666666666666'
+    && timesheetContextB.activities.length === 1
+    && timesheetContextB.activities[0].id === '88888888-8888-4888-8888-888888888902'
+    && timesheetContextB.timesheets.length === 1
+    && timesheetContextB.timesheets[0].id === '77777777-7777-4777-8777-777777777702'
+    && timesheetDirectTableRead.activities === 0
+    && timesheetDirectTableRead.timesheets === 0
+    && timesheetDirectTableRead.entries === 0);
+
+const timesheetContextCrossTenant = attemptAs(employeeA,
+  `SELECT public.hris_get_my_timesheet_context('${ids.tenantB}'::uuid)`);
+const timesheetContextGlobalOnly = attemptAs(globalOnly,
+  `SELECT public.hris_get_my_timesheet_context('${ids.tenantA}'::uuid)`);
+record('Timesheet context denies cross-tenant IDs and global roles without an active employee link',
+  !timesheetContextCrossTenant.ok && !timesheetContextGlobalOnly.ok);
+
+const newTimesheetEntries = [{ activity_id: '88888888-8888-4888-8888-888888888901',
+  work_date: '2026-10-15', hours: 3.5, note: 'Synthetic local acceptance entry' }];
+const savedTimesheet = saveTimesheet(employeeA, ids.tenantA, null, 'weekly',
+  '2026-10-12', '2026-10-18', newTimesheetEntries);
+const savedTimesheetState = queryAdmin(`SELECT jsonb_build_object(
+  'status',(SELECT status FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid),
+  'entries',(SELECT count(*) FROM public.timesheet_entries WHERE timesheet_id='${savedTimesheet.id}'::uuid))`);
+record('Employee saves a tenant-bound draft with one atomic audit event',
+  Boolean(savedTimesheet.id)
+    && savedTimesheetState.status === 'draft'
+    && savedTimesheetState.entries === 1
+    && auditCount(savedTimesheet.id, 'timesheet.saved') === 1);
+
+const submittedTimesheet = submitTimesheet(employeeA, ids.tenantA, savedTimesheet.id);
+const submittedTimesheetState = queryAdmin(`SELECT jsonb_build_object(
+  'status',(SELECT status FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid),
+  'submitted_at',(SELECT submitted_at FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid))`);
+record('Employee submits the saved timesheet and records the submission once',
+  submittedTimesheet.id === savedTimesheet.id
+    && submittedTimesheetState.status === 'submitted'
+    && Boolean(submittedTimesheetState.submitted_at)
+    && auditCount(savedTimesheet.id, 'timesheet.submitted') === 1);
+
+const submittedEdit = attemptAs(employeeA, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,'${savedTimesheet.id}'::uuid,'weekly','2026-10-12','2026-10-18',
+  '${JSON.stringify(newTimesheetEntries)}'::jsonb)`);
+const foreignTimesheetEdit = attemptAs(employeeA, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,'77777777-7777-4777-8777-777777777702'::uuid,'weekly',
+  '2026-10-05','2026-10-11','${JSON.stringify(newTimesheetEntries)}'::jsonb)`);
+const foreignTimesheetSubmit = attemptAs(employeeA,
+  `SELECT public.hris_submit_my_timesheet('${ids.tenantA}'::uuid,'77777777-7777-4777-8777-777777777702'::uuid)`);
+record('Submitted and another employee’s timesheets cannot be edited',
+  !submittedEdit.ok && !foreignTimesheetEdit.ok && !foreignTimesheetSubmit.ok
+    && queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid`).status === 'submitted'
+    && auditCount(savedTimesheet.id, 'timesheet.saved') === 1);
+
+const emptyTimesheet = saveTimesheet(employeeA, ids.tenantA, null, 'daily',
+  '2026-10-09', '2026-10-09', []);
+const emptySubmit = attemptAs(employeeA,
+  `SELECT public.hris_submit_my_timesheet('${ids.tenantA}'::uuid,'${emptyTimesheet.id}'::uuid)`);
+record('Empty draft can be saved for later but cannot be submitted',
+  Boolean(emptyTimesheet.id) && !emptySubmit.ok
+    && queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${emptyTimesheet.id}'::uuid`).status === 'draft'
+    && auditCount(emptyTimesheet.id, 'timesheet.saved') === 1
+    && auditCount(emptyTimesheet.id, 'timesheet.submitted') === 0);
+
+const badActivityEntries = [{ activity_id: '88888888-8888-4888-8888-888888888902',
+  work_date: '2026-10-15', hours: 3, note: 'Cross tenant activity' }];
+const inactiveActivityEntries = [{ activity_id: '88888888-8888-4888-8888-888888888903',
+  work_date: '2026-10-15', hours: 3, note: 'Inactive activity' }];
+const badDateEntries = [{ activity_id: '88888888-8888-4888-8888-888888888901',
+  work_date: '2026-10-19', hours: 3, note: null }];
+const tooManyHoursEntries = [
+  { activity_id: '88888888-8888-4888-8888-888888888901', work_date: '2026-10-16', hours: 12 },
+  { activity_id: '88888888-8888-4888-8888-888888888901', work_date: '2026-10-16', hours: 13 },
+];
+const badActivitySave = attemptAs(employeeA, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'weekly','2026-10-12','2026-10-18','${JSON.stringify(badActivityEntries)}'::jsonb)`);
+const inactiveActivitySave = attemptAs(employeeA, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'weekly','2026-10-12','2026-10-18','${JSON.stringify(inactiveActivityEntries)}'::jsonb)`);
+const badDateSave = attemptAs(employeeA, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'weekly','2026-10-12','2026-10-18','${JSON.stringify(badDateEntries)}'::jsonb)`);
+const tooManyHoursSave = attemptAs(employeeA, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'weekly','2026-10-12','2026-10-18','${JSON.stringify(tooManyHoursEntries)}'::jsonb)`);
+const timesheetWriteCounts = queryAdmin(`SELECT jsonb_build_object(
+  'a',(SELECT count(*) FROM public.timesheets WHERE tenant_id='${ids.tenantA}'::uuid),
+  'b',(SELECT count(*) FROM public.timesheets WHERE tenant_id='${ids.tenantB}'::uuid),
+  'activity_audit',(SELECT count(*) FROM public.admin_audit_logs WHERE action='timesheet.saved'))`);
+record('Cross-tenant or inactive activity, out-of-period date, and over-24-hour daily totals roll back completely',
+  !badActivitySave.ok && !inactiveActivitySave.ok && !badDateSave.ok && !tooManyHoursSave.ok
+    && timesheetWriteCounts.a === 3 && timesheetWriteCounts.b === 1
+    && timesheetWriteCounts.activity_audit === 2);
+
+const anonTimesheetContext = attemptAs(null,
+  `SELECT public.hris_get_my_timesheet_context('${ids.tenantA}'::uuid)`, 'anon');
+record('Anonymous users cannot execute any employee timesheet RPC',
+  !anonTimesheetContext.ok
+    && functionGrantMatrix['public.hris_get_my_timesheet_context(uuid)'].anon === false
+    && functionGrantMatrix['public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)'].anon === false
+    && functionGrantMatrix['public.hris_submit_my_timesheet(uuid,uuid)'].anon === false);
 
 psqlSync(`UPDATE public.employees SET employment_status='terminated'
   WHERE id='55555555-5555-4555-8555-555555555555';`);
