@@ -1,0 +1,99 @@
+{
+  "recorded_at": "2026-10-12T17:35:00+06:00",
+  "phase": "08",
+  "module": "Shift roster manager assignment",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "previous_checkpoint_commit": "24688e8188a6556875ae5fa183036678db9e6432",
+  "feature_commit": "efeac20686516a8a9e880efabb1a10f10ea2e600",
+  "feature_commit_stats_since_previous_checkpoint": {
+    "paths": 7,
+    "insertions": 316,
+    "deletions": 4
+  },
+  "implementation_source_diff_since_2026_10_12_1420_drive_checkpoint": {
+    "base_commit": "4ded5f13f1ef2bf17237f347bfac9811283c52dc",
+    "source_paths": 19,
+    "insertions": 5361,
+    "deletions": 55,
+    "paths": [
+      "playwright.config.ts",
+      "src/live/LiveApp.tsx",
+      "src/live/LiveHrisWorkspace.tsx",
+      "supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql",
+      "supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql",
+      "supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql",
+      "supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql",
+      "supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql",
+      "tests/browser/attendance-information.spec.ts",
+      "tests/browser/employee-leave.spec.ts",
+      "tests/browser/managerial-dashboard.spec.ts",
+      "tests/browser/shift-roster.spec.ts",
+      "tests/browser/system-workspace.spec.ts",
+      "tests/contracts/approval-resolution-migrations.test.mjs",
+      "tests/contracts/live-workspace.test.mjs",
+      "tests/contracts/phase1.test.mjs",
+      "tests/contracts/shift-roster.test.mjs",
+      "tests/sql/isolated-auth/fixture.sql",
+      "tests/sql/isolated-auth/run-local.mjs"
+    ]
+  },
+  "source_paths_changed_since_previous_checkpoint": [
+    "src/live/LiveHrisWorkspace.tsx",
+    "supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql",
+    "tests/browser/shift-roster.spec.ts",
+    "tests/contracts/shift-roster.test.mjs",
+    "tests/sql/isolated-auth/run-local.mjs"
+  ],
+  "visual_evidence_paths": [
+    "docs/evidence/shift-roster-desktop-20261012.png",
+    "docs/evidence/shift-roster-mobile-20261012.png"
+  ],
+  "implemented": [
+    "Tenant-scoped shift roster options, limited to active employees and shifts",
+    "attendance.manage-gated same-tenant employee shift assignment",
+    "Atomic assignment and audit event creation",
+    "Duplicate employee/date rejection without upsert or overwrite",
+    "Responsive assignment form and accessible horizontal roster table"
+  ],
+  "tests": {
+    "typescript": { "passed": 1, "failed": 0 },
+    "contracts": { "passed": 29, "failed": 0 },
+    "vite_build": { "passed": 1, "failed": 0, "warning": "Existing minified chunk exceeds 500 kB" },
+    "isolated_local_auth_rls": { "passed": 55, "failed": 0 },
+    "chromium_full_suite": { "passed": 38, "failed": 0 },
+    "git_diff_check": { "passed": 1, "failed": 0 }
+  },
+  "previously_failing_tenant_security_cases": {
+    "passed": 5,
+    "failed": 0,
+    "cases": [
+      "Tenant B cannot read Tenant A attendance",
+      "Tenant A cannot read Tenant B attendance",
+      "Tenant B cannot call Tenant A dashboard/attendance/leave RPCs",
+      "Tenant B cannot approve Tenant A leave",
+      "Tenant B cannot approve Tenant A attendance"
+    ]
+  },
+  "canonical_story_catalogue": {
+    "reported_count": 1047,
+    "reported_module_count": 153,
+    "expected_sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "verified_source_available": false,
+    "fully_mapped_and_accepted": 0,
+    "pending": 1047,
+    "reason": "Mounted Project sources directory is empty; local and connected Drive exact-name searches did not find the recovered matrix."
+  },
+  "active_blocker": {
+    "name": "Canonical story source mount unavailable",
+    "root_cause": "No files are present in the mounted Project sources directory; exact-name Drive search returned no matrix.",
+    "next_executable_action": "Continue functional work against inspected contracts and available Figma references; verify the source hash before story mapping."
+  },
+  "release": {
+    "status": "NOT FOR RELEASE",
+    "production_data_or_permissions_changed": false,
+    "paid_supabase_service_created": false,
+    "github_push_performed": false,
+    "deployment_performed": false,
+    "drive_checkpoint_upload_status": "pending current owner/capability verification and round-trip upload"
+  }
+}
