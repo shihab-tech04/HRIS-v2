@@ -1,0 +1,35 @@
+name: Verify real Admin recovery delivery once
+on:
+  push:
+    branches: ['fix/admin-recovery-verified-delivery-20261012']
+    paths: ['.github/workflows/verify-admin-recovery-delivery-once.yml']
+permissions:
+  contents: read
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - name: Request one recovery email for the verified active Super Admin
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { createClient } from '@supabase/supabase-js';
+          const source = readFileSync('src/lib/supabase.ts', 'utf8');
+          const url = source.match(/https:\/\/[a-z0-9]+\.supabase\.co/)?.[0];
+          const key = source.match(/sb_publishable_[A-Za-z0-9_]+/)?.[0];
+          if (!url || !key) throw Error('Missing established public Supabase configuration');
+          const supabase = createClient(url, key, { auth: { persistSession: false, detectSessionInUrl: false, autoRefreshToken: false } });
+          const recipient = 'shihabshajib01@gmail.com';
+          const { error } = await supabase.auth.resetPasswordForEmail(recipient, {
+            redirectTo: 'https://shihab-tech04.github.io/HRIS-v2/',
+          });
+          if (error) throw Error('Auth rejected the verified Super Admin recovery request: ' + error.message);
+          console.log('PASS: Supabase accepted one recovery email request for verified Super Admin identity.');
+          console.log('No password, tokens, or recovery URL printed or stored.');
+          NODE
