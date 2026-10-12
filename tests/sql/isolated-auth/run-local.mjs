@@ -169,7 +169,7 @@ const emails = [
   'manager-a@hris.test', 'manager-b@hris.test', 'no-permission@hris.test',
   'global-only@hris.test', 'tenant-viewer@hris.test',
   'employee-a@hris.test', 'employee-b@hris.test', 'manager-a2@hris.test',
-  'employee-clock@hris.test',
+  'employee-clock@hris.test', 'report-viewer-a@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -221,6 +221,7 @@ const employeeA = await signIn(emails[5]);
 const employeeB = await signIn(emails[6]);
 const managerA2 = await signIn(emails[7]);
 const employeeClock = await signIn(emails[8]);
+const reportViewerA = await signIn(emails[9]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
@@ -228,6 +229,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -800,6 +802,25 @@ const dashboardB = queryAs(managerB, `SELECT public.hris_get_tenant_dashboard_su
 const dashboardA = queryAs(managerA, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantA}'::uuid)`);
 const attendanceDataB = queryAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
   '${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,false)`);
+const attendanceReportA = queryAs(managerA, `SELECT public.hris_get_tenant_attendance_data(
+  '${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,true)`);
+const attendanceReportOnlyA = queryAs(reportViewerA, `SELECT public.hris_get_tenant_attendance_data(
+  '${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,true)`);
+const attendanceDetailsReportOnly = attemptAs(reportViewerA, `SELECT public.hris_get_tenant_attendance_data(
+  '${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,false)`);
+const attendanceReportB = queryAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
+  '${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,true)`);
+const reportEmployeeA = attendanceReportA.find(row => row.employee_number === 'QA-A-001');
+const reportEmployeeB = attendanceReportB.find(row => row.employee_number === 'QA-B-001');
+const reportCrossTenantTeam = attendanceReportA.find(row => row.employee_number === 'QA-A-002');
+record('Attendance report resolves same-tenant teams and suppresses cross-tenant team references',
+  reportEmployeeA?.team_name === 'QA A Team'
+  && reportEmployeeB?.team_name === 'QA B Team'
+  && reportCrossTenantTeam?.team_name == null,
+  JSON.stringify({ tenantA: reportEmployeeA?.team_name, tenantB: reportEmployeeB?.team_name,
+    mismatchedTenantReference: reportCrossTenantTeam?.team_name }));
+record('reports.view-only membership can read the aggregate report but not attendance details',
+  attendanceReportOnlyA.some(row => row.team_name === 'QA A Team') && !attendanceDetailsReportOnly.ok);
 const leaveDataB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data('${ids.tenantB}'::uuid,NULL,NULL)`);
 record('Tenant B dashboard, attendance and leave RPCs return tenant B data only',
   Number(dashboardB.employees) === 1

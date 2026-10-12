@@ -84,9 +84,9 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
       const data = body.p_report === true
         ? [
           { employee_id: syntheticAttendance.employee_id, employee_number: 'ATT-001', employee_name: 'Aggregate Report Employee',
-            department_name: 'Experience Design', designation_title: 'UX Designer', attendance_days: 999, office_hours: 45, working_hours: 46.48, deviation: 1.48 },
+            department_name: 'Experience Design', designation_title: 'UX Designer', team_name: 'Synthetic Product Team', attendance_days: 999, office_hours: 45, working_hours: 46.48, deviation: 1.48 },
           { employee_id: syntheticLateAttendance.employee_id, employee_number: 'ATT-002', employee_name: 'Aggregate Negative Employee',
-            department_name: 'Experience Design', designation_title: 'UX Designer', attendance_days: 999, office_hours: 45, working_hours: 44.3, deviation: -0.7 },
+            department_name: 'Experience Design', designation_title: 'UX Designer', team_name: 'Synthetic Design Team', attendance_days: 999, office_hours: 45, working_hours: 44.3, deviation: -0.7 },
         ]
         : { records: body.p_status && body.p_status !== 'all'
           ? allAttendance.filter(row => row.status === body.p_status) : allAttendance, corrections: correctionRequests };
@@ -181,11 +181,11 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const positiveRow = reportTable.getByRole('row', { name: /Aggregate Report Employee/ });
   const negativeRow = reportTable.getByRole('row', { name: /Aggregate Negative Employee/ });
   await expect(positiveRow).toContainText('UX Designer');
+  await expect(positiveRow).toContainText('Synthetic Product Team');
   await expect(positiveRow).toContainText('Experience Design');
   await expect(positiveRow).toContainText('45.00');
   await expect(positiveRow).toContainText('46.48');
   await expect(positiveRow).toContainText('+1.48');
-  await expect(positiveRow).toContainText('—');
   await expect(positiveRow.getByRole('cell').last().locator('span')).toHaveClass(/text-emerald-700/);
   await expect(negativeRow).toContainText('44.30');
   await expect(negativeRow).toContainText('-0.70');
@@ -207,7 +207,12 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_start === '2026-10-05')).toBe(true);
   const reportDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Report', exact: true }).click();
-  expect((await reportDownload).suggestedFilename()).toMatch(/^attendance-report-.*\.csv$/);
+  const downloadedReport = await reportDownload;
+  expect(downloadedReport.suggestedFilename()).toMatch(/^attendance-report-.*\.csv$/);
+  const reportStream = await downloadedReport.createReadStream();
+  let reportCsv = '';
+  if (reportStream) for await (const chunk of reportStream) reportCsv += chunk.toString();
+  expect(reportCsv).toContain('Synthetic Product Team');
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);

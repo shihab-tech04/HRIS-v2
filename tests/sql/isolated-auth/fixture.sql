@@ -33,6 +33,7 @@ DROP TABLE IF EXISTS public.leave_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_types CASCADE;
 DROP TABLE IF EXISTS public.holidays CASCADE;
 DROP TABLE IF EXISTS public.designations CASCADE;
+DROP TABLE IF EXISTS public.teams CASCADE;
 DROP TABLE IF EXISTS public.departments CASCADE;
 DROP TABLE IF EXISTS public.employee_shift_assignments CASCADE;
 DROP TABLE IF EXISTS public.employees CASCADE;
@@ -117,6 +118,15 @@ CREATE TABLE public.departments (
   code text NOT NULL
 );
 
+CREATE TABLE public.teams (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  department_id uuid REFERENCES public.departments(id),
+  name text NOT NULL,
+  code text NOT NULL,
+  active boolean NOT NULL DEFAULT true
+);
+
 CREATE TABLE public.designations (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES public.tenants(id),
@@ -130,6 +140,7 @@ CREATE TABLE public.employees (
   tenant_id uuid NOT NULL REFERENCES public.tenants(id),
   user_id uuid,
   department_id uuid REFERENCES public.departments(id),
+  team_id uuid REFERENCES public.teams(id),
   designation_id uuid REFERENCES public.designations(id),
   shift_id uuid REFERENCES public.shifts(id),
   employee_number text NOT NULL,
@@ -491,7 +502,8 @@ INSERT INTO public.roles(id,name) VALUES
   ('qa_global_manager','Synthetic global-only role'),
   ('qa_tenant_manager_a','Synthetic tenant A HR manager'),
   ('qa_tenant_manager_b','Synthetic tenant B HR manager'),
-  ('qa_tenant_viewer_b','Synthetic tenant B viewer');
+  ('qa_tenant_viewer_b','Synthetic tenant B viewer'),
+  ('qa_tenant_reporter_a','Synthetic tenant A report-only viewer');
 INSERT INTO public.permissions(id,module,action) VALUES
   ('leave.manage','leave','manage'),('leave.view','leave','view'),
   ('attendance.manage','attendance','manage'),('attendance.view','attendance','view'),
@@ -506,7 +518,8 @@ INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_tenant_manager_b','leave.manage'),('qa_tenant_manager_b','leave.view'),
   ('qa_tenant_manager_b','attendance.manage'),('qa_tenant_manager_b','attendance.view'),
   ('qa_tenant_manager_b','dashboard.view'),('qa_tenant_manager_b','reports.view'),
-  ('qa_tenant_viewer_b','leave.view'),('qa_tenant_viewer_b','attendance.view');
+  ('qa_tenant_viewer_b','leave.view'),('qa_tenant_viewer_b','attendance.view'),
+  ('qa_tenant_reporter_a','reports.view');
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users
   WHERE email IN ('global-only@hris.test','manager-a@hris.test');
@@ -525,6 +538,9 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '22222222-2222-4222-8222-222222222222',id,'qa_tenant_viewer_b','active'
   FROM auth.users WHERE email='tenant-viewer@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_reporter_a','active'
+  FROM auth.users WHERE email='report-viewer-a@hris.test';
 
 INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minutes,break_minutes,weekly_off_days,full_day_hours,active) VALUES
   ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','Synthetic Day Shift','QA-DAY','09:00','17:00',10,60,ARRAY[0,6],8,true),
@@ -532,19 +548,22 @@ INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minut
 INSERT INTO public.departments(id,tenant_id,name,code) VALUES
   ('eeeeeeee-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','QA A department','QA-A'),
   ('eeeeeeee-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','QA B department','QA-B');
+INSERT INTO public.teams(id,tenant_id,department_id,name,code) VALUES
+  ('dddddddd-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','eeeeeeee-0000-4000-8000-000000000001','QA A Team','QA-A-T'),
+  ('dddddddd-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','eeeeeeee-0000-4000-8000-000000000002','QA B Team','QA-B-T');
 INSERT INTO public.designations(id,tenant_id,department_id,title,code) VALUES
   ('ffffffff-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','eeeeeeee-0000-4000-8000-000000000001','QA A designation','QA-A-D'),
   ('ffffffff-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','eeeeeeee-0000-4000-8000-000000000002','QA B designation','QA-B-D');
-INSERT INTO public.employees(id,tenant_id,user_id,department_id,designation_id,shift_id,employee_number,full_name,official_email,joining_date)
+INSERT INTO public.employees(id,tenant_id,user_id,department_id,team_id,designation_id,shift_id,employee_number,full_name,official_email,joining_date)
   VALUES
-  ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','2026-01-01'),
-  ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test','2026-01-01'),
-  ('55555555-5555-4555-8555-555555555560','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-clock@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-006','Synthetic Clock Employee','employee-clock@hris.test','2026-01-01');
-INSERT INTO public.employees(id,tenant_id,employee_number,full_name,official_email,joining_date) VALUES
-  ('55555555-5555-4555-8555-555555555556','11111111-1111-4111-8111-111111111111','QA-A-002','Synthetic Absent Employee A','employee-a-absent@hris.test','2026-01-01'),
-  ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
-  ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
-  ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+  ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','2026-01-01'),
+  ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','dddddddd-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555560','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-clock@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-006','Synthetic Clock Employee','employee-clock@hris.test','2026-01-01');
+INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,official_email,joining_date) VALUES
+  ('55555555-5555-4555-8555-555555555556','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000002','QA-A-002','Synthetic Absent Employee A','employee-a-absent@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
 INSERT INTO public.employee_shift_assignments(tenant_id,employee_id,shift_id,assignment_date,status) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','33333333-3333-4333-8333-333333333333',(now() AT TIME ZONE 'Asia/Dhaka')::date,'scheduled'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','44444444-4444-4444-8444-444444444444',(now() AT TIME ZONE 'Asia/Dhaka')::date,'scheduled');

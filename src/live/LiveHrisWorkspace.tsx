@@ -397,10 +397,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     const currentRecords = dataTenantId === tenantId ? records : [];
     if (!currentRecords.length) return;
     const fields = aggregateOnly
-      ? ['employee_name', 'employee_number', 'designation_title', 'department_name', 'attendance_days', 'office_hours', 'working_hours', 'deviation']
+      ? ['employee_name', 'employee_number', 'designation_title', 'team_name', 'department_name', 'attendance_days', 'office_hours', 'working_hours', 'deviation']
       : ['full_name', 'employee_number', 'designation_title', 'department_name', 'attendance_date', 'check_in', 'check_out', 'work_mode', 'status', 'work_hours'];
     const labels = aggregateOnly
-      ? ['Employee', 'Employee number', 'Designation', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation']
+      ? ['Employee', 'Employee number', 'Designation', 'Team Name', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation']
       : ['Employee', 'Employee number', 'Designation', 'Department', 'Date', 'Check in', 'Check out', 'Work location', 'Status', 'Working hours'];
     downloadCsv(`attendance-report-${from}-${to}.csv`, labels, currentRecords.map(row => fields.map(field => row[field])));
   }
