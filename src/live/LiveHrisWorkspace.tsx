@@ -622,6 +622,8 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [from, setFrom] = useState(() => localIsoDate(new Date()));
   const [to, setTo] = useState(endOfUpcomingWeek);
+  const [draftFrom, setDraftFrom] = useState(() => localIsoDate(new Date()));
+  const [draftTo, setDraftTo] = useState(endOfUpcomingWeek);
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const requestSequence = useRef(0);
@@ -686,6 +688,17 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
   }, [tenantId, from, to, submittedSearch]);
 
   useEffect(() => { void loadOptions(); }, [tenantId, canManage]);
+
+  function applyRosterFilters() {
+    if (!draftFrom || !draftTo || draftFrom > draftTo) {
+      setError('Choose a valid roster date range.');
+      return;
+    }
+    setError('');
+    setFrom(draftFrom);
+    setTo(draftTo);
+    setSubmittedSearch(search.trim());
+  }
 
   async function assignShift(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -772,12 +785,12 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
     </section>}
 
     <form className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4"
-      onSubmit={event => { event.preventDefault(); setSubmittedSearch(search.trim()); }}>
+      onSubmit={event => { event.preventDefault(); applyRosterFilters(); }}>
       <div><label htmlFor="roster-start" className="mb-1 block text-xs font-medium text-slate-600">From</label>
-        <input id="roster-start" type="date" value={from} onChange={event => setFrom(event.target.value)}
+        <input id="roster-start" type="date" value={draftFrom} onChange={event => setDraftFrom(event.target.value)}
           className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       <div><label htmlFor="roster-end" className="mb-1 block text-xs font-medium text-slate-600">To</label>
-        <input id="roster-end" type="date" value={to} onChange={event => setTo(event.target.value)}
+        <input id="roster-end" type="date" value={draftTo} onChange={event => setDraftTo(event.target.value)}
           className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       <div><label htmlFor="roster-search" className="mb-1 block text-xs font-medium text-slate-600">Employee or shift</label>
         <input id="roster-search" type="search" value={search} onChange={event => setSearch(event.target.value)}

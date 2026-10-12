@@ -145,6 +145,14 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
   await expect(rosterTable.getByRole('row', { name: /Synthetic Roster Employee/ })).toBeVisible();
   await expect(rosterTable.getByRole('row', { name: /Second Roster Employee/ })).toBeVisible();
 
+  const callsBeforeDateDraft = rosterCalls.length;
+  await page.getByLabel('To', { exact: true }).fill(assignmentDate);
+  expect(rosterCalls).toHaveLength(callsBeforeDateDraft);
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect.poll(() => rosterCalls.at(-1)?.p_end).toBe(assignmentDate);
+  expect(rosterCalls.at(-1)).toMatchObject({ p_tenant_id: tenantId,
+    p_start: assignmentDate, p_end: assignmentDate, p_search: null });
+
   await page.getByLabel('Employee', { exact: true }).selectOption('a7777777-7777-4777-8777-777777777777');
   await page.getByLabel('Shift', { exact: true }).selectOption('a6666666-6666-4666-8666-666666666666');
   await page.getByLabel('Assignment date').fill(assignmentDate);
