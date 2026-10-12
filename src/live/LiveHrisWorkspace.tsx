@@ -315,6 +315,8 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   const [to, setTo] = useState(localIsoDate(new Date()));
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState('');
+  const [appliedTeamFilter, setAppliedTeamFilter] = useState('');
   const [status, setStatus] = useState('all');
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -377,6 +379,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     return () => { requestSequence.current += 1; };
   }, [tenantId, from, to, submittedSearch, status, canReport, canView, canManage]);
 
+  useEffect(() => {
+    setSelectedTeamFilter('');
+    setAppliedTeamFilter('');
+  }, [tenantId, from, to, submittedSearch]);
+
   async function resolveCorrection(id: string, decision: 'approved' | 'rejected') {
     if (resolvingCorrectionId) return;
     if (decision === 'rejected' && !window.confirm('Reject this attendance correction?')) return;
@@ -394,21 +401,37 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   }
 
   function exportReport() {
-    const currentRecords = dataTenantId === tenantId ? records : [];
-    if (!currentRecords.length) return;
+    const exportRows = filteredRows;
+    if (!exportRows.length) return;
     const fields = aggregateOnly
       ? ['employee_name', 'employee_number', 'designation_title', 'team_name', 'department_name', 'attendance_days', 'office_hours', 'working_hours', 'deviation']
       : ['full_name', 'employee_number', 'designation_title', 'department_name', 'attendance_date', 'check_in', 'check_out', 'work_mode', 'status', 'work_hours'];
     const labels = aggregateOnly
       ? ['Employee', 'Employee number', 'Designation', 'Team Name', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation']
       : ['Employee', 'Employee number', 'Designation', 'Department', 'Date', 'Check in', 'Check out', 'Work location', 'Status', 'Working hours'];
-    downloadCsv(`attendance-report-${from}-${to}.csv`, labels, currentRecords.map(row => fields.map(field => row[field])));
+    downloadCsv(`attendance-report-${from}-${to}.csv`, labels, exportRows.map(row => fields.map(field => row[field])));
   }
 
   const currentTenantReady = dataTenantId === tenantId;
   const currentRecords = currentTenantReady ? records : [];
   const currentCorrections = currentTenantReady ? corrections : [];
-  const rows = currentRecords;
+  const teamOptions = useMemo(() => {
+    if (!aggregateOnly) return [];
+    const names = new Set(currentRecords.map(row => String(row.team_name ?? '').trim()).filter(Boolean));
+    const options = Array.from(names).sort((left, right) => left.localeCompare(right))
+      .map(name => ({ value: name, label: name }));
+    if (currentRecords.some(row => !String(row.team_name ?? '').trim())) {
+      options.push({ value: '__NO_TEAM__', label: 'Unassigned' });
+    }
+    return options;
+  }, [aggregateOnly, currentRecords]);
+  const filteredRows = useMemo(() => {
+    if (!aggregateOnly || !appliedTeamFilter) return currentRecords;
+    return currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
+      ? !String(row.team_name ?? '').trim()
+      : String(row.team_name ?? '').trim() === appliedTeamFilter);
+  }, [aggregateOnly, appliedTeamFilter, currentRecords]);
+  const rows = filteredRows;
 
   return <section aria-labelledby="attendance-report-heading" className="space-y-4">
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
@@ -423,7 +446,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50" aria-label="Filters">
           <SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Filters</span>
         </button>
-        <button type="button" disabled={!currentRecords.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-600 disabled:opacity-50">
+        <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-600 disabled:opacity-50">
           <Download className="h-4 w-4" /> Download Report
         </button>
       </form>}
@@ -437,7 +460,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
       <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">
         <SlidersHorizontal className="h-4 w-4" /> Filters
       </button>
-      <button type="button" disabled={!currentRecords.length} onClick={exportReport} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+      <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <Download className="h-4 w-4" /> Download report
       </button>
     </form>}
@@ -446,11 +469,20 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         <input id="attendance-from" type="date" value={from} onChange={event => setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">To date</label>
         <input id="attendance-to" type="date" value={to} onChange={event => setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+      {aggregateOnly && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">Select Team</label>
+        <select id="attendance-team" value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
+          className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="">All teams</option>
+          {teamOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select></div>}
       {showDetails && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">Status</label>
         <select id="attendance-status" value={status} onChange={event => setStatus(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
           <option value="all">All visible statuses</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
         </select></div>}
-      <p className="self-end pb-2 text-xs text-slate-500">{aggregateOnly ? 'Report date filters apply automatically.' : 'Date and status filters apply automatically.'}</p>
+      {aggregateOnly
+        ? <button type="button" onClick={() => setAppliedTeamFilter(selectedTeamFilter)}
+          className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">Apply Filter</button>
+        : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
     </div>}
     {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
@@ -488,7 +520,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
       </div>
     </section>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">No attendance records were returned for this date range.</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
+      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
         <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-2' : 'min-w-[1160px] border-spacing-0'}`}>
           <thead className="bg-white text-xs text-slate-500"><tr>
             {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" className="border-b border-slate-200 px-4 py-4 font-medium">{label}</th>)}

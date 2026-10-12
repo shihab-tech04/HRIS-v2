@@ -22,6 +22,15 @@ test('attendance report export includes the displayed Team Name field', () => {
   assert.match(browser, /Synthetic Product Team/);
 });
 
+test('Figma team filter applies to visible attendance rows and CSV exports', () => {
+  assert.match(workspace, /label htmlFor="attendance-team"[^>]*>Select Team/);
+  assert.match(workspace, /setAppliedTeamFilter\(selectedTeamFilter\)/);
+  assert.match(workspace, /const exportRows = filteredRows/);
+  assert.match(workspace, /No attendance report rows match the selected team/);
+  assert.match(browser, /selectOption\('Synthetic Design Team'\)/);
+  assert.match(browser, /expect\(filteredCsv\)\.not\.toContain\('Synthetic Product Team'\)/);
+});
+
 test('synthetic RLS fixture covers valid and cross-tenant employee team references', () => {
   assert.match(fixture, /CREATE TABLE public\.teams/);
   assert.match(fixture, /team_id uuid REFERENCES public\.teams\(id\)/);

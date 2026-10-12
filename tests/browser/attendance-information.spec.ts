@@ -197,6 +197,25 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261012.png'), fullPage: true });
 
+  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByLabel('Select Team').selectOption('Synthetic Design Team');
+  await page.getByRole('button', { name: 'Apply Filter', exact: true }).click();
+  await expect(positiveRow).toHaveCount(0);
+  await expect(negativeRow).toBeVisible();
+  const filteredDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Report', exact: true }).click();
+  const filteredReport = await filteredDownload;
+  const filteredStream = await filteredReport.createReadStream();
+  let filteredCsv = '';
+  if (filteredStream) for await (const chunk of filteredStream) filteredCsv += chunk.toString();
+  expect(filteredCsv).toContain('Synthetic Design Team');
+  expect(filteredCsv).not.toContain('Synthetic Product Team');
+  await page.getByLabel('Select Team').selectOption('');
+  await page.getByRole('button', { name: 'Apply Filter', exact: true }).click();
+  await expect(positiveRow).toBeVisible();
+  await expect(negativeRow).toBeVisible();
+  await page.getByRole('button', { name: 'Filters' }).click();
+
   await page.getByLabel('Search employees').fill('Aggregate Report');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Aggregate Report')).toBe(true);
