@@ -119,6 +119,10 @@ function queryAs(session, sql) {
   return jsonResult(psqlSync(sessionSql(session, sql)));
 }
 
+function queryAnon(sql) {
+  return jsonResult(psqlSync(`BEGIN;\nSET LOCAL ROLE anon;\n${sql};\nCOMMIT;\n`));
+}
+
 function attemptAs(session, sql, role = 'authenticated') {
   const input = role === 'anon'
     ? `BEGIN;\nSET LOCAL ROLE anon;\n${sql};\nCOMMIT;\n`
@@ -230,6 +234,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -292,6 +297,42 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const guardedTenantTables = [
+  'attendance_corrections', 'attendance_records', 'confirmation_reviews', 'designations',
+  'employee_leave_balances', 'employee_referrals', 'grades', 'holidays', 'hr_policies',
+  'manpower_requisitions', 'notices', 'org_locations', 'pay_periods', 'payslips',
+  'performance_cycles', 'performance_goals', 'project_performance_reviews', 'service_requests',
+  'shifts', 'teams',
+];
+const guardedTenantQuery = `SELECT jsonb_build_object(${guardedTenantTables.map(table =>
+  `'${table}', coalesce((SELECT jsonb_agg(DISTINCT tenant_id::text) FROM public.${table}),'[]'::jsonb)`,
+).join(',')})`;
+const tenantAVisibleTables = queryAs(managerA, guardedTenantQuery);
+const tenantBVisibleTables = queryAs(managerB, guardedTenantQuery);
+const globalOnlyVisibleTables = queryAs(globalOnly, guardedTenantQuery);
+const anonymousVisibleTables = queryAnon(guardedTenantQuery);
+const visibleOnlyInTenant = (rows, tenantId) => Object.values(rows).every(value =>
+  Array.isArray(value) && value.length === 1 && value[0] === tenantId);
+const noVisibleTenants = rows => Object.values(rows).every(value => Array.isArray(value) && value.length === 0);
+record('All 20 legacy-readable tables resolve through each active membership role only',
+  visibleOnlyInTenant(tenantAVisibleTables, ids.tenantA)
+    && visibleOnlyInTenant(tenantBVisibleTables, ids.tenantB),
+  `tenant A tables=${Object.values(tenantAVisibleTables).filter(value => value.length === 1).length}/20; `
+    + `tenant B tables=${Object.values(tenantBVisibleTables).filter(value => value.length === 1).length}/20`);
+record('Global role permissions without an active tenant membership reveal none of the 20 tables',
+  noVisibleTenants(globalOnlyVisibleTables));
+record('Anonymous role cannot read any tenant table even where SELECT is granted',
+  noVisibleTenants(anonymousVisibleTables));
+const tenantViewerVisibleTables = queryAs(tenantViewer, guardedTenantQuery);
+record('Tenant viewer retains own attendance, leave, holiday and notice reads without broader module grants',
+  tenantViewerVisibleTables.attendance_records.includes(ids.tenantB)
+    && tenantViewerVisibleTables.employee_leave_balances.includes(ids.tenantB)
+    && tenantViewerVisibleTables.holidays.includes(ids.tenantB)
+    && tenantViewerVisibleTables.notices.includes(ids.tenantB)
+    && tenantViewerVisibleTables.performance_cycles.length === 0
+    && !tenantViewerVisibleTables.attendance_records.includes(ids.tenantA)
+    && !tenantViewerVisibleTables.holidays.includes(ids.tenantA));
 
 const authStatus = queryAs(managerA, `SELECT jsonb_build_object(
   'uid',auth.uid(),'session_id',auth.jwt()->>'session_id',

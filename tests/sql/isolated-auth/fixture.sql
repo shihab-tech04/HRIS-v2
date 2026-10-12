@@ -18,6 +18,7 @@ DROP FUNCTION IF EXISTS public.admin_resolve_attendance_correction(uuid,text,tex
 DROP FUNCTION IF EXISTS public.admin_resolve_leave_request(uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.admin_save_attendance(uuid,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_admin_can_read_tenant(uuid,text) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_is_active_tenant_member(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_own_employee_for_tenant(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.employee_for_auth_user() CASCADE;
 DROP FUNCTION IF EXISTS public.has_tenant_permission(uuid,text) CASCADE;
@@ -28,7 +29,20 @@ DROP FUNCTION IF EXISTS public.synesis_tenant_id() CASCADE;
 
 DROP TABLE IF EXISTS public.attendance_corrections CASCADE;
 DROP TABLE IF EXISTS public.attendance_records CASCADE;
+DROP TABLE IF EXISTS public.confirmation_reviews CASCADE;
+DROP TABLE IF EXISTS public.employee_referrals CASCADE;
 DROP TABLE IF EXISTS public.employee_leave_balances CASCADE;
+DROP TABLE IF EXISTS public.grades CASCADE;
+DROP TABLE IF EXISTS public.hr_policies CASCADE;
+DROP TABLE IF EXISTS public.manpower_requisitions CASCADE;
+DROP TABLE IF EXISTS public.notices CASCADE;
+DROP TABLE IF EXISTS public.org_locations CASCADE;
+DROP TABLE IF EXISTS public.pay_periods CASCADE;
+DROP TABLE IF EXISTS public.payslips CASCADE;
+DROP TABLE IF EXISTS public.performance_cycles CASCADE;
+DROP TABLE IF EXISTS public.performance_goals CASCADE;
+DROP TABLE IF EXISTS public.project_performance_reviews CASCADE;
+DROP TABLE IF EXISTS public.service_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_types CASCADE;
 DROP TABLE IF EXISTS public.holidays CASCADE;
@@ -258,6 +272,57 @@ CREATE TABLE public.attendance_corrections (
   evidence_path text
 );
 
+-- Small synthetic replicas for the remaining exposed tables. Only the columns
+-- referenced by their legacy RLS policies and the new tenant guards are needed
+-- in this disposable fixture; production column shapes were separately read.
+CREATE TABLE public.confirmation_reviews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  employee_id uuid, status text DEFAULT 'pending'
+);
+CREATE TABLE public.employee_referrals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  referrer_employee_id uuid
+);
+CREATE TABLE public.grades (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+);
+CREATE TABLE public.hr_policies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE public.manpower_requisitions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+);
+CREATE TABLE public.notices (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE public.org_locations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+);
+CREATE TABLE public.pay_periods (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+);
+CREATE TABLE public.payslips (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  employee_id uuid, status text NOT NULL DEFAULT 'released'
+);
+CREATE TABLE public.performance_cycles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+);
+CREATE TABLE public.performance_goals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  employee_id uuid
+);
+CREATE TABLE public.project_performance_reviews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  employee_id uuid, project_manager_employee_id uuid
+);
+CREATE TABLE public.service_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  employee_id uuid
+);
+
 CREATE TABLE public.admin_audit_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_id uuid,
@@ -413,6 +478,23 @@ ALTER TABLE public.employee_leave_balances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.leave_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.designations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.holidays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.confirmation_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_referrals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.grades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hr_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.manpower_requisitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.org_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pay_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payslips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.performance_cycles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.performance_goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_performance_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.service_requests ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY employees_admin_read ON public.employees
   FOR SELECT TO authenticated USING (
@@ -432,6 +514,18 @@ CREATE POLICY departments_admin_read ON public.departments
   FOR SELECT TO authenticated USING (
     public.has_permission('organization.view') OR public.has_permission('organization.manage')
   );
+CREATE POLICY designations_admin_read ON public.designations FOR SELECT TO authenticated USING (
+  public.has_permission('organization.view') OR public.has_permission('organization.manage')
+);
+CREATE POLICY teams_admin_read ON public.teams FOR SELECT TO authenticated USING (
+  public.has_permission('organization.view') OR public.has_permission('organization.manage')
+);
+CREATE POLICY shifts_admin_read ON public.shifts FOR SELECT TO authenticated USING (
+  public.has_permission('organization.view') OR public.has_permission('organization.manage')
+);
+CREATE POLICY holidays_read ON public.holidays FOR SELECT TO authenticated USING (
+  active IS TRUE OR public.has_permission('holidays.manage')
+);
 CREATE POLICY hris_departments_tenant_read_guard ON public.departments
   AS RESTRICTIVE FOR SELECT TO authenticated USING (
     public.hris_admin_can_read_tenant(tenant_id,'organization.view')
@@ -484,10 +578,60 @@ CREATE POLICY leave_balances_read ON public.employee_leave_balances
     OR public.has_permission('leave.view') OR public.has_permission('leave.manage')
   );
 
+-- Model the current, unscoped global-permission read branches so the tests can
+-- prove the restrictive migration closes those exact paths.
+CREATE POLICY confirmation_reviews_admin_read ON public.confirmation_reviews
+  FOR SELECT TO authenticated USING (public.has_permission('performance.view'));
+CREATE POLICY employee_referrals_read ON public.employee_referrals
+  FOR SELECT TO authenticated USING (
+    referrer_employee_id=public.employee_for_auth_user()
+    OR public.has_permission('referrals.view') OR public.has_permission('referrals.manage')
+  );
+CREATE POLICY grades_admin_read ON public.grades FOR SELECT TO authenticated USING (
+  public.has_permission('organization.view') OR public.has_permission('organization.manage')
+);
+CREATE POLICY hr_policies_read ON public.hr_policies FOR SELECT TO authenticated USING (
+  (active IS TRUE AND public.employee_for_auth_user() IS NOT NULL)
+  OR public.has_permission('policies.view') OR public.has_permission('policies.manage')
+);
+CREATE POLICY manpower_requisitions_admin_read ON public.manpower_requisitions
+  FOR SELECT TO authenticated USING (public.has_permission('recruitment.view'));
+CREATE POLICY notices_read ON public.notices FOR SELECT TO authenticated USING (
+  active IS TRUE OR public.has_permission('notices.manage')
+);
+CREATE POLICY org_locations_admin_read ON public.org_locations FOR SELECT TO authenticated USING (
+  public.has_permission('organization.view') OR public.has_permission('organization.manage')
+);
+CREATE POLICY pay_periods_admin_read ON public.pay_periods FOR SELECT TO authenticated USING (
+  public.has_permission('payroll.view')
+);
+CREATE POLICY payslips_admin_or_own_read ON public.payslips FOR SELECT TO authenticated USING (
+  public.has_permission('payroll.view')
+  OR (employee_id=public.employee_for_auth_user() AND status='released')
+);
+CREATE POLICY performance_cycles_admin_read ON public.performance_cycles
+  FOR SELECT TO authenticated USING (public.has_permission('performance.view'));
+CREATE POLICY performance_goals_admin_read ON public.performance_goals
+  FOR SELECT TO authenticated USING (
+    public.has_permission('performance.view') OR employee_id=public.employee_for_auth_user()
+  );
+CREATE POLICY project_performance_reviews_admin_read ON public.project_performance_reviews
+  FOR SELECT TO authenticated USING (
+    public.has_permission('performance.view') OR employee_id=public.employee_for_auth_user()
+  );
+CREATE POLICY service_requests_read ON public.service_requests FOR SELECT TO authenticated USING (
+  employee_id=public.employee_for_auth_user()
+  OR public.has_permission('self_service.view') OR public.has_permission('self_service.manage')
+);
+
 GRANT USAGE ON SCHEMA public TO authenticated,anon,service_role;
 GRANT SELECT ON public.employees,public.departments,public.designations,public.leave_types,
   public.attendance_records,public.attendance_corrections,public.leave_requests,
-  public.employee_leave_balances TO authenticated;
+  public.employee_leave_balances,public.confirmation_reviews,public.employee_referrals,
+  public.grades,public.holidays,public.hr_policies,public.manpower_requisitions,public.notices,
+  public.org_locations,public.pay_periods,public.payslips,public.performance_cycles,
+  public.performance_goals,public.project_performance_reviews,public.service_requests,
+  public.shifts,public.teams TO authenticated,anon;
 GRANT ALL ON public.tenants,public.admin_users,public.roles,public.permissions,
   public.role_permissions,public.user_roles,public.tenant_memberships,public.shifts,
   public.departments,public.designations,public.employees,public.holidays,public.leave_types,
@@ -520,9 +664,28 @@ INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_tenant_manager_b','dashboard.view'),('qa_tenant_manager_b','reports.view'),
   ('qa_tenant_viewer_b','leave.view'),('qa_tenant_viewer_b','attendance.view'),
   ('qa_tenant_reporter_a','reports.view');
+INSERT INTO public.permissions(id,module,action) VALUES
+  ('performance.view','performance','view'),('performance.manage','performance','manage'),
+  ('organization.view','organization','view'),('organization.manage','organization','manage'),
+  ('referrals.view','referrals','view'),('referrals.manage','referrals','manage'),
+  ('holidays.manage','holidays','manage'),
+  ('policies.view','policies','view'),('policies.manage','policies','manage'),
+  ('recruitment.view','recruitment','view'),('recruitment.manage','recruitment','manage'),
+  ('notices.view','notices','view'),('notices.manage','notices','manage'),
+  ('payroll.view','payroll','view'),('payroll.manage','payroll','manage'),
+  ('self_service.view','self_service','view'),('self_service.manage','self_service','manage');
+INSERT INTO public.role_permissions(role_id,permission_id)
+SELECT role_id, permission_id
+FROM (VALUES ('qa_global_manager'),('qa_tenant_manager_a'),('qa_tenant_manager_b')) roles(role_id)
+CROSS JOIN (VALUES
+  ('performance.view'),('performance.manage'),('organization.view'),('organization.manage'),
+  ('referrals.view'),('referrals.manage'),('holidays.manage'),('policies.view'),('policies.manage'),
+  ('recruitment.view'),('recruitment.manage'),('notices.view'),('notices.manage'),
+  ('payroll.view'),('payroll.manage'),('self_service.view'),('self_service.manage')
+) perms(permission_id);
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users
-  WHERE email IN ('global-only@hris.test','manager-a@hris.test');
+  WHERE email IN ('global-only@hris.test','manager-a@hris.test','manager-b@hris.test');
 INSERT INTO public.user_roles(user_id,role_id)
   SELECT id,'qa_global_manager' FROM auth.users
   WHERE email IN ('manager-a@hris.test','manager-b@hris.test','global-only@hris.test');
@@ -564,6 +727,41 @@ INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,offi
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+INSERT INTO public.confirmation_reviews(tenant_id,employee_id) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.employee_referrals(tenant_id,referrer_employee_id) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.grades(tenant_id) VALUES
+  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
+INSERT INTO public.hr_policies(tenant_id,active) VALUES
+  ('11111111-1111-4111-8111-111111111111',true),('22222222-2222-4222-8222-222222222222',true);
+INSERT INTO public.manpower_requisitions(tenant_id) VALUES
+  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
+INSERT INTO public.notices(tenant_id,active) VALUES
+  ('11111111-1111-4111-8111-111111111111',true),('22222222-2222-4222-8222-222222222222',true);
+INSERT INTO public.org_locations(tenant_id) VALUES
+  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
+INSERT INTO public.pay_periods(tenant_id) VALUES
+  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
+INSERT INTO public.payslips(tenant_id,employee_id,status) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','released'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','released');
+INSERT INTO public.performance_cycles(tenant_id) VALUES
+  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
+INSERT INTO public.performance_goals(tenant_id,employee_id) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.project_performance_reviews(tenant_id,employee_id,project_manager_employee_id) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','55555555-5555-4555-8555-555555555555'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.service_requests(tenant_id,employee_id) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.holidays(id,tenant_id,name,start_date,end_date,active) VALUES
+  ('77777777-7777-4777-8777-777777777778','22222222-2222-4222-8222-222222222222',
+    'Synthetic QA holiday B','2026-10-13','2026-10-13',true);
 INSERT INTO public.employee_shift_assignments(tenant_id,employee_id,shift_id,assignment_date,status) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','33333333-3333-4333-8333-333333333333',(now() AT TIME ZONE 'Asia/Dhaka')::date,'scheduled'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','44444444-4444-4444-8444-444444444444',(now() AT TIME ZONE 'Asia/Dhaka')::date,'scheduled');

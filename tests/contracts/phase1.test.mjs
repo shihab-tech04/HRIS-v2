@@ -29,6 +29,31 @@ test('release candidate scopes tenant permissions through active membership role
   assert.match(sql, /LEFT JOIN public\.departments d ON d\.id=e\.department_id AND d\.tenant_id=e\.tenant_id[\s\S]+?LEFT JOIN public\.designations ds ON ds\.id=e\.designation_id AND ds\.tenant_id=e\.tenant_id/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.hris_get_my_dashboard_data\(uuid\) FROM PUBLIC, anon/);
 });
+test('all 20 legacy tenant-readable tables have membership reads and restrictive Auth/anon guards', () => {
+  const membershipSql = source('supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql');
+  const guardsSql = source('supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql');
+  const allPolicies = `${membershipSql}\n${guardsSql}`;
+  const tables = [
+    'attendance_corrections', 'attendance_records', 'confirmation_reviews', 'designations',
+    'employee_leave_balances', 'employee_referrals', 'grades', 'holidays', 'hr_policies',
+    'manpower_requisitions', 'notices', 'org_locations', 'pay_periods', 'payslips',
+    'performance_cycles', 'performance_goals', 'project_performance_reviews', 'service_requests',
+    'shifts', 'teams',
+  ];
+  for (const table of tables) {
+    assert.match(allPolicies, new RegExp(
+      `CREATE POLICY hris_${table}_membership_read\\s+ON public\\.${table} AS PERMISSIVE FOR SELECT TO authenticated`,
+    ), `${table} needs a membership-scoped permissive read policy`);
+    assert.match(guardsSql, new RegExp(
+      `CREATE POLICY hris_${table}_membership_guard\\s+ON public\\.${table} AS RESTRICTIVE FOR SELECT TO authenticated`,
+    ), `${table} needs a restrictive tenant and anonymous guard`);
+  }
+  assert.match(guardsSql, /CREATE OR REPLACE FUNCTION public\.hris_is_active_tenant_member/);
+  assert.match(guardsSql, /JOIN public\.roles r\s+ON r\.id = m\.role/i);
+  assert.match(guardsSql, /public\.is_live_session\(\)/);
+  assert.match(guardsSql, /auth\.uid\(\) IS NOT NULL/);
+  assert.doesNotMatch(guardsSql, /\bDROP TABLE\b/i);
+});
 test('employee self-service and leave evidence stay inside the linked tenant', () => {
   const sql = source('supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql');
   assert.match(sql, /CREATE POLICY hris_attendance_records_own_read[\s\S]+?AS PERMISSIVE FOR SELECT TO authenticated/);
