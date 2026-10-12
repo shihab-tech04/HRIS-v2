@@ -34,3 +34,10 @@
 
 - No production SQL, data, permissions or Auth settings changed; no paid service, GitHub push or deployment occurred.
 - The new migration is a local release candidate. Continue the 22-phase implementation and Figma-aligned functional pages; map acceptance to canonical IDs as soon as the Project source mount becomes available. Release order remains full product acceptance → owned Drive backup and integrity readback → final GitHub push → deployment.
+
+## Drive preservation
+
+- A versioned archive was uploaded as a new file to the connected account-owned `HRMIS Preservation 2026-10-11` folder; previous files remain in place.
+- Archive: `Synesis_HRIS360_Attendance_TeamName_20261012_1832.zip`, 2,064,077 bytes, SHA-256 `ca41903c194323698eec0d0adc2d25ccf8087146ac3907e0a81fbbbd423ed2f4`.
+- Drive readback matched the local archive byte-for-byte (same SHA-256), and the local ZIP passed `unzip -t` with no errors. Drive file ID: `113U00tgit2R1bJzLRh2u_kdxk5yFBUr1`.
+- Destination ownership matched the connected profile (`shihabshajib01@gmail.com`); upload succeeded directly into the folder. Full receipt and file links are in `DRIVE_PRESERVATION_RECEIPT_20261012_1832.md`.
