@@ -226,7 +226,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setIsSuperAdmin(false);
     if (switchedIdentity) {
       setTenantId('');
-      setView('employee');
+      // Start each authenticated identity in the authorized system workspace.
+      // Non-admin sessions are still restricted to Employee View by currentView.
+      setView('system');
     }
     setError('');
     async function load() {
