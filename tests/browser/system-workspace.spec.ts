@@ -60,14 +60,15 @@ test('authorized Super Admin opens real system navigation, not fixture preview',
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   await expect(page.getByText('Authenticated · synthetic-superadmin@example.org')).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'HRIS modules' })).toBeVisible();
+  const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
+  await expect(moduleNav).toBeVisible();
   await expect(page.getByRole('heading', { name: 'System overview' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Employee directory/ })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Employee directory/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Performance goals/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Compensation management/ })).toBeVisible();
   await expect(page.getByText('No sample data or simulated saves are displayed.')).toBeVisible();
 
-  await page.getByRole('button', { name: /Employee directory/ }).click();
+  await moduleNav.getByRole('button', { name: /Employee directory/ }).click();
   await expect(page.getByText('Synthetic Test Employee')).toBeVisible();
   await expect(page.getByText('TEST-01')).toBeVisible();
 
