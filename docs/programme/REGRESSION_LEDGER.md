@@ -1,9 +1,10 @@
 # Regression Ledger
 
-**Checkpoint:** 2026-10-12 18:56 Asia/Dhaka.
+**Checkpoint:** 2026-10-12 22:16 Asia/Dhaka.
 
 | Area | Regression protection executed | Result | Limit |
 |---|---|---|---|
+| Shift roster applied date/search filters | `npm run check`; `HRIS_TEST_PORT=4248 npm run test:e2e`; `node tests/sql/isolated-auth/run-local.mjs` | **39/39 contracts PASS**, TypeScript/build PASS; **38/38 Chromium PASS**; local Auth/RLS **65/65 PASS** | Verifies date drafts make no RPC until apply, applied tenant/date/search payload, valid range, search, assignment, duplicate recovery and mobile table. No production writes. The first contract attempt had 38/39 due a missing spec reference, fixed before passing; initial server/socket access was blocked before tests and local-only reruns passed. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261012_2216.md`. |
 | Figma Attendance Report Team sorting | `npm run check`; isolated-port `npm run test:e2e`; `node tests/sql/isolated-auth/run-local.mjs` | **37/37 contracts PASS**, TypeScript/build PASS; **38/38 Chromium PASS**; focused report journey **1/1 PASS**; local Auth/RLS **65/65 PASS** | Verifies accessible sort direction, filter apply/reset, visible rows and filtered/sorted CSV, plus all prior tenant isolation. No production writes. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261012_1856.md`. |
 | Figma Attendance Report Team filter | `npm run check`; isolated-port `npm run test:e2e` | **36/36 contracts PASS**, TypeScript/build PASS; **38/38 Chromium PASS**; focused report journey **1/1 PASS** | Verifies team apply/reset, visible rows, filtered CSV and 375px table. No backend code changed; separate local Auth/RLS suite **65/65 PASS**. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261012_1847.md`. |
 | Main authenticated workspace | `npm run check`; TypeScript, **29/29** contract tests and Vite production build | PASS | Build emits the existing >500 kB chunk warning; local build is not deployment acceptance. |
