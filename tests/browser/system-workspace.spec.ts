@@ -64,14 +64,14 @@ test('authorized Super Admin opens real system navigation, not fixture preview',
   await expect(moduleNav).toBeVisible();
   await expect(page.getByRole('heading', { name: 'System overview' })).toBeVisible();
   await expect(moduleNav.getByRole('button', { name: /Employee directory/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Performance goals/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Compensation management/ })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Performance goals/ })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Compensation management/ })).toBeVisible();
   await expect(page.getByText('No sample data or simulated saves are displayed.')).toBeVisible();
 
   await moduleNav.getByRole('button', { name: /Employee directory/ }).click();
   await expect(page.getByText('Synthetic Test Employee')).toBeVisible();
   await expect(page.getByText('TEST-01')).toBeVisible();
 
-  await page.getByRole('button', { name: /Compensation management/ }).click();
+  await moduleNav.getByRole('button', { name: /Compensation management/ }).click();
   await expect(page.getByRole('heading', { name: 'Workflow integration pending' })).toBeVisible();
 });
