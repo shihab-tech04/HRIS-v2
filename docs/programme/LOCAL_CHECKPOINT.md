@@ -1,15 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-13 00:13 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-13 00:25 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 09 manager leave decision notes
+## Current checkpoint — Phase 08 attendance correction decision notes
 
-- Latest feature commit: `673c374ab8e900a4153b2f661e1afcc54f2029c0`; keyboard acceptance: `3a408800a08c1b8ec2b706c3298c8b43cf42c562`. Managers can provide an optional rejection note, cancel or dismiss the dialog with Escape, and view saved notes in the queue. Employee Personal Leave history already renders the same resolution note.
-- Verification: TypeScript/build PASS, **44/44 contracts PASS**, focused manager Leave **1/1 PASS**, full Chromium **40/40 PASS**, local Auth/RLS **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. The first post-rollover Auth/RLS attempt was 73/77 because three correction fixtures used Oct 12 while attendance used the local Oct 13 date; the date-derived fixture repeat passed all 77.
-- This slice changed four source/test files, **+113/-23**, across `src/live/LiveHrisWorkspace.tsx`, `tests/browser/manager-leave.spec.ts`, `tests/sql/isolated-auth/fixture.sql`, and `tests/sql/isolated-auth/run-local.mjs`. Browser-generated screenshots were restored to preserve the committed Figma evidence.
-- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The expected matrix hash is `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`; the mounted Project `sources/` directory is empty and the local `stories:[]` skeleton remains unchanged at SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`.
-- The Phase 08 timesheet reviewer journey remains default-deny pending a verified tenant-scoped project-lead mapping and permission. Continue Phase 08/09 product implementation and source reconciliation; do not invent story IDs or reviewer authorization. Supabase migrations remain local release candidates. No hosted data, Auth settings, permissions, paid services, GitHub push or deployment changed.
-- See `EXECUTION_CHECKPOINT_20261013_0013.md`, `ACCEPTANCE_EVIDENCE_20261013_0013.md`, and `MASTER_PHASE_LEDGER_20261013_0013.md`. Complete all acceptance, make and read-back-verify the final full-source archive in an account-owned Drive folder, then push and deploy.
+- Latest feature commit: `461cdcd`; manager Attendance Report now captures optional correction-rejection notes through the existing RPC, displays saved notes, and supports Cancel/Escape with focus restoration. Feature slice: 2 files, +113/-14.
+- Verification: TypeScript/build PASS, **44/44 contracts PASS**, focused Attendance Information **1/1 PASS**, full Chromium **40/40 PASS**, local Auth/RLS latest unchanged-SQL run **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. No SQL changed in this UI slice.
+- Since the 14:20 Drive baseline `4ded5f1`, Main source/test/migration diff is **30 paths, +8,309/-51**. See `EXECUTION_CHECKPOINT_20261013_0025.md` for every path. Browser-generated screenshots were restored to preserve the committed Figma evidence.
+- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The user reports the recovered matrix is in Project sources, but this task's mounted `sources/` directory is empty; only the unchanged `stories:[]` skeleton is locally visible (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`; expected canonical SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`). No story text or IDs were inferred.
+- The Phase 08 timesheet reviewer journey remains default-deny pending a verified tenant-scoped project-lead mapping and permission. Continue functional phase work with verified contracts. Supabase migrations remain local release candidates. No hosted data, Auth settings, permissions, paid services, GitHub push or deployment changed.
+- See `EXECUTION_CHECKPOINT_20261013_0025.md`, `ACCEPTANCE_EVIDENCE_20261013_0025.md`, and `MASTER_PHASE_LEDGER_20261013_0025.md`. Complete all acceptance, make and read-back-verify the final full-source archive in an account-owned Drive folder, then push and deploy.
 
 ## Previous checkpoint notes
 
