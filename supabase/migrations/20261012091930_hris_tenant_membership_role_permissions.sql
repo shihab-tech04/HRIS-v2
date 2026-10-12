@@ -373,6 +373,7 @@ DECLARE
   v_year integer;
   v_gender text;
   v_weekly_off integer[] := '{}'::integer[];
+  v_employee_profile jsonb;
 BEGIN
   IF NOT public.is_live_session() THEN
     RAISE EXCEPTION 'Active employee session required.' USING errcode='42501';
@@ -388,15 +389,25 @@ BEGIN
     RAISE EXCEPTION 'Linked employee record required.' USING errcode='42501';
   END IF;
 
-  SELECT e.gender,coalesce(s.weekly_off_days,'{}'::integer[])
-    INTO v_gender,v_weekly_off
+  SELECT e.gender,coalesce(s.weekly_off_days,'{}'::integer[]),jsonb_build_object(
+      'full_name',e.full_name,
+      'employee_number',e.employee_number,
+      'official_email',e.official_email,
+      'designation_title',ds.title,
+      'department_name',d.name
+    )
+    INTO v_gender,v_weekly_off,v_employee_profile
   FROM public.employees e
   LEFT JOIN public.shifts s ON s.id=e.shift_id AND s.active IS TRUE
+  LEFT JOIN public.departments d ON d.id=e.department_id AND d.tenant_id=e.tenant_id
+  LEFT JOIN public.designations ds ON ds.id=e.designation_id AND ds.tenant_id=e.tenant_id
   WHERE e.id=v_employee AND e.tenant_id=p_tenant_id;
   v_today := (now() AT TIME ZONE v_timezone)::date;
   v_year := extract(year FROM v_today)::integer;
 
   RETURN jsonb_build_object(
+    'employee',v_employee_profile,
+    'dashboard_date',v_today,
     'attendance',jsonb_build_object('records',coalesce((
       SELECT jsonb_agg(jsonb_build_object(
         'id',a.id,'attendance_date',a.attendance_date,'check_in',a.check_in,

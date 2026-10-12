@@ -23,6 +23,9 @@ test('release candidate scopes tenant permissions through active membership role
   assert.match(sql, /hris_employee_leave_balances_tenant_read_guard[\s\S]+?AS RESTRICTIVE FOR SELECT/);
   assert.doesNotMatch(sql, /p_tenant_id\s*=\s*public\.synesis_tenant_id\(\)/i);
   assert.match(sql, /CREATE OR REPLACE FUNCTION public\.hris_get_my_dashboard_data\(p_tenant_id uuid\)[\s\S]+?hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(sql, /'employee',v_employee_profile[\s\S]+?'dashboard_date',v_today/);
+  assert.match(sql, /'full_name',e\.full_name[\s\S]+?'employee_number',e\.employee_number[\s\S]+?'official_email',e\.official_email/);
+  assert.match(sql, /LEFT JOIN public\.departments d ON d\.id=e\.department_id AND d\.tenant_id=e\.tenant_id[\s\S]+?LEFT JOIN public\.designations ds ON ds\.id=e\.designation_id AND ds\.tenant_id=e\.tenant_id/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.hris_get_my_dashboard_data\(uuid\) FROM PUBLIC, anon/);
 });
 test('employee self-service and leave evidence stay inside the linked tenant', () => {

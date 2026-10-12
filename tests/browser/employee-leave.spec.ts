@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 const userId = 'f2222222-2222-4222-8222-222222222222';
 const tenantId = 'f3333333-3333-4333-8333-333333333333';
@@ -71,13 +72,23 @@ test('linked employee can complete the private evidence leave request on mobile'
         requested_days: 1, reason: 'Synthetic mobile leave request', status: 'pending',
       }] : [];
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-        attendance: { records: [] },
+        employee: {
+          full_name: 'Synthetic Employee', employee_number: 'QA-A-001',
+          official_email: user.email, designation_title: 'Product Designer', department_name: 'Experience Design',
+        },
+        dashboard_date: '2026-10-12',
+        attendance: { records: [{
+          id: 'f6666666-6666-4666-8666-666666666666', attendance_date: '2026-10-12',
+          status: 'present', check_in: '2026-10-12T03:00:00.000Z', check_out: '2026-10-12T11:30:00.000Z',
+          work_mode: 'office', work_hours: 8.5,
+        }] },
         balances: [{ leave_type_id: leaveTypeId, leave_type_name: 'Medical leave', available_days: 20,
           used_days: 0, pending_days: submitted ? 1 : 0 }],
         requests: requestHistory,
         leave_types: [{ id: leaveTypeId, name: 'Medical leave', annual_entitlement: 20,
           min_days_notice: null, requires_document_proof: true }],
-        holidays: [], weekly_off_days: [0, 6], balance_year: new Date().getFullYear(),
+        holidays: [{ id: 'f7777777-7777-4777-8777-777777777777', name: 'Synthetic Staff Day', start_date: '2026-10-13', end_date: '2026-10-13' }],
+        weekly_off_days: [0, 6], balance_year: new Date().getFullYear(),
       }) });
     } else if (endpoint === 'hris_employee_submit_leave_request') {
       submitted = true;
@@ -113,8 +124,33 @@ test('linked employee can complete the private evidence leave request on mobile'
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'My Dashboard' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'My leave' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Personal Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Synthetic Employee' })).toBeVisible();
+  await expect(page.getByText('Product Designer')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today’s attendance' })).toBeVisible();
+  await expect(page.getByText('8.5 hr')).toBeVisible();
+  const dashboardTabs = page.getByRole('group', { name: 'Personal dashboard views' });
+  await expect(dashboardTabs.getByRole('button', { name: 'Working hours' })).toBeVisible();
+  await expect(dashboardTabs.getByRole('button', { name: 'Work location' })).toBeVisible();
+  await expect(dashboardTabs.getByRole('button', { name: 'Leave type' })).toBeVisible();
+  await expect(dashboardTabs.getByRole('button', { name: 'Check-in times' })).toBeVisible();
+  const tabColumns = await dashboardTabs.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+  expect(tabColumns).toBe(2);
+  expect(await dashboardTabs.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Work location' }).click();
+  await expect(page.getByText('Office').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Leave type' }).click();
+  await expect(page.getByText('Medical leave', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Upcoming holidays' })).toBeVisible();
+  await expect(page.getByText('Synthetic Staff Day')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request time off' })).toBeVisible();
+  await page.getByRole('button', { name: 'Working hours' }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-dashboard-desktop-20261012.png'), fullPage: true });
+  await page.setViewportSize({ width: 375, height: 812 });
+  const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(documentWidth).toBeLessThanOrEqual(376);
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-dashboard-mobile-20261012.png'), fullPage: true });
   await page.getByRole('button', { name: 'Request for leave' }).click();
   const dialog = page.getByRole('dialog', { name: 'Request for leave' });
   await expect(dialog).toBeVisible();

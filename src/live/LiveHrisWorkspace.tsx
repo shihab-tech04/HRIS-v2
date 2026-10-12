@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
   Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
-  ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Menu,
+  ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users, X, XCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -77,6 +77,16 @@ function displayTime(value: unknown): string {
   if (typeof value !== 'string' || !value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function displayShortDate(value: unknown): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return display(value);
+  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function displayWorkMode(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return 'Not recorded';
+  return value.trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
 function localIsoDate(date: Date): string {
@@ -527,12 +537,15 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
 }
 
 function PersonalLeaveRequests({
-  tenantId, userId, leave, onRefresh,
+  tenantId, userId, leave, onRefresh, compact = false, showBalances = true, showHistory = true,
 }: {
   tenantId: string;
   userId: string;
   leave: Record<string, unknown>;
   onRefresh: () => Promise<void>;
+  compact?: boolean;
+  showBalances?: boolean;
+  showHistory?: boolean;
 }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [leaveTypeId, setLeaveTypeId] = useState('');
@@ -660,23 +673,23 @@ function PersonalLeaveRequests({
   }
 
   return <>
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="personal-leave-heading">
+    <section className={`space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${compact ? 'xl:p-4' : 'sm:p-5'}`} aria-labelledby="personal-leave-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 id="personal-leave-heading" className="text-lg font-semibold text-[#49454F]">My leave</h3>
-          <p className="mt-1 text-sm text-slate-600">Current-year balances and your request history</p></div>
+        <div><h3 id="personal-leave-heading" className="text-lg font-semibold text-[#49454F]">{compact ? 'Request time off' : 'My leave'}</h3>
+          <p className="mt-1 text-sm text-slate-600">{compact ? 'Submit a request for an authorized leave type' : 'Current-year balances and your request history'}</p></div>
         <button ref={requestButtonRef} type="button" disabled={!leaveTypes.length} onClick={() => { setFormError(''); setRequestOpen(true); }}
           className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:cursor-not-allowed disabled:opacity-50">
           Request for leave
         </button>
       </div>
       {success && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
-      {balances.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-6">
+      {showBalances && balances.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-6">
         {balances.map((item, index) => <div key={String(item.leave_type_id || index)} className="rounded-md border border-slate-200 p-3">
           <p className="truncate text-sm font-semibold text-[#49454F]">{display(item.leave_type_name)}</p>
           <p className="mt-1 text-sm text-slate-700">{display(item.available_days)} available</p>
         </div>)}
       </div>}
-      <div>
+      {showHistory && <div>
         <h4 className="mb-2 font-medium text-slate-800">Leave request history</h4>
         {!requests.length ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave requests yet.</p> :
           <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -697,7 +710,7 @@ function PersonalLeaveRequests({
               </tr>)}</tbody>
             </table>
           </div>}
-      </div>
+      </div>}
     </section>
 
     {requestOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 px-3 py-4" role="presentation"
@@ -759,13 +772,19 @@ function PersonalLeaveRequests({
   </>;
 }
 
-function EmployeeOverview({ tenantId, userId }: { tenantId: string; userId: string }) {
+type EmployeePanelId = 'working-hours' | 'work-location' | 'leave-type' | 'check-in-times';
+
+function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
   const [attendance, setAttendance] = useState<Record<string, unknown> | null>(null);
   const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
+  const [loadedTenantId, setLoadedTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activePanel, setActivePanel] = useState<EmployeePanelId>('working-hours');
+  const requestSequence = useRef(0);
 
   async function load(showLoading = true) {
+    const requestId = ++requestSequence.current;
     if (showLoading) setLoading(true);
     setError('');
     try {
@@ -773,51 +792,169 @@ function EmployeeOverview({ tenantId, userId }: { tenantId: string; userId: stri
         p_tenant_id: tenantId,
       });
       if (rpcError) throw rpcError;
-      const leaveData = asObject(data);
-      const attendanceData = asObject(leaveData?.attendance);
-      if (!attendanceData || !leaveData) throw new Error('Employee services returned an invalid response.');
+      const dashboardData = asObject(data);
+      const attendanceData = asObject(dashboardData?.attendance);
+      if (!attendanceData || !dashboardData) throw new Error('Employee services returned an invalid response.');
+      if (requestId !== requestSequence.current) return;
       setAttendance(attendanceData);
-      setLeave(leaveData);
+      setLeave(dashboardData);
+      setLoadedTenantId(tenantId);
     } catch (cause) {
-      setAttendance(null); setLeave(null);
+      if (requestId !== requestSequence.current) return;
+      setAttendance(null); setLeave(null); setLoadedTenantId('');
       setError(cause instanceof Error ? cause.message : 'Unable to load your HRIS summary.');
-    } finally { if (showLoading) setLoading(false); }
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
+    }
   }
 
-  useEffect(() => { void load(); }, [tenantId]);
-  const today = localIsoDate(new Date());
-  const record = asRows(attendance?.records).find(item => item.attendance_date === today);
+  useEffect(() => {
+    setAttendance(null); setLeave(null); setLoadedTenantId('');
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [tenantId]);
+
+  const currentTenantDataReady = loadedTenantId === tenantId && Boolean(attendance && leave);
+  const employee = asObject(leave?.employee);
+  const fullName = typeof employee?.full_name === 'string' ? employee.full_name : '';
+  const initials = fullName.trim().split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(part => part.slice(0, 1).toLocaleUpperCase()).join('') || '—';
+  const today = typeof leave?.dashboard_date === 'string' ? leave.dashboard_date : '';
+  const attendanceRecords = asRows(attendance?.records);
+  const todayRecord = attendanceRecords.find(item => item.attendance_date === today);
   const balances = asRows(leave?.balances);
+  const holidays = asRows(leave?.holidays);
+  const requests = asRows(leave?.requests);
+  const workHours = attendanceRecords.map(row => ({
+    row,
+    hours: row.work_hours === null || row.work_hours === undefined ? null : Number(row.work_hours),
+  })).filter(item => item.hours === null || Number.isFinite(item.hours)).reverse();
+  const recordedHours = workHours.reduce((sum, item) => sum + (item.hours ?? 0), 0);
+  const maxHours = Math.max(0, ...workHours.map(item => item.hours ?? 0));
+  const workModes = attendanceRecords.reduce<Record<string, number>>((counts, row) => {
+    const mode = displayWorkMode(row.work_mode);
+    if (mode !== 'Not recorded') counts[mode] = (counts[mode] || 0) + 1;
+    return counts;
+  }, {});
+  const tabs: { id: EmployeePanelId; label: string }[] = [
+    { id: 'working-hours', label: 'Working hours' },
+    { id: 'work-location', label: 'Work location' },
+    { id: 'leave-type', label: 'Leave type' },
+    { id: 'check-in-times', label: 'Check-in times' },
+  ];
 
   return <section aria-labelledby="employee-summary-heading" className="space-y-5">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="employee-summary-heading" className="text-2xl font-medium text-[#49454F]">My Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-500">Your own attendance and leave information from HRIS</p></div>
+      <div><h2 id="employee-summary-heading" className="text-2xl font-medium text-[#49454F]">Personal Dashboard</h2>
+        <p className="mt-1 text-sm text-slate-500">Your attendance and leave information for {tenantName}</p></div>
       <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Refresh</button>
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
-    {loading ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your HRIS summary…</p> : attendance && leave && <>
-      <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} />
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="font-medium">Today’s attendance</h3>
-        {record ? <div className="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
-          <p><span className="text-slate-500">Status </span><strong>{display(record.status)}</strong></p>
-          <p><span className="text-slate-500">Check in </span><strong>{displayTime(record.check_in)}</strong></p>
-          <p><span className="text-slate-500">Check out </span><strong>{displayTime(record.check_out)}</strong></p>
-        </div> : <p className="mt-2 text-sm text-slate-600">No attendance record is available for today.</p>}
-      </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="font-medium">Leave balances · {display(leave.balance_year)}</h3>
-        {balances.length ? <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="rounded-lg border p-3">
-          <p className="text-sm font-medium">{display(row.leave_type_name)}</p><p className="mt-2 text-xl font-semibold">{display(row.available_days)} days available</p>
-          <p className="mt-1 text-xs text-slate-600">Used {display(row.used_days)} · Pending {display(row.pending_days)}</p>
-        </div>)}</div> : <p className="mt-2 text-sm text-slate-600">No leave balance records are available.</p>}
-      </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="font-medium">Recent attendance</h3>
-        {asRows(attendance.records).length ? <ul className="mt-2 divide-y">{asRows(attendance.records).slice(0, 7).map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap justify-between gap-2 py-3 text-sm">
-          <span>{display(row.attendance_date)} · {display(row.status)}</span><span>{displayTime(row.check_in)} – {displayTime(row.check_out)}</span>
-        </li>)}</ul> : <p className="mt-2 text-sm text-slate-600">No attendance records in the recent date range.</p>}
+    {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your HRIS summary…</p>}
+    {currentTenantDataReady && attendance && leave && <>
+      <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(0,2fr)] xl:grid-cols-[180px_minmax(0,1fr)_288px]">
+        <section aria-labelledby="employee-profile-heading" className="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+          <div className="mx-auto grid h-24 w-24 place-items-center rounded-xl bg-[#E7F1F3] text-2xl font-semibold text-[#08558B]" aria-hidden="true">{initials}</div>
+          <h3 id="employee-profile-heading" className="mt-3 break-words text-base font-semibold text-[#08263D]">{fullName || 'Employee profile'}</h3>
+          <p className="mt-1 text-xs text-slate-500">{display(employee?.employee_number)}</p>
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 text-left text-sm">
+            <p className="flex items-start gap-2"><BriefcaseBusiness className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.designation_title)}</span></p>
+            <p className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.department_name)}</span></p>
+            <p className="flex items-start gap-2 break-all text-xs text-slate-600"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.official_email)}</span></p>
+          </div>
+        </section>
+
+        <div className="min-w-0 space-y-4">
+          <section aria-labelledby="employee-today-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h3 id="employee-today-heading" className="font-semibold text-[#08263D]">Today’s attendance</h3>
+                <p className="mt-1 text-xs text-slate-500">{displayShortDate(today)} · organization local date</p></div>
+              {todayRecord && <span className="rounded-full bg-[#E7F1F3] px-3 py-1 text-xs font-medium text-[#08558B]">{display(todayRecord.status)}</span>}
+            </div>
+            {todayRecord ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div><p className="text-xs text-slate-500">Check in</p><p className="mt-1 text-sm font-medium">{displayTime(todayRecord.check_in)}</p></div>
+              <div><p className="text-xs text-slate-500">Check out</p><p className="mt-1 text-sm font-medium">{displayTime(todayRecord.check_out)}</p></div>
+              <div><p className="text-xs text-slate-500">Work location</p><p className="mt-1 text-sm font-medium">{displayWorkMode(todayRecord.work_mode)}</p></div>
+            </div> : <p className="mt-3 text-sm text-slate-600">No attendance record is available for this date. Your work schedule is not included in this summary.</p>}
+          </section>
+
+          <section aria-labelledby="employee-insights-heading" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-4 pt-3 sm:px-5">
+              <h3 id="employee-insights-heading" className="mb-2 font-semibold text-[#08263D]">Attendance and leave</h3>
+              <div role="group" aria-label="Personal dashboard views" className="-mb-px grid grid-cols-2 gap-x-2 sm:flex sm:min-w-0 sm:overflow-x-auto">
+                {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={activePanel === tab.id}
+                  onClick={() => setActivePanel(tab.id)} className={`min-h-12 w-full border-b-2 px-2 text-xs sm:w-auto sm:shrink-0 sm:flex-1 sm:px-2 sm:text-sm ${activePanel === tab.id ? 'border-[#08558B] text-[#08558B]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                  {tab.label}
+                </button>)}
+              </div>
+            </div>
+            <div className="min-h-56 p-4 sm:p-5" aria-live="polite">
+              {activePanel === 'working-hours' && <div>
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div><h4 className="font-medium text-slate-800">Recorded working hours</h4><p className="mt-1 text-xs text-slate-500">Last 7 days</p></div>
+                  <p className="text-right"><span className="block text-xl font-semibold tabular-nums text-[#08558B]">{recordedHours.toFixed(1)} hr</span><span className="text-xs text-slate-500">from complete check-in pairs</span></p>
+                </div>
+                {workHours.some(item => item.hours !== null) ? <div role="img" aria-label={`Recorded work hours for ${workHours.length} recent dates`} className="mt-5 grid grid-cols-7 items-end gap-2 border-b border-slate-200 pb-2">
+                  {workHours.map(({ row, hours }, index) => <div key={String(row.id || row.attendance_date || index)} className="min-w-0 text-center">
+                    <div className="flex h-28 items-end justify-center"><div title={`${hours?.toFixed(1) || '0.0'} recorded hours`} className="w-full max-w-8 rounded-t bg-[#08558B]" style={{ height: `${maxHours > 0 && hours ? Math.max(6, (hours / maxHours) * 100) : 0}%` }} /></div>
+                    <span className="mt-2 block truncate text-[10px] text-slate-500">{displayShortDate(row.attendance_date)}</span>
+                    <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{hours === null ? '—' : `${hours.toFixed(1)}h`}</span>
+                  </div>)}
+                </div> : <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No complete check-in and check-out pairs are available for this date range.</p>}
+                <p className="mt-3 text-xs text-slate-500">Scheduled hours are not returned in this personal summary, so no required-hours target is shown.</p>
+              </div>}
+              {activePanel === 'work-location' && <div>
+                <h4 className="font-medium text-slate-800">Recorded work locations</h4><p className="mt-1 text-xs text-slate-500">Based on your recent attendance entries</p>
+                {Object.keys(workModes).length ? <div className="mt-4 grid grid-cols-2 gap-3">{Object.entries(workModes).map(([mode, count]) => <div key={mode} className="rounded-lg border border-slate-200 p-3">
+                  <p className="flex items-center gap-2 text-sm text-slate-600"><MapPin className="h-4 w-4 text-[#08558B]" />{mode}</p><p className="mt-2 text-xl font-semibold tabular-nums">{count}</p><p className="text-xs text-slate-500">attendance entries</p>
+                </div>)}</div> : <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No work location is recorded in the recent attendance entries.</p>}
+              </div>}
+              {activePanel === 'leave-type' && <div>
+                <h4 className="font-medium text-slate-800">Leave balances · {display(leave.balance_year)}</h4>
+                {balances.length ? <div className="mt-3 divide-y divide-slate-100">{balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                  <span className="text-sm font-medium">{display(row.leave_type_name)}</span><span className="text-sm tabular-nums text-slate-700">{display(row.available_days)} days available</span>
+                </div>)}</div> : <p className="mt-3 text-sm text-slate-600">No leave balance records are available.</p>}
+              </div>}
+              {activePanel === 'check-in-times' && <div>
+                <h4 className="font-medium text-slate-800">Recent check-in times</h4>
+                {attendanceRecords.length ? <ul className="mt-2 divide-y divide-slate-100">{attendanceRecords.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                  <span><strong>{displayShortDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{display(row.status)}</span></span>
+                  <span className="tabular-nums">{displayTime(row.check_in)} – {displayTime(row.check_out)}</span>
+                </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No recent attendance records are available.</p>}
+              </div>}
+            </div>
+          </section>
+        </div>
+
+        <aside className="min-w-0 space-y-4 md:col-span-2 xl:col-span-1">
+          <section aria-labelledby="employee-leave-balances-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2"><div><h3 id="employee-leave-balances-heading" className="font-semibold text-[#08263D]">Leave balances</h3>
+              <p className="mt-1 text-xs text-slate-500">Current year · {display(leave.balance_year)}</p></div><CalendarDays className="h-5 w-5 text-[#08558B]" /></div>
+            {balances.length ? <ul className="mt-3 divide-y divide-slate-100">{balances.map((row, index) => <li key={String(row.leave_type_id || index)} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <span className="min-w-0 truncate">{display(row.leave_type_name)}</span><strong className="shrink-0 tabular-nums">{display(row.available_days)} days</strong>
+            </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No leave balance records are available.</p>}
+          </section>
+          <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} />
+          <section aria-labelledby="employee-holidays-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 id="employee-holidays-heading" className="font-semibold text-[#08263D]">Upcoming holidays</h3>
+            {holidays.length ? <ul className="mt-3 max-h-56 divide-y divide-slate-100 overflow-y-auto">{holidays.slice(0, 8).map((holiday, index) => <li key={String(holiday.id || index)} className="flex items-start justify-between gap-3 py-3 text-sm">
+              <span className="min-w-0 break-words">{display(holiday.name)}</span><span className="shrink-0 text-xs text-slate-500">{displayShortDate(holiday.start_date)}{holiday.end_date && holiday.end_date !== holiday.start_date ? ` – ${displayShortDate(holiday.end_date)}` : ''}</span>
+            </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No upcoming holidays are published.</p>}
+          </section>
+        </aside>
+      </div>
+
+      <section aria-labelledby="employee-leave-history-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h3 id="employee-leave-history-heading" className="font-semibold text-[#08263D]">My leave requests</h3>
+          <p className="mt-1 text-xs text-slate-500">Status and resolution updates from this organization</p></div><span className="text-xs text-slate-500">{requests.length} requests</span></div>
+        {requests.length ? <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[680px] text-left text-sm">
+          <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{['Leave type', 'From', 'To', 'Days', 'Reason', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{requests.map((item, index) => <tr key={String(item.id || index)}>
+            <td className="px-3 py-3">{display(item.leave_type_name)}</td><td className="px-3 py-3">{displayShortDate(item.from_date)}</td><td className="px-3 py-3">{displayShortDate(item.to_date)}</td>
+            <td className="px-3 py-3">{display(item.requested_days)}</td><td className="max-w-48 px-3 py-3"><span className="block truncate" title={String(item.reason || '')}>{display(item.reason)}</span>
+              {Boolean(item.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(item.resolution_note)}</span>}</td><td className="px-3 py-3 font-medium">{display(item.status)}</td>
+          </tr>)}</tbody>
+        </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave requests yet.</p>}
       </section>
     </>}
   </section>;
@@ -906,7 +1043,7 @@ export function LiveHrisWorkspace({
             tenantId={tenantId} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
           />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
-          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} userId={userId} />}
+          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>

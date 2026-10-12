@@ -425,6 +425,20 @@ record('Ordinary employees can read their own attendance and leave summary witho
     bRequests: employeeSummaryB.requests.length,
   }));
 
+record('Employee dashboard profile and date belong to the linked tenant-local employee',
+  employeeSummaryA.dashboard_date === localCurrentDate
+  && employeeSummaryA.employee.full_name === 'Synthetic Employee A'
+  && employeeSummaryA.employee.employee_number === 'QA-A-001'
+  && employeeSummaryA.employee.department_name === 'QA A department'
+  && employeeSummaryA.employee.designation_title === 'QA A designation'
+  && employeeSummaryB.dashboard_date === localCurrentDate
+  && employeeSummaryB.employee.full_name === 'Synthetic Employee B'
+  && employeeSummaryB.employee.employee_number === 'QA-B-001'
+  && employeeSummaryB.employee.department_name === 'QA B department'
+  && employeeSummaryB.employee.designation_title === 'QA B designation',
+  JSON.stringify({ employeeA: employeeSummaryA.employee, employeeB: employeeSummaryB.employee,
+    dateA: employeeSummaryA.dashboard_date, dateB: employeeSummaryB.dashboard_date }));
+
 const employeeTenantRows = queryAs(employeeA, `SELECT jsonb_build_object(
   'attendance_tenants',coalesce((SELECT jsonb_agg(DISTINCT tenant_id::text) FROM public.attendance_records),'[]'::jsonb),
   'balance_tenants',coalesce((SELECT jsonb_agg(DISTINCT tenant_id::text) FROM public.employee_leave_balances),'[]'::jsonb),
