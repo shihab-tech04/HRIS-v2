@@ -167,6 +167,18 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
   await expect(page.getByRole('alert')).toContainText('This employee already has a shift assignment for that date.');
   await expect(rosterTable.getByRole('row', { name: /New Roster Employee/ })).toHaveCount(1);
 
+  const invalidFrom = new Date(Date.parse(`${assignmentDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const callsBeforeInvalidRange = rosterCalls.length;
+  await page.getByLabel('From', { exact: true }).fill(invalidFrom);
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page.getByText('Choose a valid roster date range.', { exact: true })).toBeVisible();
+  expect(rosterCalls).toHaveLength(callsBeforeInvalidRange);
+  await page.getByLabel('From', { exact: true }).fill(assignmentDate);
+  await page.getByLabel('To', { exact: true }).fill(invalidFrom);
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect.poll(() => rosterCalls.at(-1)?.p_end).toBe(invalidFrom);
+  expect(rosterCalls).toHaveLength(callsBeforeInvalidRange + 1);
+
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV' }).click();
   const download = await downloadPromise;
