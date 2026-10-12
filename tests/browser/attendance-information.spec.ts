@@ -231,8 +231,11 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Filters' }).click();
   await expect(page.getByLabel('From date')).toBeVisible();
   await expect(page.getByLabel('Status')).toHaveCount(0);
-  await page.getByLabel('From date').fill('2026-10-05');
-  await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_start === '2026-10-05')).toBe(true);
+  const reportCallsBeforeDraft = attendanceCalls.filter(call => call.p_report === true).length;
+  await page.getByLabel('From date').fill('2026-10-01');
+  await expect.poll(() => attendanceCalls.filter(call => call.p_report === true).length, { timeout: 500 }).toBe(reportCallsBeforeDraft);
+  await page.getByRole('button', { name: 'Apply Filter', exact: true }).click();
+  await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_start === '2026-10-01')).toBe(true);
   const reportDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Report', exact: true }).click();
   const downloadedReport = await reportDownload;

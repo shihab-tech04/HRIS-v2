@@ -313,6 +313,8 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   const [dataTenantId, setDataTenantId] = useState('');
   const [from, setFrom] = useState(startOfRecentWeek);
   const [to, setTo] = useState(localIsoDate(new Date()));
+  const [draftFrom, setDraftFrom] = useState(startOfRecentWeek);
+  const [draftTo, setDraftTo] = useState(localIsoDate(new Date()));
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('');
@@ -383,7 +385,18 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   useEffect(() => {
     setSelectedTeamFilter('');
     setAppliedTeamFilter('');
-  }, [tenantId, from, to, submittedSearch]);
+  }, [tenantId, submittedSearch]);
+
+  function applyReportFilters() {
+    if (draftFrom > draftTo) {
+      setError('Choose a valid date range.');
+      return;
+    }
+    setError('');
+    setFrom(draftFrom);
+    setTo(draftTo);
+    setAppliedTeamFilter(selectedTeamFilter);
+  }
 
   async function resolveCorrection(id: string, decision: 'approved' | 'rejected') {
     if (resolvingCorrectionId) return;
@@ -424,8 +437,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     if (currentRecords.some(row => !String(row.team_name ?? '').trim())) {
       options.push({ value: '__NO_TEAM__', label: 'Unassigned' });
     }
+    if (selectedTeamFilter && !options.some(option => option.value === selectedTeamFilter)) {
+      options.push({ value: selectedTeamFilter, label: selectedTeamFilter === '__NO_TEAM__' ? 'Unassigned' : selectedTeamFilter });
+    }
     return options;
-  }, [aggregateOnly, currentRecords]);
+  }, [aggregateOnly, currentRecords, selectedTeamFilter]);
   const filteredRows = useMemo(() => {
     const matchingRows = !aggregateOnly || !appliedTeamFilter ? currentRecords : currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
       ? !String(row.team_name ?? '').trim()
@@ -475,9 +491,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     </form>}
     {filtersOpen && <div id="attendance-filters" className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">From date</label>
-        <input id="attendance-from" type="date" value={from} onChange={event => setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+        <input id="attendance-from" type="date" value={aggregateOnly ? draftFrom : from} onChange={event => aggregateOnly ? setDraftFrom(event.target.value) : setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">To date</label>
-        <input id="attendance-to" type="date" value={to} onChange={event => setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+        <input id="attendance-to" type="date" value={aggregateOnly ? draftTo : to} onChange={event => aggregateOnly ? setDraftTo(event.target.value) : setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       {aggregateOnly && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">Select Team</label>
         <select id="attendance-team" value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
@@ -489,7 +505,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
           <option value="all">All visible statuses</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
         </select></div>}
       {aggregateOnly
-        ? <button type="button" onClick={() => setAppliedTeamFilter(selectedTeamFilter)}
+        ? <button type="button" onClick={applyReportFilters}
           className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">Apply Filter</button>
         : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
     </div>}

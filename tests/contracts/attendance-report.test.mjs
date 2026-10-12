@@ -39,6 +39,15 @@ test('Figma Team Name sort order is accessible and shared by table and CSV', () 
   assert.match(browser, /Sort by Team Name descending/);
 });
 
+test('Figma Apply Filter commits aggregate date and Team drafts together', () => {
+  assert.match(workspace, /value=\{aggregateOnly \? draftFrom : from\}/);
+  assert.match(workspace, /value=\{aggregateOnly \? draftTo : to\}/);
+  assert.match(workspace, /onClick=\{applyReportFilters\}/);
+  assert.match(workspace, /setFrom\(draftFrom\);\s*setTo\(draftTo\);\s*setAppliedTeamFilter\(selectedTeamFilter\)/);
+  assert.match(browser, /reportCallsBeforeDraft/);
+  assert.match(browser, /p_start === '2026-10-01'/);
+});
+
 test('synthetic RLS fixture covers valid and cross-tenant employee team references', () => {
   assert.match(fixture, /CREATE TABLE public\.teams/);
   assert.match(fixture, /team_id uuid REFERENCES public\.teams\(id\)/);
