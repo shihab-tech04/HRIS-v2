@@ -17,7 +17,7 @@ type PermissionSet = {
   leave: boolean;
   leaveManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'my-dashboard';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'my-dashboard' | 'my-leave';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -1049,6 +1049,133 @@ function PersonalLeaveRequests({
   </>;
 }
 
+function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: string; userId: string; tenantName: string }) {
+  const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [historyYear, setHistoryYear] = useState('');
+  const requestSequence = useRef(0);
+
+  async function load(showLoading = true) {
+    const requestId = ++requestSequence.current;
+    if (showLoading) setLoading(true);
+    setError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_get_my_dashboard_data', { p_tenant_id: tenantId });
+      if (rpcError) throw rpcError;
+      const value = asObject(data);
+      if (!value || !asObject(value.employee)) throw new Error('Personal leave service returned an invalid response.');
+      if (requestId === requestSequence.current) setLeave(value);
+    } catch (cause) {
+      if (requestId !== requestSequence.current) return;
+      setLeave(null);
+      setError(cause instanceof Error ? cause.message : 'Unable to load your leave information.');
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setLeave(null);
+    setHistoryYear('');
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [tenantId]);
+
+  const balances = asRows(leave?.balances);
+  const requests = asRows(leave?.requests);
+  const defaultYear = String(leave?.balance_year || String(leave?.dashboard_date || '').slice(0, 4) || new Date().getFullYear());
+  const requestYears = requests.flatMap(row => {
+    const first = Number(String(row.from_date || '').slice(0, 4));
+    const last = Number(String(row.to_date || '').slice(0, 4));
+    if (!Number.isInteger(first) || !Number.isInteger(last) || first < 1900 || last < first) return [];
+    return Array.from({ length: Math.min(last - first + 1, 20) }, (_, index) => String(first + index));
+  });
+  const years = Array.from(new Set([defaultYear, ...requestYears])).sort((left, right) => Number(right) - Number(left));
+  const selectedYear = years.includes(historyYear) ? historyYear : defaultYear;
+  const yearNumber = Number(selectedYear);
+  const history = requests.filter(row => {
+    const first = Number(String(row.from_date || '').slice(0, 4));
+    const last = Number(String(row.to_date || '').slice(0, 4));
+    return Number.isInteger(first) && Number.isInteger(last) && first <= yearNumber && last >= yearNumber;
+  });
+
+  function downloadHistory() {
+    downloadCsv(`personal-leave-history-${selectedYear}.csv`,
+      ['Applicable From', 'Applicable To', 'No. of Days', 'Leave Type', 'Remarks', 'Status'],
+      history.map(row => [row.from_date, row.to_date, row.requested_days, row.leave_type_name,
+        [row.reason, row.resolution_note].filter(Boolean).join(' · '), row.status]));
+  }
+
+  const currentTenantDataReady = Boolean(leave?.employee);
+  return <section aria-labelledby="personal-leave-page-heading" className="space-y-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div><h2 id="personal-leave-page-heading" className="text-2xl font-medium text-[#49454F]">Personal leave</h2>
+        <p className="mt-1 text-sm text-slate-500">Your leave balances and request history for {tenantName}</p></div>
+      <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+        <RefreshCw className="h-4 w-4" /> Refresh
+      </button>
+    </div>
+    {error && <StatusMessage error={error} onRetry={() => void load()} />}
+    {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your leave information…</p>}
+    {currentTenantDataReady && leave && <>
+      <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(210px,0.7fr)_minmax(0,2fr)]">
+        <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} />
+        <section aria-labelledby="personal-leave-balance-heading" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><h3 id="personal-leave-balance-heading" className="font-semibold text-[#08263D]">Available leave breakdown</h3>
+              <p className="mt-1 text-xs text-slate-500">Current year · {String(leave.balance_year || defaultYear)}</p></div>
+            <CalendarDays className="h-5 w-5 text-[#08558B]" aria-hidden="true" />
+          </div>
+          {balances.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+            {balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="min-w-0 rounded-md border border-slate-200 p-3">
+              <p className="truncate text-sm font-semibold text-[#49454F]" title={String(row.leave_type_name || '')}>{display(row.leave_type_name)}</p>
+              <p className="mt-1 text-sm tabular-nums text-slate-700">{display(row.available_days)} days available</p>
+            </div>)}
+          </div> : <p className="mt-3 rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave balance records are available.</p>}
+        </section>
+      </div>
+
+      <section aria-labelledby="personal-leave-history-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div><h3 id="personal-leave-history-heading" className="font-semibold text-[#08263D]">Leave history</h3>
+            <p className="mt-1 text-xs text-slate-500">Requests overlapping the selected calendar year</p></div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div><label htmlFor="personal-leave-history-year" className="mb-1 block text-xs font-medium text-slate-600">Leave history of</label>
+              <select id="personal-leave-history-year" value={selectedYear} onChange={event => setHistoryYear(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                {years.map(year => <option key={year} value={year}>{year}</option>)}
+              </select></div>
+            <button type="button" disabled={!history.length} onClick={downloadHistory} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+              <Download className="h-4 w-4" /> Export CSV
+            </button>
+          </div>
+        </div>
+        {history.length ? <div role="region" aria-label="Personal leave history" tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#085587]">
+          <table aria-label={`Personal leave history for ${selectedYear}`} className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
+              {['Applicable from', 'Applicable to', 'No. of days', 'Leave type', 'Remarks', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">{history.map((row, index) => {
+              const status = String(row.status || '').toLowerCase();
+              const statusClass = status === 'approved' ? 'text-emerald-700'
+                : status === 'rejected' ? 'text-rose-700' : 'text-slate-600';
+              return <tr key={String(row.id || index)}>
+                <td className="whitespace-nowrap px-3 py-3">{displayShortDate(row.from_date)}</td>
+                <td className="whitespace-nowrap px-3 py-3">{displayShortDate(row.to_date)}</td>
+                <td className="px-3 py-3 tabular-nums">{display(row.requested_days)}</td>
+                <td className="px-3 py-3">{display(row.leave_type_name)}</td>
+                <td className="max-w-56 px-3 py-3"><span className="block truncate" title={String(row.reason || '')}>{display(row.reason)}</span>
+                  {Boolean(row.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(row.resolution_note)}</span>}</td>
+                <td className={`whitespace-nowrap px-3 py-3 font-semibold capitalize ${statusClass}`}>{display(row.status)}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave requests overlap {selectedYear}.</p>}
+      </section>
+    </>}
+  </section>;
+}
+
 type EmployeePanelId = 'working-hours' | 'work-location' | 'leave-type' | 'check-in-times';
 
 function PersonalAttendanceCorrections({
@@ -1413,6 +1540,7 @@ export function LiveHrisWorkspace({
     if (permissions.attendanceView || permissions.attendanceManage) items.push({ id: 'shift-roster', label: 'Roster', icon: <Clock3 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.leave) items.push({ id: 'leave', label: 'Leave', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     return items;
   }, [permissions, isEmployee]);
 
@@ -1470,6 +1598,7 @@ export function LiveHrisWorkspace({
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
+          {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>

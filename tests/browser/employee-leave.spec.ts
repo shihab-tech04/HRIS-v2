@@ -72,6 +72,10 @@ test('linked employee can complete the private evidence leave request on mobile'
         id: 'f5555555-5555-4555-8555-555555555555', leave_type_id: leaveTypeId,
         leave_type_name: 'Medical leave', from_date: isoDateAfter(9), to_date: isoDateAfter(9),
         requested_days: 1, reason: 'Synthetic mobile leave request', status: 'pending',
+      }, {
+        id: 'f9999999-9999-4999-8999-999999999999', leave_type_id: leaveTypeId,
+        leave_type_name: 'Medical leave', from_date: '2025-08-13', to_date: '2025-08-14',
+        requested_days: 2, reason: 'Synthetic prior-year leave request', status: 'approved',
       }] : [];
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         employee: {
@@ -209,5 +213,31 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByText('Leave request submitted. You can follow its status in your history.')).toBeVisible();
   await expect(page.getByText('Synthetic mobile leave request')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
+  await moduleNav.getByRole('button', { name: 'My Leave', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Personal leave' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Available leave breakdown' })).toBeVisible();
+  const history = page.getByRole('table', { name: `Personal leave history for ${new Date().getFullYear()}` });
+  await expect(history.getByRole('row', { name: /Synthetic mobile leave request/ })).toContainText(/pending/i);
+  await expect(history.getByRole('row', { name: /Synthetic prior-year leave request/ })).toHaveCount(0);
+  await page.getByLabel('Leave history of').selectOption('2025');
+  const priorYearHistory = page.getByRole('table', { name: 'Personal leave history for 2025' });
+  await expect(priorYearHistory.getByRole('row', { name: /Synthetic prior-year leave request/ })).toContainText(/approved/i);
+  await expect(priorYearHistory.getByRole('row', { name: /Synthetic mobile leave request/ })).toHaveCount(0);
+  await page.getByLabel('Leave history of').selectOption(String(new Date().getFullYear()));
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/personal-leave-desktop-20261012.png'), fullPage: true });
+  const historyDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  expect((await historyDownload).suggestedFilename()).toMatch(/^personal-leave-history-\d{4}\.csv$/);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await page.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'My Leave', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Personal leave' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await expect(page.getByRole('region', { name: 'Personal leave history' })).toBeVisible();
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/personal-leave-mobile-20261012.png'), fullPage: true });
   expect(externalRequests).toEqual([]);
 });
