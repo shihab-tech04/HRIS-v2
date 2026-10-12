@@ -1,9 +1,10 @@
 # Regression Ledger
 
-**Checkpoint:** 2026-10-12 17:50 Asia/Dhaka.
+**Checkpoint:** 2026-10-12 18:49 Asia/Dhaka.
 
 | Area | Regression protection executed | Result | Limit |
 |---|---|---|---|
+| Figma Attendance Report Team filter | `npm run check`; isolated-port `npm run test:e2e` | **36/36 contracts PASS**, TypeScript/build PASS; **38/38 Chromium PASS**; focused report journey **1/1 PASS** | Verifies team apply/reset, visible rows, filtered CSV and 375px table. No backend code changed; separate local Auth/RLS suite **65/65 PASS**. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261012_1847.md`. |
 | Main authenticated workspace | `npm run check`; TypeScript, **29/29** contract tests and Vite production build | PASS | Build emits the existing >500 kB chunk warning; local build is not deployment acceptance. |
 | Employee dashboard, leave and attendance correction | `HRIS_TEST_PORT=4194 npm run test:e2e`; mocked Auth/database/storage, external requests blocked | Full suite **38/38 PASS**; employee correction journey **1/1 PASS** | Employee path covers linked profile, tenant-local day, attendance, work hours/location, correction request/history, leave balance/types/holidays, private evidence, keyboard dismissal, submission and request history. Captures: `docs/evidence/employee-dashboard-desktop-20261012.png`, `docs/evidence/employee-dashboard-mobile-20261012.png`, `docs/evidence/employee-attendance-correction-mobile-20261012.png`. Mock-backed UI does not alone establish live backend behavior or formal Figma parity. |
 | Employee Personal Leave | `HRIS_TEST_PORT=4203 npm run test:e2e`; mocked Auth/database/storage, external requests blocked | Targeted journey **1/1 PASS**; included full suite **38/38 PASS** | Verifies employee-only navigation, balance breakdown, year filtering including cross-year overlap, selected-year CSV filename/download and 375px layout. Screenshots: `docs/evidence/personal-leave-desktop-20261012.png`, `docs/evidence/personal-leave-mobile-20261012.png`. No SQL changed in this slice; separate local Auth/RLS acceptance remains 55/55 from the prior checkpoint. |

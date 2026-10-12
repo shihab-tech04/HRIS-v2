@@ -1,15 +1,16 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 18:32 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 18:49 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 08 attendance report Team Name
+## Current checkpoint — Phase 08 Figma Attendance Report Team filter
 
-- Latest feature commit: `a458865709c6dbee79091c193a6527c4d9789001` (tenant-safe Figma Attendance Report Team Name). Prior clock-in/out commit: `66d0a12b92f7dca38331848da82ab0d4da9acbf3`. Current verification: 35/35 contracts, TypeScript/build pass, focused Chromium 1/1, and 65/65 local Auth/RLS. The previous full Chromium suite was 38/38. Vite reports a 721.19 kB minified JavaScript chunk advisory.
+- Latest feature commit: `a839b07a57757cbb17a0c16284e8c23f5633f9ca` (Figma Team filter and filtered CSV). Prior Team Name commit: `a458865709c6dbee79091c193a6527c4d9789001`. Current verification: **36/36 contracts**, TypeScript/build pass, full Chromium **38/38**, focused Attendance **1/1**, and local Auth/RLS **65/65**. Vite reports a 722.40 kB minified JavaScript chunk advisory.
 - All five prior tenant-security failures still pass. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
-- Since the 14:20 baseline, implementation/source/test changes total **23 paths, +6,051/−55**, excluding documentation and image evidence. The 18:20→18:32 code slice is 7 paths, +187/−18. See `EXECUTION_CHECKPOINT_20261012_1832.md` and `ACCEPTANCE_EVIDENCE_20261012_1832.md`.
-- The user reports the recovered catalogue has 1,047 stories/153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The current task's `sources/` mount is empty and Drive exact-name searches did not return catalogue bytes. Its SHA cannot be verified here; **0/1,047 are mapped and accepted, 1,047 pending**. The local JSON remains only an empty tracking skeleton.
+- Since the 14:20 baseline, implementation/source/test changes total **23 paths, +6,111/−55**, excluding documentation and image evidence. The 18:32→18:49 code slice is 3 paths, +68/−8. See `EXECUTION_CHECKPOINT_20261012_1847.md` and `ACCEPTANCE_EVIDENCE_20261012_1847.md`.
+- The user reports the recovered catalogue has 1,047 stories/153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The current task's `sources/` mount is empty and Drive exact-name search returned no catalogue file. Its SHA cannot be verified here; **0/1,047 are mapped and accepted, 1,047 pending**. The local JSON remains only an empty tracking skeleton.
 - New versioned 18:32 Drive archive `Synesis_HRIS360_Attendance_TeamName_20261012_1832.zip` (file ID `113U00tgit2R1bJzLRh2u_kdxk5yFBUr1`) is **2,064,077 bytes**, SHA-256 `ca41903c194323698eec0d0adc2d25ccf8087146ac3907e0a81fbbbd423ed2f4`; Drive readback matched byte-for-byte and ZIP integrity passed. The connected `shihabshajib01@gmail.com` account owns the destination folder. Older Drive files remain in place. See `DRIVE_PRESERVATION_RECEIPT_20261012_1832.md`.
-- Next: continue functional HRIS page work and local tenant/Auth regression coverage; map against canonical story IDs when the recovered Project source is visible to this task. Do not publish or deploy early.
+- New Figma Team filter updates the aggregate report rows, empty state, and CSV export without expanding backend access; full details are in the 18:49 acceptance evidence.
+- Next: continue Phase 08 functional attendance/time-management journeys from the current Figma and approved contracts; map against canonical IDs as soon as the recovered Project source is visible to this task. Do not publish or deploy early.
 
 ## Historical detail from the 17:50 checkpoint
 
