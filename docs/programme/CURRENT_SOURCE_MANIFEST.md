@@ -1,13 +1,13 @@
 # Current Source Manifest
 
-**Recorded:** 2026-10-12. **State:** local worktree changes are uncommitted.
+**Recorded:** 2026-10-12. **State:** recovery changes are committed on local-only branches.
 
-| Application | Repository | Branch | Verified remote base | Local source root |
+| Application | Repository | Local branch | Verified remote base | Local source root |
 |---|---|---|---|---|
-| Main HRIS | `shihab-tech04/HRIS-v2` | `main` | `4ded5f13f1ef2bf17237f347bfac9811283c52dc` | `implementation/HRIS-v2` |
-| Candidate Portal | `shihab-tech04/HRIS-Candidate-v2` | `main` | `1c04786a72c3920c7ebb4a607ad5ac56d7b55f63` | `implementation/HRIS-Candidate-v2` |
+| Main HRIS | `shihab-tech04/HRIS-v2` | `codex/recovery-checkpoint-20261012` | `4ded5f13f1ef2bf17237f347bfac9811283c52dc` | `implementation/HRIS-v2` |
+| Candidate Portal | `shihab-tech04/HRIS-Candidate-v2` | `codex/recovery-checkpoint-20261012` | `1c04786a72c3920c7ebb4a607ad5ac56d7b55f63` | `implementation/HRIS-Candidate-v2` |
 
-The connected GitHub API confirmed these are the current `main` commits. The local checkouts use those bases and contain uncommitted changes. Do not publish these worktrees as a final release until the required acceptance programme passes.
+The connected GitHub API confirmed these are the current `main` commits. Recovery changes are committed locally and both worktrees are clean. Do not publish these branches as a final release until the required acceptance programme passes.
 
 ## Checkpoint changes
 

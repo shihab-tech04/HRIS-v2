@@ -1,11 +1,11 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12. **State:** active, incomplete, uncommitted. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12. **State:** active, incomplete, committed locally. **Release:** NOT FOR RELEASE.
 
 ## Verified source and code
 
-- Main `main` base: `4ded5f13f1ef2bf17237f347bfac9811283c52dc`; remote GitHub `main` matched at last read.
-- Candidate `main` base: `1c04786a72c3920c7ebb4a607ad5ac56d7b55f63`; remote GitHub `main` matched at last read.
+- Main remote `main` base: `4ded5f13f1ef2bf17237f347bfac9811283c52dc`; recovery work is committed on local-only branch `codex/recovery-checkpoint-20261012`.
+- Candidate remote `main` base: `1c04786a72c3920c7ebb4a607ad5ac56d7b55f63`; recovery work is committed on local-only branch `codex/recovery-checkpoint-20261012`.
 - Main: live permission-gated HRIS workspace and RPC-backed read modules; staged tenant-guard SQL remains outside production migrations.
 - Candidate: submitted vacancy search and stale-response fixes; production build is public-only.
 - Main `npm run check` passed (TypeScript, 21 contract tests, Vite build). Candidate lint, four contract tests, and public-only build passed. Main retains the existing large-chunk warning; Candidate has a Vite config-loader warning.
