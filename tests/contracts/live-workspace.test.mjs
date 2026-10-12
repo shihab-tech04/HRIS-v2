@@ -41,6 +41,18 @@ test('live HRIS pages use tenant-checked RPC responses and omit the global candi
   assert.doesNotMatch(workspace, /candidate_accounts/);
 });
 
+test('manager dashboard follows the Figma attendance summary and keeps its controls functional', () => {
+  for (const label of ['Managerial Dashboard', 'Today’s Attendance Summary', 'Team Members', 'Present', 'Absent', 'WFO', 'WFH', 'Client Meeting', 'On Leave', 'Late']) {
+    assert.ok(workspace.includes(label), `missing Figma dashboard label: ${label}`);
+  }
+  assert.match(workspace, /Search dashboard metrics/);
+  assert.match(workspace, /aria-controls="dashboard-filters"/);
+  assert.match(workspace, /Last 7 days[\s\S]+?Last 30 days/);
+  assert.match(workspace, /downloadCsv\(`managerial-dashboard-/);
+  assert.match(workspace, /Pending attendance corrections/);
+  assert.match(workspace, /Pending leave requests/);
+});
+
 test('leave decisions remain permission-gated and call the scoped approval RPC', () => {
   assert.doesNotMatch(workspace, /AdminLeaveApprovals/);
   assert.match(workspace, /canManage &&/);

@@ -131,6 +131,8 @@ function queryAdmin(sql) {
   return jsonResult(psqlSync(sql));
 }
 
+const localCurrentDate = psqlSync("SELECT (now() AT TIME ZONE 'Asia/Dhaka')::date::text;").trim();
+
 function quoteNote(note) {
   return note === null ? 'NULL' : sqlLiteral(note);
 }
@@ -567,15 +569,36 @@ record('Tenant B manager reads tenant B leave rows without seeing tenant A',
   `visible tenant count=${leaveTenants.size}`);
 
 const dashboardB = queryAs(managerB, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantB}'::uuid)`);
+const dashboardA = queryAs(managerA, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantA}'::uuid)`);
 const attendanceDataB = queryAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
-  '${ids.tenantB}'::uuid,'2026-10-12'::date,'2026-10-12'::date,NULL,NULL,false)`);
+  '${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,false)`);
 const leaveDataB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data('${ids.tenantB}'::uuid,NULL,NULL)`);
 record('Tenant B dashboard, attendance and leave RPCs return tenant B data only',
   Number(dashboardB.employees) === 1
+  && dashboardB.dashboard_date === localCurrentDate
+  && Number(dashboardB.team_members) === 1
+  && Number(dashboardB.present_today) === 1
+  && Number(dashboardB.wfo_today) === 1
+  && Number(dashboardB.absent_today) === 0
+  && Number(dashboardB.on_leave_today) === 0
   && attendanceDataB.records.length === 1
   && attendanceDataB.records[0].tenant_id === ids.tenantB
   && leaveDataB.requests.length === 2
   && leaveDataB.requests.every(request => request.tenant_id === ids.tenantB));
+const dashboardAValid = Number(dashboardA.team_members) === 5
+  && dashboardA.dashboard_date === localCurrentDate
+  && Number(dashboardA.attendance_today) === 4
+  && Number(dashboardA.present_today) === 2
+  && Number(dashboardA.absent_today) === 1
+  && Number(dashboardA.wfo_today) === 2
+  && Number(dashboardA.wfh_today) === 1
+  && Number(dashboardA.client_meeting_today) === 1
+  && Number(dashboardA.on_leave_today) === 2
+  && Number(dashboardA.late_today) === 1
+  && dashboardA.attendance_last_7_days.length === 7
+  && dashboardA.attendance_last_30_days.length === 30;
+record('Tenant A dashboard counts explicit attendance modes/statuses and approved leave only',
+  dashboardAValid, dashboardAValid ? '' : JSON.stringify(dashboardA));
 
 const crossDashboard = attemptAs(managerB, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantA}'::uuid)`);
 const crossAttendanceData = attemptAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
@@ -633,10 +656,11 @@ const ownAttendanceB = resolveAttendance(managerB, ids.attendanceCorrectionB, 'a
 const tenantBAttendance = tableRow('attendance_records', 'bbbbbbbb-0000-4000-8000-000000000002');
 record('Tenant B manager can approve its own correction while preserving other punch fields',
   ownAttendanceB.success === true
-  && sameInstant(tenantBAttendance.check_in, '2026-10-12T09:10:00+06:00')
-  && sameInstant(tenantBAttendance.check_out, '2026-10-12T17:30:00+06:00')
+  && sameInstant(tenantBAttendance.check_in, `${localCurrentDate}T03:10:00Z`)
+  && sameInstant(tenantBAttendance.check_out, `${localCurrentDate}T11:30:00Z`)
   && tenantBAttendance.work_mode === 'office'
-  && auditCount(ids.attendanceCorrectionB, 'attendance.correction.approved') === 1);
+  && auditCount(ids.attendanceCorrectionB, 'attendance.correction.approved') === 1,
+  ownAttendanceB.success === true ? JSON.stringify(tenantBAttendance) : 'correction was rejected');
 
 const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(
   'global_role',EXISTS (SELECT 1 FROM public.user_roles ur

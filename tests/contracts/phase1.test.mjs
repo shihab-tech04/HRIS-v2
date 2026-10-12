@@ -37,6 +37,20 @@ test('employee self-service and leave evidence stay inside the linked tenant', (
   assert.match(sql, /CREATE POLICY hris_leave_evidence_delete_tenant_guard\s+ON storage\.objects AS RESTRICTIVE FOR DELETE/);
   assert.match(sql, /hris_can_access_leave_evidence\(/);
 });
+test('manager dashboard aggregates only explicit tenant attendance and leave fields', () => {
+  const sql = source('supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql');
+  const dashboard = sql.match(/CREATE OR REPLACE FUNCTION public\.hris_get_tenant_dashboard_summary\(p_tenant_id uuid\)[\s\S]+?\$function\$;/)?.[0] || '';
+  assert.match(dashboard, /has_tenant_permission\(p_tenant_id, 'dashboard\.view'\)/);
+  for (const field of ['dashboard_date', 'present_today', 'absent_today', 'wfo_today', 'wfh_today', 'client_meeting_today', 'on_leave_today', 'late_today', 'attendance_last_30_days']) {
+    assert.ok(dashboard.includes(`'${field}'`), `dashboard response missing ${field}`);
+  }
+  assert.match(dashboard, /lower\(btrim\(a\.status\)\)='late'/);
+  assert.match(dashboard, /lower\(btrim\(a\.work_mode\)\)='client_meeting'/);
+  assert.match(dashboard, /lower\(btrim\(r\.status\)\)='approved'[\s\S]+?r\.from_date<=v_today AND r\.to_date>=v_today/);
+  assert.match(dashboard, /e\.employment_status NOT IN \('resigned','terminated'\)/);
+  assert.match(dashboard, /SELECT t\.timezone INTO v_timezone FROM public\.tenants t[\s\S]+?v_today := \(now\(\) AT TIME ZONE v_timezone\)::date/);
+  assert.doesNotMatch(dashboard, /check_in\s*[<>]=?/i);
+});
 test('real workspace uses membership-scoped admin access and linked employee identity', () => {
   const app = source('src/live/LiveApp.tsx');
   for (const name of ["from('tenant_memberships')", "from('employees')", "from('admin_users')"]) {

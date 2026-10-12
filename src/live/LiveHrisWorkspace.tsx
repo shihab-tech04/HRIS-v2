@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
-  Activity, CalendarDays, ClipboardList, Download, LayoutDashboard, LogOut,
-  Menu, RefreshCw, ShieldCheck, Users, X,
+  Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Menu,
+  RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users, X, XCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -18,9 +19,18 @@ type PermissionSet = {
 type PageId = 'dashboard' | 'attendance' | 'leave' | 'my-dashboard';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
+  dashboard_date?: string;
   employees?: number;
+  team_members?: number;
   probation_employees?: number;
   attendance_today?: number;
+  present_today?: number;
+  absent_today?: number;
+  wfo_today?: number;
+  wfh_today?: number;
+  client_meeting_today?: number;
+  on_leave_today?: number;
+  late_today?: number;
   attendance_corrections_pending?: number;
   leave_pending?: number;
   service_requests_pending?: number;
@@ -32,6 +42,7 @@ type DashboardSummary = {
   notices_active?: number;
   approvals_pending?: number;
   attendance_last_7_days?: DashboardPoint[];
+  attendance_last_30_days?: DashboardPoint[];
 };
 type AttendanceRecord = Record<string, unknown>;
 type LeaveRequest = Record<string, unknown>;
@@ -103,11 +114,14 @@ function StatusMessage({ error, onRetry }: { error: string; onRetry: () => void 
 }
 
 function Metric({ label, value, icon, onOpen }: { label: string; value: unknown; icon: ReactNode; onOpen?: () => void }) {
-  return <button type="button" onClick={onOpen} disabled={!onOpen}
-    className={`min-h-28 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : 'cursor-default'}`}>
+  const content = <>
     <span className="flex items-center justify-between gap-3 text-sm text-slate-600"><span>{label}</span><span className="text-[#08558B]">{icon}</span></span>
     <span className="mt-3 block text-2xl font-semibold tabular-nums text-slate-900">{display(value)}</span>
-  </button>;
+  </>;
+  const className = `min-h-[108px] rounded-lg border border-[#DEE0E3] bg-white p-4 text-left shadow-sm ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`;
+  return onOpen
+    ? <button type="button" onClick={onOpen} className={className}>{content}</button>
+    : <div className={className}>{content}</div>;
 }
 
 function AttendanceTrend({ points }: { points: DashboardPoint[] }) {
@@ -128,9 +142,10 @@ function AttendanceTrend({ points }: { points: DashboardPoint[] }) {
       <path d={path} fill="none" stroke="#08558B" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
       {coords.map((point, index) => <g key={`${point.point.date}-${index}`}>
         <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#08558B" strokeWidth="2" />
-        <text x={point.x} y="202" textAnchor="middle" fontSize="10" fill="#615E83">
-          {new Date(`${point.point.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-        </text>
+        {(safePoints.length <= 7 || index % 5 === 0 || index === safePoints.length - 1) &&
+          <text x={point.x} y="202" textAnchor="middle" fontSize="10" fill="#615E83">
+            {new Date(`${point.point.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </text>}
       </g>)}
     </svg>
   </div>;
@@ -141,6 +156,9 @@ function LiveDashboard({ tenantId, onOpen }: { tenantId: string; onOpen: (page: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshedAt, setRefreshedAt] = useState('');
+  const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [chartRange, setChartRange] = useState<'7' | '30'>('7');
 
   async function load() {
     setLoading(true); setError('');
@@ -160,32 +178,100 @@ function LiveDashboard({ tenantId, onOpen }: { tenantId: string; onOpen: (page: 
   }
 
   useEffect(() => { void load(); }, [tenantId]);
+  useEffect(() => {
+    if (summary && (!Array.isArray(summary.attendance_last_30_days) || summary.attendance_last_30_days.length < 30)) {
+      setChartRange('7');
+    }
+  }, [summary]);
+
+  const metrics = [
+    { label: 'Team Members', value: summary?.team_members ?? summary?.employees, icon: <Users className="h-5 w-5" /> },
+    { label: 'Present', value: summary?.present_today, icon: <CheckCircle2 className="h-5 w-5" />, page: 'attendance' as PageId },
+    { label: 'Absent', value: summary?.absent_today, icon: <XCircle className="h-5 w-5" />, page: 'attendance' as PageId },
+    { label: 'WFO', value: summary?.wfo_today, icon: <Building2 className="h-5 w-5" />, page: 'attendance' as PageId },
+    { label: 'WFH', value: summary?.wfh_today, icon: <House className="h-5 w-5" />, page: 'attendance' as PageId },
+    { label: 'Client Meeting', value: summary?.client_meeting_today, icon: <BriefcaseBusiness className="h-5 w-5" />, page: 'attendance' as PageId },
+    { label: 'On Leave', value: summary?.on_leave_today, icon: <CalendarDays className="h-5 w-5" />, page: 'leave' as PageId },
+    { label: 'Late', value: summary?.late_today, icon: <Clock3 className="h-5 w-5" />, page: 'attendance' as PageId },
+  ];
+  const visibleMetrics = metrics.filter(metric => metric.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const has30DayTrend = Array.isArray(summary?.attendance_last_30_days) && summary.attendance_last_30_days.length >= 30;
+  const activeChartRange = chartRange === '30' && has30DayTrend ? '30' : '7';
+  const trendSource = has30DayTrend ? summary?.attendance_last_30_days || [] : summary?.attendance_last_7_days || [];
+  const trendPoints = trendSource.slice(-Number(activeChartRange));
+
+  function downloadReport() {
+    if (!summary) return;
+    const rows: unknown[][] = [
+      ['Today', 'Team Members', summary.team_members ?? summary.employees],
+      ...metrics.slice(1).map(metric => ['Today', metric.label, metric.value]),
+      ...trendPoints.map(point => ['Attendance trend', point.date, point.records]),
+    ];
+    downloadCsv(`managerial-dashboard-${summary.dashboard_date || localIsoDate(new Date())}.csv`, ['Section', 'Metric', 'Value'], rows);
+  }
 
   return <section aria-labelledby="live-dashboard-heading" className="space-y-5">
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="live-dashboard-heading" className="text-2xl font-medium text-[#49454F]">HRIS Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-500">Tenant-scoped workforce and service activity</p></div>
-      <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+    <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div><h2 id="live-dashboard-heading" className="text-2xl font-semibold text-[#1E1B39]">Managerial Dashboard</h2>
+        <p className="mt-1 text-sm text-[#86929E]">Today’s workforce attendance for this organization</p></div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[540px]">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86929E]" />
+          <input type="search" value={search} onChange={event => setSearch(event.target.value)}
+            placeholder="Search metrics" aria-label="Search dashboard metrics"
+            className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
+        </label>
+        <button type="button" disabled={loading || !summary} onClick={downloadReport}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
+          <Download className="h-4 w-4" /> Download Report
+        </button>
+        <button type="button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen}
+          aria-controls="dashboard-filters" aria-label="Filter attendance chart"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-[#49454F] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">
+          <SlidersHorizontal className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+    {filtersOpen && <div id="dashboard-filters" className="flex flex-wrap items-end gap-3 rounded-lg border border-[#DEE0E3] bg-white p-4">
+      <div><label htmlFor="dashboard-chart-range" className="mb-1 block text-xs font-medium text-slate-600">Attendance chart range</label>
+        <select id="dashboard-chart-range" value={chartRange} onChange={event => setChartRange(event.target.value as '7' | '30')}
+          className="min-h-11 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="7">Last 7 days</option><option value="30" disabled={!has30DayTrend}>Last 30 days</option>
+        </select></div>
+      <p className="pb-2 text-xs text-slate-500">Attendance tiles above always summarize today.</p>
+    </div>}
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      {refreshedAt ? <p className="text-xs text-slate-500">Last refreshed {refreshedAt}</p> : <span />}
+      <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm text-[#49454F] hover:bg-white disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
       </button>
     </div>
-    {refreshedAt && <p className="text-xs text-slate-500">Last refreshed {refreshedAt}</p>}
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {loading && !summary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized dashboard data…</p> : summary && <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Team members" value={summary.employees} icon={<Users className="h-4 w-4" />} />
-        <Metric label="Attendance records today" value={summary.attendance_today} icon={<Activity className="h-4 w-4" />} onOpen={() => onOpen('attendance')} />
-        <Metric label="Pending approvals" value={summary.approvals_pending} icon={<ClipboardList className="h-4 w-4" />} onOpen={() => onOpen('leave')} />
-        <Metric label="Pending attendance corrections" value={summary.attendance_corrections_pending} icon={<CalendarDays className="h-4 w-4" />} onOpen={() => onOpen('attendance')} />
-        <Metric label="Pending leave requests" value={summary.leave_pending} icon={<CalendarDays className="h-4 w-4" />} onOpen={() => onOpen('leave')} />
-      </div>
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="attendance-trend-heading">
-        <div className="border-b border-slate-100 pb-3"><h3 id="attendance-trend-heading" className="text-base font-medium text-[#49454F]">Daily attendance records</h3>
-          <p className="mt-1 text-xs text-slate-500">Counts returned by the authorized dashboard RPC</p></div>
-        <AttendanceTrend points={summary.attendance_last_7_days || []} />
+      <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
+        <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-base font-semibold text-[#1E1B39]">Today’s Attendance Summary</h3>
+          <p className="mt-1 text-xs text-[#86929E]">Live counts from this organization’s authorized records</p></div>
+        {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {visibleMetrics.map(metric => <Metric key={metric.label} label={metric.label} value={metric.value} icon={metric.icon}
+            onOpen={metric.page ? () => onOpen(metric.page!) : undefined} />)}
+        </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No dashboard metrics match “{search}”.</p>}
+      </section>
+      <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-semibold text-[#1E1B39]">Daily Attendance</h3>
+          <p className="mt-1 text-xs text-[#86929E]">Recorded attendance by day · last {activeChartRange} days</p></div>
+          <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString()} records</span></div>
+        <AttendanceTrend points={trendPoints} />
+      </section>
+      <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">Needs attention</h3>
+          <p className="mt-1 text-xs text-[#86929E]">Open a work queue to review pending items.</p></div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Metric label="Pending attendance corrections" value={summary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
+          <Metric label="Pending leave requests" value={summary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
+        </div>
       </section>
       <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-        Counts are shown only when returned by the current tenant’s authorized HRIS service. No sample metrics are substituted.
+        Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.
       </p>
     </>}
   </section>;

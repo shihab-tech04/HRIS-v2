@@ -30,20 +30,33 @@ async function interceptAuth(page: import('@playwright/test').Page) {
   await page.route('**/rest/v1/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
-    const table = url.pathname.split('/').pop();
+    const endpoint = url.pathname.split('/').pop() ?? '';
+    if (url.pathname.includes('/rpc/')) {
+      const rpcData: Record<string, unknown> = {
+        has_tenant_permission: true,
+        hris_get_tenant_dashboard_summary: {
+          team_members: 1, employees: 1, attendance_today: 1,
+          present_today: 1, absent_today: 0, wfo_today: 1, wfh_today: 0,
+          client_meeting_today: 0, on_leave_today: 0, late_today: 0,
+          attendance_corrections_pending: 0, leave_pending: 0, approvals_pending: 0,
+          attendance_last_7_days: [], attendance_last_30_days: [],
+        },
+      };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rpcData[endpoint] ?? {}) });
+      return;
+    }
     const requested = url.searchParams.get('select') || '';
     let data: unknown = [];
-    if (table === 'tenant_memberships') data = [];
-    else if (table === 'employees') {
+    if (endpoint === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'qa_tenant_superadmin', status: 'active' }];
+    else if (endpoint === 'employees') {
       data = requested.includes('full_name')
         ? [{ id: 'emp-1', full_name: 'Synthetic Test Employee', employee_number: 'TEST-01', employment_status: 'active' }]
         : [];
     }
-    else if (table === 'admin_users') data = { active: true, is_super_admin: true };
-    else if (table === 'tenants') data = requested === 'id'
+    else if (endpoint === 'admin_users') data = { active: true, is_super_admin: true };
+    else if (endpoint === 'tenants') data = requested === 'id'
       ? { id: tenantId } : [{ id: tenantId, name: 'Synthetic Synesis', slug: 'synesis-it', timezone: 'Asia/Dhaka' }];
-    else if (table === 'has_permission') data = true;
-    else if (table === 'departments') data = [{ id: 'dept-1', name: 'Engineering', code: 'ENG', active: true }];
+    else if (endpoint === 'departments') data = [{ id: 'dept-1', name: 'Engineering', code: 'ENG', active: true }];
     if (request.method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
       return;
@@ -52,26 +65,23 @@ async function interceptAuth(page: import('@playwright/test').Page) {
   });
 }
 
-test('authorized Super Admin opens real system navigation, not fixture preview', async ({ page }) => {
+test('Super Admin with active tenant membership opens the authorized HRIS workspace', async ({ page }) => {
   await interceptAuth(page);
   await page.goto('/');
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  await expect(page.getByText('Authenticated · synthetic-superadmin@example.org')).toBeVisible();
+  await expect(page.getByText('synthetic-superadmin@example.org')).toBeVisible();
+  await expect(page.getByText('Super Administrator')).toBeVisible();
   const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
   await expect(moduleNav).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'System overview' })).toBeVisible();
-  await expect(moduleNav.getByRole('button', { name: /Employee directory/ })).toBeVisible();
-  await expect(moduleNav.getByRole('button', { name: /Performance goals/ })).toBeVisible();
-  await expect(moduleNav.getByRole('button', { name: /Compensation management/ })).toBeVisible();
-  await expect(page.getByText('No sample data or simulated saves are displayed.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Attendance/ })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Leave/ })).toBeVisible();
+  await expect(page.getByText(/No schedule-based late marks or sample counts are substituted/)).toBeVisible();
 
-  await moduleNav.getByRole('button', { name: /Employee directory/ }).click();
-  await expect(page.getByText('Synthetic Test Employee')).toBeVisible();
-  await expect(page.getByText('TEST-01')).toBeVisible();
-
-  await moduleNav.getByRole('button', { name: /Compensation management/ }).click();
-  await expect(page.getByRole('heading', { name: 'Workflow integration pending' })).toBeVisible();
+  await moduleNav.getByRole('button', { name: /Leave/ }).click();
+  await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
 });

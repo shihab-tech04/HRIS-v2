@@ -518,6 +518,11 @@ INSERT INTO public.employees(id,tenant_id,user_id,department_id,designation_id,s
   VALUES
   ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','2026-01-01'),
   ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test','2026-01-01');
+INSERT INTO public.employees(id,tenant_id,employee_number,full_name,official_email,joining_date) VALUES
+  ('55555555-5555-4555-8555-555555555556','11111111-1111-4111-8111-111111111111','QA-A-002','Synthetic Absent Employee A','employee-a-absent@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
+  ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
 INSERT INTO public.holidays(id,tenant_id,name,start_date,end_date,active)
   VALUES('77777777-7777-4777-8777-777777777777','11111111-1111-4111-8111-111111111111',
     'Synthetic QA holiday','2026-10-13','2026-10-13',true);
@@ -538,7 +543,8 @@ INSERT INTO public.leave_requests(id,tenant_id,employee_id,leave_type_id,from_da
   ('88888888-8888-4888-8888-888888888805','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','99999999-9999-4999-8999-999999999901','2026-10-15','2026-10-15',1,'Synthetic concurrent decision','full','pending'),
   ('88888888-8888-4888-8888-888888888806','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','99999999-9999-4999-8999-999999999901','2026-10-16','2026-10-16',1,'Synthetic cross-tenant attempt','full','pending'),
   ('88888888-8888-4888-8888-888888888807','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','99999999-9999-4999-8999-999999999903','2026-10-19','2026-10-19',1,'Synthetic tenant B request','full','pending'),
-  ('88888888-8888-4888-8888-888888888808','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','99999999-9999-4999-8999-999999999903','2026-10-20','2026-10-20',1,'Synthetic tenant B viewer request','full','pending');
+  ('88888888-8888-4888-8888-888888888808','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','99999999-9999-4999-8999-999999999903','2026-10-20','2026-10-20',1,'Synthetic tenant B viewer request','full','pending'),
+  ('88888888-8888-4888-8888-888888888809','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555558','99999999-9999-4999-8999-999999999901',(now() AT TIME ZONE 'Asia/Dhaka')::date,(now() AT TIME ZONE 'Asia/Dhaka')::date,1,'Synthetic approved leave dashboard count','full','approved');
 INSERT INTO public.employee_leave_balances(id,tenant_id,employee_id,leave_type_id,balance_year,allocated_days,pending_days,used_days) VALUES
   ('aaaaaaaa-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','99999999-9999-4999-8999-999999999901',2026,20,5,0),
   ('aaaaaaaa-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','99999999-9999-4999-8999-999999999901',2027,20,1,0),
@@ -546,12 +552,15 @@ INSERT INTO public.employee_leave_balances(id,tenant_id,employee_id,leave_type_i
   ('aaaaaaaa-0000-4000-8000-000000000004','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','99999999-9999-4999-8999-999999999903',2026,20,2,0);
 
 INSERT INTO public.attendance_records(id,tenant_id,employee_id,attendance_date,check_in,check_out,work_mode,client_name,status,source,remarks) VALUES
-  ('bbbbbbbb-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','2026-10-12','2026-10-12 09:00:00+06','2026-10-12 17:00:00+06','home','Existing Client','present','employee','Existing attendance'),
-  ('bbbbbbbb-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','2026-10-12','2026-10-12 09:10:00+06','2026-10-12 17:10:00+06','office','Tenant B Client','present','employee','Tenant B attendance');
+  ('bbbbbbbb-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555',(now() AT TIME ZONE 'Asia/Dhaka')::date,now(),'2026-10-12 17:00:00+06','home','Existing Client','present','employee','Existing attendance'),
+  ('bbbbbbbb-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666',(now() AT TIME ZONE 'Asia/Dhaka')::date,((now() AT TIME ZONE 'Asia/Dhaka')::date + time '09:10') AT TIME ZONE 'Asia/Dhaka','2026-10-12 17:10:00+06','office','Tenant B Client','present','employee','Tenant B attendance'),
+  ('bbbbbbbb-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555556',(now() AT TIME ZONE 'Asia/Dhaka')::date,NULL,NULL,'office',NULL,'absent','employee','Explicit absent status'),
+  ('bbbbbbbb-0000-4000-8000-000000000004','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555557',(now() AT TIME ZONE 'Asia/Dhaka')::date,now(),NULL,'client_meeting',NULL,'late','employee','Explicit late and client meeting values'),
+  ('bbbbbbbb-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555559',(now() AT TIME ZONE 'Asia/Dhaka')::date,now(),NULL,'home',NULL,'present','employee','Explicit home work mode');
 INSERT INTO public.attendance_corrections(id,tenant_id,employee_id,attendance_date,requested_check_in,requested_check_out,requested_work_mode,client_name,reason,status) VALUES
   ('cccccccc-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','2026-10-12','2026-10-12 09:30:00+06',NULL,NULL,NULL,'Synthetic check-in-only correction','pending'),
   ('cccccccc-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','2026-10-12','2026-10-12 09:45:00+06',NULL,NULL,NULL,'Synthetic tenant B manager attempt','pending'),
-  ('cccccccc-0000-4000-8000-000000000003','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','2026-10-12',NULL,'2026-10-12 17:30:00+06',NULL,NULL,'Synthetic tenant B checkout correction','pending'),
+  ('cccccccc-0000-4000-8000-000000000003','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666',(now() AT TIME ZONE 'Asia/Dhaka')::date,NULL,((now() AT TIME ZONE 'Asia/Dhaka')::date + time '17:30') AT TIME ZONE 'Asia/Dhaka',NULL,NULL,'Synthetic tenant B checkout correction','pending'),
   ('cccccccc-0000-4000-8000-000000000004','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','2026-10-12',NULL,'2026-10-12 18:00:00+06',NULL,NULL,'Synthetic check-out-only correction','pending'),
   ('cccccccc-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','2026-10-12',NULL,NULL,'office',NULL,'Synthetic work-mode-only correction','pending'),
   ('cccccccc-0000-4000-8000-000000000006','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','2026-10-13','2026-10-13 09:00:00+06',NULL,NULL,NULL,'Synthetic missing-attendance-row correction','pending'),

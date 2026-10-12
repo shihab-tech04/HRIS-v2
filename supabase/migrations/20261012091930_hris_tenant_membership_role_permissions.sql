@@ -161,15 +161,72 @@ CREATE POLICY hris_employee_leave_balances_tenant_read_guard
 CREATE OR REPLACE FUNCTION public.hris_get_tenant_dashboard_summary(p_tenant_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path TO 'pg_catalog', 'public', 'auth' AS $function$
+DECLARE
+  v_timezone text;
+  v_today date;
+  v_team_members bigint;
+  v_attendance_today bigint;
+  v_present_today bigint;
+  v_absent_today bigint;
+  v_wfo_today bigint;
+  v_wfh_today bigint;
+  v_client_meeting_today bigint;
+  v_on_leave_today bigint;
+  v_late_today bigint;
+  v_attendance_last_30_days jsonb;
 BEGIN
   IF NOT public.has_tenant_permission(p_tenant_id, 'dashboard.view') THEN
     RAISE EXCEPTION 'Tenant dashboard permission required.' USING errcode='42501';
   END IF;
+  SELECT t.timezone INTO v_timezone FROM public.tenants t
+  WHERE t.id=p_tenant_id AND t.is_active IS TRUE;
+  IF NOT FOUND OR v_timezone IS NULL THEN
+    RAISE EXCEPTION 'Active dashboard organization required.' USING errcode='42501';
+  END IF;
+  v_today := (now() AT TIME ZONE v_timezone)::date;
+  SELECT count(*) INTO v_team_members FROM public.employees
+    WHERE tenant_id=p_tenant_id AND employment_status NOT IN ('resigned','terminated');
+  SELECT
+    count(*),
+    count(*) FILTER (WHERE lower(btrim(a.status))='present'),
+    count(*) FILTER (WHERE lower(btrim(a.status))='absent'),
+    count(*) FILTER (WHERE lower(btrim(a.work_mode))='office'),
+    count(*) FILTER (WHERE lower(btrim(a.work_mode))='home'),
+    count(*) FILTER (WHERE lower(btrim(a.work_mode))='client_meeting'),
+    count(*) FILTER (WHERE lower(btrim(a.status))='late')
+  INTO v_attendance_today, v_present_today, v_absent_today, v_wfo_today,
+       v_wfh_today, v_client_meeting_today, v_late_today
+  FROM public.attendance_records a
+  JOIN public.employees e ON e.id=a.employee_id AND e.tenant_id=a.tenant_id
+  WHERE a.tenant_id=p_tenant_id AND a.attendance_date=v_today
+    AND e.employment_status NOT IN ('resigned','terminated');
+  SELECT count(DISTINCT employee_id) INTO v_on_leave_today
+  FROM public.leave_requests r
+  JOIN public.employees e ON e.id=r.employee_id AND e.tenant_id=r.tenant_id
+  WHERE r.tenant_id=p_tenant_id AND lower(btrim(r.status))='approved'
+    AND r.from_date<=v_today AND r.to_date>=v_today
+    AND e.employment_status NOT IN ('resigned','terminated');
+  SELECT coalesce(jsonb_agg(
+    jsonb_build_object('date',d.day,'records',coalesce(a.cnt,0)) ORDER BY d.day
+  ),'[]'::jsonb) INTO v_attendance_last_30_days
+  FROM generate_series(v_today-29,v_today,'1 day'::interval) d(day)
+  LEFT JOIN (
+    SELECT attendance_date,count(*) cnt FROM public.attendance_records
+    WHERE tenant_id=p_tenant_id AND attendance_date BETWEEN v_today-29 AND v_today
+    GROUP BY attendance_date
+  ) a ON a.attendance_date=d.day::date;
   RETURN jsonb_build_object(
-    'employees', (SELECT count(*) FROM public.employees
-      WHERE tenant_id=p_tenant_id AND employment_status NOT IN ('resigned','terminated')),
-    'attendance_today', (SELECT count(*) FROM public.attendance_records
-      WHERE tenant_id=p_tenant_id AND attendance_date=current_date),
+    'dashboard_date', v_today,
+    'employees', v_team_members,
+    'team_members', v_team_members,
+    'attendance_today', v_attendance_today,
+    'present_today', v_present_today,
+    'absent_today', v_absent_today,
+    'wfo_today', v_wfo_today,
+    'wfh_today', v_wfh_today,
+    'client_meeting_today', v_client_meeting_today,
+    'on_leave_today', v_on_leave_today,
+    'late_today', v_late_today,
     'attendance_corrections_pending', (SELECT count(*) FROM public.attendance_corrections
       WHERE tenant_id=p_tenant_id AND status='pending'),
     'leave_pending', (SELECT count(*) FROM public.leave_requests
@@ -177,15 +234,12 @@ BEGIN
     'approvals_pending',
       (SELECT count(*) FROM public.attendance_corrections WHERE tenant_id=p_tenant_id AND status='pending')
       +(SELECT count(*) FROM public.leave_requests WHERE tenant_id=p_tenant_id AND status='pending'),
-    'attendance_last_7_days', coalesce((
-      SELECT jsonb_agg(jsonb_build_object('date',d.day,'records',coalesce(a.cnt,0)) ORDER BY d.day)
-      FROM generate_series(current_date-6,current_date,'1 day'::interval) d(day)
-      LEFT JOIN (
-        SELECT attendance_date,count(*) cnt FROM public.attendance_records
-        WHERE tenant_id=p_tenant_id AND attendance_date BETWEEN current_date-6 AND current_date
-        GROUP BY attendance_date
-      ) a ON a.attendance_date=d.day::date
-    ),'[]'::jsonb)
+    'attendance_last_7_days', (
+      SELECT coalesce(jsonb_agg(value ORDER BY ordinal),'[]'::jsonb)
+      FROM jsonb_array_elements(v_attendance_last_30_days) WITH ORDINALITY recent(value,ordinal)
+      WHERE ordinal>23
+    ),
+    'attendance_last_30_days', v_attendance_last_30_days
   );
 END;
 $function$;
