@@ -1,19 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 22:27 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 22:42 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 08 attendance report and roster filters
+## Current checkpoint — Phase 08 Attendance Report toolbar
 
-- Latest Main feature commit: `84d71177d54da1bb42f3e3dc0c39e2fdce62adf8` (exact Figma Attendance sort glyph), preceded by `93e4c532378eadb8029a7d20187fba2e50476ebe` (roster invalid-range browser acceptance), `7060c371adc8f3e0794fde473a251c85aa70bbda` (Shift Roster date/search apply), and `b0a3da24ae93162c401a19cca51b87aa81bc440c` (aggregate attendance date/Team apply). Current verification: **39/39 contracts**, TypeScript/build pass, full Chromium **38/38**, focused Attendance **1/1**, local Auth/RLS **65/65**. Vite reports the existing 726.66 kB minified JavaScript chunk advisory.
-- All five prior tenant-security failures pass in the latest 65/65 local Auth/RLS run. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
-- Since the 14:20 baseline, implementation/source/test changes total **24 paths, +6,243/−55**, excluding documentation and image evidence. See `EXECUTION_CHECKPOINT_20261012_2227.md` and `ACCEPTANCE_EVIDENCE_20261012_2227.md`.
-- The user reports the recovered catalogue has 1,047 stories/153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The current task's `sources/` mount is empty; project/attachment search found only the local empty tracking skeleton (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`), and connected Drive exact-name/hash searches returned preservation records, not the canonical bytes. The expected SHA cannot be verified here; **0/1,047 are mapped and accepted against canonical text, 1,047 pending**. No requirements or IDs were reconstructed.
-- Prior 18:32 Drive archive `Synesis_HRIS360_Attendance_TeamName_20261012_1832.zip` (file ID `113U00tgit2R1bJzLRh2u_kdxk5yFBUr1`) remains in the folder. See `DRIVE_PRESERVATION_RECEIPT_20261012_1832.md`.
-- Previous 18:49 combined Main/Candidate source archive `Synesis_HRIS360_Phase08_AttendanceTeamFilter_20261012_1849.zip` (ID `1HyLp0Ch5JGNit5bVh4dWQGwyStVNkzf3`) remains in Drive; see its receipt.
-- New 18:56 combined Main/Candidate source archive `Synesis_HRIS360_Phase08_AttendanceTeamSort_20261012_1856.zip` (Drive file ID `1X6xVF3wjeRl5C2xYi0bgDFai4gkWS9r-`) is **4,802,895 bytes**, SHA-256 `74ec133bc519270417541e47d0346a4a97f222d69bdcaa344461e4e0a4631e9d`; ZIP integrity passed and Drive readback matched byte-for-byte. The 18:56 execution checkpoint, acceptance evidence and archive SHA sidecar were uploaded and read back exactly. Fresh folder/file metadata confirms `shihabshajib01@gmail.com` owns the destination and each file; old archive versions remain in place. See `DRIVE_PRESERVATION_RECEIPT_20261012_1858.md`.
-- The Team Name sort control now updates accessible sort state and keeps visible row and CSV ordering consistent. Full details are in the 18:56 acceptance evidence.
-- Latest verified Drive source archive is the 18:56 Main/Candidate checkpoint. Current checkpoint and evidence records are being added as new versions; the older archive is not labelled current/final for the later code commits. No push or deployment.
-- Next: continue Phase 08 functional attendance/time-management journeys from the current Figma and approved contracts; map against canonical IDs as soon as the recovered Project source is visible to this task. Do not publish or deploy early.
+- Latest Main feature commit: 7fc4135bfe1a6d7d520bf089be2e4498e7522b12. The aggregate report toolbar is now Search → Download Report → Filters with exact local Figma assets and browser-verified desktop widths.
+- Current verification: npm run check has TypeScript/build PASS and 40/40 contracts PASS; focused Attendance browser 1/1 PASS; full Chromium 38/38 PASS at isolated port 4248; local Auth/RLS 65/65 PASS at 22:15. All five previous tenant-security cases pass.
+- Since the 14:20 baseline, Main source, migration and test changes are 26 paths, +6,301/-51. The latest toolbar slice is 8 paths, +70/-6. Exact paths and recent feature commits are in EXECUTION_CHECKPOINT_20261012_2242.md.
+- The recovered catalogue is still not mounted in this task: the Project sources directory is empty and exact-name Drive search returns no canonical matrix. The local tracking skeleton is empty (SHA-256 456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996), unlike the expected c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520. Canonical acceptance is 0/1,047 mapped; 1,047 pending. No requirement text or story IDs were inferred.
+- No production changes, paid Supabase service, GitHub push or deployment. The current Drive source archive remains the older 18:56 archive and is not final; new versioned checkpoint/evidence records are being uploaded to the owner-verified folder.
+- Continue Phase 08 functional work and keep story-to-requirement mapping pending until the expected-hash source is visible. Complete and verify the entire product, then make and read back the final Drive archive, then push and deploy.
 
 ## Historical detail from the 17:50 checkpoint
 
