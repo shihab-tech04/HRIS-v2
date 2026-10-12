@@ -32,6 +32,9 @@ test('admin navigation uses permissions evaluated for each active tenant members
   assert.match(workspace, /if \(permissions\.dashboard\)/);
   assert.match(workspace, /if \(permissions\.attendance\)/);
   assert.match(workspace, /if \(permissions\.leave\)/);
+  assert.match(app, /attendanceView: grants\.get\('attendance\.view'\) === true/);
+  assert.match(workspace, /canView=\{permissions\.attendanceView\}/);
+  assert.match(workspace, /const showDetails = canView \|\| canManage/);
 });
 
 test('live HRIS pages use tenant-checked RPC responses and omit the global candidate count', () => {

@@ -11,6 +11,7 @@ type TenantOption = { id: string; name: string; slug: string };
 type PermissionSet = {
   dashboard: boolean;
   attendance: boolean;
+  attendanceView: boolean;
   attendanceManage: boolean;
   attendanceReport: boolean;
   leave: boolean;
@@ -53,7 +54,7 @@ type LeaveData = {
 };
 
 const emptyPermissions: PermissionSet = {
-  dashboard: false, attendance: false, attendanceManage: false,
+  dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false,
 };
 
@@ -87,6 +88,17 @@ function displayShortDate(value: unknown): string {
 function displayWorkMode(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) return 'Not recorded';
   return value.trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function displayAttendanceDate(value: unknown): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return display(value);
+  const [, year, month, day] = value.match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
+  return `${day}-${month}-${year}`;
+}
+
+function nameInitials(value: unknown): string {
+  const initials = display(value).split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('');
+  return initials.toUpperCase() || '—';
 }
 
 function localIsoDate(date: Date): string {
@@ -287,28 +299,36 @@ function LiveDashboard({ tenantId, onOpen }: { tenantId: string; onOpen: (page: 
   </section>;
 }
 
-function AttendanceReport({ tenantId, canReport, canManage }: { tenantId: string; canReport: boolean; canManage: boolean }) {
+function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantId: string; canView: boolean; canReport: boolean; canManage: boolean }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dataTenantId, setDataTenantId] = useState('');
   const [from, setFrom] = useState(startOfRecentWeek);
   const [to, setTo] = useState(localIsoDate(new Date()));
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [resolvingCorrectionId, setResolvingCorrectionId] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const requestSequence = useRef(0);
+  const showDetails = canView || canManage;
+  const aggregateOnly = canReport && !showDetails;
 
   async function load() {
+    const requestId = ++requestSequence.current;
     setLoading(true); setError('');
+    if (dataTenantId !== tenantId) setActionMessage('');
     try {
       if (from > to) throw new Error('Choose a valid date range.');
       const parameters = {
         p_tenant_id: tenantId, p_start: from, p_end: to,
         p_search: submittedSearch || null,
       };
-      const needsDetails = !canReport || canManage;
+      const needsDetails = showDetails;
       const [detailResult, reportResult] = await Promise.all([
         needsDetails
           ? supabase.rpc('hris_get_tenant_attendance_data', {
@@ -328,15 +348,28 @@ function AttendanceReport({ tenantId, canReport, canManage }: { tenantId: string
       if (canReport && reportResult.data !== null && !Array.isArray(reportResult.data)) {
         throw new Error('Attendance report returned an invalid response.');
       }
-      setRecords(canReport ? asRows(reportResult.data) : asRows(detailData?.records));
+      if (requestId !== requestSequence.current) return;
+      const detailRows = asRows(detailData?.records);
+      setRecords(showDetails ? detailRows : asRows(reportResult.data));
       setCorrections(asRows(detailData?.corrections));
+      if (showDetails) {
+        const availableStatuses = Array.from(new Set(detailRows.map(row => String(row.status || '')).filter(Boolean))).sort();
+        setStatusOptions(status === 'all' ? availableStatuses
+          : previous => Array.from(new Set([...previous, ...availableStatuses, status])).sort());
+      } else setStatusOptions([]);
+      setDataTenantId(tenantId);
     } catch (cause) {
+      if (requestId !== requestSequence.current) return;
       setRecords([]); setCorrections([]);
+      setDataTenantId(tenantId);
       setError(cause instanceof Error ? cause.message : 'Unable to load attendance records.');
-    } finally { setLoading(false); }
+    } finally { if (requestId === requestSequence.current) setLoading(false); }
   }
 
-  useEffect(() => { void load(); }, [tenantId, from, to, submittedSearch, status, canReport]);
+  useEffect(() => {
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [tenantId, from, to, submittedSearch, status, canReport, canView, canManage]);
 
   async function resolveCorrection(id: string, decision: 'approved' | 'rejected') {
     if (resolvingCorrectionId) return;
@@ -355,52 +388,63 @@ function AttendanceReport({ tenantId, canReport, canManage }: { tenantId: string
   }
 
   function exportReport() {
-    if (!records.length) return;
-    const fields = canReport
+    const currentRecords = dataTenantId === tenantId ? records : [];
+    if (!currentRecords.length) return;
+    const fields = aggregateOnly
       ? ['employee_name', 'employee_number', 'designation_title', 'department_name', 'attendance_days', 'office_hours', 'working_hours', 'deviation']
       : ['full_name', 'employee_number', 'designation_title', 'department_name', 'attendance_date', 'check_in', 'check_out', 'work_mode', 'status', 'work_hours'];
-    const labels = canReport
+    const labels = aggregateOnly
       ? ['Employee', 'Employee number', 'Designation', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation']
       : ['Employee', 'Employee number', 'Designation', 'Department', 'Date', 'Check in', 'Check out', 'Work location', 'Status', 'Working hours'];
-    downloadCsv(`attendance-report-${from}-${to}.csv`, labels, records.map(row => fields.map(field => row[field])));
+    downloadCsv(`attendance-report-${from}-${to}.csv`, labels, currentRecords.map(row => fields.map(field => row[field])));
   }
 
-  const statuses = Array.from(new Set(records.map(row => String(row.status || '')).filter(Boolean))).sort();
-  const rows = canReport ? records : records;
+  const currentTenantReady = dataTenantId === tenantId;
+  const currentRecords = currentTenantReady ? records : [];
+  const currentCorrections = currentTenantReady ? corrections : [];
+  const rows = currentRecords;
 
   return <section aria-labelledby="attendance-report-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 id="attendance-report-heading" className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
-        <p className="mt-1 text-sm text-slate-500">Records visible to your current HRIS permission</p></div>
-      <button type="button" disabled={!records.length} onClick={exportReport} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+        <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p></div>
+    </div>
+    <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="min-w-[190px] flex-1"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
+        <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input id="attendance-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employees…" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" />
+        </div></div>
+      <button type="submit" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white"><Search className="h-4 w-4" /> Search</button>
+      <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">
+        <SlidersHorizontal className="h-4 w-4" /> Filters
+      </button>
+      <button type="button" disabled={!currentRecords.length} onClick={exportReport} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <Download className="h-4 w-4" /> Download report
       </button>
-    </div>
-    <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
-      <div><label htmlFor="attendance-search" className="mb-1 block text-xs font-medium text-slate-600">Search employees</label>
-        <input id="attendance-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Name or employee number" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+    </form>
+    {filtersOpen && <div id="attendance-filters" className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">From date</label>
         <input id="attendance-from" type="date" value={from} onChange={event => setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">To date</label>
         <input id="attendance-to" type="date" value={to} onChange={event => setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-      {!canReport && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">Status</label>
+      {showDetails && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">Status</label>
         <select id="attendance-status" value={status} onChange={event => setStatus(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
-          <option value="all">All visible statuses</option>{statuses.map(value => <option key={value} value={value}>{value}</option>)}
+          <option value="all">All visible statuses</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
         </select></div>}
-      <div className="flex items-end"><button type="submit" className="min-h-11 w-full rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white">Apply</button></div>
-    </form>
-    {error && <StatusMessage error={error} onRetry={() => void load()} />}
-    {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
-    {corrections.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>
+    </div>}
+    {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
+    {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
+    {currentCorrections.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h3 className="font-medium">Attendance correction requests</h3>
-      <p className="mt-1 text-sm text-slate-600">{corrections.filter(item => item.status === 'pending').length} pending in this date range.</p>
+      <p className="mt-1 text-sm text-slate-600">{currentCorrections.filter(item => item.status === 'pending').length} pending in this date range.</p>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
             {['Employee', 'Date', 'Requested change', 'Reason', 'Status', ...(canManage ? ['Actions'] : [])].map(label =>
               <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
           </tr></thead>
-          <tbody className="divide-y divide-slate-100">{corrections.map((item, index) => <tr key={String(item.id || index)}>
+          <tbody className="divide-y divide-slate-100">{currentCorrections.map((item, index) => <tr key={String(item.id || index)}>
             <td className="px-3 py-3">{display(item.full_name)}</td>
             <td className="px-3 py-3">{display(item.attendance_date)}</td>
             <td className="px-3 py-3">{[
@@ -425,25 +469,41 @@ function AttendanceReport({ tenantId, canReport, canManage }: { tenantId: string
       </div>
     </section>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {loading ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">No attendance records were returned for this date range.</p> : <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-left text-sm">
-          <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-            {(canReport ? ['Name', 'Employee no.', 'Designation', 'Department', 'Days', 'Office hours', 'Work hours', 'Deviation'] : ['Name', 'Employee no.', 'Designation', 'Department', 'Date', 'Check in', 'Check out', 'Work location', 'Status', 'Work hours']).map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">No attendance records were returned for this date range.</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
+        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className="w-full min-w-[1160px] border-separate border-spacing-0 text-left text-sm">
+          <thead className="bg-white text-xs text-slate-500"><tr>
+            {(aggregateOnly ? ['Name', 'Designation', 'Department', 'Days', 'Office hours', 'Work hours', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" className="border-b border-slate-200 px-4 py-4 font-medium">{label}</th>)}
           </tr></thead>
-          <tbody className="divide-y divide-slate-100">{records.map((row, index) => <tr key={String(row.employee_id || row.id || index)} className="hover:bg-slate-50">
-            <td className="px-3 py-3 font-medium">{display(row.employee_name || row.full_name)}</td>
-            <td className="px-3 py-3">{display(row.employee_number)}</td>
-            <td className="px-3 py-3">{display(row.designation_title)}</td>
-            <td className="px-3 py-3">{display(row.department_name)}</td>
-            {canReport ? <>
-              <td className="px-3 py-3">{display(row.attendance_days)}</td><td className="px-3 py-3">{display(row.office_hours)}</td>
-              <td className="px-3 py-3">{display(row.working_hours)}</td><td className="px-3 py-3">{display(row.deviation)}</td>
-            </> : <>
-              <td className="px-3 py-3">{display(row.attendance_date)}</td><td className="px-3 py-3">{displayTime(row.check_in)}</td>
-              <td className="px-3 py-3">{displayTime(row.check_out)}</td><td className="px-3 py-3">{display(row.work_mode)}</td>
-              <td className="px-3 py-3">{display(row.status)}</td><td className="px-3 py-3">{display(row.work_hours)}</td>
-            </>}
-          </tr>)}</tbody>
+          <tbody>{rows.map((row, index) => {
+            const employeeName = row.employee_name || row.full_name;
+            const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
+            const statusTone = normalizedStatus === 'late' ? 'bg-amber-50 text-amber-800'
+              : normalizedStatus === 'absent' ? 'bg-rose-50 text-rose-800'
+                : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'bg-emerald-50 text-emerald-800'
+                  : 'bg-slate-100 text-slate-600';
+            return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className="hover:bg-slate-50">
+              <td className="border-b border-slate-100 px-4 py-3 font-medium">
+                <div className="flex min-w-44 items-center gap-3">
+                  {!aggregateOnly && <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#DCEFF4] text-sm font-semibold text-[#085587]">{nameInitials(employeeName)}</span>}
+                  <span className="min-w-0"><span className="block break-words text-slate-800">{display(employeeName)}</span>
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500">{display(row.employee_number)}</span></span>
+                </div>
+              </td>
+              <td className="border-b border-slate-100 px-4 py-3">{display(row.designation_title)}</td>
+              <td className="border-b border-slate-100 px-4 py-3">{display(row.department_name)}</td>
+              {aggregateOnly ? <>
+                <td className="border-b border-slate-100 px-4 py-3">{display(row.attendance_days)}</td><td className="border-b border-slate-100 px-4 py-3">{display(row.office_hours)}</td>
+                <td className="border-b border-slate-100 px-4 py-3">{display(row.working_hours)}</td><td className="border-b border-slate-100 px-4 py-3">{display(row.deviation)}</td>
+              </> : <>
+                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayAttendanceDate(row.attendance_date)}</td>
+                <td className="border-b border-slate-100 px-4 py-3">{displayWorkMode(row.work_mode)}</td>
+                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayTime(row.check_in)}</td>
+                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayTime(row.check_out)}</td>
+                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{display(row.work_hours)}</td>
+                <td className="border-b border-slate-100 px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusTone}`}>{display(row.status)}</span></td>
+              </>}
+            </tr>;
+          })}</tbody>
         </table>
       </div>}
     </div>
@@ -1040,7 +1100,7 @@ export function LiveHrisWorkspace({
           {current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
-            tenantId={tenantId} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
+            tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
           />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}

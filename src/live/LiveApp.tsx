@@ -15,11 +15,11 @@ type LeaveType = { id: string; name: string; annual_entitlement: number | null }
 type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[] };
 type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
-  dashboard: boolean; attendance: boolean; attendanceManage: boolean;
+  dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
-  dashboard: false, attendance: false, attendanceManage: false,
+  dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
@@ -275,6 +275,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             dashboard: grants.get('dashboard.view') === true,
             attendance: grants.get('attendance.view') === true || grants.get('attendance.manage') === true
               || grants.get('reports.view') === true,
+            attendanceView: grants.get('attendance.view') === true,
             attendanceManage: grants.get('attendance.manage') === true,
             attendanceReport: grants.get('reports.view') === true,
             leave: grants.get('leave.view') === true || grants.get('leave.manage') === true,
