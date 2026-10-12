@@ -69,7 +69,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
     setError('');
     if (!selected.table || !selected.fields) return () => { active = false; };
     setLoading(true);
-    void supabase.from(selected.table).select(selected.fields).eq('tenant_id', tenantId).limit(50)
+    void Promise.resolve(supabase.from(selected.table).select(selected.fields).eq('tenant_id', tenantId).limit(50))
       .then(({ data, error: requestError }) => {
         if (!active) return;
         if (requestError) setError('These records are not accessible in your current authorized session.');
