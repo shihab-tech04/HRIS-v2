@@ -48,16 +48,16 @@ jobs:
           base="https://shihab-tech04.github.io"
           for attempt in $(seq 1 20); do
             curl -fsSL -H 'Cache-Control: no-cache' "$base/HRIS-v2/?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/hris-live.html || true
-            if grep -Eq 'src="/HRIS-v2/assets/[^"]+\\.js"' /tmp/hris-live.html &&
-               grep -Eq 'href="/HRIS-v2/assets/[^"]+\\.css"' /tmp/hris-live.html; then
+            if grep -Eq 'src="/HRIS-v2/assets/[^"]+\.js"' /tmp/hris-live.html &&
+               grep -Eq 'href="/HRIS-v2/assets/[^"]+\.css"' /tmp/hris-live.html; then
               break
             fi
             sleep 3
           done
-          grep -Eq 'src="/HRIS-v2/assets/[^"]+\\.js"' /tmp/hris-live.html
-          grep -Eq 'href="/HRIS-v2/assets/[^"]+\\.css"' /tmp/hris-live.html
-          js="$(grep -oE 'src="/HRIS-v2/assets/[^"]+\\.js"' /tmp/hris-live.html | head -1 | cut -d '"' -f2)"
-          css="$(grep -oE 'href="/HRIS-v2/assets/[^"]+\\.css"' /tmp/hris-live.html | head -1 | cut -d '"' -f2)"
+          grep -Eq 'src="/HRIS-v2/assets/[^"]+\.js"' /tmp/hris-live.html
+          grep -Eq 'href="/HRIS-v2/assets/[^"]+\.css"' /tmp/hris-live.html
+          js="$(grep -oE 'src="/HRIS-v2/assets/[^"]+\.js"' /tmp/hris-live.html | head -1 | cut -d '"' -f2)"
+          css="$(grep -oE 'href="/HRIS-v2/assets/[^"]+\.css"' /tmp/hris-live.html | head -1 | cut -d '"' -f2)"
           curl -fsSL "$base$js" -o /tmp/hris-live.js
           curl -fsSL "$base$css" -o /tmp/hris-live.css
           test -s /tmp/hris-live.js
