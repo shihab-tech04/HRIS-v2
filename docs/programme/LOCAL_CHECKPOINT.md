@@ -1,14 +1,14 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 22:42 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 22:47 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
 ## Current checkpoint — Phase 08 Attendance Report toolbar
 
-- Latest Main feature commit: 7fc4135bfe1a6d7d520bf089be2e4498e7522b12. The aggregate report toolbar is now Search → Download Report → Filters with exact local Figma assets and browser-verified desktop widths.
-- Current verification: npm run check has TypeScript/build PASS and 40/40 contracts PASS; focused Attendance browser 1/1 PASS; full Chromium 38/38 PASS at isolated port 4248; local Auth/RLS 65/65 PASS at 22:15. All five previous tenant-security cases pass.
-- Since the 14:20 baseline, Main source, migration and test changes are 26 paths, +6,301/-51. The latest toolbar slice is 8 paths, +70/-6. Exact paths and recent feature commits are in EXECUTION_CHECKPOINT_20261012_2242.md.
+- Latest Main feature commit: 2dc1ba40b6f8cce2919cb3302f37cca3d468cac4, after toolbar commit 7fc4135bfe1a6d7d520bf089be2e4498e7522b12. The aggregate report toolbar is Search → Download Report → Filters with exact local Figma assets and browser-verified desktop widths. Its Filters button now controls an always-mounted hidden panel with synchronized aria-expanded state.
+- Current verification: npm run check has TypeScript/build PASS and 41/41 contracts PASS; focused Attendance browser 1/1 PASS; full Chromium 38/38 PASS at isolated port 4248; local Auth/RLS 65/65 PASS at 22:15. All five previous tenant-security cases pass.
+- Since the 14:20 baseline, Main source, migration and test changes are 26 paths, +6,319/-51. The toolbar slice is 8 paths, +70/-6; the follow-up disclosure accessibility slice is 3 paths, +20/-2. Exact paths and recent feature commits are in EXECUTION_CHECKPOINT_20261012_2242.md.
 - The recovered catalogue is still not mounted in this task: the Project sources directory is empty and exact-name Drive search returns no canonical matrix. The local tracking skeleton is empty (SHA-256 456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996), unlike the expected c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520. Canonical acceptance is 0/1,047 mapped; 1,047 pending. No requirement text or story IDs were inferred.
-- No production changes, paid Supabase service, GitHub push or deployment. The current Drive source archive remains the older 18:56 archive and is not final; new versioned checkpoint/evidence records are being uploaded to the owner-verified folder.
+- No production changes, paid Supabase service, GitHub push or deployment. The current Drive source archive remains the older 18:56 archive and is not final; versioned checkpoint/evidence records and their preservation receipt were uploaded to the owner-verified folder and read back exactly (see DRIVE_PRESERVATION_RECEIPT_20261012_2242.md).
 - Continue Phase 08 functional work and keep story-to-requirement mapping pending until the expected-hash source is visible. Complete and verify the entire product, then make and read back the final Drive archive, then push and deploy.
 
 ## Historical detail from the 17:50 checkpoint
