@@ -66,7 +66,6 @@ test('secure recovery token in URL fragment is removed then opens password updat
 });
 test('expired recovery callback shows a useful retry path',async ({page})=>{
   await page.goto('/?error=access_denied&error_code=otp_expired&error_description=Link%20expired');
-  await page.getByRole('button',{name:'Forgot password?'}).click();
   await expect(page.getByRole('heading',{name:'Reset your password'})).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('expired');
   await expect(page.getByRole('button',{name:'Send reset link'})).toBeVisible();
