@@ -199,6 +199,18 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
 
   const teamNameHeader = reportTable.getByRole('columnheader', { name: /Team Name/ });
   await expect(teamNameHeader).toHaveAttribute('aria-sort', 'none');
+  const teamSortIcon = teamNameHeader.locator('img');
+  await expect(teamSortIcon).toBeVisible();
+  const iconDimensions = await teamSortIcon.evaluate(element => {
+    const image = element as HTMLImageElement;
+    const bounds = image.getBoundingClientRect();
+    return { naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight,
+      renderedWidth: bounds.width, renderedHeight: bounds.height };
+  });
+  expect(iconDimensions.naturalWidth).toBe(14);
+  expect(iconDimensions.naturalHeight).toBeGreaterThan(10);
+  expect(Math.abs(iconDimensions.renderedWidth - 14)).toBeLessThan(0.1);
+  expect(Math.abs(iconDimensions.renderedHeight - 11.5957)).toBeLessThan(0.5);
   await page.getByRole('button', { name: 'Sort by Team Name ascending' }).click();
   await expect(teamNameHeader).toHaveAttribute('aria-sort', 'ascending');
   await expect(reportTable.getByRole('row').nth(1)).toContainText('Synthetic Design Team');

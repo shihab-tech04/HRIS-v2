@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261012183000_hris_attendance_report_team_name.sql', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+const teamSortAsset = readFileSync(new URL('../../src/assets/attendance-team-sort.svg', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/attendance-information.spec.ts', import.meta.url), 'utf8');
 
@@ -32,6 +33,10 @@ test('Figma team filter applies to visible attendance rows and CSV exports', () 
 });
 
 test('Figma Team Name sort order is accessible and shared by table and CSV', () => {
+  assert.match(workspace, /attendance-team-sort\.svg/);
+  assert.doesNotMatch(workspace, /ArrowDownUp/);
+  assert.match(teamSortAsset, /<svg[^>]*width="14" height="11\.5957" viewBox="0 0 14 11\.5957"/);
+  assert.doesNotMatch(workspace, /figma\.com\/api\/mcp\/asset/);
   assert.match(workspace, /setTeamSortDirection\(value => value === 'asc' \? 'desc' : 'asc'\)/);
   assert.match(workspace, /aria-sort=\{aggregateOnly && label === 'Team Name'/);
   assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
 import {
-  Activity, ArrowDownUp, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users, X, XCircle,
 } from 'lucide-react';
@@ -554,7 +555,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
                   aria-label={`Sort by Team Name ${teamSortDirection === 'asc' ? 'descending' : 'ascending'}`}
                   className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
-                  <ArrowDownUp aria-hidden="true" className="h-3.5 w-3.5" />
+                  <img src={attendanceTeamSortIcon} alt="" />
                 </button>
               </div> : label}
             </th>)}
