@@ -60,6 +60,12 @@ test('leave decisions remain permission-gated and call the scoped approval RPC',
   assert.doesNotMatch(workspace, /AdminLeaveApprovals/);
   assert.match(workspace, /canManage &&/);
   assert.match(workspace, /rpc\('admin_resolve_leave_request'/);
+  const leavePage = workspace.slice(workspace.indexOf('function LeaveWorkspace('), workspace.indexOf('function PersonalLeaveRequests('));
+  assert.match(leavePage, /const filteredRequests = useMemo/);
+  assert.match(leavePage, /Filter by status/);
+  assert.match(leavePage, /employee_number, item\.leave_type_name, item\.leave_type_code/);
+  assert.match(leavePage, /requestId !== requestSequence\.current/);
+  assert.match(leavePage, /activeTenantId\.current !== actionTenantId/);
 });
 
 test('employee leave requests upload private evidence and submit through the tenant-scoped RPC', () => {

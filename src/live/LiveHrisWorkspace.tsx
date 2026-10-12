@@ -845,40 +845,78 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
   const [error, setError] = useState('');
   const [resolvingRequestId, setResolvingRequestId] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const dataTenantId = useRef('');
+  const requestSequence = useRef(0);
+  const activeTenantId = useRef(tenantId);
+  activeTenantId.current = tenantId;
 
   async function load() {
+    const requestId = ++requestSequence.current;
+    const requestedTenantId = tenantId;
     setLoading(true); setError('');
     try {
       const { data: response, error: rpcError } = await supabase.rpc('hris_get_tenant_leave_data', {
-        p_tenant_id: tenantId, p_start: null, p_end: null,
+        p_tenant_id: requestedTenantId, p_start: null, p_end: null,
       });
       if (rpcError) throw rpcError;
       const value = asObject(response);
       if (!value) throw new Error('Leave service returned an invalid response.');
+      if (requestId !== requestSequence.current) return;
       setData({ requests: asRows(value.requests), leave_types: asRows(value.leave_types), holidays: asRows(value.holidays) });
+      dataTenantId.current = requestedTenantId;
     } catch (cause) {
-      setData(null);
+      if (requestId !== requestSequence.current) return;
+      setData(null); dataTenantId.current = requestedTenantId;
       setError(cause instanceof Error ? cause.message : 'Unable to load leave data.');
-    } finally { setLoading(false); }
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
+    }
   }
 
-  useEffect(() => { void load(); }, [tenantId]);
-  const pending = useMemo(() => (data?.requests || []).filter(item => item.status === 'pending'), [data]);
+  useEffect(() => {
+    setData(null); dataTenantId.current = '';
+    setResolvingRequestId(''); setActionMessage('');
+    setSearch(''); setStatusFilter('all');
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [tenantId]);
+  const visibleData = dataTenantId.current === tenantId ? data : null;
+  const pending = useMemo(() => (visibleData?.requests || []).filter(item => String(item.status || '').toLowerCase() === 'pending'), [visibleData]);
+  const statusOptions = useMemo(() => Array.from(new Set((visibleData?.requests || [])
+    .map(item => String(item.status || '').trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })), [visibleData]);
+  const filteredRequests = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    return (visibleData?.requests || []).filter(item => {
+      const matchesStatus = statusFilter === 'all' || String(item.status || '').toLocaleLowerCase() === statusFilter;
+      const searchText = [item.full_name, item.employee_number, item.leave_type_name, item.leave_type_code,
+        item.from_date, item.to_date, item.status].map(value => String(value ?? '')).join(' ').toLocaleLowerCase();
+      return matchesStatus && (!needle || searchText.includes(needle));
+    });
+  }, [visibleData, search, statusFilter]);
 
   async function resolveRequest(id: string, decision: 'approved' | 'rejected') {
     if (resolvingRequestId) return;
     if (decision === 'rejected' && !window.confirm('Reject this leave request?')) return;
+    const actionTenantId = tenantId;
     setResolvingRequestId(id); setActionMessage(''); setError('');
     try {
       const { error: rpcError } = await supabase.rpc('admin_resolve_leave_request', {
         p_id: id, p_decision: decision, p_note: null,
       });
       if (rpcError) throw rpcError;
+      if (activeTenantId.current !== actionTenantId) return;
       setActionMessage(`Leave request ${decision}.`);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to resolve this leave request.');
-    } finally { setResolvingRequestId(''); }
+      if (activeTenantId.current === actionTenantId) {
+        setError(cause instanceof Error ? cause.message : 'Unable to resolve this leave request.');
+      }
+    } finally {
+      if (activeTenantId.current === actionTenantId) setResolvingRequestId('');
+    }
   }
 
   return <section aria-labelledby="leave-workspace-heading" className="space-y-4">
@@ -891,19 +929,34 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
-    {loading ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : data && <>
+    {loading || !visibleData ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : visibleData && <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Pending requests</p><p className="mt-2 text-2xl font-semibold">{pending.length}</p></div>
-        <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{data.leave_types.length}</p></div>
-        <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Holidays</p><p className="mt-2 text-2xl font-semibold">{data.holidays.length}</p></div>
+        <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{visibleData.leave_types.length}</p></div>
+        <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Holidays</p><p className="mt-2 text-2xl font-semibold">{visibleData.holidays.length}</p></div>
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {!data.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">Search requests</label>
+            <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
+              placeholder="Employee, leave type, date…" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div className="sm:w-52"><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">Filter by status</label>
+            <select id="leave-request-status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+              <option value="all">All statuses</option>
+              {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{status.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</option>)}
+            </select>
+          </div>
+          <p className="pb-3 text-xs text-slate-500" role="status">Showing {filteredRequests.length} of {visibleData.requests.length}</p>
+        </div>
+        {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : !filteredRequests.length
+          ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
+          <table className="w-full min-w-[760px] text-left text-sm" aria-label="Leave requests">
             <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
               {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
             </tr></thead>
-            <tbody className="divide-y divide-slate-100">{data.requests.map((row, index) => <tr key={String(row.id || index)}>
+            <tbody className="divide-y divide-slate-100">{filteredRequests.map((row, index) => <tr key={String(row.id || index)}>
               <td className="px-3 py-3 font-medium">{display(row.full_name)}</td><td className="px-3 py-3">{display(row.leave_type_name)}</td>
               <td className="px-3 py-3">{display(row.from_date)}</td><td className="px-3 py-3">{display(row.to_date)}</td>
               <td className="px-3 py-3">{display(row.requested_days)}</td><td className="px-3 py-3">{display(row.status)}</td>
