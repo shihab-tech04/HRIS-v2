@@ -1544,6 +1544,13 @@ function EmployeeTimesheets({ tenantId, tenantName }: { tenantId: string; tenant
     return asRows(row.entries).reduce((sum, entry) => sum + (Number(entry.hours) || 0), 0);
   }
 
+  const entryDailyTotals = Array.from(entries.reduce((totals, entry) => {
+    const hours = Number(entry.hours);
+    if (entry.work_date && Number.isFinite(hours) && hours > 0) {
+      totals.set(entry.work_date, (totals.get(entry.work_date) || 0) + hours);
+    }
+    return totals;
+  }, new Map<string, number>())).sort(([left], [right]) => left.localeCompare(right));
   const currentTenantDataReady = !loading && !error;
   return <section aria-labelledby="my-timesheets-heading" className="space-y-5">
     <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1598,6 +1605,13 @@ function EmployeeTimesheets({ tenantId, tenantName }: { tenantId: string; tenant
                 <input id={`timesheet-note-${index}`} type="text" maxLength={1000} value={entry.note} onChange={event => updateEntry(index, { note: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
               <div className="flex items-end"><button type="button" disabled={actionBusy} onClick={() => setEntries(current => current.filter((_, entryIndex) => entryIndex !== index))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-rose-700 disabled:opacity-50 sm:w-auto">Remove</button></div>
             </div>)}
+            {entryDailyTotals.length > 0 && <div aria-live="polite" aria-atomic="false" className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <h5 className="text-sm font-semibold text-slate-800">Daily totals</h5>
+              <ul className="mt-2 space-y-1 text-sm">{entryDailyTotals.map(([date, hours]) => <li key={date} aria-label={`${displayShortDate(date)} total ${hours.toFixed(2)} hours, maximum 24`} className="flex flex-wrap items-center justify-between gap-2">
+                <span>{displayShortDate(date)}</span>
+                <span className={hours > 24 ? 'font-medium text-rose-700' : 'tabular-nums text-slate-700'}>{hours.toFixed(2)} / 24 hours{hours > 24 ? ' · Over daily limit' : ''}</span>
+              </li>)}</ul>
+            </div>}
           </div>
           {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{formError}</p>}
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">

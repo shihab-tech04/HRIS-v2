@@ -1,4 +1,4 @@
--- Phase 10: employee-owned tenant timesheets.
+-- Phase 08: employee-owned tenant timesheets.
 -- Release candidate only. This migration is tested on a disposable local stack
 -- and has not been applied to any hosted Supabase project.
 
