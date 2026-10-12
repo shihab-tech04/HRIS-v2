@@ -44,3 +44,22 @@ test('Supabase sign-in errors are displayed and the form stays usable', async ({
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled();
   await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
 });
+
+test('reset request does not expose whether account exists', async ({ page }) => {
+  await page.route('**/auth/v1/recover**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await expect(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible();
+  await page.getByLabel('Account email').fill('test.invalid@example.org');
+  await page.getByRole('button', { name: 'Send reset link' }).click();
+  await expect(page.getByRole('status')).toContainText('If an account exists');
+});
+
+test('reset screen returns to the unchanged sign-in flow', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await page.getByRole('button', { name: 'Back to sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
+});

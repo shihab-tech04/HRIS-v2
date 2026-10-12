@@ -19,6 +19,8 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [resetRequested, setResetRequested] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -37,6 +39,31 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
       setBusy(false);
     }
   }
+  async function requestRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const callback = new URL(import.meta.env.BASE_URL || '/', window.location.origin).toString();
+      const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: callback });
+      if (result.error) throw result.error;
+      setResetRequested(true);
+    } catch {
+      setError('Unable to request a recovery link. Please try again later.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (forgotPassword) return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4"><section className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-md">
+    <h1 className="text-2xl font-bold">Reset your password</h1>
+    <p className="text-sm text-slate-600 mt-2">Request a recovery email for your HRIS account.</p>
+    {resetRequested ? <p role="status" className="mt-4 rounded-md bg-blue-50 p-3 text-sm">If an account exists for this email, a reset link has been requested.</p> : <form className="mt-5 space-y-4" onSubmit={requestRecovery}>
+      <div><label htmlFor="recovery-email" className="block text-sm font-medium">Account email</label><input id="recovery-email" type="email" required autoComplete="email" className="border rounded-md px-3 min-h-11 w-full" value={email} onChange={e => setEmail(e.target.value)}/></div>
+      {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
+      <button disabled={busy} type="submit" className="min-h-11 rounded-md bg-[#085587] text-white w-full disabled:opacity-50">{busy ? 'Requesting…' : 'Send reset link'}</button>
+    </form>}
+    <button type="button" className="min-h-11 mt-3 underline text-sm text-blue-800" onClick={() => { setForgotPassword(false); setResetRequested(false); setError(''); }}>Back to sign in</button>
+  </section></main>;
   return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 w-full max-w-md">
       <p className="text-xs font-semibold text-blue-900">Synesis HRIS 360°</p>
@@ -48,13 +75,46 @@ function SignIn({ onSuccess }: { onSuccess: (value: User) => void }) {
         {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
         <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-[#085587] hover:bg-[#074770] text-white font-semibold disabled:opacity-50">{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
+      <button type="button" className="min-h-11 text-blue-800 underline text-sm mt-3" onClick={() => { setForgotPassword(true); setError(''); }}>Forgot password?</button>
     </div>
   </main>;
+}
+
+function PasswordUpdate({ onComplete }: { onComplete: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function update(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password.length < 12) { setError('Please use at least 12 characters.'); return; }
+    if (password !== confirm) { setError('Passwords do not match.'); return; }
+    setBusy(true); setError('');
+    try {
+      const changed = await supabase.auth.updateUser({ password });
+      if (changed.error) throw changed.error;
+      const ended = await supabase.auth.signOut();
+      if (ended.error) throw ended.error;
+      window.history.replaceState(null, '', new URL(import.meta.env.BASE_URL || '/', window.location.origin).pathname);
+      onComplete();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update password.');
+    } finally { setBusy(false); }
+  }
+  return <main className="min-h-screen grid place-items-center p-4 bg-slate-50"><section className="rounded-xl border p-6 bg-white max-w-md w-full"><h1 className="text-2xl font-bold">Choose a new password</h1>
+    <form onSubmit={update} className="mt-5 space-y-4">
+      <div><label htmlFor="new-password" className="block text-sm">New password</label><input id="new-password" type="password" autoComplete="new-password" required minLength={12} className="min-h-11 border rounded-md px-3 w-full" value={password} onChange={e=>setPassword(e.target.value)}/></div>
+      <div><label htmlFor="confirm-new-password" className="block text-sm">Confirm password</label><input id="confirm-new-password" type="password" autoComplete="new-password" required minLength={12} className="min-h-11 border rounded-md px-3 w-full" value={confirm} onChange={e=>setConfirm(e.target.value)}/></div>
+      {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
+      <button disabled={busy} className="w-full min-h-11 rounded-md bg-[#085587] text-white" type="submit">{busy?'Updating…':'Update password'}</button>
+    </form>
+  </section></main>;
 }
 
 export function LiveApp({ preview }: { preview: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -79,7 +139,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     });
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
-      if (event === 'SIGNED_OUT') setUser(null);
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') { setUser(null); setPasswordRecovery(false); }
       else if (session?.user) {
         setUser(session.user);
         // Refresh effective roles when the authentication session rotates.
@@ -216,6 +277,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   }
 
   if (checking) return <main className="min-h-screen grid place-items-center"><p>Checking session…</p></main>;
+  if (passwordRecovery) return <PasswordUpdate onComplete={() => { setPasswordRecovery(false); setUser(null); }} />;
   if (!user) {
     const isDirectPreviewRequested = Boolean(
       previewEnabled &&
