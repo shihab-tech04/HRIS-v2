@@ -66,6 +66,8 @@ test('leave decisions remain permission-gated and call the scoped approval RPC',
   assert.match(leavePage, /employee_number, item\.leave_type_name, item\.leave_type_code/);
   assert.match(leavePage, /requestId !== requestSequence\.current/);
   assert.match(leavePage, /activeTenantId\.current !== actionTenantId/);
+  assert.match(leavePage, /Organization holidays/);
+  assert.match(leavePage, /visibleData\.holidays\.map/);
 });
 
 test('employee leave requests upload private evidence and submit through the tenant-scoped RPC', () => {

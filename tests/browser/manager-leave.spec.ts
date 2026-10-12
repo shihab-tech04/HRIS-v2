@@ -17,6 +17,7 @@ const jwt = [
 
 test('manager filters the leave queue and completes approval and rejection actions', async ({ page }) => {
   let authenticated = false;
+  let failNextLeaveLoad = false;
   const decisions: Record<string, unknown>[] = [];
   const requests = [
     { id: 'e3333333-3333-4333-8333-333333333331', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Medical leave', leave_type_code: 'MED', from_date: '2026-10-20', to_date: '2026-10-20', requested_days: 1, status: 'pending' },
@@ -53,11 +54,17 @@ test('manager filters the leave queue and completes approval and rejection actio
       leave_pending: requests.filter(item => item.status === 'pending').length,
       attendance_last_7_days: [],
     }) });
-    if (endpoint === 'hris_get_tenant_leave_data') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-      requests: requests.map(item => ({ ...item })),
-      leave_types: [{ id: 'e4444444-4444-4444-8444-444444444441', name: 'Annual leave' }, { id: 'e4444444-4444-4444-8444-444444444442', name: 'Medical leave' }],
-      holidays: [{ id: 'e5555555-5555-4555-8555-555555555551', name: 'Synthetic holiday', start_date: '2026-12-16', end_date: '2026-12-16' }],
-    }) });
+    if (endpoint === 'hris_get_tenant_leave_data') {
+      if (failNextLeaveLoad) {
+        failNextLeaveLoad = false;
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic leave service unavailable.' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        requests: requests.map(item => ({ ...item })),
+        leave_types: [{ id: 'e4444444-4444-4444-8444-444444444441', name: 'Annual leave' }, { id: 'e4444444-4444-4444-8444-444444444442', name: 'Medical leave' }],
+        holidays: [{ id: 'e5555555-5555-4555-8555-555555555551', name: 'Synthetic holiday', start_date: '2026-12-16', end_date: '2026-12-16', active: true }],
+      }) });
+    }
     if (endpoint === 'admin_resolve_leave_request') {
       const payload = request.postDataJSON() as Record<string, unknown>;
       decisions.push(payload);
@@ -85,6 +92,8 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
   await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Organization holidays' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /Synthetic holiday/ })).toContainText('2026-12-16');
 
   const table = page.getByRole('table', { name: 'Leave requests' });
   await expect(table.locator('tbody tr')).toHaveCount(4);
@@ -117,6 +126,11 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByText('No requests match these filters.')).toBeVisible();
   await page.getByLabel('Search requests').fill('');
   await page.getByLabel('Filter by status').selectOption('all');
+  failNextLeaveLoad = true;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Unable to load leave data.');
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(4);
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(page.getByRole('region', { name: 'Leave request results' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);

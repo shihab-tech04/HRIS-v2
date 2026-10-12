@@ -929,7 +929,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
-    {loading || !visibleData ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : visibleData && <>
+    {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : visibleData && <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Pending requests</p><p className="mt-2 text-2xl font-semibold">{pending.length}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{visibleData.leave_types.length}</p></div>
@@ -974,6 +974,22 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
           </table>
         </div>}
       </div>
+      <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 p-4"><h3 id="organization-holidays-heading" className="font-semibold text-slate-900">Organization holidays</h3>
+          <p className="mt-1 text-xs text-slate-500">Holiday dates returned by this organization’s leave service</p></div>
+        {!visibleData.holidays.length ? <p className="p-5 text-sm text-slate-600">No holidays were returned for this organization.</p> :
+          <div className="overflow-x-auto" role="region" aria-label="Organization holidays" tabIndex={0}>
+            <table className="w-full min-w-[520px] text-left text-sm" aria-label="Organization holidays">
+              <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
+                {['Holiday', 'From', 'To', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">{visibleData.holidays.map((holiday, index) => <tr key={String(holiday.id || index)}>
+                <td className="px-3 py-3 font-medium">{display(holiday.name)}</td><td className="px-3 py-3">{display(holiday.start_date)}</td>
+                <td className="px-3 py-3">{display(holiday.end_date)}</td><td className="px-3 py-3">{holiday.active === false ? 'Inactive' : 'Active'}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
+      </section>
     </>}
   </section>;
 }
