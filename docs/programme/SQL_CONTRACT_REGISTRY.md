@@ -1,6 +1,6 @@
 # SQL Contract Registry
 
-**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12. Definitions below were inspected read-only; no production SQL was applied.
+**Database:** Supabase project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`). **Checkpoint:** 2026-10-12 17:07 Asia/Dhaka. Definitions below were inspected read-only; no production SQL was applied.
 
 | Function | Observed input/output | Permission and scope | Acceptance state |
 |---|---|---|---|
@@ -19,7 +19,7 @@ Production migration history contained 105 applied entries at inspection; Main t
 
 ## Local release-candidate contracts
 
-The following definitions are in `supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql`. The migration and both staged approval files were applied only to the disposable local Supabase stack for the 42/42 Auth/RLS acceptance run. None has been applied to `hrmis-saas`.
+The following definitions are in `supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql`. The migration and both staged approval files were applied only to the disposable local Supabase stack for the 47/47 Auth/RLS acceptance run. None has been applied to `hrmis-saas`.
 
 | Function | Contract | Local evidence |
 |---|---|---|
@@ -27,5 +27,6 @@ The following definitions are in `supabase/migrations/20261012091930_hris_tenant
 | `hris_get_tenant_dashboard_summary(uuid)` | Tenant-scoped summary without the global candidate-account count. | Two-tenant RPC scope and cross-tenant denial. |
 | `hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)` | Tenant-scoped attendance, corrections and report data. | Two-tenant read and cross-tenant RPC denial. |
 | `hris_get_tenant_leave_data(uuid,date,date)` | Tenant-scoped leave request and type payload. | Two-tenant read and cross-tenant RPC denial. |
-| `hris_get_my_dashboard_data(uuid)` | Own attendance, balances, request history, applicable active leave types and tenant calendar context; requires an active linked employee. | Own-row, cross-tenant and termination checks. |
+| `hris_get_my_dashboard_data(uuid)` | Own attendance and correction history, balances, leave request history, applicable active leave types and tenant calendar context; requires an active linked employee. | Own-row, correction history scope, cross-tenant and termination checks. |
+| `hris_employee_submit_attendance_correction(uuid,jsonb)` | Binds correction requests to the active employee and tenant; interprets requested times in tenant-local time; validates changed fields and reason; records a pending correction and audit event. | Local Auth/RLS verifies same-tenant submission, local-time conversion, audit, empty-change rejection and cross-tenant denial; Chromium verifies submit and request history. |
 | `hris_employee_submit_leave_request(uuid,jsonb)` | Tenant-checked employee submission with notice, eligibility, evidence ownership, date/holiday/weekly-off, overlap, balance, pending ledger and audit checks. | Required-proof, storage privacy, duplicate, pending balance and manager approval journey. |

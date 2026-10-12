@@ -26,6 +26,8 @@ function isoDateAfter(days: number) {
 test('linked employee can complete the private evidence leave request on mobile', async ({ page }) => {
   let authenticated = false;
   let submitted = false;
+  let correctionSubmitted = false;
+  let correctionPayload: Record<string, unknown> | null = null;
   const externalRequests: string[] = [];
 
   // Any request outside the local app must be handled by one of the explicit
@@ -81,7 +83,11 @@ test('linked employee can complete the private evidence leave request on mobile'
           id: 'f6666666-6666-4666-8666-666666666666', attendance_date: '2026-10-12',
           status: 'present', check_in: '2026-10-12T03:00:00.000Z', check_out: '2026-10-12T11:30:00.000Z',
           work_mode: 'office', work_hours: 8.5,
-        }] },
+        }], corrections: correctionSubmitted ? [{
+          id: 'f8888888-8888-4888-8888-888888888888', attendance_date: '2026-10-12',
+          requested_check_in: '2026-10-12T03:15:00.000Z', reason: 'Synthetic missed punch correction',
+          status: 'pending', requested_at: '2026-10-12T12:00:00.000Z',
+        }] : [] },
         balances: [{ leave_type_id: leaveTypeId, leave_type_name: 'Medical leave', available_days: 20,
           used_days: 0, pending_days: submitted ? 1 : 0 }],
         requests: requestHistory,
@@ -93,6 +99,10 @@ test('linked employee can complete the private evidence leave request on mobile'
     } else if (endpoint === 'hris_employee_submit_leave_request') {
       submitted = true;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('f5555555-5555-4555-8555-555555555555') });
+    } else if (endpoint === 'hris_employee_submit_attendance_correction') {
+      correctionPayload = request.postDataJSON() as Record<string, unknown>;
+      correctionSubmitted = true;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('f8888888-8888-4888-8888-888888888888') });
     } else if (endpoint === 'tenant_memberships') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
         { tenant_id: tenantId, role: 'synthetic_employee', status: 'active' },
@@ -151,6 +161,24 @@ test('linked employee can complete the private evidence leave request on mobile'
   const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(documentWidth).toBeLessThanOrEqual(376);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-dashboard-mobile-20261012.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Request a correction' }).click();
+  const correctionDialog = page.getByRole('dialog', { name: 'Request attendance correction' });
+  await expect(correctionDialog).toBeVisible();
+  await expect(page.getByLabel('Attendance date')).toHaveValue('2026-10-12');
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-attendance-correction-mobile-20261012.png') });
+  await page.getByLabel('Requested check-in').fill('09:15');
+  await correctionDialog.getByLabel(/Reason/).fill('Synthetic missed punch correction');
+  await correctionDialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Attendance correction submitted for review.');
+  await expect(page.getByRole('row', { name: /Synthetic missed punch correction/ })).toBeVisible();
+  expect(correctionPayload).toEqual({
+    p_tenant_id: tenantId,
+    p_payload: {
+      attendance_date: '2026-10-12', check_in_time: '09:15', check_out_time: null,
+      work_mode: null, reason: 'Synthetic missed punch correction',
+    },
+  });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await page.getByRole('button', { name: 'Request for leave' }).click();
   const dialog = page.getByRole('dialog', { name: 'Request for leave' });
   await expect(dialog).toBeVisible();
@@ -178,7 +206,7 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByRole('button', { name: 'Send request' })).toBeEnabled();
   await page.screenshot({ path: '/private/tmp/hris-employee-leave-mobile.png', fullPage: false });
   await page.getByRole('button', { name: 'Send request' }).click();
-  await expect(page.getByRole('status')).toContainText('Leave request submitted.');
+  await expect(page.getByText('Leave request submitted. You can follow its status in your history.')).toBeVisible();
   await expect(page.getByText('Synthetic mobile leave request')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   expect(externalRequests).toEqual([]);

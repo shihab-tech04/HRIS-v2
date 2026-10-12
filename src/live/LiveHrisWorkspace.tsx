@@ -834,6 +834,152 @@ function PersonalLeaveRequests({
 
 type EmployeePanelId = 'working-hours' | 'work-location' | 'leave-type' | 'check-in-times';
 
+function PersonalAttendanceCorrections({
+  tenantId, today, corrections, onRefresh,
+}: {
+  tenantId: string;
+  today: string;
+  corrections: AttendanceRecord[];
+  onRefresh: () => Promise<void>;
+}) {
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [attendanceDate, setAttendanceDate] = useState('');
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
+  const [workMode, setWorkMode] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [success, setSuccess] = useState('');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const requestButtonRef = useRef<HTMLButtonElement>(null);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    if (!requestOpen) return;
+    const dialog = dialogRef.current;
+    const focusable = (): HTMLElement[] => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) || []);
+    focusable()[0]?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !submittingRef.current) { setRequestOpen(false); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      requestButtonRef.current?.focus();
+    };
+  }, [requestOpen]);
+
+  async function submitRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submittingRef.current) return;
+    if (!checkIn && !checkOut && !workMode) {
+      setFormError('Enter at least one attendance field to correct.'); return;
+    }
+    if (checkIn && checkOut && checkOut < checkIn) {
+      setFormError('Check-out must be after check-in.'); return;
+    }
+    submittingRef.current = true;
+    setSubmitting(true); setFormError(''); setSuccess('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_employee_submit_attendance_correction', {
+        p_tenant_id: tenantId,
+        p_payload: {
+          attendance_date: attendanceDate || today,
+          check_in_time: checkIn || null,
+          check_out_time: checkOut || null,
+          work_mode: workMode || null,
+          reason: reason.trim(),
+        },
+      });
+      if (rpcError) throw rpcError;
+      if (!data) throw new Error('The correction request was not confirmed. Refresh and check your request history.');
+      setSuccess('Attendance correction submitted for review.');
+      setRequestOpen(false); setAttendanceDate(''); setCheckIn(''); setCheckOut(''); setWorkMode(''); setReason('');
+      await onRefresh();
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : 'Unable to submit this attendance correction.');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  return <>
+    <section aria-labelledby="employee-attendance-corrections-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div><h3 id="employee-attendance-corrections-heading" className="font-semibold text-[#08263D]">My attendance correction requests</h3>
+          <p className="mt-1 text-xs text-slate-500">Requests are reviewed by an authorized attendance manager before records change.</p></div>
+        <button ref={requestButtonRef} type="button" onClick={() => { setFormError(''); setRequestOpen(true); }}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white">
+          <Clock3 className="h-4 w-4" /> Request a correction
+        </button>
+      </div>
+      {success && <p role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
+      {corrections.length ? <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[760px] text-left text-sm">
+        <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
+          {['Date', 'Requested change', 'Reason', 'Status', 'Resolution'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+        </tr></thead>
+        <tbody className="divide-y divide-slate-100">{corrections.map((item, index) => <tr key={String(item.id || index)}>
+          <td className="px-3 py-3">{displayShortDate(item.attendance_date)}</td>
+          <td className="px-3 py-3">{[
+            item.requested_check_in ? `In ${displayTime(item.requested_check_in)}` : '',
+            item.requested_check_out ? `Out ${displayTime(item.requested_check_out)}` : '',
+            item.requested_work_mode ? `Mode ${displayWorkMode(item.requested_work_mode)}` : '',
+          ].filter(Boolean).join(' · ') || '—'}</td>
+          <td className="max-w-64 px-3 py-3"><span className="block truncate" title={String(item.reason || '')}>{display(item.reason)}</span></td>
+          <td className="px-3 py-3 capitalize">{display(item.status)}</td>
+          <td className="max-w-56 px-3 py-3"><span className="block truncate" title={String(item.resolution_note || '')}>{display(item.resolution_note)}</span></td>
+        </tr>)}</tbody>
+      </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No attendance correction requests yet.</p>}
+    </section>
+    {requestOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-3 sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget && !submitting) setRequestOpen(false); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-correction-dialog-heading" className="flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div><h3 id="attendance-correction-dialog-heading" className="text-lg font-semibold text-[#08263D]">Request attendance correction</h3>
+            <p className="mt-1 text-xs text-slate-500">Times use the organization’s local time.</p></div>
+          <button type="button" aria-label="Close attendance correction request" disabled={submitting} onClick={() => setRequestOpen(false)} className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
+        </div>
+        <form onSubmit={event => void submitRequest(event)} className="flex min-h-0 flex-1 flex-col">
+          <div className="space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
+            <div><label htmlFor="attendance-correction-date" className="mb-1 block text-sm font-medium text-slate-700">Attendance date <span aria-hidden="true">*</span></label>
+              <input id="attendance-correction-date" autoFocus type="date" required value={attendanceDate || today} onChange={event => setAttendanceDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label htmlFor="attendance-correction-check-in" className="mb-1 block text-sm font-medium text-slate-700">Requested check-in</label>
+                <input id="attendance-correction-check-in" type="time" value={checkIn} onChange={event => setCheckIn(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <div><label htmlFor="attendance-correction-check-out" className="mb-1 block text-sm font-medium text-slate-700">Requested check-out</label>
+                <input id="attendance-correction-check-out" type="time" value={checkOut} onChange={event => setCheckOut(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+            </div>
+            <div><label htmlFor="attendance-correction-work-mode" className="mb-1 block text-sm font-medium text-slate-700">Requested work location</label>
+              <select id="attendance-correction-work-mode" value={workMode} onChange={event => setWorkMode(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                <option value="">No change</option><option value="office">Office</option><option value="home">Home</option><option value="client_meeting">Client Meeting</option>
+              </select></div>
+            <div><label htmlFor="attendance-correction-reason" className="mb-1 block text-sm font-medium text-slate-700">Reason <span aria-hidden="true">*</span></label>
+              <textarea id="attendance-correction-reason" required maxLength={2000} rows={3} value={reason} onChange={event => setReason(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
+            {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{formError}</p>}
+          </div>
+          <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
+            <button type="button" disabled={submitting} onClick={() => setRequestOpen(false)} className="min-h-11 rounded-lg px-4 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white disabled:opacity-50">{submitting ? 'Sending…' : 'Send request'}</button>
+          </div>
+        </form>
+      </div>
+    </div>}
+  </>;
+}
+
 function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
   const [attendance, setAttendance] = useState<Record<string, unknown> | null>(null);
   const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
@@ -1016,6 +1162,7 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
           </tr>)}</tbody>
         </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave requests yet.</p>}
       </section>
+      <PersonalAttendanceCorrections tenantId={tenantId} today={today} corrections={asRows(attendance.corrections)} onRefresh={() => load(false)} />
     </>}
   </section>;
 }

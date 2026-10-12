@@ -1,6 +1,6 @@
 # Approval resolution fixes — isolated test plan
 
-**State: LOCAL SQL/AUTH CASES PASS (42/42); NOT production-certified.** The exact SQL candidates live in `supabase/staging/approval-resolution/`, outside the production migration directory. They were applied only to a disposable local Supabase CLI stack together with the current tenant-membership release candidate. Do not apply to production as part of this checkpoint.
+**State: LOCAL SQL/AUTH CASES PASS (47/47); NOT production-certified.** The exact SQL candidates live in `supabase/staging/approval-resolution/`, outside the production migration directory. They were applied only to a disposable local Supabase CLI stack together with the current tenant-membership release candidate. Do not apply to production as part of this checkpoint.
 
 ## Why these changes are staged
 
@@ -31,9 +31,12 @@ Before applying the candidates, record the baseline function definitions, execut
 | Existing attendance row is absent | Approved correction follows the established `admin_save_attendance` behavior and creates no cross-tenant row. |
 | Two managers resolve the same pending record concurrently | Exactly one decision succeeds; the other observes no pending request; balances and audit records change once. |
 | Caller lacks `attendance.manage`, has a revoked session, or is anonymous | Function rejects; no correction or attendance changes. |
+| Linked employee submits a correction for their own tenant | Server binds employee and requester to the live Auth identity, converts entered time using that tenant timezone, writes a pending row and one audit entry. |
+| Employee submits for another tenant or submits no changed attendance field | Function rejects; no correction is created. |
+| Employee dashboard reads correction history | Only rows for the linked employee and selected tenant are returned; another employee’s corrections remain hidden. |
 
 ## Acceptance evidence
 
-Executed the plan with `node tests/sql/isolated-auth/run-local.mjs`; the latest run passed 42/42 checks. Evidence includes positive/negative two-tenant queries, effective `EXECUTE` privilege readback (`anon=false`, `authenticated=true`, `service_role=true` for the tested functions), before/after request/balance/attendance rows, audit counts, inactive membership and revoked-session denials, and concurrency from two different managers. Check-in-only, check-out-only, and work-mode-only corrections preserved omitted fields; a missing attendance row was created through the existing save contract. The runner also covered the exact staged SQL files.
+Executed the plan with `node tests/sql/isolated-auth/run-local.mjs`; the latest run passed 47/47 checks. Evidence includes positive/negative two-tenant queries, effective `EXECUTE` privilege readback (`anon=false`, `authenticated=true`, `service_role=true` for the tested functions), before/after request/balance/attendance rows, audit counts, inactive membership and revoked-session denials, and concurrency from two different managers. Employee correction submission and owner-scoped history now pass alongside the prior approval cases. Check-in-only, check-out-only, and work-mode-only corrections preserved omitted fields; a missing attendance row was created through the existing save contract. The runner also covered the exact staged SQL files.
 
 The run is local synthetic acceptance only. It does not certify authenticated browser journeys, all schema policies, all SECURITY DEFINER functions, or the 1,047-story catalogue. Production schema, data, grants and Auth settings were not changed. The Node source-contract suite remains a separate check.

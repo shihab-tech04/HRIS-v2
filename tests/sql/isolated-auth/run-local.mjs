@@ -303,6 +303,7 @@ FROM (VALUES
   ('public.hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)'),
   ('public.hris_get_tenant_leave_data(uuid,date,date)'),
   ('public.hris_get_my_dashboard_data(uuid)'),
+  ('public.hris_employee_submit_attendance_correction(uuid,jsonb)'),
   ('public.hris_employee_submit_leave_request(uuid,jsonb)'),
   ('public.admin_resolve_leave_request(uuid,text,text)'),
   ('public.admin_resolve_attendance_correction(uuid,text,text)'),
@@ -438,6 +439,46 @@ record('Employee dashboard profile and date belong to the linked tenant-local em
   && employeeSummaryB.employee.designation_title === 'QA B designation',
   JSON.stringify({ employeeA: employeeSummaryA.employee, employeeB: employeeSummaryB.employee,
     dateA: employeeSummaryA.dashboard_date, dateB: employeeSummaryB.dashboard_date }));
+
+const attendanceCorrectionSubmission = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    attendance_date: localCurrentDate, check_in_time: '09:15', check_out_time: null,
+    work_mode: null, reason: 'Synthetic employee attendance correction',
+  },
+});
+if (attendanceCorrectionSubmission.error) throw attendanceCorrectionSubmission.error;
+const submittedCorrectionId = attendanceCorrectionSubmission.data;
+const submittedCorrectionRow = tableRow('attendance_corrections', submittedCorrectionId);
+const correctionSummaryA = queryAs(employeeA,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
+const correctionSummaryB = queryAs(employeeB,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
+record('Linked employee submits a tenant-bound correction with organization-local time and audit',
+  submittedCorrectionRow.tenant_id === ids.tenantA
+  && submittedCorrectionRow.employee_id === '55555555-5555-4555-8555-555555555555'
+  && submittedCorrectionRow.requested_by === employeeA.userId
+  && submittedCorrectionRow.attendance_date === localCurrentDate
+  && Date.parse(submittedCorrectionRow.requested_check_in) === Date.parse(`${localCurrentDate}T03:15:00Z`)
+  && submittedCorrectionRow.status === 'pending'
+  && auditCount(submittedCorrectionId, 'attendance.correction.submitted') === 1);
+record('Personal dashboard lists only the linked employee’s attendance corrections',
+  correctionSummaryA.attendance.corrections.some(row => row.id === submittedCorrectionId)
+  && correctionSummaryB.attendance.corrections.every(row => row.employee_id !== '55555555-5555-4555-8555-555555555555')
+  && correctionSummaryA.attendance.corrections.every(row => row.employee_id === undefined || row.employee_id === '55555555-5555-4555-8555-555555555555'));
+
+const emptyAttendanceCorrection = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { attendance_date: localCurrentDate, check_in_time: null, check_out_time: null,
+    work_mode: null, reason: 'Missing correction values' },
+});
+const crossTenantAttendanceCorrection = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
+  p_tenant_id: ids.tenantB,
+  p_payload: { attendance_date: localCurrentDate, check_in_time: '09:15', reason: 'Cross tenant attempt' },
+});
+record('Employee correction submission rejects empty changes and a different tenant',
+  Boolean(emptyAttendanceCorrection.error) && Boolean(crossTenantAttendanceCorrection.error)
+  && tableRow('attendance_corrections', submittedCorrectionId).status === 'pending');
 
 const employeeTenantRows = queryAs(employeeA, `SELECT jsonb_build_object(
   'attendance_tenants',coalesce((SELECT jsonb_agg(DISTINCT tenant_id::text) FROM public.attendance_records),'[]'::jsonb),

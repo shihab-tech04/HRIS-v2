@@ -24,6 +24,7 @@ test('release candidate scopes tenant permissions through active membership role
   assert.doesNotMatch(sql, /p_tenant_id\s*=\s*public\.synesis_tenant_id\(\)/i);
   assert.match(sql, /CREATE OR REPLACE FUNCTION public\.hris_get_my_dashboard_data\(p_tenant_id uuid\)[\s\S]+?hris_own_employee_for_tenant\(p_tenant_id\)/);
   assert.match(sql, /'employee',v_employee_profile[\s\S]+?'dashboard_date',v_today/);
+  assert.match(sql, /'corrections',coalesce\([\s\S]+?c\.employee_id=v_employee/);
   assert.match(sql, /'full_name',e\.full_name[\s\S]+?'employee_number',e\.employee_number[\s\S]+?'official_email',e\.official_email/);
   assert.match(sql, /LEFT JOIN public\.departments d ON d\.id=e\.department_id AND d\.tenant_id=e\.tenant_id[\s\S]+?LEFT JOIN public\.designations ds ON ds\.id=e\.designation_id AND ds\.tenant_id=e\.tenant_id/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.hris_get_my_dashboard_data\(uuid\) FROM PUBLIC, anon/);
@@ -33,6 +34,8 @@ test('employee self-service and leave evidence stay inside the linked tenant', (
   assert.match(sql, /CREATE POLICY hris_attendance_records_own_read[\s\S]+?AS PERMISSIVE FOR SELECT TO authenticated/);
   assert.match(sql, /CREATE POLICY hris_employee_leave_balances_own_read[\s\S]+?AS PERMISSIVE FOR SELECT TO authenticated/);
   assert.match(sql, /CREATE OR REPLACE FUNCTION public\.hris_employee_submit_leave_request\([\s\S]+?p_tenant_id uuid, p_payload jsonb/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.hris_employee_submit_attendance_correction\([\s\S]+?p_tenant_id uuid, p_payload jsonb/);
+  assert.match(sql, /hris_employee_submit_attendance_correction\([\s\S]+?hris_own_employee_for_tenant\(p_tenant_id\)[\s\S]+?attendance\.correction\.submitted/);
   assert.match(sql, /requires_document_proof[\s\S]+?attachment_url/);
   assert.match(sql, /pg_advisory_xact_lock/);
   assert.match(sql, /CREATE POLICY hris_leave_evidence_tenant_read_guard\s+ON storage\.objects AS RESTRICTIVE FOR SELECT/);
