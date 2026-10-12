@@ -1,0 +1,74 @@
+{
+  "recorded_at": "2026-10-12T16:58:51+06:00",
+  "status": "RECOVERABLE_LOCAL_CHECKPOINT_NOT_FOR_RELEASE",
+  "current_phase": 8,
+  "current_module": "Attendance Information",
+  "related_phases": [2, 4, 8, 17, 18, 20],
+  "application": "Main HRIS",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "implementation_commit": "25f612da0972d0336af38b83d9e145572566c1ce",
+  "commit_summary": {
+    "paths": 15,
+    "text_insertions": 303,
+    "text_deletions": 61,
+    "includes_new_attendance_evidence_screenshots": true
+  },
+  "implementation": {
+    "employee_dashboard_commit": "5ae9ae8e58d7e4c5eb2dab21d19e8feb1a40b17c",
+    "attendance_frame": "17:28320",
+    "features": [
+      "Tenant attendance view/manage users receive detail rows; report-only users retain aggregate reports",
+      "Search, date/status filters, CSV export and Figma-aligned attendance table",
+      "Tenant-switch stale rows are hidden and concurrent stale RPC responses ignored",
+      "Mobile table scroll is contained in a labeled, keyboard-focusable region"
+    ],
+    "acceptance_evidence": "docs/programme/ACCEPTANCE_EVIDENCE_20261012_1657.md",
+    "browser_evidence": [
+      "docs/evidence/attendance-information-desktop-20261012.png",
+      "docs/evidence/attendance-information-mobile-20261012.png",
+      "docs/evidence/employee-dashboard-desktop-20261012.png",
+      "docs/evidence/employee-dashboard-mobile-20261012.png"
+    ]
+  },
+  "verification": {
+    "typescript": "PASS",
+    "contracts": {"passed": 26, "failed": 0},
+    "vite_build": "PASS_WITH_691.16KB_CHUNK_WARNING",
+    "chromium": {"passed": 37, "failed": 0},
+    "attendance_information_browser_test": {"passed": 1, "failed": 0},
+    "isolated_local_auth_rls_latest": {"passed": 44, "failed": 0},
+    "git_diff_check": "PASS",
+    "previous_tenant_security_failures": {
+      "status": "ALL_PASS_IN_44_CHECK_SUITE",
+      "cases": [
+        "Tenant B cannot read Tenant A attendance",
+        "Tenant A cannot read Tenant B attendance",
+        "Tenant B cannot call Tenant A dashboard, attendance or leave RPCs",
+        "Tenant B cannot approve Tenant A leave",
+        "Tenant B cannot approve Tenant A attendance"
+      ]
+    },
+    "test_boundary": "Synthetic local Auth/RLS fixtures and mocked browser RPCs only; no production data/permissions changed"
+  },
+  "canonical_story_catalogue": {
+    "user_reported_stories": 1047,
+    "user_reported_modules": 153,
+    "expected_sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "mounted_project_sources_file_count": 0,
+    "repository_skeleton_rows": 0,
+    "repository_skeleton_sha256": "456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996",
+    "mapped_and_accepted": 0,
+    "unmapped": 1047,
+    "blocker": "Exact canonical file is not present in the mounted Project sources or connected Drive search results; no story IDs or criteria were inferred"
+  },
+  "blockers": [
+    "Canonical catalogue mount/access is required for story mapping"
+  ],
+  "next_executable_action": "Continue Phase 08 with Attendance Requests and employee correction journeys using existing tenant-scoped RPCs and approval rules",
+  "release_state": "NOT_ACCEPTED_NOT_FOR_RELEASE",
+  "production_data_or_permissions_changed": false,
+  "paid_supabase_service_activated": false,
+  "github_push": false,
+  "deployment": false,
+  "final_drive_source_archive": false
+}
