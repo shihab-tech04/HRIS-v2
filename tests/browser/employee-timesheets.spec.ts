@@ -146,6 +146,13 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
   await expect(timesheetCard).toContainText('Product delivery');
   await expect(timesheetCard).toContainText('5.75 total hours');
 
+  await timesheetCard.getByRole('button', { name: 'Edit draft' }).click();
+  await page.getByLabel('Hours', { exact: true }).nth(1).fill('2.5');
+  await expect(page.getByText('6.00 / 24 hours')).toBeVisible();
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByText('Timesheet draft saved.')).toBeVisible();
+  await expect(timesheetCard).toContainText('6 total hours');
+
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await timesheetCard.getByRole('button', { name: 'Submit timesheet' }).click();
@@ -153,12 +160,17 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
   await expect(timesheetCard.getByText('submitted', { exact: true })).toBeVisible();
   await expect(timesheetCard.getByRole('button', { name: 'Submit timesheet' })).toHaveCount(0);
 
-  expect(rpcPayloads.map(item => item.endpoint)).toEqual(['hris_save_my_timesheet', 'hris_submit_my_timesheet']);
+  expect(rpcPayloads.map(item => item.endpoint)).toEqual(['hris_save_my_timesheet', 'hris_save_my_timesheet', 'hris_submit_my_timesheet']);
   expect(rpcPayloads[0].body).toMatchObject({ p_tenant_id: tenantId, p_id: null, p_period_type: 'weekly' });
   expect(rpcPayloads[0].body.p_entries).toEqual([
     { activity_id: activityId, work_date: rpcPayloads[0].body.p_start, hours: 3.5, note: 'Synthetic implementation work' },
     { activity_id: activityId, work_date: rpcPayloads[0].body.p_start, hours: 2.25, note: null },
   ]);
-  expect(rpcPayloads[1].body).toEqual({ p_tenant_id: tenantId, p_id: timesheetId });
+  expect(rpcPayloads[1].body).toMatchObject({ p_tenant_id: tenantId, p_id: timesheetId, p_period_type: 'weekly' });
+  expect(rpcPayloads[1].body.p_entries).toEqual([
+    { activity_id: activityId, work_date: rpcPayloads[1].body.p_start, hours: 3.5, note: 'Synthetic implementation work' },
+    { activity_id: activityId, work_date: rpcPayloads[1].body.p_start, hours: 2.5, note: null },
+  ]);
+  expect(rpcPayloads[2].body).toEqual({ p_tenant_id: tenantId, p_id: timesheetId });
   expect(externalRequests).toEqual([]);
 });
