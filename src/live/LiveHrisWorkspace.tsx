@@ -411,11 +411,24 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   const rows = currentRecords;
 
   return <section aria-labelledby="attendance-report-heading" className="space-y-4">
-    <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
       <div><h2 id="attendance-report-heading" className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
-        <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p></div>
+        {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
+      {aggregateOnly && <form aria-label="Attendance report controls" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
+        <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search…" className="min-h-12 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm" />
+          <button type="submit" className="sr-only">Search employees</button>
+        </div>
+        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50" aria-label="Filters">
+          <SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Filters</span>
+        </button>
+        <button type="button" disabled={!currentRecords.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-600 disabled:opacity-50">
+          <Download className="h-4 w-4" /> Download Report
+        </button>
+      </form>}
     </div>
-    <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+    {!aggregateOnly && <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="min-w-[190px] flex-1"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
         <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input id="attendance-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employees…" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" />
@@ -427,7 +440,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
       <button type="button" disabled={!currentRecords.length} onClick={exportReport} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <Download className="h-4 w-4" /> Download report
       </button>
-    </form>
+    </form>}
     {filtersOpen && <div id="attendance-filters" className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">From date</label>
         <input id="attendance-from" type="date" value={from} onChange={event => setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
@@ -437,7 +450,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         <select id="attendance-status" value={status} onChange={event => setStatus(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
           <option value="all">All visible statuses</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
         </select></div>}
-      <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>
+      <p className="self-end pb-2 text-xs text-slate-500">{aggregateOnly ? 'Report date filters apply automatically.' : 'Date and status filters apply automatically.'}</p>
     </div>}
     {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
@@ -476,30 +489,41 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     </section>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">No attendance records were returned for this date range.</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className="w-full min-w-[1160px] border-separate border-spacing-0 text-left text-sm">
+        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-2' : 'min-w-[1160px] border-spacing-0'}`}>
           <thead className="bg-white text-xs text-slate-500"><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Department', 'Days', 'Office hours', 'Work hours', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" className="border-b border-slate-200 px-4 py-4 font-medium">{label}</th>)}
+            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" className="border-b border-slate-200 px-4 py-4 font-medium">{label}</th>)}
           </tr></thead>
           <tbody>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
+            const cellClass = aggregateOnly ? 'border-y border-slate-100 bg-white px-4 py-3' : 'border-b border-slate-100 px-4 py-3';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
             const statusTone = normalizedStatus === 'late' ? 'bg-amber-50 text-amber-800'
               : normalizedStatus === 'absent' ? 'bg-rose-50 text-rose-800'
                 : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'bg-emerald-50 text-emerald-800'
                   : 'bg-slate-100 text-slate-600';
-            return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className="hover:bg-slate-50">
-              <td className="border-b border-slate-100 px-4 py-3 font-medium">
+            const deviationValue = row.deviation === null || row.deviation === undefined || row.deviation === '' ? Number.NaN : Number(row.deviation);
+            const deviationText = Number.isFinite(deviationValue) ? `${deviationValue > 0 ? '+' : ''}${deviationValue.toFixed(2)}` : display(row.deviation);
+            const deviationTone = deviationValue > 0 ? 'text-emerald-700' : deviationValue < 0 ? 'text-rose-700' : 'text-slate-700';
+            const reportHours = (value: unknown) => {
+              if (value === null || value === undefined || value === '') return display(value);
+              const numeric = Number(value);
+              return Number.isFinite(numeric) ? numeric.toFixed(2) : display(value);
+            };
+            return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className={aggregateOnly ? 'h-20' : 'hover:bg-slate-50'}>
+              <td className={`${cellClass} font-medium ${aggregateOnly ? 'rounded-l-lg border-l' : ''}`}>
                 <div className="flex min-w-44 items-center gap-3">
-                  {!aggregateOnly && <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#DCEFF4] text-sm font-semibold text-[#085587]">{nameInitials(employeeName)}</span>}
+                  <span aria-hidden="true" className={`grid shrink-0 place-items-center rounded-xl bg-[#DCEFF4] font-semibold text-[#085587] ${aggregateOnly ? 'h-12 w-12 text-base' : 'h-10 w-10 text-sm'}`}>{nameInitials(employeeName)}</span>
                   <span className="min-w-0"><span className="block break-words text-slate-800">{display(employeeName)}</span>
                     <span className="mt-0.5 block text-xs font-normal text-slate-500">{display(row.employee_number)}</span></span>
                 </div>
               </td>
-              <td className="border-b border-slate-100 px-4 py-3">{display(row.designation_title)}</td>
-              <td className="border-b border-slate-100 px-4 py-3">{display(row.department_name)}</td>
+              <td className={cellClass}>{display(row.designation_title)}</td>
+              {aggregateOnly && <td className={cellClass}>{display(row.team_name)}</td>}
+              <td className={cellClass}>{display(row.department_name)}</td>
               {aggregateOnly ? <>
-                <td className="border-b border-slate-100 px-4 py-3">{display(row.attendance_days)}</td><td className="border-b border-slate-100 px-4 py-3">{display(row.office_hours)}</td>
-                <td className="border-b border-slate-100 px-4 py-3">{display(row.working_hours)}</td><td className="border-b border-slate-100 px-4 py-3">{display(row.deviation)}</td>
+                <td className={cellClass}>{displayAttendanceDate(from)}</td><td className={cellClass}>{displayAttendanceDate(to)}</td>
+                <td className={`${cellClass} tabular-nums`}>{reportHours(row.office_hours)}</td><td className={`${cellClass} tabular-nums`}>{reportHours(row.working_hours)}</td>
+                <td className={`${cellClass} rounded-r-lg border-r tabular-nums`}><span className={`font-semibold ${deviationTone}`}>{deviationText}</span></td>
               </> : <>
                 <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayAttendanceDate(row.attendance_date)}</td>
                 <td className="border-b border-slate-100 px-4 py-3">{displayWorkMode(row.work_mode)}</td>

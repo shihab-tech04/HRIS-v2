@@ -17,6 +17,7 @@ const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 test('attendance information uses tenant-scoped detail rows and keeps filters, export, and mobile table usable', async ({ page }) => {
   const externalRequests: string[] = [];
   const attendanceCalls: Record<string, unknown>[] = [];
+  let reportOnly = false;
   const syntheticAttendance = {
     id: 'e3333333-3333-4333-8333-333333333333', employee_id: 'e4444444-4444-4444-8444-444444444444',
     full_name: 'Synthetic Attendance Employee', employee_number: 'ATT-001',
@@ -65,7 +66,9 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     const requestPath = new URL(request.url()).pathname;
     const endpoint = requestPath.split('/').pop() || '';
     if (endpoint === 'has_tenant_permission') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: 'true' });
+      const permission = request.postDataJSON() as { p_permission_id?: string };
+      const allowed = !reportOnly || permission.p_permission_id === 'reports.view';
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(allowed) });
       return;
     }
     if (endpoint === 'hris_get_tenant_dashboard_summary') {
@@ -79,8 +82,12 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
       const body = request.postDataJSON() as Record<string, unknown>;
       attendanceCalls.push(body);
       const data = body.p_report === true
-        ? [{ employee_id: syntheticAttendance.employee_id, employee_number: 'ATT-001', employee_name: 'Aggregate decoy',
-          department_name: 'Experience Design', designation_title: 'UX Designer', attendance_days: 999, office_hours: 999, working_hours: 999, deviation: 0 }]
+        ? [
+          { employee_id: syntheticAttendance.employee_id, employee_number: 'ATT-001', employee_name: 'Aggregate Report Employee',
+            department_name: 'Experience Design', designation_title: 'UX Designer', attendance_days: 999, office_hours: 45, working_hours: 46.48, deviation: 1.48 },
+          { employee_id: syntheticLateAttendance.employee_id, employee_number: 'ATT-002', employee_name: 'Aggregate Negative Employee',
+            department_name: 'Experience Design', designation_title: 'UX Designer', attendance_days: 999, office_hours: 45, working_hours: 44.3, deviation: -0.7 },
+        ]
         : { records: body.p_status && body.p_status !== 'all'
           ? allAttendance.filter(row => row.status === body.p_status) : allAttendance, corrections: correctionRequests };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
@@ -122,7 +129,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(row).toContainText('12-10-2026');
   await expect(row).toContainText('Office');
   await expect(row).toContainText('8.56');
-  await expect(page.getByText('Aggregate decoy')).toHaveCount(0);
+  await expect(page.getByText('Aggregate Report Employee')).toHaveCount(0);
   const correctionCard = page.getByRole('heading', { name: 'Attendance correction requests' }).locator('xpath=..');
   const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
   await expect(approvalRow).toContainText('09:15');
@@ -164,5 +171,48 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(tableRegion).toBeVisible();
   expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261012.png'), fullPage: true });
+
+  reportOnly = true;
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  await page.reload();
+  await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  const reportTable = page.getByRole('table', { name: 'Attendance summary by employee' });
+  await expect(reportTable).toBeVisible();
+  const positiveRow = reportTable.getByRole('row', { name: /Aggregate Report Employee/ });
+  const negativeRow = reportTable.getByRole('row', { name: /Aggregate Negative Employee/ });
+  await expect(positiveRow).toContainText('UX Designer');
+  await expect(positiveRow).toContainText('Experience Design');
+  await expect(positiveRow).toContainText('45.00');
+  await expect(positiveRow).toContainText('46.48');
+  await expect(positiveRow).toContainText('+1.48');
+  await expect(positiveRow).toContainText('—');
+  await expect(positiveRow.getByRole('cell').last().locator('span')).toHaveClass(/text-emerald-700/);
+  await expect(negativeRow).toContainText('44.30');
+  await expect(negativeRow).toContainText('-0.70');
+  await expect(negativeRow.getByRole('cell').last().locator('span')).toHaveClass(/text-rose-700/);
+  expect(await reportTable.getByRole('columnheader').allTextContents()).toEqual([
+    'Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation',
+  ]);
+  await expect(positiveRow).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261012.png'), fullPage: true });
+
+  await page.getByLabel('Search employees').fill('Aggregate Report');
+  await page.getByLabel('Search employees').press('Enter');
+  await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Aggregate Report')).toBe(true);
+  await page.getByRole('button', { name: 'Filters' }).click();
+  await expect(page.getByLabel('From date')).toBeVisible();
+  await expect(page.getByLabel('Status')).toHaveCount(0);
+  await page.getByLabel('From date').fill('2026-10-05');
+  await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_start === '2026-10-05')).toBe(true);
+  const reportDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Report', exact: true }).click();
+  expect((await reportDownload).suggestedFilename()).toMatch(/^attendance-report-.*\.csv$/);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  expect(await page.getByRole('region', { name: 'Scrollable attendance report table' }).evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261012.png'), fullPage: true });
   expect(externalRequests).toEqual([]);
 });
