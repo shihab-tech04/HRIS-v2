@@ -1,6 +1,6 @@
 # Current Source Manifest
 
-**Recorded:** 2026-10-12 17:35 Asia/Dhaka. **State:** latest Main implementation checkpoint is committed locally on its local-only branch. Candidate is unchanged.
+**Recorded:** 2026-10-12 17:50 Asia/Dhaka. **State:** latest Main implementation checkpoint is committed locally on its local-only branch. Candidate is unchanged.
 
 | Application | Repository | Local branch | Verified remote base | Local source root |
 |---|---|---|---|---|
@@ -11,7 +11,7 @@ The connected GitHub API confirmed these are the current `main` commits. Recover
 
 ## Checkpoint changes
 
-- Main: permission-gated `LiveHrisWorkspace` using tenant-scoped manager RPCs, employee dashboard/leave/correction workflows, manager correction decisions and the tenant-scoped Shift roster with attendance.manage-gated assignment creation. Membership, roster read and assignment migrations are local release candidates. Approval replacements remain in `supabase/staging/approval-resolution/` and are not deployed.
+- Main: permission-gated `LiveHrisWorkspace` using tenant-scoped manager RPCs, employee dashboard/leave/correction workflows, manager correction decisions and the tenant-scoped Shift roster with attendance.manage-gated assignment creation. The latest feature commit `35231292540afc076bb2dd88c9435bb6073db709` adds the Figma-aligned Personal Leave page. Membership, roster read and assignment migrations are local release candidates. Approval replacements remain in `supabase/staging/approval-resolution/` and are not deployed.
 - Candidate: submitted-search behavior, stale-request protection, saved-job request isolation, Internship filter and removal of unsupported monthly salary wording. `esbuild` range updated to resolve the Vite peer conflict.
 - The local feature and acceptance checkpoint commits are detailed in `docs/programme/LOCAL_CHECKPOINT.md`; Candidate remains at the verified remote base with its prior local recovery commit.
 

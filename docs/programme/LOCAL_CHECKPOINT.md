@@ -1,15 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 17:35 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 17:50 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
 ## Verified source and code
 
 - Main remote `main` base: `4ded5f13f1ef2bf17237f347bfac9811283c52dc`; recovery work is committed on local-only branch `codex/recovery-checkpoint-20261012`.
 - Candidate remote `main` base: `1c04786a72c3920c7ebb4a607ad5ac56d7b55f63`; recovery work is committed on local-only branch `codex/recovery-checkpoint-20261012`.
-- Main: live permission-gated HRIS workspace, tenant-scoped manager RPCs, employee self-service, private leave request flow, attendance correction request/history/manager decisions and a tenant-scoped Shift roster with manager-only assignment creation. The tracked tenant-membership, roster read and assignment migrations remain local release candidates and have not been applied to production.
+- Main: live permission-gated HRIS workspace, tenant-scoped manager RPCs, employee self-service, private leave request flow, Figma-aligned Personal Leave balance/history/year-filter/export page, attendance correction request/history/manager decisions and a tenant-scoped Shift roster with manager-only assignment creation. The tracked tenant-membership, roster read and assignment migrations remain local release candidates and have not been applied to production.
 - Candidate: submitted vacancy search and stale-response fixes; production build is public-only.
 - Main `npm run check` passed (TypeScript, 29/29 contract tests, Vite build). Candidate lint, four contract tests, and public-only build passed at the previous checkpoint; Candidate is unchanged. Main retains the >500 kB chunk warning; Candidate has a Vite config-loader warning.
-- Full Main Chromium suite passed 38/38; the Shift roster journey passed 1/1 and covers tenant RPC payloads, filters, CSV, navigation, manager assignment success/duplicate recovery, mobile table scroll and no page overflow. All browser service calls are mocked and external requests are blocked.
+- Full Main Chromium suite passed 38/38 after the Personal Leave page; its targeted employee-leave journey passed 1/1 and covers year filter, CSV filename, navigation and mobile overflow. The Shift roster journey passed 1/1 and covers tenant RPC payloads, filters, CSV, navigation, manager assignment success/duplicate recovery, mobile table scroll and no page overflow. All browser service calls are mocked and external requests are blocked.
 - The isolated local Supabase Auth/RLS suite passed 55/55 checks using eight synthetic Auth users across two tenants, including two separate tenant-A managers for concurrent decisions. It exercised effective RPC ACLs, membership role IDs, tenant denial, global-role-only denial, employee own summary/correction submission/history, roster reads and manager assignment create/duplicate/tenant denials, termination and session revocation, private evidence storage, leave submission/approval, attendance correction variants, audit, balance rollback and concurrency. The tracked candidate migrations and both exact staged approval SQL files were applied only to the scratch stack. Test runner: `tests/sql/isolated-auth/run-local.mjs`.
 - Ordinary linked employees use `hris_get_my_dashboard_data(uuid)` and may submit leave through `hris_employee_submit_leave_request(uuid,jsonb)` and attendance corrections through `hris_employee_submit_attendance_correction(uuid,jsonb)`. The legacy employee RPCs remain unchanged and are not used by the new personal workspace.
 - A follow-up read-only production inspection confirmed own-row RLS for `employees`, `leave_requests`, and `leave_types`, while attendance and leave-balance policies still use the active-admin resolver. The `holidays_read` policy has no tenant predicate; current UI reads stay on tenant-scoped RPCs. No database settings or data were changed.
@@ -18,7 +18,7 @@
 
 ## Unresolved inputs / environment
 
-- The user reports that the recovered Project catalogue has 1,047 stories, 153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The mounted Project `sources/` directory contains zero files; exact-name local and connected Drive searches found only the empty tracking skeleton, not the recovered source. Catalogue-level mapping remains 0/1,047; 1,047 pending source verification and story-by-story acceptance. No IDs or criteria have been inferred. The expected GitHub read returned HTTP 403 for a suspended account.
+- The user reports that the recovered Project catalogue has 1,047 stories, 153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The current mounted Project `sources/` directory contains zero files; filename search across local Project/attachment paths and connected Drive returned only the empty tracking skeleton, not the recovered source. Catalogue-level mapping remains 0/1,047; 1,047 pending verified source access and story-by-story acceptance. No IDs or criteria have been inferred. The expected GitHub read returned HTTP 403 for a suspended account.
 - Supabase `get_cost` was attempted for the user-selected organization `qdcgrdntvspjsdszuzmy` and returned `UNAVAILABLE` because the connected MCP server did not expose that method. No paid branch/service was created; the free isolated local scratch stack was used instead. The separate older `colima-t` Auth runtime was left untouched.
 - Supabase currently lists no development branches for `hrmis-saas`, so there is no existing isolated branch to reuse.
 - An earlier automatic review rejected replacing the existing Drive archive; that file was not changed. The connected account owns `HRMIS Preservation 2026-10-11`, and a temporary file uploaded to and read back from that folder with matching content before being deleted. Destination write access is verified; the final versioned archive and its integrity check remain pending full acceptance.
@@ -26,7 +26,7 @@
 
 ## Exact next actions
 
-1. Continue Phase 08 from the current manager assignment checkpoint; pursue the reported source through refreshed Project sources and verify its exact SHA before mapping story IDs. The current mounted source is empty, so no IDs are inferred.
+1. Continue Phase 09 from the committed Personal Leave page; pursue the reported source through refreshed Project sources and verify its exact SHA before mapping story IDs. The current mounted source is empty, so no IDs are inferred.
 2. Continue the next functional flow only where current schema/business rules and available Figma references define the journey; the roster-specific Figma frame is still unavailable.
 3. Complete authenticated browser, Figma visual, EN/BN, accessibility, responsive, password-recovery and remaining module acceptance.
 4. Reconcile the production migration history and remaining exposed tenant-keyed tables, SECURITY DEFINER functions, Candidate public columns, and Auth settings.
