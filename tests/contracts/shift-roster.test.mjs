@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql', import.meta.url), 'utf8');
+const assignmentMigration = readFileSync(new URL('../../supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql', import.meta.url), 'utf8');
 
 test('shift roster is exposed only to attendance view or manage memberships', () => {
   assert.match(workspace, /permissions\.attendanceView \|\| permissions\.attendanceManage[\s\S]+?label: 'Roster'/);
@@ -23,4 +24,19 @@ test('roster RPC binds assignments, employees, shifts, and departments to the re
   assert.match(migration, /d\.tenant_id=p_tenant_id/);
   assert.match(migration, /FROM PUBLIC, anon/);
   assert.match(migration, /TO authenticated, service_role/);
+});
+
+test('shift assignment options and writes require attendance.manage, tenant-bind rows, and audit without upsert', () => {
+  assert.match(assignmentMigration, /hris_get_tenant_shift_roster_options/);
+  assert.match(assignmentMigration, /hris_assign_tenant_employee_shift/);
+  assert.match(assignmentMigration, /SET search_path = ''/);
+  assert.match(assignmentMigration, /has_tenant_permission\(p_tenant_id, 'attendance\.manage'\)/);
+  assert.match(assignmentMigration, /e\.tenant_id=p_tenant_id/);
+  assert.match(assignmentMigration, /s\.tenant_id=p_tenant_id/);
+  assert.match(assignmentMigration, /INSERT INTO public\.admin_audit_logs/);
+  assert.match(assignmentMigration, /shift\.assignment\.created/);
+  assert.doesNotMatch(assignmentMigration, /ON CONFLICT/);
+  assert.equal((assignmentMigration.match(/FROM PUBLIC, anon/g) || []).length, 2);
+  assert.match(workspace, /result\.error\.code === '23505'/);
+  assert.match(workspace, /The existing assignment was not changed/);
 });

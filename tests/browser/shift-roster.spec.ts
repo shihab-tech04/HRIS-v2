@@ -16,6 +16,7 @@ const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 test('tenant shift roster uses the scoped RPC, filters, exports, and remains usable on mobile', async ({ page }) => {
   const externalRequests: string[] = [];
   const rosterCalls: Record<string, unknown>[] = [];
+  const assignmentCalls: Record<string, unknown>[] = [];
   const today = new Date();
   const assignmentDate = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
   const rows = [
@@ -31,6 +32,15 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
       shift_id: 'a6666666-6666-4666-8666-666666666666', shift_name: 'Late Shift', shift_code: 'LATE',
       start_time: '13:00:00', end_time: '21:00:00', grace_minutes: 5, break_minutes: 45,
       weekly_off_days: [0, 6] },
+  ];
+  const employeeOptions = [
+    { id: 'a2222222-2222-4222-8222-222222222222', employee_number: 'QA-001', full_name: 'Synthetic Roster Employee', department_name: 'Product Design' },
+    { id: 'a5555555-5555-4555-8555-555555555555', employee_number: 'QA-002', full_name: 'Second Roster Employee', department_name: 'Product Design' },
+    { id: 'a7777777-7777-4777-8777-777777777777', employee_number: 'QA-003', full_name: 'New Roster Employee', department_name: 'Product Design' },
+  ];
+  const shiftOptions = [
+    { id: 'a3333333-3333-4333-8333-333333333333', name: 'Day Shift', code: 'DAY', start_time: '09:00:00', end_time: '17:00:00' },
+    { id: 'a6666666-6666-4666-8666-666666666666', name: 'Late Shift', code: 'LATE', start_time: '13:00:00', end_time: '21:00:00' },
   ];
 
   await page.route('**/*', async route => {
@@ -71,6 +81,31 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
         const data = term ? rows.filter(row =>
           `${row.full_name} ${row.employee_number} ${row.shift_name} ${row.shift_code}`.toLocaleLowerCase().includes(term)) : rows;
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+      } else if (endpoint === 'hris_get_tenant_shift_roster_options') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          employees: employeeOptions, shifts: shiftOptions,
+        }) });
+      } else if (endpoint === 'hris_assign_tenant_employee_shift') {
+        const body = request.postDataJSON() as Record<string, unknown>;
+        assignmentCalls.push(body);
+        const duplicate = rows.some(row => row.employee_id === body.p_employee_id
+          && row.assignment_date === body.p_assignment_date);
+        if (duplicate) {
+          await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({
+            code: '23505', message: 'duplicate key value violates unique constraint',
+          }) });
+          return;
+        }
+        const employee = employeeOptions.find(row => row.id === body.p_employee_id);
+        const shift = shiftOptions.find(row => row.id === body.p_shift_id);
+        rows.push({ assignment_id: 'a8888888-8888-4888-8888-888888888888',
+          assignment_date: String(body.p_assignment_date), assignment_status: 'scheduled',
+          employee_id: String(body.p_employee_id), employee_number: employee?.employee_number || '',
+          full_name: employee?.full_name || '', department_name: employee?.department_name || '',
+          shift_id: String(body.p_shift_id), shift_name: shift?.name || '', shift_code: shift?.code || '',
+          start_time: shift?.start_time || '', end_time: shift?.end_time || '', grace_minutes: 0,
+          break_minutes: 60, weekly_off_days: [0, 6] });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('a8888888-8888-4888-8888-888888888888') });
       } else {
         await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       }
@@ -109,6 +144,20 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(rosterTable.getByRole('row', { name: /Synthetic Roster Employee/ })).toBeVisible();
   await expect(rosterTable.getByRole('row', { name: /Second Roster Employee/ })).toBeVisible();
+
+  await page.getByLabel('Employee', { exact: true }).selectOption('a7777777-7777-4777-8777-777777777777');
+  await page.getByLabel('Shift', { exact: true }).selectOption('a6666666-6666-4666-8666-666666666666');
+  await page.getByLabel('Assignment date').fill(assignmentDate);
+  await page.getByRole('button', { name: 'Assign shift', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Shift assigned to New Roster Employee.');
+  await expect(rosterTable.getByRole('row', { name: /New Roster Employee/ })).toContainText('Late Shift');
+  expect(assignmentCalls.at(-1)).toMatchObject({ p_tenant_id: tenantId,
+    p_employee_id: 'a7777777-7777-4777-8777-777777777777',
+    p_shift_id: 'a6666666-6666-4666-8666-666666666666', p_assignment_date: assignmentDate });
+
+  await page.getByRole('button', { name: 'Assign shift', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('This employee already has a shift assignment for that date.');
+  await expect(rosterTable.getByRole('row', { name: /New Roster Employee/ })).toHaveCount(1);
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV' }).click();

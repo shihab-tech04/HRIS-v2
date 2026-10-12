@@ -146,7 +146,7 @@ function resolveAttendance(session, id, decision, note = null) {
 }
 
 function tableRow(table, id) {
-  const allowed = new Set(['leave_requests', 'attendance_records', 'attendance_corrections']);
+  const allowed = new Set(['leave_requests', 'attendance_records', 'attendance_corrections', 'employee_shift_assignments']);
   if (!allowed.has(table)) throw new Error(`Unexpected local fixture table: ${table}`);
   return queryAdmin(`SELECT to_jsonb(t) FROM public.${table} t WHERE id=${sqlLiteral(id)}::uuid`);
 }
@@ -224,6 +224,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -303,6 +304,8 @@ FROM (VALUES
   ('public.hris_get_tenant_dashboard_summary(uuid)'),
   ('public.hris_get_tenant_attendance_data(uuid,date,date,text,text,boolean)'),
   ('public.hris_get_tenant_shift_roster_data(uuid,date,date,text)'),
+  ('public.hris_get_tenant_shift_roster_options(uuid)'),
+  ('public.hris_assign_tenant_employee_shift(uuid,uuid,uuid,date)'),
   ('public.hris_get_tenant_leave_data(uuid,date,date)'),
   ('public.hris_get_my_dashboard_data(uuid)'),
   ('public.hris_employee_submit_attendance_correction(uuid,jsonb)'),
@@ -348,6 +351,65 @@ record('Roster RPC supports tenant-viewer search and rejects an inverted date ra
   && !rosterBadRange.ok,
   JSON.stringify({ viewerSearch: rosterViewerB, emptySearch: rosterSearchMismatch,
     invertedRangeRejected: !rosterBadRange.ok }));
+
+const rosterOptionsA = queryAs(managerA,
+  `SELECT public.hris_get_tenant_shift_roster_options('${ids.tenantA}'::uuid)`);
+const rosterOptionsB = queryAs(managerB,
+  `SELECT public.hris_get_tenant_shift_roster_options('${ids.tenantB}'::uuid)`);
+record('Roster assignment options return only the active employees and shifts from the manager’s tenant',
+  rosterOptionsA.employees.some(row => row.employee_number === 'QA-A-002')
+  && rosterOptionsA.shifts.length === 1 && rosterOptionsA.shifts[0].code === 'QA-DAY'
+  && rosterOptionsB.employees.some(row => row.employee_number === 'QA-B-001')
+  && rosterOptionsB.shifts.length === 1 && rosterOptionsB.shifts[0].code === 'QA-B');
+
+const rosterViewerOptions = attemptAs(tenantViewer,
+  `SELECT public.hris_get_tenant_shift_roster_options('${ids.tenantB}'::uuid)`);
+const rosterGlobalOptions = attemptAs(globalOnly,
+  `SELECT public.hris_get_tenant_shift_roster_options('${ids.tenantA}'::uuid)`);
+record('Roster assignment options require tenant attendance.manage and deny view-only/global-only users',
+  !rosterViewerOptions.ok && !rosterGlobalOptions.ok);
+
+const rosterAssignmentDate = queryAdmin(`SELECT to_jsonb('${localCurrentDate}'::date+1)`);
+const rosterAssignmentId = queryAs(managerA, `SELECT to_jsonb(public.hris_assign_tenant_employee_shift(
+  '${ids.tenantA}'::uuid,'55555555-5555-4555-8555-555555555556'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid,'${rosterAssignmentDate}'::date))`);
+const rosterAssignment = rosterAssignmentId ? tableRow('employee_shift_assignments', rosterAssignmentId) : null;
+const rosterAssignmentAudit = Number(queryAdmin(`SELECT count(*)::integer FROM public.admin_audit_logs
+  WHERE actor_id='${managerA.userId}'::uuid AND target_type='employee_shift_assignment'
+    AND target_id='${rosterAssignmentId}' AND action='shift.assignment.created'`));
+record('Attendance manager assigns an active same-tenant employee and shift with one audit event',
+  Boolean(rosterAssignmentId) && rosterAssignment?.tenant_id === ids.tenantA
+  && rosterAssignment?.employee_id === '55555555-5555-4555-8555-555555555556'
+  && rosterAssignment?.shift_id === '33333333-3333-4333-8333-333333333333'
+  && rosterAssignment?.assignment_date === rosterAssignmentDate
+  && rosterAssignment?.created_by === managerA.userId && rosterAssignmentAudit === 1);
+
+const rosterDuplicateAssignment = attemptAs(managerA, `SELECT public.hris_assign_tenant_employee_shift(
+  '${ids.tenantA}'::uuid,'55555555-5555-4555-8555-555555555556'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid,'${rosterAssignmentDate}'::date)`);
+const rosterRowsForDate = Number(queryAdmin(`SELECT count(*)::integer FROM public.employee_shift_assignments
+  WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555556'
+    AND assignment_date='${rosterAssignmentDate}'::date`));
+record('Duplicate employee/date assignment is rejected without overwriting the saved shift or duplicate audit',
+  !rosterDuplicateAssignment.ok && rosterRowsForDate === 1
+  && tableRow('employee_shift_assignments', rosterAssignmentId)?.shift_id === '33333333-3333-4333-8333-333333333333'
+  && rosterAssignmentAudit === 1);
+
+const rosterEmployeeWrite = attemptAs(employeeA, `SELECT public.hris_assign_tenant_employee_shift(
+  '${ids.tenantA}'::uuid,'55555555-5555-4555-8555-555555555556'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid,'${localCurrentDate}'::date+2)`);
+const rosterCrossTenantWrite = attemptAs(managerB, `SELECT public.hris_assign_tenant_employee_shift(
+  '${ids.tenantA}'::uuid,'55555555-5555-4555-8555-555555555556'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid,'${localCurrentDate}'::date+2)`);
+const rosterForeignEmployee = attemptAs(managerA, `SELECT public.hris_assign_tenant_employee_shift(
+  '${ids.tenantA}'::uuid,'66666666-6666-4666-8666-666666666666'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid,'${localCurrentDate}'::date+2)`);
+const rosterForeignShift = attemptAs(managerA, `SELECT public.hris_assign_tenant_employee_shift(
+  '${ids.tenantA}'::uuid,'55555555-5555-4555-8555-555555555556'::uuid,
+  '44444444-4444-4444-8444-444444444444'::uuid,'${localCurrentDate}'::date+2)`);
+record('Roster assignment write denies employees and rejects another tenant’s employee or shift',
+  !rosterEmployeeWrite.ok && !rosterCrossTenantWrite.ok
+  && !rosterForeignEmployee.ok && !rosterForeignShift.ok);
 
 const tenantBAuth = queryAs(managerB, `SELECT jsonb_build_object(
   'legacy_permission',public.has_permission('leave.manage'),

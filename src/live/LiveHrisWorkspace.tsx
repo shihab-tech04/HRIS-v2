@@ -516,15 +516,53 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   </section>;
 }
 
-function ShiftRoster({ tenantId }: { tenantId: string }) {
+function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boolean }) {
   const [assignments, setAssignments] = useState<Record<string, unknown>[]>([]);
+  const [employeeOptions, setEmployeeOptions] = useState<Record<string, unknown>[]>([]);
+  const [shiftOptions, setShiftOptions] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [optionsError, setOptionsError] = useState('');
+  const [assignmentError, setAssignmentError] = useState('');
+  const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedShiftId, setSelectedShiftId] = useState('');
+  const [assignmentDate, setAssignmentDate] = useState(() => localIsoDate(new Date()));
+  const [savingAssignment, setSavingAssignment] = useState(false);
   const [from, setFrom] = useState(() => localIsoDate(new Date()));
   const [to, setTo] = useState(endOfUpcomingWeek);
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const requestSequence = useRef(0);
+
+  async function loadOptions() {
+    if (!canManage) {
+      setEmployeeOptions([]);
+      setShiftOptions([]);
+      return;
+    }
+    setOptionsLoading(true);
+    setOptionsError('');
+    try {
+      const result = await supabase.rpc('hris_get_tenant_shift_roster_options', { p_tenant_id: tenantId });
+      if (result.error) throw result.error;
+      const value = asObject(result.data);
+      if (!value) throw new Error('Roster assignment options returned an invalid response.');
+      const employees = asRows(value.employees);
+      const shifts = asRows(value.shifts);
+      setEmployeeOptions(employees);
+      setShiftOptions(shifts);
+      setSelectedEmployeeId(previous => employees.some(row => row.id === previous)
+        ? previous : String(employees[0]?.id || ''));
+      setSelectedShiftId(previous => shifts.some(row => row.id === previous)
+        ? previous : String(shifts[0]?.id || ''));
+    } catch (cause) {
+      setEmployeeOptions([]);
+      setShiftOptions([]);
+      setOptionsError(cause instanceof Error ? cause.message : 'Unable to load assignable employees and shifts.');
+    } finally { setOptionsLoading(false); }
+  }
 
   async function load() {
     const requestId = ++requestSequence.current;
@@ -557,6 +595,39 @@ function ShiftRoster({ tenantId }: { tenantId: string }) {
     return () => { requestSequence.current += 1; };
   }, [tenantId, from, to, submittedSearch]);
 
+  useEffect(() => { void loadOptions(); }, [tenantId, canManage]);
+
+  async function assignShift(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (savingAssignment) return;
+    setAssignmentError('');
+    setAssignmentMessage('');
+    if (!selectedEmployeeId || !selectedShiftId || !assignmentDate) {
+      setAssignmentError('Choose an employee, shift and date.');
+      return;
+    }
+    setSavingAssignment(true);
+    try {
+      const result = await supabase.rpc('hris_assign_tenant_employee_shift', {
+        p_tenant_id: tenantId,
+        p_employee_id: selectedEmployeeId,
+        p_shift_id: selectedShiftId,
+        p_assignment_date: assignmentDate,
+      });
+      if (result.error) {
+        if (result.error.code === '23505') {
+          throw new Error('This employee already has a shift assignment for that date. The existing assignment was not changed.');
+        }
+        throw result.error;
+      }
+      const selectedEmployee = employeeOptions.find(row => row.id === selectedEmployeeId);
+      setAssignmentMessage(`Shift assigned to ${display(selectedEmployee?.full_name)}.`);
+      await load();
+    } catch (cause) {
+      setAssignmentError(cause instanceof Error ? cause.message : 'Unable to assign this shift.');
+    } finally { setSavingAssignment(false); }
+  }
+
   function downloadRoster() {
     downloadCsv(`shift-roster-${from}-to-${to}.csv`,
       ['Date', 'Employee number', 'Employee', 'Department', 'Shift', 'Code', 'Start', 'End', 'Break minutes', 'Grace minutes', 'Status'],
@@ -568,7 +639,7 @@ function ShiftRoster({ tenantId }: { tenantId: string }) {
   return <section aria-labelledby="shift-roster-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 id="shift-roster-heading" className="text-2xl font-semibold text-[#1E1B39]">Shift roster</h2>
-        <p className="mt-1 text-sm text-[#86929E]">Scheduled employee shifts for {tenantId ? 'this organization' : 'the selected organization'}</p></div>
+        <p className="mt-1 text-sm text-[#86929E]">Scheduled employee shifts for this organization</p></div>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={loading || !assignments.length} onClick={downloadRoster}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
@@ -580,6 +651,35 @@ function ShiftRoster({ tenantId }: { tenantId: string }) {
         </button>
       </div>
     </div>
+
+    {canManage && <section aria-labelledby="assign-shift-heading" className="rounded-xl border border-slate-200 bg-white p-4">
+      <h3 id="assign-shift-heading" className="font-semibold text-slate-900">Assign a shift</h3>
+      <p className="mt-1 text-sm text-slate-600">Assignments are saved per employee and date. An existing assignment is never replaced by this form.</p>
+      {optionsError && <StatusMessage error={optionsError} onRetry={() => void loadOptions()} />}
+      {assignmentError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{assignmentError}</p>}
+      {assignmentMessage && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{assignmentMessage}</p>}
+      <form className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" onSubmit={assignShift}>
+        <div><label htmlFor="roster-assignment-employee" className="mb-1 block text-xs font-medium text-slate-600">Employee</label>
+          <select id="roster-assignment-employee" value={selectedEmployeeId} onChange={event => setSelectedEmployeeId(event.target.value)}
+            disabled={optionsLoading || !employeeOptions.length} required className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-50">
+            {employeeOptions.map(row => <option key={String(row.id)} value={String(row.id)}>{display(row.employee_number)} · {display(row.full_name)}</option>)}
+          </select></div>
+        <div><label htmlFor="roster-assignment-shift" className="mb-1 block text-xs font-medium text-slate-600">Shift</label>
+          <select id="roster-assignment-shift" value={selectedShiftId} onChange={event => setSelectedShiftId(event.target.value)}
+            disabled={optionsLoading || !shiftOptions.length} required className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-50">
+            {shiftOptions.map(row => <option key={String(row.id)} value={String(row.id)}>{display(row.name)} · {String(row.start_time || '').slice(0, 5)}–{String(row.end_time || '').slice(0, 5)}</option>)}
+          </select></div>
+        <div><label htmlFor="roster-assignment-date" className="mb-1 block text-xs font-medium text-slate-600">Assignment date</label>
+          <input id="roster-assignment-date" type="date" value={assignmentDate} onChange={event => setAssignmentDate(event.target.value)} required
+            className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+        <div className="flex items-end"><button type="submit" disabled={optionsLoading || savingAssignment || !employeeOptions.length || !shiftOptions.length}
+          className="min-h-11 w-full rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770] disabled:opacity-50">
+          {savingAssignment ? 'Saving…' : 'Assign shift'}
+        </button></div>
+      </form>
+      {!optionsLoading && !optionsError && (!employeeOptions.length || !shiftOptions.length) &&
+        <p className="mt-3 text-sm text-slate-600">Active employees and shifts are required before an assignment can be made.</p>}
+    </section>}
 
     <form className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4"
       onSubmit={event => { event.preventDefault(); setSubmittedSearch(search.trim()); }}>
@@ -1367,7 +1467,7 @@ export function LiveHrisWorkspace({
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
           />}
-          {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} />}
+          {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
