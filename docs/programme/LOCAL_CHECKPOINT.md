@@ -1,15 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 18:19 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 18:32 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 08 attendance report
+## Current checkpoint — Phase 08 attendance report Team Name
 
-- Latest feature commit: `2d55ff93146445f6aaf799acb26b9e7149c52338` (Figma-aligned `reports.view` attendance report). Employee web clock-in/out commit: `66d0a12b92f7dca38331848da82ab0d4da9acbf3`. Current verification: 32/32 contracts, TypeScript/build pass, 38/38 Chromium, 63/63 local Auth/RLS on the unchanged SQL baseline. Vite still reports a 721.16 kB minified JavaScript chunk advisory.
-- The five prior tenant-security failures all pass. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
-- Since the 14:20 baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`, source/test changes total 21 paths, +5,882/−55. Full path list and current test scope are in `EXECUTION_CHECKPOINT_20261012_1820.md` and `ACCEPTANCE_EVIDENCE_20261012_1820.md`.
-- The owner reports the canonical catalogue as 1,047 stories/153 modules, expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The mounted `sources/` directory is empty, so 0/1,047 are mapped to recovered story text and 1,047 remain pending verification. The local JSON remains only an empty tracking skeleton.
-- The latest 18:20 source snapshot is in the connected account-owned Drive preservation folder and verified at 2,054,384 bytes with SHA-256 `562202f1cd3d4baf6d92567871341e17119938f2076c2348a4581b8431e83240`. Drive readback matched byte-for-byte and passed ZIP integrity check; earlier records are retained. See `DRIVE_PRESERVATION_RECEIPT_20261012_1820.md`.
-- Next work: continue Phase 08 attendance workflows and inspect the existing schema for a valid employee/team relationship before extending the report response. Do not infer story IDs or publish.
+- Latest feature commit: `a458865709c6dbee79091c193a6527c4d9789001` (tenant-safe Figma Attendance Report Team Name). Prior clock-in/out commit: `66d0a12b92f7dca38331848da82ab0d4da9acbf3`. Current verification: 35/35 contracts, TypeScript/build pass, focused Chromium 1/1, and 65/65 local Auth/RLS. The previous full Chromium suite was 38/38. Vite reports a 721.19 kB minified JavaScript chunk advisory.
+- All five prior tenant-security failures still pass. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
+- Since the 14:20 baseline, implementation/source/test changes total **23 paths, +6,051/−55**, excluding documentation and image evidence. The 18:20→18:32 code slice is 7 paths, +187/−18. See `EXECUTION_CHECKPOINT_20261012_1832.md` and `ACCEPTANCE_EVIDENCE_20261012_1832.md`.
+- The user reports the recovered catalogue has 1,047 stories/153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The current task's `sources/` mount is empty and Drive exact-name searches did not return catalogue bytes. Its SHA cannot be verified here; **0/1,047 are mapped and accepted, 1,047 pending**. The local JSON remains only an empty tracking skeleton.
+- Latest verified Drive archive remains the 18:20 snapshot until the new versioned checkpoint is uploaded and read back; older files will be retained. The 18:20 ZIP matched byte-for-byte and passed ZIP integrity.
+- Next: continue functional HRIS page work and local tenant/Auth regression coverage; map against canonical story IDs when the recovered Project source is visible to this task. Do not publish or deploy early.
 
 ## Historical detail from the 17:50 checkpoint
 
