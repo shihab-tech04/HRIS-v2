@@ -1,6 +1,6 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-12 18:49 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-12 18:52 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
 ## Current checkpoint — Phase 08 Figma Attendance Report Team filter
 
@@ -8,7 +8,8 @@
 - All five prior tenant-security failures still pass. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
 - Since the 14:20 baseline, implementation/source/test changes total **23 paths, +6,111/−55**, excluding documentation and image evidence. The 18:32→18:49 code slice is 3 paths, +68/−8. See `EXECUTION_CHECKPOINT_20261012_1847.md` and `ACCEPTANCE_EVIDENCE_20261012_1847.md`.
 - The user reports the recovered catalogue has 1,047 stories/153 modules and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The current task's `sources/` mount is empty and Drive exact-name search returned no catalogue file. Its SHA cannot be verified here; **0/1,047 are mapped and accepted, 1,047 pending**. The local JSON remains only an empty tracking skeleton.
-- New versioned 18:32 Drive archive `Synesis_HRIS360_Attendance_TeamName_20261012_1832.zip` (file ID `113U00tgit2R1bJzLRh2u_kdxk5yFBUr1`) is **2,064,077 bytes**, SHA-256 `ca41903c194323698eec0d0adc2d25ccf8087146ac3907e0a81fbbbd423ed2f4`; Drive readback matched byte-for-byte and ZIP integrity passed. The connected `shihabshajib01@gmail.com` account owns the destination folder. Older Drive files remain in place. See `DRIVE_PRESERVATION_RECEIPT_20261012_1832.md`.
+- Prior 18:32 Drive archive `Synesis_HRIS360_Attendance_TeamName_20261012_1832.zip` (file ID `113U00tgit2R1bJzLRh2u_kdxk5yFBUr1`) remains in the folder. See `DRIVE_PRESERVATION_RECEIPT_20261012_1832.md`.
+- New 18:49 combined Main/Candidate source archive `Synesis_HRIS360_Phase08_AttendanceTeamFilter_20261012_1849.zip` (Drive file ID `1HyLp0Ch5JGNit5bVh4dWQGwyStVNkzf3`) is **4,796,441 bytes**, SHA-256 `e2ec2e8a3e18efff5bd6eaa673dfdebe3467551cc5471aa86802df853dd48eed`; ZIP integrity passed and Drive readback matched byte-for-byte. The 18:49 execution checkpoint, acceptance evidence and SHA sidecar were uploaded and exact-text read back. Current profile and folder metadata confirmed `shihabshajib01@gmail.com` owns the destination; files were added as new versioned items, with older records retained. See `DRIVE_PRESERVATION_RECEIPT_20261012_1849.md`.
 - New Figma Team filter updates the aggregate report rows, empty state, and CSV export without expanding backend access; full details are in the 18:49 acceptance evidence.
 - Next: continue Phase 08 functional attendance/time-management journeys from the current Figma and approved contracts; map against canonical IDs as soon as the recovered Project source is visible to this task. Do not publish or deploy early.
 
