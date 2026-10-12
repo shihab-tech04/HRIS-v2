@@ -8,7 +8,7 @@
 - The five prior tenant-security failures all pass. No production data, SQL, permissions or Auth settings changed; no paid service, GitHub push or deployment was used.
 - Since the 14:20 baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`, source/test changes total 21 paths, +5,882/−55. Full path list and current test scope are in `EXECUTION_CHECKPOINT_20261012_1820.md` and `ACCEPTANCE_EVIDENCE_20261012_1820.md`.
 - The owner reports the canonical catalogue as 1,047 stories/153 modules, expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. The mounted `sources/` directory is empty, so 0/1,047 are mapped to recovered story text and 1,047 remain pending verification. The local JSON remains only an empty tracking skeleton.
-- The 18:10 source snapshot in the connected account-owned Drive preservation folder is verified at 1,943,960 bytes and SHA-256 `2ef450ec10293e2cdd666af20d2691427d35ca07c8a6bc3ad1e7b9a212046144`. This newer report checkpoint is being versioned separately; earlier records are retained.
+- The latest 18:20 source snapshot is in the connected account-owned Drive preservation folder and verified at 2,054,384 bytes with SHA-256 `562202f1cd3d4baf6d92567871341e17119938f2076c2348a4581b8431e83240`. Drive readback matched byte-for-byte and passed ZIP integrity check; earlier records are retained. See `DRIVE_PRESERVATION_RECEIPT_20261012_1820.md`.
 - Next work: continue Phase 08 attendance workflows and inspect the existing schema for a valid employee/team relationship before extending the report response. Do not infer story IDs or publish.
 
 ## Historical detail from the 17:50 checkpoint
