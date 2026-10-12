@@ -844,13 +844,19 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resolvingRequestId, setResolvingRequestId] = useState('');
+  const [rejectingRequest, setRejectingRequest] = useState<LeaveRequest | null>(null);
+  const [resolutionNote, setResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const dataTenantId = useRef('');
   const requestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
+  const rejectionDialogRef = useRef<HTMLDivElement>(null);
+  const rejectionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const resolvingRequestIdRef = useRef('');
   activeTenantId.current = tenantId;
+  resolvingRequestIdRef.current = resolvingRequestId;
 
   async function load() {
     const requestId = ++requestSequence.current;
@@ -877,11 +883,42 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
 
   useEffect(() => {
     setData(null); dataTenantId.current = '';
-    setResolvingRequestId(''); setActionMessage('');
+    setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
     setSearch(''); setStatusFilter('all');
     void load();
     return () => { requestSequence.current += 1; };
   }, [tenantId]);
+
+  useEffect(() => {
+    if (!rejectingRequest) return;
+    const dialog = rejectionDialogRef.current;
+    const focusable = (): HTMLElement[] => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) || []);
+    focusable()[0]?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !resolvingRequestIdRef.current) {
+        setRejectingRequest(null); setResolutionNote('');
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (rejectionTriggerRef.current?.isConnected) rejectionTriggerRef.current.focus();
+      else document.getElementById('leave-workspace-heading')?.focus();
+    };
+  }, [rejectingRequest]);
   const visibleData = dataTenantId.current === tenantId ? data : null;
   const pending = useMemo(() => (visibleData?.requests || []).filter(item => String(item.status || '').toLowerCase() === 'pending'), [visibleData]);
   const statusOptions = useMemo(() => Array.from(new Set((visibleData?.requests || [])
@@ -897,19 +934,23 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     });
   }, [visibleData, search, statusFilter]);
 
-  async function resolveRequest(id: string, decision: 'approved' | 'rejected') {
+  async function resolveRequest(id: string, decision: 'approved' | 'rejected', note: string | null = null) {
     if (resolvingRequestId) return;
-    if (decision === 'rejected' && !window.confirm('Reject this leave request?')) return;
     const actionTenantId = tenantId;
     setResolvingRequestId(id); setActionMessage(''); setError('');
     try {
       const { error: rpcError } = await supabase.rpc('admin_resolve_leave_request', {
-        p_id: id, p_decision: decision, p_note: null,
+        p_id: id, p_decision: decision, p_note: note?.trim() || null,
       });
       if (rpcError) throw rpcError;
       if (activeTenantId.current !== actionTenantId) return;
       setActionMessage(`Leave request ${decision}.`);
+      if (decision === 'rejected') {
+        setRejectingRequest(null);
+        setResolutionNote('');
+      }
       await load();
+      if (decision === 'rejected') document.getElementById('leave-workspace-heading')?.focus();
     } catch (cause) {
       if (activeTenantId.current === actionTenantId) {
         setError(cause instanceof Error ? cause.message : 'Unable to resolve this leave request.');
@@ -921,7 +962,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
 
   return <section aria-labelledby="leave-workspace-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="leave-workspace-heading" className="text-2xl font-medium text-[#49454F]">Leave Requests</h2>
+      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Leave Requests</h2>
         <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
       <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
@@ -959,21 +1000,48 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
             <tbody className="divide-y divide-slate-100">{filteredRequests.map((row, index) => <tr key={String(row.id || index)}>
               <td className="px-3 py-3 font-medium">{display(row.full_name)}</td><td className="px-3 py-3">{display(row.leave_type_name)}</td>
               <td className="px-3 py-3">{display(row.from_date)}</td><td className="px-3 py-3">{display(row.to_date)}</td>
-              <td className="px-3 py-3">{display(row.requested_days)}</td><td className="px-3 py-3">{display(row.status)}</td>
+              <td className="px-3 py-3">{display(row.requested_days)}</td><td className="px-3 py-3 font-medium">
+                <span>{display(row.status)}</span>
+                {Boolean(row.resolution_note) && <span className="mt-1 block whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(row.resolution_note)}</span>}
+              </td>
               {canManage && <td className="px-3 py-3">
                 {row.status === 'pending' ? <div className="flex gap-2">
                   <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'approved')}
                     className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
                     {resolvingRequestId === row.id ? 'Saving…' : 'Approve'}
                   </button>
-                  <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'rejected')}
-                    className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50">Reject</button>
+                  <button type="button" disabled={Boolean(resolvingRequestId)}
+                    className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
+                    onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}>Reject</button>
                 </div> : '—'}
               </td>}
             </tr>)}</tbody>
           </table>
         </div>}
       </div>
+      {rejectingRequest && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
+        onMouseDown={event => { if (event.target === event.currentTarget && !resolvingRequestId) { setRejectingRequest(null); setResolutionNote(''); } }}>
+        <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="leave-rejection-heading" aria-describedby="leave-rejection-description"
+          className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h3 id="leave-rejection-heading" className="font-semibold text-slate-900">Reject leave request</h3>
+            <p id="leave-rejection-description" className="mt-1 text-sm text-slate-600">{display(rejectingRequest.full_name)} · {display(rejectingRequest.leave_type_name)} · {display(rejectingRequest.from_date)} to {display(rejectingRequest.to_date)}</p>
+          </div>
+          <div className="space-y-3 p-5">
+            {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+            <label htmlFor="leave-rejection-note" className="block text-sm font-medium text-slate-700">Decision note <span className="font-normal text-slate-500">(optional)</span></label>
+            <textarea id="leave-rejection-note" rows={4} value={resolutionNote} onChange={event => setResolutionNote(event.target.value)} disabled={Boolean(resolvingRequestId)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-60" />
+            <p className="text-xs text-slate-500">The employee can see this note with the decision in their leave history.</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
+            <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => { setRejectingRequest(null); setResolutionNote(''); }}
+              className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(rejectingRequest.id), 'rejected', resolutionNote)}
+              className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{resolvingRequestId ? 'Saving…' : 'Reject request'}</button>
+          </div>
+        </div>
+      </div>}
       <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-4"><h3 id="organization-holidays-heading" className="font-semibold text-slate-900">Organization holidays</h3>
           <p className="mt-1 text-xs text-slate-500">Holiday dates returned by this organization’s leave service</p></div>

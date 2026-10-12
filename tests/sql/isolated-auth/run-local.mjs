@@ -884,8 +884,8 @@ const attendanceRow = tableRow('attendance_records', ids.attendanceRecord);
 const sameInstant = (value, expected) => Date.parse(value) === Date.parse(expected);
 record('Check-in-only attendance correction preserves existing checkout and work fields',
   attendanceApproved.success === true
-  && sameInstant(attendanceRow.check_in, '2026-10-12T03:30:00Z')
-  && sameInstant(attendanceRow.check_out, '2026-10-12T11:00:00Z')
+  && sameInstant(attendanceRow.check_in, `${localCurrentDate}T03:30:00Z`)
+  && sameInstant(attendanceRow.check_out, `${localCurrentDate}T11:00:00Z`)
   && attendanceRow.work_mode === 'home' && attendanceRow.client_name === 'Existing Client'
   && auditCount(ids.attendanceCorrection, 'attendance.correction.approved') === 1);
 
@@ -893,8 +893,8 @@ const checkoutApproved = resolveAttendance(managerA, ids.attendanceCheckoutOnly,
 const afterCheckoutOnly = tableRow('attendance_records', ids.attendanceRecord);
 record('Check-out-only attendance correction preserves check-in, mode and client fields',
   checkoutApproved.success === true
-  && sameInstant(afterCheckoutOnly.check_in, '2026-10-12T03:30:00Z')
-  && sameInstant(afterCheckoutOnly.check_out, '2026-10-12T12:00:00Z')
+  && sameInstant(afterCheckoutOnly.check_in, `${localCurrentDate}T03:30:00Z`)
+  && sameInstant(afterCheckoutOnly.check_out, `${localCurrentDate}T12:00:00Z`)
   && afterCheckoutOnly.work_mode === 'home' && afterCheckoutOnly.client_name === 'Existing Client'
   && auditCount(ids.attendanceCheckoutOnly, 'attendance.correction.approved') === 1);
 
@@ -902,8 +902,8 @@ const workModeApproved = resolveAttendance(managerA, ids.attendanceWorkModeOnly,
 const afterWorkModeOnly = tableRow('attendance_records', ids.attendanceRecord);
 record('Work-mode-only attendance correction preserves both punches and the client',
   workModeApproved.success === true
-  && sameInstant(afterWorkModeOnly.check_in, '2026-10-12T03:30:00Z')
-  && sameInstant(afterWorkModeOnly.check_out, '2026-10-12T12:00:00Z')
+  && sameInstant(afterWorkModeOnly.check_in, `${localCurrentDate}T03:30:00Z`)
+  && sameInstant(afterWorkModeOnly.check_out, `${localCurrentDate}T12:00:00Z`)
   && afterWorkModeOnly.work_mode === 'office' && afterWorkModeOnly.client_name === 'Existing Client'
   && auditCount(ids.attendanceWorkModeOnly, 'attendance.correction.approved') === 1);
 
