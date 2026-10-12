@@ -65,6 +65,13 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
   assert.match(browser, /controlBounds/);
 });
 
+test('attendance report filter disclosure keeps its controlled panel target mounted', () => {
+  assert.match(workspace, /id="attendance-filters" hidden=\{!filtersOpen\}/);
+  assert.match(workspace, /aria-controls="attendance-filters" onClick/);
+  assert.match(browser, /getByRole\('button', \{ name: 'Filters', exact: true \}\)/);
+  assert.match(browser, /attendance-filters/);
+});
+
 test('Figma Apply Filter commits aggregate date and Team drafts together', () => {
   assert.match(workspace, /value=\{aggregateOnly \? draftFrom : from\}/);
   assert.match(workspace, /value=\{aggregateOnly \? draftTo : to\}/);

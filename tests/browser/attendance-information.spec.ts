@@ -182,6 +182,17 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const reportSearch = reportControls.getByLabel('Search employees');
   const toolbarDownload = reportControls.getByRole('button', { name: 'Download Report', exact: true });
   const toolbarFilters = reportControls.getByRole('button', { name: 'Filters', exact: true });
+  const filterPanel = page.locator('#attendance-filters');
+  await expect(filterPanel).toHaveCount(1);
+  await expect(filterPanel).toBeHidden();
+  await expect(toolbarFilters).toHaveAttribute('aria-expanded', 'false');
+  await expect(toolbarFilters).toHaveAttribute('aria-controls', 'attendance-filters');
+  await toolbarFilters.click();
+  await expect(filterPanel).toBeVisible();
+  await expect(toolbarFilters).toHaveAttribute('aria-expanded', 'true');
+  await toolbarFilters.click();
+  await expect(filterPanel).toBeHidden();
+  await expect(toolbarFilters).toHaveAttribute('aria-expanded', 'false');
   const controlBounds = await Promise.all([reportSearch, toolbarDownload, toolbarFilters].map(locator =>
     locator.evaluate(element => {
       const bounds = element.getBoundingClientRect();

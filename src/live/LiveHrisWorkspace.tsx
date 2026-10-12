@@ -493,7 +493,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         <Download className="h-4 w-4" /> Download report
       </button>
     </form>}
-    {filtersOpen && <div id="attendance-filters" className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div id="attendance-filters" hidden={!filtersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">From date</label>
         <input id="attendance-from" type="date" value={aggregateOnly ? draftFrom : from} onChange={event => aggregateOnly ? setDraftFrom(event.target.value) : setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">To date</label>
@@ -512,7 +512,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
         ? <button type="button" onClick={applyReportFilters}
           className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">Apply Filter</button>
         : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
-    </div>}
+    </div>
     {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
     {currentCorrections.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4">
