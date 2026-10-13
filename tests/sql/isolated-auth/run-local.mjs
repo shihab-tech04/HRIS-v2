@@ -2877,6 +2877,11 @@ const submitReviewA = await employeeA.client.rpc('hris_submit_project_peer_revie
   p_scores: { quality_of_work: 0, collaboration_teamwork: 4, delivery_reliability: 5, ownership_communication: 3 },
   p_not_observed: [], p_comments: 'Synthetic reciprocal feedback.',
 });
+const duplicateReviewSubmission = await employeeA.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: reviewAtoB?.id,
+  p_scores: { quality_of_work: 5, collaboration_teamwork: 5, delivery_reliability: 5, ownership_communication: 5 },
+  p_not_observed: [], p_comments: 'This second submission must not overwrite the original review.',
+});
 const reviewEmployeeHistory = await employeeA.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
 const reviewsFromOtherTenant = await employeeB.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantB });
 const revieweeDirectRead = await employeeA.client.from('project_task_peer_reviews').select('id,status,reviewer_employee_id,employee_id')
@@ -2895,6 +2900,7 @@ record('Peer-review authorization, score validation, self-review exclusion, and 
   Boolean(reviewAtoB) && Boolean(reviewBtoA)
     && Boolean(unauthorizedReviewSubmit.error?.code === '42501') && Boolean(invalidReviewScore.error?.code === '22023')
     && !submitReviewB.error && !submitReviewA.error
+    && Boolean(duplicateReviewSubmission.error?.code === '42501')
     && !reviewEmployeeHistory.error && reviewEmployeeHistory.data.reviews.some(row => row.id === reviewBtoA?.id && row.status === 'submitted')
     && !reviewsFromOtherTenant.error && reviewsFromOtherTenant.data.reviews.length === 0
     && !revieweeDirectRead.error && revieweeDirectRead.data.length === 1
@@ -2906,6 +2912,7 @@ record('Peer-review authorization, score validation, self-review exclusion, and 
   JSON.stringify({
     reviewAtoB: Boolean(reviewAtoB), reviewBtoA: Boolean(reviewBtoA),
     unauthorizedCode: unauthorizedReviewSubmit.error?.code, invalidScoreCode: invalidReviewScore.error?.code,
+    duplicateSubmissionCode: duplicateReviewSubmission.error?.code,
     submitBError: submitReviewB.error?.message, submitAError: submitReviewA.error?.message,
     ownHistoryError: reviewEmployeeHistory.error?.message, foreignReviewCount: reviewsFromOtherTenant.data?.reviews?.length,
     incomingRows: revieweeDirectRead.data?.length, adminReviewRows: ordinaryAdminReviewRead.data?.length,
