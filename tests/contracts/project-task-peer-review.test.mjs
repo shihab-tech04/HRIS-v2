@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql', import.meta.url), 'utf8');
+const eligibilityMigration = readFileSync(new URL('../../supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql', import.meta.url), 'utf8');
 const managerUi = readFileSync(new URL('../../src/live/ProjectTaskManager.tsx', import.meta.url), 'utf8');
 const employeeUi = readFileSync(new URL('../../src/live/MyProjectWork.tsx', import.meta.url), 'utf8');
 const performanceUi = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.meta.url), 'utf8');
@@ -47,6 +48,16 @@ test('review submissions separate Not Observed from 0–5 numeric values and can
   assert.match(migration, /'reviewer_project_allocation_id',r\.reviewer_project_allocation_id/);
   assert.match(migration, /'reviewee_project_allocation_id',r\.reviewee_project_allocation_id/);
   assert.match(migration, /'reviewee_employee_id',r\.employee_id/);
+});
+
+test('the submission RPC revalidates task state and overlapping assignment eligibility server-side', () => {
+  const submission = eligibilityMigration.slice(eligibilityMigration.indexOf('FUNCTION public.hris_submit_project_peer_review'));
+  assert.match(submission, /t\.status='completed' OR reviewee_assignment\.released_at IS NOT NULL/);
+  assert.match(submission, /reviewer_assignment\.assigned_at < COALESCE\(reviewee_assignment\.released_at,'infinity'::timestamptz\)/);
+  assert.match(submission, /reviewee_assignment\.assigned_at < COALESCE\(reviewer_assignment\.released_at,'infinity'::timestamptz\)/);
+  assert.match(submission, /reviewer_assignment\.employee_id=r\.reviewer_employee_id/);
+  assert.match(submission, /reviewee_assignment\.employee_id=r\.employee_id/);
+  assert.match(submission, /Pending eligible peer review assigned to this employee was not found/);
 });
 
 test('manager and employee screens complete task, release, review, and performance-history journeys', () => {

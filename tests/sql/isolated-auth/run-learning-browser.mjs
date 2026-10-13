@@ -215,7 +215,10 @@ try {
   await managerPage.getByText('Synthetic Employee A is enrolled in QA A Approval Learning.', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Learning manager queue after approval mobile');
   await managerPage.setViewportSize({ width: 1280, height: 900 });
+  const refreshedQueue = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_requests'));
   await managerPage.getByRole('button', { name: 'Refresh learning requests' }).click();
+  await refreshedQueue;
+  await managerPage.waitForFunction(() => document.querySelectorAll('[data-learning-request]').length === 1);
   if (await managerPage.locator('[data-learning-request]').count() !== 1) {
     throw new Error('Manager queue should retain only the separate capacity-blocked request after approval.');
   }

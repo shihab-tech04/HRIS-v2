@@ -270,6 +270,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013153500_hris_learning_employee_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013095450_hris_learning_manager_decisions.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -2303,6 +2304,28 @@ const nonOverlappingSubmission = await employeeClock.client.rpc('hris_submit_pro
   p_scores: { quality_of_work: 3, collaboration_teamwork: 3, delivery_reliability: 3, ownership_communication: 3 },
   p_not_observed: [], p_comments: '',
 });
+// A privileged synthetic row models a stale/corrupt pending obligation. The
+// submission RPC must independently reject the non-overlapping pair even
+// though the task is completed and the reviewer belongs to this tenant.
+const injectedNonOverlappingReview = queryAdmin(`INSERT INTO public.project_task_peer_reviews(
+  tenant_id,project_id,task_id,reviewer_task_assignment_id,reviewer_project_allocation_id,
+  reviewer_employee_id,reviewee_task_assignment_id,reviewee_project_allocation_id,employee_id
+) SELECT reviewer.tenant_id,reviewer.project_id,reviewer.task_id,reviewer.id,reviewer.project_allocation_id,
+    reviewer.employee_id,reviewee.id,reviewee.project_allocation_id,reviewee.employee_id
+  FROM public.project_task_assignments reviewer
+  JOIN public.project_task_assignments reviewee ON reviewee.tenant_id=reviewer.tenant_id
+    AND reviewee.project_id=reviewer.project_id AND reviewee.task_id=reviewer.task_id
+  WHERE reviewer.tenant_id='${ids.tenantA}'::uuid AND reviewer.task_id='${staggeredTask.data?.id}'::uuid
+    AND reviewer.employee_id='55555555-5555-4555-8555-555555555556'::uuid
+    AND reviewee.employee_id='55555555-5555-4555-8555-555555555560'::uuid
+  RETURNING jsonb_build_object('id',id::text)`);
+const injectedNonOverlappingSubmission = await managerA2.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: injectedNonOverlappingReview.id,
+  p_scores: { quality_of_work: 3, collaboration_teamwork: 3, delivery_reliability: 3, ownership_communication: 3 },
+  p_not_observed: [], p_comments: 'This synthetic non-overlapping review must not be accepted.',
+});
+const injectedReviewState = queryAdmin(`SELECT jsonb_build_object('status',status)
+  FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND id='${injectedNonOverlappingReview.id}'::uuid`);
 record('Peer-review obligations include only collaborators with overlapping task assignments',
   !staggeredEmployeeAllocation.error && !lateCollaboratorAllocation.error && !staggeredTask.error
     && !addOverlappingMember.error && !releaseBeforeLateMember.error && !addNonOverlappingMember.error
@@ -2322,6 +2345,13 @@ record('Peer-review obligations include only collaborators with overlapping task
     completion: staggeredCompletion.error?.message, pairs: staggeredReviewPairs,
     inboxRows: lateCollaboratorInbox.data?.reviews?.filter(row => row.task_id === staggeredTask.data?.id).length,
     nonOverlappingSubmissionCode: nonOverlappingSubmission.error?.code }));
+record('Peer-review submission rechecks assignment overlap in the backend',
+  Boolean(injectedNonOverlappingReview.id)
+    && Boolean(injectedNonOverlappingSubmission.error?.code === '42501')
+    && injectedReviewState.status === 'pending',
+  JSON.stringify({ reviewId: injectedNonOverlappingReview.id,
+    submissionCode: injectedNonOverlappingSubmission.error?.code,
+    persistedStatus: injectedReviewState.status }));
 
 const browserTaskTitle = `Local browser integration ${Date.now()}`;
 let browserIntegrationOutput = '';
