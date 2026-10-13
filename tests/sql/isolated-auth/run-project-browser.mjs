@@ -123,10 +123,24 @@ try {
   await task.getByRole('button', { name: 'Start task' }).click();
   await assertVisibleText(task, 'in progress');
 
-  pmPage.on('dialog', dialog => dialog.accept());
   await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).click();
+  const releaseDialog = pmPage.getByRole('alertdialog');
+  await assertVisibleText(releaseDialog, 'Collaborators whose assignments overlapped will receive required peer reviews. The release will not wait for feedback.');
+  await releaseDialog.getByRole('button', { name: 'Cancel' }).click();
+  await releaseDialog.waitFor({ state: 'detached' });
+  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, process.env.HRIS_LOCAL_TASK_TITLE);
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).waitFor({ state: 'visible' });
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).click();
+  await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm release' }).click();
   await assertVisibleText(task, 'Feedback Pending · 1 required reviews');
   await task.getByRole('button', { name: 'Mark complete' }).click();
+  const completionDialog = pmPage.getByRole('alertdialog');
+  await pmPage.keyboard.press('Escape');
+  await completionDialog.waitFor({ state: 'detached' });
+  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, process.env.HRIS_LOCAL_TASK_TITLE);
+  await assertVisibleText(task, 'in progress');
+  await task.getByRole('button', { name: 'Mark complete' }).click();
+  await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm completion' }).click();
   await assertVisibleText(task, 'Feedback Pending · 2 required reviews');
   await assertVisibleText(manager.getByRole('status').filter({ hasText: 'Task completed.' }), 'Task completed.');
   if ((await task.innerText()).includes('Mark complete')) throw new Error('The UI left the completed task actionable.');

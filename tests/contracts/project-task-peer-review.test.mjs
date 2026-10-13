@@ -64,7 +64,12 @@ test('manager and employee screens complete task, release, review, and performan
   for (const rpc of ['hris_create_project_task', 'hris_start_project_task', 'hris_assign_project_task_member', 'hris_release_project_task_member', 'hris_complete_project_task']) {
     assert.ok(managerUi.includes(`'${rpc}'`), `manager UI must call ${rpc}`);
   }
-  assert.match(managerUi, /window\.confirm\('Mark this operational task complete\?/);
+  assert.match(managerUi, /role="alertdialog" aria-modal="true"/);
+  assert.match(managerUi, /Collaborators whose assignments overlapped will receive required peer reviews/);
+  assert.doesNotMatch(managerUi, /window\.confirm/);
+  const browser = readFileSync(new URL('../sql/isolated-auth/run-project-browser.mjs', import.meta.url), 'utf8');
+  assert.match(browser, /getByRole\('button', \{ name: 'Release Synthetic Absent Employee A from '/);
+  assert.match(browser, /pmPage\.keyboard\.press\('Escape'\)/);
   assert.match(managerUi, /Feedback Pending/);
   assert.match(organizationProjects, /project\.can_manage && <ProjectTaskManager/);
   assert.match(myProjects, /<MyProjectWork tenantId=\{tenantId\} \/>/);

@@ -6,6 +6,9 @@ import { supabase } from '../lib/supabase';
 type MemberOption = { id: string; employee_name: string; employee_number: string; status: string };
 type TaskMember = { id: string; project_allocation_id: string; employee_id: string; employee_name: string; released_at: string | null };
 type ProjectTask = { id: string; title: string; description: string; due_date: string | null; status: 'open' | 'in_progress' | 'completed'; feedback_pending: number; members: TaskMember[] };
+type PendingConfirmation =
+  | { kind: 'release'; taskId: string; taskTitle: string; member: TaskMember }
+  | { kind: 'complete'; taskId: string; taskTitle: string };
 
 function errorMessage(cause: unknown, fallback: string) {
   if (cause instanceof Error && cause.message) return cause.message;
@@ -26,7 +29,33 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
   const [dueDate, setDueDate] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [addMember, setAddMember] = useState<Record<string, string>>({});
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const requestSequence = useRef(0);
+  const savingRef = useRef(false);
+  const cancelConfirmationRef = useRef<HTMLButtonElement>(null);
+  const confirmationOriginRef = useRef<HTMLElement | null>(null);
+  savingRef.current = saving;
+
+  useEffect(() => {
+    if (!pendingConfirmation) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelConfirmationRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !savingRef.current) {
+        event.preventDefault();
+        setPendingConfirmation(null);
+        setError('');
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      const target = confirmationOriginRef.current?.isConnected
+        ? confirmationOriginRef.current
+        : previousFocus?.isConnected ? previousFocus : null;
+      target?.focus();
+    };
+  }, [pendingConfirmation]);
 
   useEffect(() => {
     const requestId = ++requestSequence.current;
@@ -69,15 +98,30 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
     } finally { setSaving(false); }
   }
 
-  async function callTaskAction(rpc: string, args: Record<string, unknown>, message: string) {
+  async function callTaskAction(rpc: string, args: Record<string, unknown>, message: string): Promise<boolean> {
     setSaving(true); setError(''); setNotice('');
     try {
       const result = await supabase.rpc(rpc, args as never);
       if (result.error) throw result.error;
       setNotice(message); refresh();
+      return true;
     } catch (cause) {
       setError(errorMessage(cause, 'Unable to update this task.'));
+      return false;
     } finally { setSaving(false); }
+  }
+
+  async function confirmTaskAction() {
+    if (!pendingConfirmation || saving) return;
+    const confirmation = pendingConfirmation;
+    const success = confirmation.kind === 'release'
+      ? await callTaskAction('hris_release_project_task_member', {
+        p_tenant_id: tenantId, p_task_assignment_id: confirmation.member.id,
+      }, 'Member released. Peer-review obligations are tracked as Feedback Pending.')
+      : await callTaskAction('hris_complete_project_task', {
+        p_tenant_id: tenantId, p_task_id: confirmation.taskId,
+      }, 'Task completed. Peer reviews remain separately tracked as Feedback Pending.');
+    if (success) setPendingConfirmation(null);
   }
 
   return <section aria-label="Project task management" className="border-t border-slate-100 bg-slate-50/70 p-4 sm:p-5">
@@ -89,7 +133,7 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
       </div>
     </div>
     {notice && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
-    {error && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={refresh} className="min-h-9 rounded-md border border-rose-300 bg-white px-3">Retry</button></div>}
+    {error && !pendingConfirmation && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={refresh} className="min-h-9 rounded-md border border-rose-300 bg-white px-3">Retry</button></div>}
     {showCreate && <form onSubmit={createTask} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4" aria-label="Create project task">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-medium text-slate-600">Task title *<input required maxLength={160} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"/></label>
@@ -101,14 +145,24 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
     </form>}
     {loading ? <p role="status" className="mt-4 rounded-lg bg-white p-4 text-sm text-slate-600">Loading project tasks…</p> : tasks.length === 0 ? <p role="status" className="mt-4 rounded-lg bg-white p-4 text-sm text-slate-600">No project tasks yet.</p> :
       <div className="mt-4 space-y-3">{tasks.map(task => <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h5 className="break-words font-semibold text-slate-900">{task.title}</h5>{task.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{task.description}</p>}<p className="mt-1 text-xs text-slate-500">Due: {task.due_date || 'Not set'} · {task.members.filter(member => !member.released_at).length} assigned</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{task.status.replace('_', ' ')}</span></div>
-        <ul className="mt-3 flex flex-wrap gap-2" aria-label={`${task.title} members`}>{task.members.map(member => <li key={member.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs text-slate-700">{member.employee_name}{member.released_at ? ' · released' : ''}{!member.released_at && task.status !== 'completed' && <button type="button" aria-label={`Release ${member.employee_name} from ${task.title}`} disabled={saving} onClick={() => { if (window.confirm(`Release ${member.employee_name} from this task? Overlapping collaborators will receive a required peer review.`)) void callTaskAction('hris_release_project_task_member', { p_tenant_id: tenantId, p_task_assignment_id: member.id }, 'Member released. Peer-review obligations are tracked as Feedback Pending.'); }} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rose-100"><X className="h-3.5 w-3.5" aria-hidden="true"/></button>}</li>)}</ul>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h5 tabIndex={-1} className="break-words font-semibold text-slate-900">{task.title}</h5>{task.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{task.description}</p>}<p className="mt-1 text-xs text-slate-500">Due: {task.due_date || 'Not set'} · {task.members.filter(member => !member.released_at).length} assigned</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{task.status.replace('_', ' ')}</span></div>
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label={`${task.title} members`}>{task.members.map(member => <li key={member.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs text-slate-700">{member.employee_name}{member.released_at ? ' · released' : ''}{!member.released_at && task.status !== 'completed' && <button type="button" aria-label={`Release ${member.employee_name} from ${task.title}`} disabled={saving} onClick={event => { confirmationOriginRef.current = event.currentTarget.closest('article')?.querySelector('h5') || event.currentTarget; setError(''); setPendingConfirmation({ kind: 'release', taskId: task.id, taskTitle: task.title, member }); }} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rose-100"><X className="h-3.5 w-3.5" aria-hidden="true"/></button>}</li>)}</ul>
         {task.status !== 'completed' && <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="min-w-[220px] flex-1 text-xs font-medium text-slate-600">Add project member<select aria-label={`Add member to ${task.title}`} value={addMember[task.id] || ''} onChange={event => setAddMember(value => ({ ...value, [task.id]: event.target.value }))} className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="">Select member</option>{members.filter(member => member.status === 'active' && !task.members.some(existing => existing.project_allocation_id === member.id && !existing.released_at)).map(member => <option key={member.id} value={member.id}>{member.employee_name}</option>)}</select></label>
           <button type="button" disabled={saving || !addMember[task.id]} onClick={() => void callTaskAction('hris_assign_project_task_member', { p_tenant_id: tenantId, p_task_id: task.id, p_project_allocation_id: addMember[task.id] }, 'Task member added.') } className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">Add member</button>
         </div>}
         {task.feedback_pending > 0 && <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">Feedback Pending · {task.feedback_pending} required reviews</p>}
-        <div className="mt-3 flex flex-wrap justify-end gap-2">{task.status === 'open' && <button type="button" disabled={saving} onClick={() => void callTaskAction('hris_start_project_task', { p_tenant_id: tenantId, p_task_id: task.id }, 'Task started.')} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm">Start task</button>}{task.status !== 'completed' && <button type="button" disabled={saving} onClick={() => { if (window.confirm('Mark this operational task complete? Outstanding reviews remain tracked separately.')) void callTaskAction('hris_complete_project_task', { p_tenant_id: tenantId, p_task_id: task.id }, 'Task completed. Peer reviews remain separately tracked as Feedback Pending.'); }} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" aria-hidden="true"/>{saving ? 'Saving…' : 'Mark complete'}</button>}</div>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">{task.status === 'open' && <button type="button" disabled={saving} onClick={() => void callTaskAction('hris_start_project_task', { p_tenant_id: tenantId, p_task_id: task.id }, 'Task started.')} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm">Start task</button>}{task.status !== 'completed' && <button type="button" disabled={saving} onClick={event => { confirmationOriginRef.current = event.currentTarget.closest('article')?.querySelector('h5') || event.currentTarget; setError(''); setPendingConfirmation({ kind: 'complete', taskId: task.id, taskTitle: task.title }); }} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" aria-hidden="true"/>{saving ? 'Saving…' : 'Mark complete'}</button>}</div>
       </article>)}</div>}
+    {pendingConfirmation && <div role="alertdialog" aria-modal="true" aria-labelledby="project-task-confirm-title" aria-describedby="project-task-confirm-description" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) { setPendingConfirmation(null); setError(''); } }}>
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+        <h5 id="project-task-confirm-title" className="text-lg font-semibold text-slate-900">{pendingConfirmation.kind === 'release' ? 'Release task member?' : 'Complete this task?'}</h5>
+        <p id="project-task-confirm-description" className="mt-2 text-sm text-slate-600">{pendingConfirmation.kind === 'release'
+          ? `${pendingConfirmation.member.employee_name} will be released from “${pendingConfirmation.taskTitle}”. Collaborators whose assignments overlapped will receive required peer reviews. The release will not wait for feedback.`
+          : `“${pendingConfirmation.taskTitle}” will be marked complete. Outstanding reviews remain tracked separately as Feedback Pending.`}</p>
+        {error && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2"><button ref={cancelConfirmationRef} type="button" disabled={saving} onClick={() => { setPendingConfirmation(null); setError(''); }} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">Cancel</button><button type="button" disabled={saving} onClick={() => void confirmTaskAction()} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : error ? 'Retry' : pendingConfirmation.kind === 'release' ? 'Confirm release' : 'Confirm completion'}</button></div>
+      </div>
+    </div>}
   </section>;
 }
