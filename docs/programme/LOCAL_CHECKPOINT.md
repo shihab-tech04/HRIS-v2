@@ -1,14 +1,14 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-13 09:45 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-13 09:55 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 10 project permission correction
+## Current checkpoint — Phase 11 filtered performance export
 
-- Latest feature commit: `a2d5007814af244d059c0e4563b210052d453dc8`; additional acceptance tests `ab21b62559ae73231048ef7dfcab4194df97acd9`. Active Super Admins alone can create projects and appoint Project Managers; only each assigned Project Manager can add/release project members. Same-tenant other-manager access is denied; employee team membership is preserved across multiple project allocations. Ordinary Admin/Manager and direct reassignment paths are denied. The UI capabilities match the RPC authorization.
-- Verification: TypeScript/build PASS, **55/55 contracts PASS**, project-workspace browser **5/5 PASS**, full Chromium **48/48 PASS**, isolated local Auth/RLS **105/105 PASS**, all five prior tenant-security cases PASS. The existing Vite chunk advisory remains. Browser-generated screenshots were restored.
-- Phase 11 appraisal status/cycle implementation remains preserved at `590baf650015aba04e91ab4bbb74980c013a7eeb`; Phase 11 code was not changed for this correction.
-- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The current Project `sources/` mount remains empty; the expected catalogue hash is unverified. No requirement text or IDs were inferred.
-- See `EXECUTION_CHECKPOINT_20261013_0945.md`, `ACCEPTANCE_EVIDENCE_20261013_0945.md`, and `MASTER_PHASE_LEDGER_20261013_0945.md`. A verified full-history local bundle and Drive receipt are being prepared. Complete acceptance and verify the full-source Drive archive before final GitHub push and deployment.
+- Latest feature commit: `efcdfa008a2b50ccfde3e68582269724bfbab7ad`. Organization Performance exports the currently visible, tenant-scoped goal progress and appraisal status after search and cycle/status filters. The shared CSV helper quotes fields and neutralizes spreadsheet formula-leading text; no score or feedback field is exported. No database or permission behavior changed.
+- Verification: TypeScript/build PASS, **56/56 contracts PASS**, focused manager performance browser **1/1 PASS**, full Chromium **48/48 PASS**, isolated local Auth/RLS **105/105 PASS**. All five prior tenant-security cases and Phase 10 Admin/Manager restrictions pass. The Vite bundle-size advisory remains. Test-generated screenshots were restored.
+- Phase 10 project permission correction remains preserved at `a2d5007814af244d059c0e4563b210052d453dc8` with additional SQL boundary coverage at `ab21b62559ae73231048ef7dfcab4194df97acd9`; Super Admin-only creation/appointment and assigned-manager-only membership management are enforced by RPC/UI and tested locally.
+- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The owner reports recovery of the 1,047-story/153-module catalogue and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`, but this execution context's `sources/` mount is empty and exact-name Drive metadata search returned no match. The empty repository skeleton remains unchanged (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`). No requirement text or IDs were inferred.
+- See `EXECUTION_CHECKPOINT_20261013_0955.md`, `ACCEPTANCE_EVIDENCE_20261013_0955.md`, and `MASTER_PHASE_LEDGER_20261013_0955.md`. A full-history local bundle is being refreshed for this implementation checkpoint. Complete acceptance and verify the full-source Drive archive before final GitHub push and deployment.
 
 ## Previous checkpoint — Phase 10 Teams directory and filtered CSV export
 

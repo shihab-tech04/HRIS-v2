@@ -1,6 +1,8 @@
 # Regression Ledger
 
-**Checkpoint:** 2026-10-13 09:45 Asia/Dhaka.
+**Checkpoint:** 2026-10-13 09:55 Asia/Dhaka.
+
+| Phase 11 organization performance export | `npm run check`; `npx playwright test tests/browser/manager-performance.spec.ts`; `npx playwright test tests/browser` | TypeScript/build PASS; **56/56 contracts PASS**; focused **1/1 PASS**; full Chromium **48/48 PASS**; isolated Auth/RLS **105/105 PASS**, all five earlier tenant-security cases pass | CSV uses current visible goal/appraisal results after filters, spreadsheet-safe shared helper, and excludes appraisal scores/feedback. No database or permission changes. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261013_0955.md`. |
 
 | Phase 10 project creation and membership permissions | `npm run check`; focused `tests/browser/project-workspace.spec.ts`; full Chromium; `node tests/sql/isolated-auth/run-local.mjs` | TypeScript/build PASS; **55/55 contracts PASS**; focused **5/5 PASS**; full Chromium **48/48 PASS**; Auth/RLS **105/105 PASS**, all five prior tenant-security cases pass | Super Admin create/appointment succeeds; ordinary Admin and Manager creation fails; direct manager reassignment is blocked for all authenticated roles; only the assigned Project Manager can add/release members on projects they manage. A same-tenant Project Manager is denied another manager’s project; employee team membership remains while allocated to multiple projects. Disposable synthetic Auth/RLS only; no hosted migration. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261013_0945.md`. |
 
