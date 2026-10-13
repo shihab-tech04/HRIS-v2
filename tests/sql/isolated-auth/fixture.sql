@@ -50,6 +50,7 @@ DROP FUNCTION IF EXISTS public.hris_assign_project_task_member(uuid,uuid,uuid) C
 DROP FUNCTION IF EXISTS public.hris_release_project_task_member(uuid,uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_complete_project_task(uuid,uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_project_task_workspace(uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_my_project_task_portfolio(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_project_tasks(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_project_peer_reviews(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_submit_project_peer_review(uuid,uuid,jsonb,text[],text) CASCADE;
@@ -87,6 +88,7 @@ DROP TABLE IF EXISTS public.performance_cycles CASCADE;
 DROP TABLE IF EXISTS public.performance_appraisals CASCADE;
 DROP TABLE IF EXISTS public.performance_goals CASCADE;
 DROP TABLE IF EXISTS public.project_performance_reviews CASCADE;
+DROP TABLE IF EXISTS public.hris_in_app_notifications CASCADE;
 DROP TABLE IF EXISTS public.project_task_peer_reviews CASCADE;
 DROP TABLE IF EXISTS public.project_task_assignments CASCADE;
 DROP TABLE IF EXISTS public.project_tasks CASCADE;

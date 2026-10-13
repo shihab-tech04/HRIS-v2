@@ -96,6 +96,8 @@ try {
   browser = await chromium.launch({ headless: true });
   let failTaskEditOnce = true;
   let taskEditCalls = 0;
+  let failPortfolioOnce = true;
+  let portfolioCalls = 0;
   const pmPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   await pmPage.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -106,6 +108,15 @@ try {
       if (failTaskEditOnce) {
         failTaskEditOnce = false;
         return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Temporary task edit outage.' }) });
+      }
+    }
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_task_portfolio')
+        && route.request().method() === 'POST') {
+      portfolioCalls += 1;
+      if (failPortfolioOnce) {
+        failPortfolioOnce = false;
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Temporary task portfolio outage.' }) });
       }
     }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -172,6 +183,26 @@ try {
   await assertNoHorizontalOverflow(pmPage, 'Mobile task completion and feedback state');
   await pmPage.setViewportSize({ width: 1280, height: 900 });
   await assertNoHorizontalOverflow(pmPage, 'Desktop task completion and feedback state');
+
+  await pmPage.getByRole('button', { name: 'Task portfolio' }).click();
+  const portfolio = pmPage.getByRole('heading', { name: 'Task portfolio', exact: true });
+  await portfolio.waitFor({ state: 'visible' });
+  await assertVisibleText(pmPage.getByRole('alert'), 'Temporary task portfolio outage.');
+  if (portfolioCalls !== 1) throw new Error(`Expected one simulated portfolio outage; calls=${portfolioCalls}.`);
+  await pmPage.getByRole('button', { name: 'Retry' }).click();
+  await assertVisibleText(pmPage.getByRole('region', { name: new RegExp(process.env.HRIS_LOCAL_PROJECT_CODE) }), revisedTaskTitle);
+  const projectPortfolio = pmPage.getByRole('region', { name: new RegExp(process.env.HRIS_LOCAL_PROJECT_CODE) });
+  await assertVisibleText(projectPortfolio, 'Feedback Pending · 2 reviews');
+  await pmPage.getByLabel('Task status').selectOption('feedback_pending');
+  await assertVisibleText(projectPortfolio, revisedTaskTitle);
+  await projectPortfolio.getByRole('button', { name: 'Open project tasks' }).click();
+  await assertVisibleText(pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first(), revisedTaskTitle);
+  await assertVisibleText(pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first(), 'Feedback Pending · 2 required reviews');
+  if (portfolioCalls !== 2) throw new Error(`Expected portfolio retry to load persisted task data once; calls=${portfolioCalls}.`);
+  await pmPage.setViewportSize({ width: 375, height: 812 });
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task portfolio and navigation');
+  await pmPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(pmPage, 'Desktop task portfolio and navigation');
 
   const reviewerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let notificationOutagePending = true;

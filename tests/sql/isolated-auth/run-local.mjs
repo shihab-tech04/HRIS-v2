@@ -294,6 +294,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013224251_hris_project_task_edit_workflow.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013225608_hris_project_manager_task_portfolio.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
@@ -3355,6 +3356,43 @@ const taskWorkspaceAdmin = await managerA.client.rpc('hris_get_project_task_work
 const taskWorkspaceForeign = await employeeB.client.rpc('hris_get_project_task_workspace', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
 });
+const taskPortfolioPM = await employeeA.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantA });
+const taskPortfolioMember = await managerA2.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantA });
+const taskPortfolioAdmin = await managerA.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantA });
+const taskPortfolioCrossTenant = await employeeA.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantB });
+const taskPortfolioForeign = await managerB.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantA });
+const taskPortfolioPMB = await employeeB.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantB });
+const taskPortfolioCrossTenantB = await employeeB.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantA });
+const taskPortfolioGlobalOnly = await globalOnly.client.rpc('hris_get_my_project_task_portfolio', { p_tenant_id: ids.tenantA });
+const taskPortfolioAnonymous = attemptAs(null,
+  `SELECT public.hris_get_my_project_task_portfolio('${ids.tenantA}'::uuid)`, 'anon');
+const portfolioTasks = (taskPortfolioPM.data?.projects || []).flatMap(project => project.tasks || []);
+record('Project Manager portfolio returns only tasks from projects they lead with feedback totals and no review content',
+  !taskPortfolioPM.error
+    && taskPortfolioPM.data.projects.length === 3
+    && taskPortfolioPM.data.projects.every(project => [projectA.id, projectA2.id, projectA3.id].includes(project.project_id))
+    && portfolioTasks.length === 1 && portfolioTasks[0].task_id === projectTaskId
+    && portfolioTasks[0].status === 'open' && portfolioTasks[0].members.length === 2
+    && portfolioTasks[0].feedback_pending === 0
+    && taskPortfolioPM.data.counts.tasks === 1 && taskPortfolioPM.data.counts.open === 1
+    && taskPortfolioPM.data.counts.feedback_pending === 0
+    && !JSON.stringify(taskPortfolioPM.data).includes('quality_of_work_score')
+    && Boolean(taskPortfolioMember.error?.code === '42501')
+    && Boolean(taskPortfolioAdmin.error?.code === '42501')
+    && Boolean(taskPortfolioCrossTenant.error?.code === '42501')
+    && Boolean(taskPortfolioForeign.error?.code === '42501')
+    && !taskPortfolioPMB.error && taskPortfolioPMB.data.projects.length === 2
+    && taskPortfolioPMB.data.counts.tasks === 0
+    && Boolean(taskPortfolioCrossTenantB.error?.code === '42501')
+    && Boolean(taskPortfolioGlobalOnly.error?.code === '42501')
+    && !taskPortfolioAnonymous.ok,
+  JSON.stringify({ projects: taskPortfolioPM.data?.projects.map(project => project.project_id),
+    taskIds: portfolioTasks.map(task => task.task_id),
+    memberCode: taskPortfolioMember.error?.code, adminCode: taskPortfolioAdmin.error?.code,
+    crossTenantCode: taskPortfolioCrossTenant.error?.code, foreignCode: taskPortfolioForeign.error?.code,
+    tenantBProjects: taskPortfolioPMB.data?.projects.map(project => project.project_id),
+    tenantBCrossCode: taskPortfolioCrossTenantB.error?.code,
+    globalOnlyCode: taskPortfolioGlobalOnly.error?.code, anonymousDenied: !taskPortfolioAnonymous.ok }));
 const memberTasks = await managerA2.client.rpc('hris_get_my_project_tasks', { p_tenant_id: ids.tenantA });
 const tenantBTasks = await employeeB.client.rpc('hris_get_my_project_tasks', { p_tenant_id: ids.tenantB });
 const directTaskRowsA = await employeeA.client.from('project_tasks').select('id,tenant_id').eq('tenant_id', ids.tenantA);

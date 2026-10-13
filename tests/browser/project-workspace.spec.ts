@@ -335,11 +335,13 @@ test('assigned Project Manager creates, starts, releases, and completes a task w
   await task.getByRole('button', { name: 'Start task' }).click();
   await expect(task).toContainText('in progress');
 
-  page.once('dialog', dialog => dialog.accept());
   await task.getByRole('button', { name: 'Release Collaborator Employee from Prepare release checklist' }).click();
+  const releaseConfirmation = page.getByRole('alertdialog');
+  await expect(releaseConfirmation).toContainText('Collaborators whose assignments overlapped will receive required peer reviews. The release will not wait for feedback.');
+  await releaseConfirmation.getByRole('button', { name: 'Confirm release' }).click();
   await expect(task).toContainText('Feedback Pending · 1 required reviews');
-  page.once('dialog', dialog => dialog.accept());
   await task.getByRole('button', { name: 'Mark complete' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm completion' }).click();
   await expect(manager.getByRole('status').filter({ hasText: 'Task completed. Peer reviews remain separately tracked as Feedback Pending.' })).toBeVisible();
   await expect(task).toContainText('Feedback Pending · 2 required reviews');
   expect(taskRpcBodies.map(call => call.name)).toEqual([

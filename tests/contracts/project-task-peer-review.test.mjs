@@ -6,7 +6,9 @@ const migration = readFileSync(new URL('../../supabase/migrations/20261013100001
 const eligibilityMigration = readFileSync(new URL('../../supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql', import.meta.url), 'utf8');
 const notificationMigration = readFileSync(new URL('../../supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql', import.meta.url), 'utf8');
 const taskEditMigration = readFileSync(new URL('../../supabase/migrations/20261013224251_hris_project_task_edit_workflow.sql', import.meta.url), 'utf8');
+const taskPortfolioMigration = readFileSync(new URL('../../supabase/migrations/20261013225608_hris_project_manager_task_portfolio.sql', import.meta.url), 'utf8');
 const managerUi = readFileSync(new URL('../../src/live/ProjectTaskManager.tsx', import.meta.url), 'utf8');
+const portfolioUi = readFileSync(new URL('../../src/live/ProjectTaskPortfolio.tsx', import.meta.url), 'utf8');
 const employeeUi = readFileSync(new URL('../../src/live/MyProjectWork.tsx', import.meta.url), 'utf8');
 const performanceUi = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.meta.url), 'utf8');
 const organizationProjects = readFileSync(new URL('../../src/live/OrganizationProjects.tsx', import.meta.url), 'utf8');
@@ -92,6 +94,32 @@ test('unfinished task edits persist through a tenant-scoped assigned-Project-Man
   assert.match(runner, /20261013224251_hris_project_task_edit_workflow\.sql/);
   assert.match(runner, /Task details persist only through the assigned Project Manager/);
   assert.match(runner, /completedTaskEdit\.error\?\.code === '42501'/);
+});
+
+test('Project Manager task portfolio is server-scoped and returns review-safe task summaries', () => {
+  assert.match(taskPortfolioMigration, /CREATE OR REPLACE FUNCTION public\.hris_get_my_project_task_portfolio\(p_tenant_id uuid\)/);
+  assert.match(taskPortfolioMigration, /SECURITY DEFINER\s+SET search_path = ''/);
+  assert.match(taskPortfolioMigration, /public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(taskPortfolioMigration, /p\.project_lead_id = v_employee_id/);
+  assert.match(taskPortfolioMigration, /'feedback_pending'/);
+  assert.match(taskPortfolioMigration, /'members'/);
+  assert.match(taskPortfolioMigration, /REVOKE ALL ON FUNCTION public\.hris_get_my_project_task_portfolio[^;]+FROM PUBLIC, anon/);
+  assert.match(taskPortfolioMigration, /GRANT EXECUTE ON FUNCTION public\.hris_get_my_project_task_portfolio[^;]+TO authenticated, service_role/);
+  assert.doesNotMatch(taskPortfolioMigration, /quality_of_work_score|collaboration_teamwork_score|comments/);
+  assert.match(portfolioUi, /hris_get_my_project_task_portfolio/);
+  assert.match(portfolioUi, /Feedback Pending/);
+  assert.match(portfolioUi, /onOpenProject\(project\.project_id\)/);
+  assert.match(organizationProjects, /workspace\.projects\.some\(project => project\.can_manage\)/);
+  assert.match(organizationProjects, /organization-project-heading-/);
+  const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /20261013225608_hris_project_manager_task_portfolio\.sql/);
+  assert.match(runner, /taskPortfolioMember\.error\?\.code === '42501'/);
+  assert.match(runner, /taskPortfolioCrossTenant\.error\?\.code === '42501'/);
+  assert.match(runner, /taskPortfolioGlobalOnly\.error\?\.code === '42501'/);
+  assert.match(runner, /taskPortfolioAnonymous\.ok/);
+  const browser = readFileSync(new URL('../sql/isolated-auth/run-project-browser.mjs', import.meta.url), 'utf8');
+  assert.match(browser, /Temporary task portfolio outage\./);
+  assert.match(browser, /Mobile task portfolio and navigation/);
 });
 
 test('manager and employee screens complete task, release, review, and performance-history journeys', () => {

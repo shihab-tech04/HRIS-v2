@@ -115,6 +115,17 @@ test('linked employee can complete the private evidence leave request on mobile'
       correctionPayload = request.postDataJSON() as Record<string, unknown>;
       correctionSubmitted = true;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('f8888888-8888-4888-8888-888888888888') });
+    } else if (endpoint === 'hris_get_my_attendance_period') {
+      const payload = request.postDataJSON() as { p_tenant_id?: string; p_month_start?: string };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        tenant_id: tenantId,
+        month_start: payload.p_month_start,
+        records: attendanceState === 'checked-out' ? [{
+          id: 'f6666666-6666-4666-8666-666666666666', attendance_date: '2026-10-12',
+          status: 'present', check_in: '2026-10-12T03:00:00.000Z', check_out: '2026-10-12T11:30:00.000Z',
+          work_mode: 'office', work_hours: 8.5,
+        }] : [],
+      }) });
     } else if (endpoint === 'hris_employee_record_attendance_event') {
       const payload = request.postDataJSON() as Record<string, unknown>;
       attendanceEventPayloads.push(payload);
