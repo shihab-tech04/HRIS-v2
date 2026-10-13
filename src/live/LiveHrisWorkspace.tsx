@@ -2285,7 +2285,7 @@ export function LiveHrisWorkspace({
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
-          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} />}
+          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} />}
           {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}

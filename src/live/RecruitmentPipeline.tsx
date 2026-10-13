@@ -26,6 +26,86 @@ type PipelinePayload = {
 
 const PAGE_SIZE = 50;
 
+function OfferIssueForm({ tenantId, application, onIssued }: {
+  tenantId: string;
+  application: Application;
+  onIssued: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [payPeriod, setPayPeriod] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
+  const [responseDeadline, setResponseDeadline] = useState('');
+  const [terms, setTerms] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await supabase.rpc('hris_issue_candidate_offer', {
+        p_tenant_id: tenantId,
+        p_application_id: application.application_id,
+        p_salary_amount: Number(amount),
+        p_salary_currency: currency.trim().toUpperCase(),
+        p_pay_period: payPeriod,
+        p_proposed_joining_date: joiningDate,
+        p_response_deadline: responseDeadline,
+        p_terms: terms,
+      });
+      if (result.error) throw result.error;
+      setSuccess(true);
+      onIssued();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '';
+      setError(message.includes('open offer already exists')
+        ? 'An offer is already awaiting this candidate’s response. Refresh the pipeline to check its status.'
+        : message.includes('not found in this organization')
+          ? 'This application is not available in the selected organization.'
+          : 'The offer could not be issued. Check the entered terms and your recruitment access, then try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (success) return <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Offer issued to the candidate. Their response is tracked separately from this application workflow.</p>;
+
+  return <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+    <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">Issue offer</summary>
+    <form onSubmit={submit} className="mt-2 grid gap-3 sm:grid-cols-2">
+      <label className="text-xs font-medium text-slate-700">Offer amount
+        <input aria-label="Offer amount" type="number" min="0.01" step="0.01" required value={amount} onChange={event => setAmount(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">Currency code
+        <input aria-label="Currency code" type="text" required maxLength={3} pattern="[A-Za-z]{3}" value={currency} onChange={event => setCurrency(event.target.value)} placeholder="e.g. BDT" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm uppercase" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">Pay period
+        <select aria-label="Pay period" required value={payPeriod} onChange={event => setPayPeriod(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="">Select a pay period</option><option value="monthly">Monthly</option><option value="annual">Annual</option>
+        </select>
+      </label>
+      <label className="text-xs font-medium text-slate-700">Proposed joining date
+        <input aria-label="Proposed joining date" type="date" required value={joiningDate} onChange={event => setJoiningDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">Candidate response deadline
+        <input aria-label="Candidate response deadline" type="date" required value={responseDeadline} onChange={event => setResponseDeadline(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">Offer terms
+        <textarea aria-label="Offer terms" required maxLength={10000} rows={5} value={terms} onChange={event => setTerms(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <span className="mt-1 block text-xs text-slate-500">These terms will be shown to the candidate before they respond.</span>
+      </label>
+      {error && <p role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+      <div className="sm:col-span-2 flex justify-end">
+        <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{submitting ? 'Issuing offer…' : 'Issue offer to candidate'}</button>
+      </div>
+    </form>
+  </details>;
+}
+
 function stageLabel(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
@@ -35,7 +115,7 @@ function dateTime(value: string) {
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString();
 }
 
-export function RecruitmentPipeline({ tenantId, canManagePreboarding = false }: { tenantId: string; canManagePreboarding?: boolean }) {
+export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, canManageOffers = false }: { tenantId: string; canManagePreboarding?: boolean; canManageOffers?: boolean }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [applications, setApplications] = useState<Application[]>([]);
@@ -46,6 +126,7 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false }: 
   const [stage, setStage] = useState('');
   const [offset, setOffset] = useState(0);
   const [revision, setRevision] = useState(0);
+  const [recentlyIssuedApplicationIds, setRecentlyIssuedApplicationIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestSequence = useRef(0);
@@ -56,6 +137,7 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false }: 
     setApplications([]);
     setStages([]);
     setTotalCount(0);
+    setRecentlyIssuedApplicationIds(new Set());
     setLoading(true);
     setError('');
     void (async () => {
@@ -113,7 +195,7 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false }: 
         <p className="mt-1 text-sm text-slate-600">Tenant-authorized applications and candidate-visible milestone history.</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)}
+        <button type="button" disabled={loading} onClick={() => { setRecentlyIssuedApplicationIds(new Set()); setRevision(value => value + 1); }}
           aria-label="Refresh candidate applications"
           className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
           <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
@@ -184,6 +266,15 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false }: 
                   </li>)}
                 </ol>}
             </details>
+            {canManageOffers && recentlyIssuedApplicationIds.has(application.application_id)
+              && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Offer issued to the candidate. Their response is tracked separately from this application workflow.</p>}
+            {canManageOffers && !recentlyIssuedApplicationIds.has(application.application_id) && application.stage !== 'offer_extended' && !['withdrawn', 'rejected', 'offer_accepted', 'hired'].includes(application.stage)
+              && <OfferIssueForm key={`${tenantId}-${application.application_id}`} tenantId={tenantId} application={application} onIssued={() => {
+                setApplications(current => current.map(value => value.application_id === application.application_id ? { ...value, stage: 'offer_extended' } : value));
+                setRecentlyIssuedApplicationIds(current => new Set(current).add(application.application_id));
+              }} />}
+            {canManageOffers && !recentlyIssuedApplicationIds.has(application.application_id) && application.stage === 'offer_extended'
+              && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">An offer is awaiting the candidate’s response.</p>}
           </li>)}
         </ul>}
         <footer className="flex items-center justify-between gap-3 border-t border-slate-100 p-3">
