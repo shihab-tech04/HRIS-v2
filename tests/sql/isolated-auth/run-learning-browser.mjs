@@ -91,6 +91,7 @@ try {
   let contextCalls = 0;
   let blockInitialContext = true;
   let blockNextJoinLinks = false;
+  let blockNextSkillSave = true;
   const rpcTenants = [];
   const directLearningTableReads = [];
   page.on('request', request => {
@@ -103,8 +104,14 @@ try {
     if (/\/rest\/v1\/(learning_programs|learning_sessions|learning_enrollments)(\?|$)/.test(url.pathname + url.search)) {
       directLearningTableReads.push(url.pathname);
     }
+    if (url.pathname === '/rest/v1/employee_skills') directLearningTableReads.push(url.pathname);
     const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_employee_(?:enroll|request|cancel)_learning)$/);
     if (rpc && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
+    }
+    const skillRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_employee_(?:save|delete)_my_skill)$/);
+    if (skillRpc && request.method() === 'POST') {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
     }
@@ -116,6 +123,13 @@ try {
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+      && url.pathname.endsWith('/rest/v1/rpc/hris_employee_save_my_skill')
+      && route.request().method() === 'POST' && blockNextSkillSave) {
+      blockNextSkillSave = false;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary skill profile outage.' }) });
+      return;
+    }
     if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
       && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context')
       && route.request().method() === 'POST' && blockInitialContext) {
@@ -151,6 +165,61 @@ try {
   }
   await page.getByRole('heading', { name: 'QA B Private Learning' }).waitFor({ state: 'detached' });
   await assertNoOverflow(page, 'Learning catalog mobile');
+
+  await page.getByRole('heading', { name: 'Your skill profile', exact: true }).waitFor({ state: 'visible' });
+  await page.getByLabel('Skill name').fill('Technical writing');
+  await page.getByLabel('Proficiency (optional)').fill('Used in customer documentation');
+  const failedSkillSave = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_save_my_skill') && response.status() === 503);
+  await page.getByRole('button', { name: 'Add skill', exact: true }).click();
+  await failedSkillSave;
+  const skillProfileAlert = page.locator('[aria-labelledby="my-learning-skills"] [role="alert"]');
+  await skillProfileAlert.waitFor({ state: 'visible' });
+  if (!(await skillProfileAlert.innerText()).trim()) throw new Error('A failed skill save must present a readable recovery message.');
+  if (await page.getByLabel('Skill name').inputValue() !== 'Technical writing'
+    || await page.getByLabel('Proficiency (optional)').inputValue() !== 'Used in customer documentation') {
+    throw new Error('A failed skill save must preserve the employee-entered draft for retry.');
+  }
+  const skillSaveResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_save_my_skill') && response.status() === 200);
+  await page.getByRole('button', { name: 'Add skill', exact: true }).click();
+  const savedSkill = await rpcBody(await skillSaveResponse);
+  await page.getByText('Your skill profile was saved. It remains unverified until your organization verifies it.', { exact: true }).waitFor({ state: 'visible' });
+  const skillCard = page.locator(`[data-learning-skill="${savedSkill.id}"]`);
+  await skillCard.getByText('Technical writing', { exact: true }).waitFor({ state: 'visible' });
+  await skillCard.getByText('Used in customer documentation · Self-reported', { exact: true }).waitFor({ state: 'visible' });
+  const skillRefreshResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await skillRefreshResponse;
+  await page.locator(`[data-learning-skill="${savedSkill.id}"]`).getByText('Technical writing', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Skill profile persistence mobile');
+
+  await skillCard.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Skill name').fill('Technical communication');
+  await page.getByLabel('Proficiency (optional)').fill('Clear written updates');
+  const skillEditResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_save_my_skill') && response.status() === 200);
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await skillEditResponse;
+  await skillCard.getByText('Technical communication', { exact: true }).waitFor({ state: 'visible' });
+
+  const removeSkillButton = skillCard.getByRole('button', { name: 'Remove Technical communication' });
+  await removeSkillButton.click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Keep skill' }).click();
+  await skillCard.getByText('Technical communication', { exact: true }).waitFor({ state: 'visible' });
+  await removeSkillButton.click();
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog').waitFor({ state: 'hidden' });
+  const skillDeleteResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_delete_my_skill') && response.status() === 200);
+  await removeSkillButton.click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Remove skill', exact: true }).click();
+  await skillDeleteResponse;
+  await page.getByText('Skill removed from your profile.', { exact: true }).waitFor({ state: 'visible' });
+  await skillCard.waitFor({ state: 'detached' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const desktopSkillRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await desktopSkillRefresh;
+  if (await page.locator(`[data-learning-skill="${savedSkill.id}"]`).count()) throw new Error('Removed skill reappeared after a server-backed refresh.');
+  await assertNoOverflow(page, 'Skill profile persistence desktop');
+  await page.setViewportSize({ width: 375, height: 812 });
 
   await directProgram.getByLabel('Choose session for QA A Direct Learning').selectOption('91000000-0000-4000-8000-000000000001');
   const enrollmentResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_enroll_learning'));
@@ -369,7 +438,7 @@ try {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.');
+  console.log('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

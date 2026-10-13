@@ -297,6 +297,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013225608_hris_project_manager_task_portfolio.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014120100_employee_skill_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -628,6 +629,82 @@ record('Learning context denies unlinked, global-only, and anonymous callers',
   Boolean(learningNoPermission.error?.code === '42501')
     && Boolean(learningGlobalOnly.error?.code === '42501') && Boolean(learningAnonymous.error));
 
+const ownSkillCreate = await employeeA.client.rpc('hris_employee_save_my_skill', {
+  p_tenant_id: ids.tenantA, p_skill_id: null, p_skill_name: 'Systems thinking', p_proficiency: 'Applied in delivery',
+});
+const duplicateSkillCreate = await employeeA.client.rpc('hris_employee_save_my_skill', {
+  p_tenant_id: ids.tenantA, p_skill_id: null, p_skill_name: ' systems THINKING ', p_proficiency: null,
+});
+const ownSkillUpdate = await employeeA.client.rpc('hris_employee_save_my_skill', {
+  p_tenant_id: ids.tenantA, p_skill_id: ownSkillCreate.data?.id,
+  p_skill_name: 'Systems thinking and delivery', p_proficiency: null,
+});
+const ownSkillContext = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+const persistedOwnSkill = ownSkillCreate.data?.id
+  ? queryAdmin(`SELECT to_jsonb(s) FROM public.employee_skills s WHERE id='${ownSkillCreate.data.id}'::uuid`)
+  : null;
+const verifiedSkillId = queryAdmin(`SELECT jsonb_build_object('id',id::text) FROM public.employee_skills
+  WHERE employee_id='55555555-5555-4555-8555-555555555555'::uuid AND skill_name='Communication' AND verified IS TRUE`).id;
+record('Employees create and edit their own tenant-linked skill profile with self-reported unverified data',
+  !ownSkillCreate.error && ownSkillCreate.data?.verified === false
+    && Boolean(duplicateSkillCreate.error?.code === '23505')
+    && !ownSkillUpdate.error && ownSkillUpdate.data?.skill_name === 'Systems thinking and delivery'
+    && !ownSkillContext.error && ownSkillContext.data?.skills.some(row => row.id === ownSkillCreate.data?.id
+      && row.skill_name === 'Systems thinking and delivery' && row.verified === false)
+    && persistedOwnSkill?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && persistedOwnSkill?.proficiency === null,
+  JSON.stringify({ createCode: ownSkillCreate.error?.code || null,
+    duplicateCode: duplicateSkillCreate.error?.code || null,
+    updateCode: ownSkillUpdate.error?.code || null,
+    returned: ownSkillContext.data?.skills?.find(row => row.id === ownSkillCreate.data?.id),
+    persistedEmployee: persistedOwnSkill?.employee_id, verified: persistedOwnSkill?.verified }));
+const crossTenantSkillEdit = await employeeB.client.rpc('hris_employee_save_my_skill', {
+  p_tenant_id: ids.tenantB, p_skill_id: ownSkillCreate.data?.id,
+  p_skill_name: 'Unauthorized cross-tenant edit', p_proficiency: null,
+});
+const wrongTenantSkillEdit = await employeeA.client.rpc('hris_employee_save_my_skill', {
+  p_tenant_id: ids.tenantB, p_skill_id: ownSkillCreate.data?.id,
+  p_skill_name: 'Wrong tenant edit', p_proficiency: null,
+});
+const verifiedSkillEdit = await employeeA.client.rpc('hris_employee_save_my_skill', {
+  p_tenant_id: ids.tenantA, p_skill_id: verifiedSkillId,
+  p_skill_name: 'Unverified overwrite attempt', p_proficiency: 'Self-reported',
+});
+const verifiedSkillDelete = await employeeA.client.rpc('hris_employee_delete_my_skill', {
+  p_tenant_id: ids.tenantA, p_skill_id: verifiedSkillId,
+});
+const anonymousSkillWrite = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_employee_save_my_skill', { p_tenant_id: ids.tenantA, p_skill_id: null, p_skill_name: 'Anonymous skill' });
+const directSkillRead = await employeeA.client.from('employee_skills').select('id,employee_id,skill_name');
+const directSkillWrite = await employeeA.client.from('employee_skills').insert({
+  employee_id: '55555555-5555-4555-8555-555555555555', skill_name: 'Direct table write', verified: true,
+});
+const verifiedSkillAfterAttempts = queryAdmin(`SELECT jsonb_build_object('name',skill_name,'verified',verified)
+  FROM public.employee_skills WHERE id='${verifiedSkillId}'::uuid`);
+record('Skill profile RPC denies cross-tenant, anonymous, direct-table, and verified-skill mutations',
+  Boolean(crossTenantSkillEdit.error?.code === '42501')
+    && Boolean(wrongTenantSkillEdit.error?.code === '42501')
+    && Boolean(verifiedSkillEdit.error?.code === '42501')
+    && Boolean(verifiedSkillDelete.error?.code === '42501')
+    && Boolean(anonymousSkillWrite.error)
+    && Boolean(directSkillRead.error) && Boolean(directSkillWrite.error)
+    && verifiedSkillAfterAttempts.name === 'Communication' && verifiedSkillAfterAttempts.verified === true,
+  JSON.stringify({ crossTenant: crossTenantSkillEdit.error?.code || null,
+    wrongTenant: wrongTenantSkillEdit.error?.code || null,
+    verifiedEdit: verifiedSkillEdit.error?.code || null,
+    verifiedDelete: verifiedSkillDelete.error?.code || null,
+    anonymous: anonymousSkillWrite.error?.code || null,
+    directRead: directSkillRead.error?.code || null, directWrite: directSkillWrite.error?.code || null,
+    verifiedAfter: verifiedSkillAfterAttempts }));
+const ownSkillDelete = await employeeA.client.rpc('hris_employee_delete_my_skill', {
+  p_tenant_id: ids.tenantA, p_skill_id: ownSkillCreate.data?.id,
+});
+const ownSkillAfterDelete = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.employee_skills
+  WHERE id='${ownSkillCreate.data?.id}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid`).count;
+record('Employees can remove their own unverified skill and the removal persists',
+  !ownSkillDelete.error && ownSkillDelete.data?.deleted === true && Number(ownSkillAfterDelete) === 0,
+  JSON.stringify({ deleteCode: ownSkillDelete.error?.code || null, remainingRows: Number(ownSkillAfterDelete) }));
+
 const learningDirectProgramsA = await employeeA.client.from('learning_programs').select('id,title').eq('tenant_id', ids.tenantA);
 const learningDirectProgramsB = await employeeB.client.from('learning_programs').select('id,title').eq('tenant_id', ids.tenantB);
 const learningDirectEnrollmentsA = await employeeA.client.from('learning_enrollments').select('id,tenant_id,employee_id,status').eq('tenant_id', ids.tenantA);
@@ -940,7 +1017,7 @@ try {
   learningBrowserError = String(error.stderr || error.message || 'local learning browser run failed').slice(-1800);
 }
 record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, roster retry, authorized meeting access, cancellation, refresh and responsive recovery',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.'),
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.'),
   learningBrowserError);
 let payslipBrowserOutput = '';
 let payslipBrowserError = '';
@@ -1029,7 +1106,7 @@ const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   LEFT JOIN public.learning_enrollments e ON e.tenant_id=p.tenant_id AND e.program_id=p.id
   WHERE p.tenant_id='${ids.tenantA}'::uuid AND p.title=${sqlLiteral(browserLearningProgramTitle)}`);
 record('Manager-published learning program and session persist and become employee enrollment history',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.')
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.')
     && browserLearningProgramPersistence.program_count === 1 && browserLearningProgramPersistence.active
     && browserLearningProgramPersistence.self_enrollment && browserLearningProgramPersistence.session_count === 1
     && browserLearningProgramPersistence.scheduled && browserLearningProgramPersistence.enrollment_count === 1,

@@ -29,6 +29,51 @@ test('learning catalog and personal enrollment reads use tenant-scoped RLS and e
   assert.match(joinMigration, /REVOKE ALL ON FUNCTION public\.hris_get_my_learning_join_links\(uuid\) FROM PUBLIC,anon/);
 });
 
+test('employee skill profile uses caller-scoped private RPCs and keeps direct table access closed', () => {
+  const skills = readFileSync(new URL('../../supabase/migrations/20261014120100_employee_skill_self_service.sql', import.meta.url), 'utf8');
+  assert.match(skills, /ALTER TABLE public\.employee_skills ENABLE ROW LEVEL SECURITY/);
+  assert.match(skills, /REVOKE ALL ON TABLE public\.employee_skills FROM PUBLIC, anon, authenticated/);
+  assert.match(skills, /CREATE OR REPLACE FUNCTION private\.hris_employee_save_my_skill/);
+  assert.match(skills, /CREATE OR REPLACE FUNCTION private\.hris_employee_delete_my_skill/);
+  assert.match(skills, /SECURITY DEFINER\s+SET search_path = ''/);
+  assert.match(skills, /public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(skills, /public\.tenants t WHERE t\.id=p_tenant_id AND t\.is_active IS TRUE/);
+  assert.match(skills, /VALUES\(v_employee_id,v_skill_name,v_proficiency,false\)/);
+  assert.match(skills, /v_skill\.verified IS TRUE/);
+  assert.match(skills, /s\.verified IS FALSE/);
+  assert.match(skills, /CREATE OR REPLACE FUNCTION public\.hris_employee_save_my_skill[\s\S]*?SECURITY INVOKER/);
+  assert.match(skills, /CREATE OR REPLACE FUNCTION public\.hris_employee_delete_my_skill[\s\S]*?SECURITY INVOKER/);
+  assert.match(skills, /'id',s\.id,'skill_name',s\.skill_name/);
+  for (const fn of ['hris_employee_save_my_skill', 'hris_employee_delete_my_skill']) {
+    assert.match(skills, new RegExp(`REVOKE ALL ON FUNCTION public\\.${fn}\\([^;]+FROM PUBLIC,anon`));
+    assert.match(skills, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\([^;]+TO authenticated`));
+  }
+});
+
+test('employee skill profile supports responsive self-service with recovery and verified-record protection', () => {
+  for (const rpc of ['hris_employee_save_my_skill', 'hris_employee_delete_my_skill']) {
+    assert.ok(ui.includes(`'${rpc}'`), `skill profile must call ${rpc}`);
+  }
+  assert.match(ui, /Your skill profile/);
+  assert.match(ui, /self-reported/);
+  assert.match(ui, /Organization verified/);
+  assert.match(ui, /Verified skills are read-only in this profile/);
+  assert.match(ui, /Remove this skill\?/);
+  assert.match(ui, /Escape/);
+  assert.match(ui, /That skill is already in your profile\./);
+  assert.match(ui, /No skills recorded yet/);
+  assert.match(ui, /Your skill profile was saved/);
+  assert.match(ui, /Skill removed from your profile/);
+  assert.match(ui, /data-learning-skill=\{skill\.id\}/);
+  assert.match(runner, /20261014120100_employee_skill_self_service\.sql/);
+  assert.match(runner, /Employees create and edit their own tenant-linked skill profile/);
+  assert.match(runner, /Skill profile RPC denies cross-tenant, anonymous, direct-table, and verified-skill mutations/);
+  assert.match(runner, /Employees can remove their own unverified skill and the removal persists/);
+  assert.match(browser, /Synthetic temporary skill profile outage/);
+  assert.match(browser, /Skill profile persistence mobile/);
+  assert.match(browser, /Skill profile persistence desktop/);
+});
+
 test('self-enrollment, approval requests, and cancellation enforce server-side eligibility', () => {
   const enroll = migration.slice(migration.indexOf('FUNCTION public.hris_employee_enroll_learning'), migration.indexOf('FUNCTION public.hris_employee_request_learning'));
   const request = migration.slice(migration.indexOf('FUNCTION public.hris_employee_request_learning'), migration.indexOf('FUNCTION public.hris_employee_cancel_learning'));
