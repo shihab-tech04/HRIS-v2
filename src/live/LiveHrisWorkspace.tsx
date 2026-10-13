@@ -36,6 +36,7 @@ type PermissionSet = {
   employees: boolean;
   performance: boolean;
   recruitment: boolean;
+  recruitmentManage: boolean;
   learningManage: boolean;
 };
 type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'learning-requests' | 'learning-programs' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets';
@@ -77,7 +78,7 @@ type LeaveData = {
 const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false, employees: false, performance: false, recruitment: false,
+  organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
   learningManage: false,
 };
 
@@ -2284,7 +2285,7 @@ export function LiveHrisWorkspace({
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
-          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} />}
+          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} />}
           {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}

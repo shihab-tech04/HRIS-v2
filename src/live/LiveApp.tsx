@@ -17,13 +17,13 @@ type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
-  organizationManage: boolean; employees: boolean; performance: boolean; recruitment: boolean;
+  organizationManage: boolean; employees: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
   learningManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false, employees: false, performance: false, recruitment: false,
+  organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
   learningManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
@@ -298,6 +298,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             employees: grants.get('employees.view') === true || grants.get('employees.manage') === true,
             performance: grants.get('performance.view') === true || grants.get('performance.manage') === true,
             recruitment: grants.get('recruitment.view') === true || grants.get('recruitment.manage') === true,
+            recruitmentManage: grants.get('recruitment.manage') === true,
             learningManage: grants.get('learning.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Download, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
+import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
 
 type Milestone = { stage: string; created_at: string };
 type Application = {
@@ -34,7 +35,7 @@ function dateTime(value: string) {
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString();
 }
 
-export function RecruitmentPipeline({ tenantId }: { tenantId: string }) {
+export function RecruitmentPipeline({ tenantId, canManagePreboarding = false }: { tenantId: string; canManagePreboarding?: boolean }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [applications, setApplications] = useState<Application[]>([]);
@@ -193,5 +194,6 @@ export function RecruitmentPipeline({ tenantId }: { tenantId: string }) {
             className="min-h-10 rounded-md border border-slate-300 px-3 text-sm disabled:opacity-50">Next</button>
         </footer>
       </div>}
+    {canManagePreboarding && <CandidatePreboardingQueue tenantId={tenantId} />}
   </section>;
 }
