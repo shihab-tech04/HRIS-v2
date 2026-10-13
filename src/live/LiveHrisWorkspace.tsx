@@ -175,32 +175,49 @@ function StatusMessage({ error, onRetry }: { error: string; onRetry: () => void 
   </div>;
 }
 
-function Metric({ label, value, icon, onOpen }: { label: string; value: unknown; icon: ReactNode; onOpen?: () => void }) {
+function Metric({ label, value, icon, onOpen, compact = false, emphasized = false }: {
+  label: string; value: unknown; icon: ReactNode; onOpen?: () => void; compact?: boolean; emphasized?: boolean;
+}) {
   const content = <>
-    <span className="flex items-center justify-between gap-3 text-sm text-slate-600"><span>{label}</span><span className="text-[#08558B]">{icon}</span></span>
-    <span className="mt-3 block text-2xl font-semibold tabular-nums text-slate-900">{display(value)}</span>
+    <span className={`flex items-center justify-between gap-2 ${compact ? 'text-xs font-semibold text-[#49454F]' : 'text-sm text-slate-600'}`}>
+      <span>{label}</span><span className="shrink-0 text-[#08558B]">{icon}</span>
+    </span>
+    <span className={`${compact ? 'mt-1 text-base' : 'mt-3 text-2xl'} block font-semibold tabular-nums text-slate-900`}>{display(value)}</span>
   </>;
-  const className = `min-h-[108px] rounded-lg border border-[#DEE0E3] bg-white p-4 text-left shadow-sm ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`;
+  const className = compact
+    ? `min-h-[68px] rounded-md border border-[#E6EEF3] ${emphasized ? 'bg-[#E6EEF3]' : 'bg-white'} p-2 text-left ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`
+    : `min-h-[108px] rounded-lg border border-[#DEE0E3] bg-white p-4 text-left shadow-sm ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`;
   return onOpen
     ? <button type="button" onClick={onOpen} className={className}>{content}</button>
     : <div className={className}>{content}</div>;
 }
 
-function AttendanceTrend({ points }: { points: DashboardPoint[] }) {
+function AttendanceTrend({ points, range }: { points: DashboardPoint[]; range: '7' | '30' }) {
   const safePoints = points.filter(point => typeof point.date === 'string' && Number.isFinite(Number(point.records)));
   if (!safePoints.length) return <p className="p-5 text-sm text-slate-600">No attendance summary is available for the recent date range.</p>;
-  const max = Math.max(1, ...safePoints.map(point => Number(point.records)));
+  const maxRecords = Math.max(0, ...safePoints.map(point => Number(point.records)));
+  const max = Math.max(4, Math.ceil(maxRecords / 4) * 4);
   const coords = safePoints.map((point, index) => ({
-    x: safePoints.length === 1 ? 300 : 36 + index * (528 / (safePoints.length - 1)),
+    x: safePoints.length === 1 ? 340 : 66 + index * (548 / (safePoints.length - 1)),
     y: 176 - (Number(point.records) / max) * 132,
     point,
   }));
   const path = coords.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+  const areaPath = coords.length ? `${path} L ${coords.at(-1)!.x} 176 L ${coords[0].x} 176 Z` : '';
   return <div className="overflow-x-auto p-3">
-    <svg viewBox="0 0 600 220" role="img" aria-labelledby="attendance-trend-title attendance-trend-description" className="min-w-[540px] w-full">
-      <title id="attendance-trend-title">Attendance records over the last seven days</title>
-      <desc id="attendance-trend-description">Daily counts returned by the tenant-scoped HRIS dashboard service.</desc>
-      {[0, 1, 2, 3].map(i => <line key={i} x1="32" x2="570" y1={44 + i * 44} y2={44 + i * 44} stroke="#e7eef0" />)}
+    <svg viewBox="0 0 650 220" role="img" aria-labelledby="attendance-trend-title attendance-trend-description" className="min-w-[600px] w-full">
+      <title id="attendance-trend-title">Attendance records over the last {range} days</title>
+      <desc id="attendance-trend-description">Daily attendance record counts returned by the tenant-scoped HRIS dashboard service.</desc>
+      <defs><linearGradient id="attendance-trend-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#08558B" stopOpacity="0.22" /><stop offset="100%" stopColor="#08558B" stopOpacity="0.02" /></linearGradient></defs>
+      {[0, 1, 2, 3, 4].map(i => {
+        const y = 44 + i * 33;
+        const tick = Math.round(max * (1 - i / 4));
+        return <g key={i}>
+          <line x1="58" x2="630" y1={y} y2={y} stroke="#e7eef0" />
+          <text x="48" y={y + 4} textAnchor="end" fontSize="11" fill="#77838f">{tick}</text>
+        </g>;
+      })}
+      <path d={areaPath} fill="url(#attendance-trend-area)" />
       <path d={path} fill="none" stroke="#08558B" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
       {coords.map((point, index) => <g key={`${point.point.date}-${index}`}>
         <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#08558B" strokeWidth="2" />
@@ -247,14 +264,14 @@ function LiveDashboard({ tenantId, onOpen }: { tenantId: string; onOpen: (page: 
   }, [summary]);
 
   const metrics = [
-    { label: 'Team Members', value: summary?.team_members ?? summary?.employees, icon: <Users className="h-5 w-5" /> },
-    { label: 'Present', value: summary?.present_today, icon: <CheckCircle2 className="h-5 w-5" />, page: 'attendance' as PageId },
-    { label: 'Absent', value: summary?.absent_today, icon: <XCircle className="h-5 w-5" />, page: 'attendance' as PageId },
-    { label: 'WFO', value: summary?.wfo_today, icon: <Building2 className="h-5 w-5" />, page: 'attendance' as PageId },
-    { label: 'WFH', value: summary?.wfh_today, icon: <House className="h-5 w-5" />, page: 'attendance' as PageId },
-    { label: 'Client Meeting', value: summary?.client_meeting_today, icon: <BriefcaseBusiness className="h-5 w-5" />, page: 'attendance' as PageId },
-    { label: 'On Leave', value: summary?.on_leave_today, icon: <CalendarDays className="h-5 w-5" />, page: 'leave' as PageId },
-    { label: 'Late', value: summary?.late_today, icon: <Clock3 className="h-5 w-5" />, page: 'attendance' as PageId },
+    { label: 'Team Members', value: summary?.team_members ?? summary?.employees, icon: <Users className="h-4 w-4" />, emphasized: true },
+    { label: 'Present', value: summary?.present_today, icon: <CheckCircle2 className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
+    { label: 'Absent', value: summary?.absent_today, icon: <XCircle className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
+    { label: 'Work from Office', value: summary?.wfo_today, icon: <Building2 className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'Work From Home', value: summary?.wfh_today, icon: <House className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'Client Meeting', value: summary?.client_meeting_today, icon: <BriefcaseBusiness className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'On Leave', value: summary?.on_leave_today, icon: <CalendarDays className="h-4 w-4" />, page: 'leave' as PageId },
+    { label: 'Late', value: summary?.late_today, icon: <Clock3 className="h-4 w-4" />, page: 'attendance' as PageId },
   ];
   const visibleMetrics = metrics.filter(metric => metric.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const has30DayTrend = Array.isArray(summary?.attendance_last_30_days) && summary.attendance_last_30_days.length >= 30;
@@ -313,16 +330,16 @@ function LiveDashboard({ tenantId, onOpen }: { tenantId: string; onOpen: (page: 
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
         <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-base font-semibold text-[#1E1B39]">Today’s Attendance Summary</h3>
           <p className="mt-1 text-xs text-[#86929E]">Live counts from this organization’s authorized records</p></div>
-        {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
           {visibleMetrics.map(metric => <Metric key={metric.label} label={metric.label} value={metric.value} icon={metric.icon}
-            onOpen={metric.page ? () => onOpen(metric.page!) : undefined} />)}
+            onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
         </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No dashboard metrics match “{search}”.</p>}
       </section>
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
-        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-semibold text-[#1E1B39]">Daily Attendance</h3>
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-semibold text-[#1E1B39]">Daily Attendance Chart</h3>
           <p className="mt-1 text-xs text-[#86929E]">Recorded attendance by day · last {activeChartRange} days</p></div>
           <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString()} records</span></div>
-        <AttendanceTrend points={trendPoints} />
+        <AttendanceTrend points={trendPoints} range={activeChartRange} />
       </section>
       <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">Needs attention</h3>

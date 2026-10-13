@@ -77,21 +77,27 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Present 3' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Absent 1' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'WFO 2' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'WFH 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Work from Office 2' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Work From Home 1' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Daily Attendance Chart' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Client Meeting 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'On Leave 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Late 0' })).toBeVisible();
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/managerial-dashboard-desktop-20261012.png'), fullPage: true });
+  const metricColumns = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
+    .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+  expect(metricColumns).toBe(8);
+  await expect(page.getByRole('img', { name: /Attendance records over the last 7 days/ })).toBeVisible();
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/managerial-dashboard-desktop-20261014.png'), fullPage: true });
 
-  await page.getByRole('searchbox', { name: 'Search dashboard metrics' }).fill('WFH');
-  await expect(page.getByRole('button', { name: 'WFH 1' })).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Search dashboard metrics' }).fill('Home');
+  await expect(page.getByRole('button', { name: 'Work From Home 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Present 3' })).toHaveCount(0);
   await page.getByRole('searchbox', { name: 'Search dashboard metrics' }).fill('');
 
   await page.getByRole('button', { name: 'Filter attendance chart' }).click();
   await page.getByLabel('Attendance chart range').selectOption('30');
   await expect(page.getByText('Recorded attendance by day · last 30 days')).toBeVisible();
+  await expect(page.getByRole('img', { name: /Attendance records over the last 30 days/ })).toBeVisible();
 
   const downloadWaiter = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Report' }).click();
@@ -108,5 +114,8 @@ test('manager dashboard fits a narrow mobile viewport and keeps all attendance t
   await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
   await expect(page.getByText('Team Members')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Late 0' })).toBeVisible();
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/managerial-dashboard-mobile-20261012.png'), fullPage: true });
+  const metricColumns = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
+    .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+  expect(metricColumns).toBe(2);
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/managerial-dashboard-mobile-20261014.png'), fullPage: true });
 });
