@@ -1,15 +1,14 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-13 00:25 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-13 06:39 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 08 attendance correction decision notes
+## Current checkpoint — Phase 10 tenant-scoped Teams directory
 
-- Latest feature commit: `461cdcd`; manager Attendance Report now captures optional correction-rejection notes through the existing RPC, displays saved notes, and supports Cancel/Escape with focus restoration. Feature slice: 2 files, +113/-14.
-- Verification: TypeScript/build PASS, **44/44 contracts PASS**, focused Attendance Information **1/1 PASS**, full Chromium **40/40 PASS**, local Auth/RLS latest unchanged-SQL run **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. No SQL changed in this UI slice.
-- Since the 14:20 Drive baseline `4ded5f1`, Main source/test/migration diff is **30 paths, +8,309/-51**. See `EXECUTION_CHECKPOINT_20261013_0025.md` for every path. Browser-generated screenshots were restored to preserve the committed Figma evidence.
-- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The user reports the recovered matrix is in Project sources, but this task's mounted `sources/` directory is empty; only the unchanged `stories:[]` skeleton is locally visible (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`; expected canonical SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`). No story text or IDs were inferred.
-- The Phase 08 timesheet reviewer journey remains default-deny pending a verified tenant-scoped project-lead mapping and permission. Continue functional phase work with verified contracts. Supabase migrations remain local release candidates. No hosted data, Auth settings, permissions, paid services, GitHub push or deployment changed.
-- See `EXECUTION_CHECKPOINT_20261013_0025.md`, `ACCEPTANCE_EVIDENCE_20261013_0025.md`, and `MASTER_PHASE_LEDGER_20261013_0025.md`. Complete all acceptance, make and read-back-verify the final full-source archive in an account-owned Drive folder, then push and deploy.
+- Latest feature commit: `d18563f73007dd3e1746018295d040f2e00d1f3f`; Phase 10's Teams directory is tenant-filtered and read-only, with name/code/department search, status filters and loading/recovery states.
+- Verification: TypeScript/build PASS, **45/45 contracts PASS**, focused browser **2/2 PASS**, full Chromium **41/41 PASS**, local Auth/RLS **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. Current source diff from baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`: **31 unique paths, +8,528/-51**. Browser-generated screenshots were restored.
+- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The current Project `sources/` mount is empty; exact-name Project/Drive lookup did not return canonical bytes. Only the local `stories:[]` skeleton is visible (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`; expected canonical SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`). No story text or IDs were inferred.
+- Current live schema has `teams` and `departments` with RLS and authenticated SELECT only; no projects/project-assignments table or write grant. The timesheet reviewer remains default-deny pending verified tenant-scoped project-lead mapping and permission. No hosted writes, paid services, GitHub push or deployment occurred.
+- See `EXECUTION_CHECKPOINT_20261013_0639.md`, `ACCEPTANCE_EVIDENCE_20261013_0639.md`, and `MASTER_PHASE_LEDGER_20261013_0639.md`. Complete acceptance, verify the full-source Drive archive, then push and deploy last.
 
 ## Previous checkpoint notes
 

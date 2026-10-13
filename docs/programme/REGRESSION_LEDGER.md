@@ -1,6 +1,8 @@
 # Regression Ledger
 
-**Checkpoint:** 2026-10-13 00:25 Asia/Dhaka.
+**Checkpoint:** 2026-10-13 06:39 Asia/Dhaka.
+
+| Phase 10 Teams directory | `npm run check`; focused `tests/browser/system-workspace.spec.ts`; full Chromium; `node tests/sql/isolated-auth/run-local.mjs` | TypeScript/build PASS; **45/45 contracts PASS**; focused **2/2 PASS**; full **41/41 PASS**; local Auth/RLS **77/77 PASS**, including five prior tenant-security cases | Synthetic browser responses and disposable local two-tenant Auth/RLS. Verifies active/all/inactive, department search, explicit tenant filter, and mobile overflow/scroll behavior. Production schema inspection was read-only; no write flow was added because grants are SELECT-only. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261013_0639.md`. |
 
 | Area | Regression protection executed | Result | Limit |
 |---|---|---|---|
