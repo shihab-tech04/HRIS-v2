@@ -1235,6 +1235,7 @@ function PersonalLeaveRequests({
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
   const requestButtonRef = useRef<HTMLButtonElement>(null);
   const submittingRef = useRef(false);
   const leaveTypes = asRows(leave.leave_types);
@@ -1325,6 +1326,7 @@ function PersonalLeaveRequests({
       if (rpcError) throw rpcError;
       if (!data) throw new Error('The leave request was not confirmed. Refresh and check your request history.');
       setSuccess('Leave request submitted. You can follow its status in your history.');
+      if (evidenceInputRef.current) evidenceInputRef.current.value = '';
       setRequestOpen(false);
       setLeaveTypeId(''); setFromDate(''); setToDate(''); setDayPortion('full');
       setReason(''); setEvidence(null);
@@ -1431,7 +1433,7 @@ function PersonalLeaveRequests({
             <div><label htmlFor="personal-leave-reason" className="mb-1 block text-sm font-medium text-slate-700">Reason <span aria-hidden="true">*</span></label>
               <textarea id="personal-leave-reason" required rows={3} value={reason} onChange={event => setReason(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
             <div><label htmlFor="personal-leave-evidence" className="mb-1 block text-sm font-medium text-slate-700">Supporting evidence {selectedLeaveType?.requires_document_proof === true ? <span aria-hidden="true">*</span> : <span className="text-slate-500">(optional)</span>}</label>
-              <input id="personal-leave-evidence" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required={selectedLeaveType?.requires_document_proof === true}
+              <input ref={evidenceInputRef} id="personal-leave-evidence" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required={selectedLeaveType?.requires_document_proof === true}
                 onChange={event => setEvidence(event.target.files?.[0] || null)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               <p className="mt-1 text-xs text-slate-600">PDF, Word, JPG, or PNG up to 10 MB. Evidence is private to you and authorized leave managers in this organization.</p>
             </div>

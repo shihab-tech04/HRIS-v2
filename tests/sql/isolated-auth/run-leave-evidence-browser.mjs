@@ -174,7 +174,26 @@ try {
   await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
   await managerContext.close();
 
-  console.log('Real local Auth/Postgres/Storage leave-evidence retrieval and manager approval passed for employee mobile and same-tenant manager desktop.');
+  const refreshedEmployeeContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await routeOnlyLocalServices(refreshedEmployeeContext);
+  const refreshedEmployee = await refreshedEmployeeContext.newPage();
+  await signIn(refreshedEmployee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
+  await navigateTo(refreshedEmployee, 'My Leave');
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const refreshedHistory = refreshedEmployee.getByRole('table', {
+    name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,
+  });
+  const resolvedRequest = refreshedHistory.getByRole('row', {
+    name: new RegExp(process.env.HRIS_LOCAL_LEAVE_REQUEST_REASON),
+  });
+  await resolvedRequest.waitFor({ state: 'visible' });
+  if (!(await resolvedRequest.innerText()).toLocaleLowerCase().includes('approved')) {
+    throw new Error('The employee did not see the manager approval after refreshing their leave history.');
+  }
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee refreshed leave history mobile');
+  await refreshedEmployeeContext.close();
+
+  console.log('Real local Auth/Postgres/Storage leave flow passed: employee evidence retrieval on mobile, same-tenant manager approval on desktop, and refreshed approved status in employee history.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

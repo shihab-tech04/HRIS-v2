@@ -257,6 +257,10 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByText('Leave request submitted. You can follow its status in your history.')).toBeVisible();
   await expect(page.getByText('Synthetic mobile leave request')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await page.getByRole('button', { name: 'Request for leave' }).click();
+  await expect(page.getByLabel('Supporting evidence')).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
