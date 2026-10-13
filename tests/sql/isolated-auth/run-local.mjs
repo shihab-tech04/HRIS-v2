@@ -186,6 +186,7 @@ function auditCount(targetId, action) {
 }
 
 const authOptions = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
+const recoveryEmail = `password-recovery-${randomBytes(8).toString('hex')}@hris.test`;
 const adminAuth = createClient(services.API_URL, services.SERVICE_ROLE_KEY, authOptions);
 const emails = [
   'manager-a@hris.test', 'manager-b@hris.test', 'no-permission@hris.test',
@@ -195,6 +196,7 @@ const emails = [
   'recruiter-a@hris.test',
   'employee-directory-a@hris.test',
   'learning-manager-a@hris.test',
+  recoveryEmail,
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -3103,6 +3105,31 @@ record('Real browser UI uses isolated Auth/RPC and persists task, overlapping re
     && browserTaskPersistence.review_total === 2 && browserTaskPersistence.review_submitted
     && browserTaskPersistence.not_observed,
   JSON.stringify({ browserError: browserIntegrationError, database: browserTaskPersistence }));
+
+let passwordRecoveryOutput = '';
+let passwordRecoveryError = '';
+try {
+  passwordRecoveryOutput = execFileSync('node', [path.join(here, 'run-password-recovery-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_RECOVERY_EMAIL: recoveryEmail,
+      HRIS_LOCAL_MAILPIT_URL: services.MAILPIT_URL || services.INBUCKET_URL,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  const safeStage = String(error.stderr || '').split(/\r?\n/)
+    .find(line => line.includes('Local password-recovery journey failed while'));
+  passwordRecoveryError = safeStage || 'Disposable Auth password-recovery browser journey failed; sensitive email links were suppressed.';
+}
+record('Fresh local recovery email verifies the Auth callback, password update, sign-out, and new-password sign-in',
+  passwordRecoveryOutput.includes('Fresh local Mailpit recovery email completed the mobile password reset and desktop sign-in journey.'),
+  passwordRecoveryError);
 
 const concurrentAssignments = await Promise.all([
   psqlAsync(sessionSql(employeeB, `SELECT public.hris_assign_tenant_project_allocation(
