@@ -17,11 +17,12 @@ import { MyServiceRequests } from './MyServiceRequests';
 import { OrganizationPerformance } from './OrganizationPerformance';
 import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
+import { EmployeeReferrals } from './EmployeeReferrals';
 import { downloadCsv } from './csv';
 import {
   Activity, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
-  Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, Users, X, XCircle,
+  Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -40,6 +41,8 @@ type PermissionSet = {
   performance: boolean;
   recruitment: boolean;
   recruitmentManage: boolean;
+  referrals: boolean;
+  referralsManage: boolean;
   learningManage: boolean;
   travel: boolean;
   travelView: boolean;
@@ -48,7 +51,7 @@ type PermissionSet = {
   expensesView: boolean;
   expensesManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -88,6 +91,7 @@ const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
   organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
+  referrals: false, referralsManage: false,
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
@@ -2208,6 +2212,7 @@ export function LiveHrisWorkspace({
     if (permissions.organization) return 'projects';
     if (permissions.employees) return 'employees';
     if (permissions.performance) return 'performance';
+    if (permissions.referrals) return 'referrals';
     if (permissions.recruitment) return 'recruitment';
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
@@ -2226,6 +2231,7 @@ export function LiveHrisWorkspace({
     if (permissions.employees) items.push({ id: 'employees', label: 'Employees', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.recruitment) items.push({ id: 'recruitment', label: 'Candidate pipeline', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.referrals) items.push({ id: 'referrals', label: 'Employee referrals', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.learningManage) {
       items.push({ id: 'learning-programs', label: 'Learning programs', icon: <BookOpenCheck className="h-5 w-5" />, group: 'HRIS' });
       items.push({ id: 'learning-requests', label: 'Learning requests', icon: <BookOpenCheck className="h-5 w-5" />, group: 'HRIS' });
@@ -2241,6 +2247,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-travel', label: 'My Travel', icon: <MapPin className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-expenses', label: 'My Expenses', icon: <Receipt className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-service-requests', label: 'My Requests', icon: <ClipboardList className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee && !permissions.referrals) items.push({ id: 'referrals', label: 'My Referrals', icon: <UserRoundPlus className="h-5 w-5" />, group: 'Personal' });
     return items;
   }, [permissions, isEmployee, isSuperAdmin]);
 
@@ -2302,6 +2309,7 @@ export function LiveHrisWorkspace({
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} />}
+          {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} />}
           {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
           {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} />}

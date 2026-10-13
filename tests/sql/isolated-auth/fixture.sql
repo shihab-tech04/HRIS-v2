@@ -192,7 +192,8 @@ CREATE TABLE public.departments (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES public.tenants(id),
   name text NOT NULL,
-  code text NOT NULL
+  code text NOT NULL,
+  active boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE public.teams (
@@ -416,7 +417,12 @@ CREATE TABLE public.confirmation_reviews (
 );
 CREATE TABLE public.employee_referrals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
-  referrer_employee_id uuid
+  referrer_employee_id uuid NOT NULL, job_id uuid,
+  candidate_name text NOT NULL, candidate_email text NOT NULL, candidate_phone text,
+  relationship_note text, cv_url text,
+  status text NOT NULL DEFAULT 'submitted', status_note text,
+  submitted_by uuid, submitted_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.grades (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
@@ -1145,9 +1151,9 @@ INSERT INTO public.timesheet_entries(timesheet_id,activity_id,work_date,hours,no
 INSERT INTO public.confirmation_reviews(tenant_id,employee_id) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
-INSERT INTO public.employee_referrals(tenant_id,referrer_employee_id) VALUES
-  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
-  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.employee_referrals(tenant_id,referrer_employee_id,candidate_name,candidate_email) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA referral A','candidate-a@candidate.test'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA referral B','candidate-b@candidate.test');
 INSERT INTO public.grades(tenant_id) VALUES
   ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
 INSERT INTO public.hr_policies(tenant_id,active) VALUES

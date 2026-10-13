@@ -18,6 +18,7 @@ type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
   organizationManage: boolean; employees: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
+  referrals: boolean; referralsManage: boolean;
   learningManage: boolean;
   travel: boolean; travelView: boolean; travelManage: boolean;
   expenses: boolean; expensesView: boolean; expensesManage: boolean;
@@ -26,6 +27,7 @@ const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
   organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
+  referrals: false, referralsManage: false,
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
@@ -279,6 +281,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           'leave.view', 'leave.manage', 'organization.view', 'organization.manage', 'performance.view', 'performance.manage',
           'employees.view', 'employees.manage',
           'recruitment.view', 'recruitment.manage',
+          'referrals.view', 'referrals.manage',
           'learning.manage',
           'travel.view', 'travel.manage',
           'expenses.view', 'expenses.manage',
@@ -306,6 +309,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             performance: grants.get('performance.view') === true || grants.get('performance.manage') === true,
             recruitment: grants.get('recruitment.view') === true || grants.get('recruitment.manage') === true,
             recruitmentManage: grants.get('recruitment.manage') === true,
+            referrals: grants.get('referrals.view') === true || grants.get('referrals.manage') === true,
+            referralsManage: grants.get('referrals.manage') === true,
             learningManage: grants.get('learning.manage') === true,
             travel: grants.get('travel.view') === true || grants.get('travel.manage') === true,
             travelView: grants.get('travel.view') === true,

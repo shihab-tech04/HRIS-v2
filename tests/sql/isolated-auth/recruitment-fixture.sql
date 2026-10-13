@@ -4,7 +4,13 @@ CREATE TABLE public.jobs (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   reference_number text NOT NULL,
-  title text NOT NULL
+  title text NOT NULL,
+  department_name text,
+  department_id uuid,
+  status text NOT NULL DEFAULT 'draft',
+  is_published boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  application_deadline date
 );
 
 CREATE TABLE public.job_applications (

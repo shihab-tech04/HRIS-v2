@@ -3,7 +3,7 @@
 // authenticated database role so RLS and SECURITY DEFINER paths are exercised.
 // This harness never logs local API keys, access tokens, or synthetic passwords.
 import { execFileSync, spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -217,9 +217,12 @@ if (issuer !== `${apiUrl.origin}/auth/v1`) {
 const createdUserIds = [];
 const uploadedEvidencePaths = [];
 const uploadedExpensePaths = [];
+const uploadedReferralPaths = [];
 let createdEvidenceBucket = false;
 let createdExpenseBucket = false;
 let expenseBucketSafeToClean = false;
+let createdReferralBucket = false;
+let referralBucketSafeToClean = false;
 const password = randomBytes(24).toString('base64url');
 try {
   for (const email of emails) {
@@ -286,6 +289,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013175151_employee_referral_workflow.sql'),
 ]) applySql(file);
 const evidenceBucketCheck = await adminAuth.storage.getBucket('leave-evidence');
 const evidenceMimeTypes = [
@@ -337,6 +341,33 @@ if (expenseBucketCheck.data) {
   createdExpenseBucket = true;
   expenseBucketSafeToClean = true;
 }
+const referralBucketCheck = await adminAuth.storage.getBucket('employee-referral-files');
+const referralMimeTypes = [
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+if (referralBucketCheck.data) {
+  const bucket = referralBucketCheck.data;
+  const existingReferralFiles = await adminAuth.storage.from('employee-referral-files').list('', { limit: 100 });
+  if (existingReferralFiles.error) throw existingReferralFiles.error;
+  if (bucket.public || bucket.file_size_limit !== 5242880
+      || JSON.stringify(bucket.allowed_mime_types || []) !== JSON.stringify(referralMimeTypes)
+      || existingReferralFiles.data?.length) {
+    throw new Error('Refusing to test: the isolated employee-referral-files bucket must be empty and match its restrictions.');
+  }
+  referralBucketSafeToClean = true;
+} else {
+  const statusCode = String(referralBucketCheck.error?.statusCode || '');
+  if (!referralBucketCheck.error || statusCode !== '404') {
+    throw referralBucketCheck.error || new Error('Unable to inspect the isolated employee-referral-files bucket.');
+  }
+  const bucket = await adminAuth.storage.createBucket('employee-referral-files', {
+    public: false, fileSizeLimit: 5242880, allowedMimeTypes: referralMimeTypes,
+  });
+  if (bucket.error) throw bucket.error;
+  createdReferralBucket = true;
+  referralBucketSafeToClean = true;
+}
 const ids = {
   leaveApprove: '88888888-8888-4888-8888-888888888801',
   leaveYearBoundary: '88888888-8888-4888-8888-888888888802',
@@ -364,6 +395,9 @@ const ids = {
   leaveTypeB: '99999999-9999-4999-8999-999999999903',
   leaveTypeEvidence: '99999999-9999-4999-8999-999999999904',
 };
+psqlSync(`UPDATE public.leave_requests
+  SET from_date='${localCurrentDate}'::date,to_date='${localCurrentDate}'::date
+  WHERE id='${ids.leaveApprove}'::uuid`);
 
 const results = [];
 function record(label, ok, note = '') {
@@ -912,6 +946,8 @@ psqlSync(`INSERT INTO public.jobs(id,tenant_id,reference_number,title) VALUES
   ('${recruitmentIds.jobA1}'::uuid,'${ids.tenantA}'::uuid,'QA-ENG-1','Platform Engineer'),
   ('${recruitmentIds.jobA2}'::uuid,'${ids.tenantA}'::uuid,'QA-DES-2','Product Designer'),
   ('${recruitmentIds.jobB}'::uuid,'${ids.tenantB}'::uuid,'QB-OPS-1','Tenant B Analyst');
+UPDATE public.jobs SET status='published',is_published=true,is_active=true
+  WHERE id IN ('${recruitmentIds.jobA1}'::uuid,'${recruitmentIds.jobA2}'::uuid,'${recruitmentIds.jobB}'::uuid);
 INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,phone,years_experience,skills,cv_url,cover_letter,stage,status_note,applied_at,application_data) VALUES
   ('${recruitmentIds.applicationA1}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA1}'::uuid,'55555555-5555-4555-8555-555555555581'::uuid,'Candidate A One','private-email-a@candidate.test','private-phone-a',5,ARRAY['sql'],'private-cv-url-a','private-cover-letter-a','submitted','private-status-note-a','2026-10-12T09:00:00Z','{"answer":"private-screening-answer-a"}'),
   ('${recruitmentIds.applicationA2}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA2}'::uuid,'55555555-5555-4555-8555-555555555582'::uuid,'Candidate A Two','private-email-a2@candidate.test','private-phone-a2',3,ARRAY['design'],'private-cv-url-a2','private-cover-letter-a2','interview_scheduled','private-status-note-a2','2026-10-12T10:00:00Z','{"answer":"private-screening-answer-a2"}'),
@@ -1002,6 +1038,143 @@ try {
 record('Real 375px/1280px browser reads the tenant-scoped recruitment pipeline from local Auth/Postgres',
   recruitmentBrowserOutput.includes('Local Auth-to-Postgres recruitment pipeline journey passed at 375px mobile and 1280px desktop.'),
   recruitmentBrowserError);
+
+const referralFileName = 'qa-referral-resume.pdf';
+const referralPath = `${employeeA.userId}/${ids.tenantA}/${randomUUID()}/${referralFileName}`;
+const referralUpload = await employeeA.client.storage.from('employee-referral-files').upload(
+  referralPath, new Blob(['%PDF-1.4\nSynthetic isolated employee referral resume\n'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (referralUpload.error) throw referralUpload.error;
+uploadedReferralPaths.push(referralPath);
+record('Active employee can upload a PDF resume to their private tenant-scoped referral path', !referralUpload.error);
+
+const referralSubmission = await employeeA.client.rpc('hris_submit_employee_referral', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    candidate_name: 'QA Referral Candidate A', candidate_email: 'qa-referral-a@candidate.test',
+    candidate_phone: '+8801700000000', relationship_note: 'Former teammate',
+    candidate_profile_url: 'https://example.test/profile/qa-referral',
+    job_id: recruitmentIds.jobA1, preferred_department_id: 'eeeeeeee-0000-4000-8000-000000000001',
+    referral_reason: 'Synthetic isolated workflow acceptance.',
+    resume_path: referralPath, resume_file_name: referralFileName,
+  },
+});
+const referralId = referralSubmission.data?.id || '00000000-0000-4000-8000-000000000000';
+const referralWorkspaceA = await managerA.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantA });
+const employeeReferralWorkspaceA = await employeeA.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantA });
+const referralCandidate = referralWorkspaceA.data?.referrals?.find(row => row.id === referralId);
+record('Employee referral submission persists tenant-owned fields and recruiter queue returns only safe tenant records',
+  !referralSubmission.error && Boolean(referralSubmission.data?.id)
+    && !referralWorkspaceA.error && referralWorkspaceA.data?.referrals?.some(row => row.id === referralId)
+    && !employeeReferralWorkspaceA.error
+    && employeeReferralWorkspaceA.data?.referrals?.some(row => row.id === referralId)
+    && referralCandidate?.status === 'submitted'
+    && referralCandidate?.referrer_employee_id === '55555555-5555-4555-8555-555555555555'
+    && referralCandidate?.job_id === recruitmentIds.jobA1
+    && referralCandidate?.preferred_department_id === 'eeeeeeee-0000-4000-8000-000000000001'
+    && referralCandidate?.resume_storage_path === referralPath,
+  referralSubmission.error?.message || 'submission and scoped workspace lookups matched');
+
+const referralTenantB = await managerB.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantB });
+const referralCrossTenant = await managerB.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantA });
+const referralNoPermission = await noPermission.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantA });
+const referralGlobalOnly = await globalOnly.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantA });
+const referralRecruiterOnly = await recruiterOnly.client.rpc('hris_get_employee_referral_workspace', { p_tenant_id: ids.tenantA });
+record('Referral queue isolates tenant B and denies cross-tenant, global-only, ungranted, and recruitment-only roles',
+  !referralTenantB.error && referralTenantB.data?.referrals?.every(row => row.referrer_employee_id === '66666666-6666-4666-8666-666666666666')
+    && !JSON.stringify(referralTenantB.data).includes('QA Referral Candidate A')
+    && Boolean(referralCrossTenant.error?.code === '42501')
+    && Boolean(referralNoPermission.error?.code === '42501')
+    && Boolean(referralGlobalOnly.error?.code === '42501')
+    && Boolean(referralRecruiterOnly.error?.code === '42501'));
+
+const employeeReferralDirectWrite = await employeeA.client.from('employee_referrals').insert({
+  tenant_id: ids.tenantA, referrer_employee_id: '55555555-5555-4555-8555-555555555555',
+  candidate_name: 'Direct Write Denied', candidate_email: 'direct-write@candidate.test',
+});
+const managerReferralDirectUpdate = await managerA.client.from('employee_referrals').update({ status: 'shortlisted' })
+  .eq('id', referralId).select('id,status');
+const invalidReferral = await employeeA.client.rpc('hris_submit_employee_referral', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { candidate_name: 'Invalid referral', candidate_email: 'not-an-email', relationship_note: 'Friend',
+    resume_path: `${employeeA.userId}/${ids.tenantA}/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/invalid.pdf`, resume_file_name: 'invalid.pdf' },
+});
+record('Referral writes are RPC-only and invalid email or missing verified file cannot create a referral',
+  Boolean(employeeReferralDirectWrite.error) && Boolean(managerReferralDirectUpdate.error)
+    && Boolean(invalidReferral.error?.code === '22000'));
+
+const employeeReferralRead = await employeeA.client.from('employee_referrals').select('id,candidate_email')
+  .eq('id', referralId).maybeSingle();
+const tenantBReferralRead = await managerB.client.from('employee_referrals').select('id,candidate_email')
+  .eq('tenant_id', ids.tenantA);
+const ownerSignedResume = await employeeA.client.storage.from('employee-referral-files').createSignedUrl(referralPath, 60);
+const recruiterSignedResume = await managerA.client.storage.from('employee-referral-files').createSignedUrl(referralPath, 60);
+const tenantBSignedResume = await managerB.client.storage.from('employee-referral-files').createSignedUrl(referralPath, 60);
+const ownerResumeDownload = await employeeA.client.storage.from('employee-referral-files').download(referralPath);
+const recruiterResumeDownload = await managerA.client.storage.from('employee-referral-files').download(referralPath);
+const tenantBResumeDownload = await managerB.client.storage.from('employee-referral-files').download(referralPath);
+record('Referral personal data and private resumes are owner- and tenant-scoped',
+  !employeeReferralRead.error && employeeReferralRead.data?.candidate_email === 'qa-referral-a@candidate.test'
+    && !tenantBReferralRead.error && tenantBReferralRead.data.length === 0
+    && !ownerSignedResume.error && !recruiterSignedResume.error
+    && Boolean(tenantBSignedResume.error)
+    && !ownerResumeDownload.error && !recruiterResumeDownload.error
+    && Boolean(tenantBResumeDownload.error),
+  JSON.stringify({
+    employeeRead: employeeReferralRead.error?.message || null,
+    ownerSigned: ownerSignedResume.error?.message || null,
+    managerSigned: recruiterSignedResume.error?.message || null,
+    tenantBSignedDenied: Boolean(tenantBSignedResume.error),
+    ownerDownload: ownerResumeDownload.error?.message || null,
+    managerDownload: recruiterResumeDownload.error?.message || null,
+    tenantBDownloadDenied: Boolean(tenantBResumeDownload.error),
+  }));
+
+const employeeCannotReviewReferral = await employeeA.client.rpc('hris_mark_employee_referral_in_review', {
+  p_tenant_id: ids.tenantA, p_referral_id: referralId, p_note: null,
+});
+const crossTenantReferralReview = await managerB.client.rpc('hris_mark_employee_referral_in_review', {
+  p_tenant_id: ids.tenantA, p_referral_id: referralId, p_note: null,
+});
+const referralReview = await managerA.client.rpc('hris_mark_employee_referral_in_review', {
+  p_tenant_id: ids.tenantA, p_referral_id: referralId, p_note: 'Initial review started.',
+});
+const referralReviewDuplicate = await managerA.client.rpc('hris_mark_employee_referral_in_review', {
+  p_tenant_id: ids.tenantA, p_referral_id: referralId, p_note: 'Duplicate transition.',
+});
+const referralAfterReview = queryAdmin(`SELECT coalesce((SELECT jsonb_build_object('status',status,'note',status_note,'actor',status_updated_by)
+  FROM public.employee_referrals WHERE id='${referralId}'::uuid),'{}'::jsonb)`);
+record('Only an active referral manager can move a submitted referral into review, once, with an audit actor',
+  Boolean(employeeCannotReviewReferral.error?.code === '42501')
+    && Boolean(crossTenantReferralReview.error?.code === '42501')
+    && !referralReview.error && referralReview.data?.status === 'in_review'
+    && Boolean(referralReviewDuplicate.error?.code === 'P0002')
+    && referralAfterReview.status === 'in_review' && referralAfterReview.note === 'Initial review started.'
+    && referralAfterReview.actor === managerA.userId);
+
+let referralBrowserOutput = '';
+let referralBrowserError = '';
+try {
+  referralBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-referrals-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_REFERRAL_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_REFERRAL_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  referralBrowserError = String(error.stderr || error.message || 'local employee-referral browser run failed').slice(-1400);
+}
+record('Real Auth, Storage, RPC, and Postgres referral journey passes at 375px mobile and 1280px desktop',
+  referralBrowserOutput.includes('Local Auth-to-Postgres employee referral journey passed at 375px mobile and 1280px desktop.'),
+  referralBrowserError);
 
 const employeeAGoalId = '88888888-8888-4888-8888-888888888801';
 const employeeBGoalId = '88888888-8888-4888-8888-888888888802';
@@ -3296,6 +3469,28 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdExpenseBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('expense-receipts');
+    if (deletedBucket.error) throw deletedBucket.error;
+  }
+  const referralStorage = adminAuth.storage.from('employee-referral-files');
+  if (referralBucketSafeToClean) {
+    const referralPaths = new Set(uploadedReferralPaths);
+    async function collectReferralObjects(prefix = '') {
+      const listed = await referralStorage.list(prefix, { limit: 100 });
+      if (listed.error) throw listed.error;
+      for (const item of listed.data || []) {
+        const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
+        if (item.id) referralPaths.add(itemPath);
+        else await collectReferralObjects(itemPath);
+      }
+    }
+    await collectReferralObjects();
+    if (referralPaths.size) {
+      const removed = await referralStorage.remove([...referralPaths]);
+      if (removed.error) throw removed.error;
+    }
+  }
+  if (createdReferralBucket) {
+    const deletedBucket = await adminAuth.storage.deleteBucket('employee-referral-files');
     if (deletedBucket.error) throw deletedBucket.error;
   }
   for (const userId of createdUserIds) {
