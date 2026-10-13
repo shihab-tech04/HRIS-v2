@@ -1671,6 +1671,7 @@ try {
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_PM_EMAIL: emails[5],
       HRIS_LOCAL_REVIEWER_EMAIL: emails[7],
+      HRIS_LOCAL_REVIEWEE_EMAIL: emails[5],
       HRIS_LOCAL_TENANT_ID: ids.tenantA,
       HRIS_LOCAL_PROJECT_ID: projectA.id,
       HRIS_LOCAL_PROJECT_CODE: projectA.code,
@@ -1700,7 +1701,7 @@ const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_o
   FROM public.project_tasks t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.project_id='${projectA.id}'::uuid
     AND t.title=${sqlLiteral(browserTaskTitle)}), 'null'::jsonb)`);
 record('Real browser UI uses isolated Auth/RPC and persists task, overlapping reviews, and Not Observed in local Postgres',
-  browserIntegrationOutput.includes('Browser-to-local-Supabase task and peer-review journey passed.')
+  browserIntegrationOutput.includes('Browser-to-local-Supabase task, review submission, and employee performance-history journey passed.')
     && browserTaskPersistence?.status === 'completed' && browserTaskPersistence?.pending === 1
     && browserTaskPersistence.review_total === 2 && browserTaskPersistence.review_submitted
     && browserTaskPersistence.not_observed,

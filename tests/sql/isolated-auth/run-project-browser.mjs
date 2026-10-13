@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
-  'HRIS_LOCAL_PM_EMAIL', 'HRIS_LOCAL_REVIEWER_EMAIL', 'HRIS_LOCAL_TENANT_ID',
+  'HRIS_LOCAL_PM_EMAIL', 'HRIS_LOCAL_REVIEWER_EMAIL', 'HRIS_LOCAL_REVIEWEE_EMAIL', 'HRIS_LOCAL_TENANT_ID',
   'HRIS_LOCAL_PROJECT_ID', 'HRIS_LOCAL_PROJECT_CODE', 'HRIS_LOCAL_INITIAL_ALLOCATION_ID',
   'HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID', 'HRIS_LOCAL_TASK_TITLE',
 ];
@@ -130,10 +130,26 @@ try {
     'Review for Synthetic Employee A submitted.');
   await reviewerPage.getByText('No peer reviews are waiting for you.').waitFor({ state: 'visible' });
 
-  await reviewerPage.setViewportSize({ width: 375, height: 812 });
-  const width = await reviewerPage.evaluate(() => document.documentElement.scrollWidth);
+  const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await revieweePage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(revieweePage, process.env.HRIS_LOCAL_REVIEWEE_EMAIL);
+  await revieweePage.getByRole('navigation', { name: 'HRIS modules' })
+    .getByRole('button', { name: 'My Performance', exact: true }).click();
+  const history = revieweePage.getByRole('region', { name: 'Project peer-review history' });
+  await assertVisibleText(history, process.env.HRIS_LOCAL_TASK_TITLE);
+  await assertVisibleText(history, 'Feedback from Synthetic Absent Employee A');
+  await assertVisibleText(history, 'Not Observed');
+  await assertVisibleText(history, '5/5');
+
+  await revieweePage.setViewportSize({ width: 375, height: 812 });
+  const width = await revieweePage.evaluate(() => document.documentElement.scrollWidth);
   if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
-  console.log('Browser-to-local-Supabase task and peer-review journey passed.');
+  console.log('Browser-to-local-Supabase task, review submission, and employee performance-history journey passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
