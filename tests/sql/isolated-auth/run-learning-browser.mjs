@@ -90,6 +90,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let contextCalls = 0;
   let blockInitialContext = true;
+  let blockNextJoinLinks = false;
   const rpcTenants = [];
   const directLearningTableReads = [];
   page.on('request', request => {
@@ -107,7 +108,7 @@ try {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
     }
-    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request|hris_get_learning_admin_catalog|hris_get_learning_session_roster|hris_save_learning_program|hris_save_learning_session)$/);
+    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request|hris_get_learning_admin_catalog|hris_get_learning_session_roster|hris_save_learning_program|hris_save_learning_session|hris_get_my_learning_join_links)$/);
     if (managerRpc && request.method() === 'POST') {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
@@ -119,6 +120,13 @@ try {
       && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context')
       && route.request().method() === 'POST' && blockInitialContext) {
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary learning outage.' }) });
+      return;
+    }
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+      && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_join_links')
+      && route.request().method() === 'POST' && blockNextJoinLinks) {
+      blockNextJoinLinks = false;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary meeting-link outage.' }) });
       return;
     }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -142,11 +150,21 @@ try {
 
   await directProgram.getByLabel('Choose session for QA A Direct Learning').selectOption('91000000-0000-4000-8000-000000000001');
   const enrollmentResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_enroll_learning'));
+  blockNextJoinLinks = true;
   await directProgram.getByRole('button', { name: 'Enroll now' }).click();
   const enrollment = await rpcBody(await enrollmentResponse);
   const enrollmentCard = page.locator(`[data-learning-enrollment="${enrollment.id}"]`);
   await enrollmentCard.getByText('QA A Direct Learning', { exact: true }).waitFor({ state: 'visible' });
   await enrollmentCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
+  const joinLink = enrollmentCard.getByRole('link', { name: 'Join online session' });
+  await page.getByText('Online session links could not be loaded. Refresh to try again.', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await joinLink.waitFor({ state: 'visible' });
+  if (await joinLink.getAttribute('href') !== 'https://meet.example.test/qa-learning') throw new Error('The enrolled employee did not receive the scheduled session meeting link.');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Learning session join action desktop');
+  await joinLink.waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 375, height: 812 });
 
   await requestProgram.getByLabel('Choose session for QA A Approval Learning').selectOption('91000000-0000-4000-8000-000000000002');
   await requestProgram.getByLabel('Reason for QA A Approval Learning').fill('Practice leadership with my team.');
@@ -157,6 +175,7 @@ try {
   await requestCard.getByText('QA A Approval Learning', { exact: true }).waitFor({ state: 'visible' });
   await requestCard.getByText('Requested', { exact: true }).waitFor({ state: 'visible' });
   await requestCard.getByText('Practice leadership with my team.', { exact: false }).waitFor({ state: 'visible' });
+  if (await requestCard.getByRole('link', { name: 'Join online session' }).count()) throw new Error('An unapproved learning request must not receive a session join link.');
   await assertNoOverflow(page, 'Learning actions mobile');
 
   await page.getByRole('button', { name: 'Refresh learning' }).click();
@@ -346,7 +365,7 @@ try {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, employee enrollment, cancellation, and recovery passed.');
+  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

@@ -21,6 +21,12 @@ test('learning catalog and personal enrollment reads use tenant-scoped RLS and e
   assert.match(migration, /employee_id=public\.hris_own_employee_for_tenant\(tenant_id\)/);
   assert.match(migration, /REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER[\s\S]*?FROM PUBLIC, anon, authenticated/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.hris_get_my_learning_context\(uuid\) FROM PUBLIC, anon/);
+  const joinMigration = readFileSync(new URL('../../supabase/migrations/20261013190100_learning_session_join_access.sql', import.meta.url), 'utf8');
+  assert.match(joinMigration, /SECURITY INVOKER/);
+  assert.match(joinMigration, /e\.employee_id=public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(joinMigration, /e\.status='enrolled'/);
+  assert.match(joinMigration, /s\.status='scheduled'/);
+  assert.match(joinMigration, /REVOKE ALL ON FUNCTION public\.hris_get_my_learning_join_links\(uuid\) FROM PUBLIC,anon/);
 });
 
 test('self-enrollment, approval requests, and cancellation enforce server-side eligibility', () => {
@@ -42,9 +48,11 @@ test('self-enrollment, approval requests, and cancellation enforce server-side e
 test('employee learning UI is mounted for linked employees and uses only tenant RPC actions', () => {
   assert.match(workspace, /id: 'my-learning', label: 'My Learning'/);
   assert.match(workspace, /page === 'my-learning' && isEmployee && <MyLearning tenantId=\{tenantId\} \/>/);
-  for (const rpc of ['hris_get_my_learning_context', 'hris_employee_enroll_learning', 'hris_employee_request_learning', 'hris_employee_cancel_learning']) {
+  for (const rpc of ['hris_get_my_learning_context', 'hris_get_my_learning_join_links', 'hris_employee_enroll_learning', 'hris_employee_request_learning', 'hris_employee_cancel_learning']) {
     assert.ok(ui.includes(`'${rpc}'`), `learning UI must call ${rpc}`);
   }
+  assert.match(ui, /Join online session/);
+  assert.match(ui, /noopener noreferrer/);
   assert.match(ui, /Retry/);
   assert.match(ui, /role="alertdialog"/);
   assert.match(ui, /No learning programs match your search/);

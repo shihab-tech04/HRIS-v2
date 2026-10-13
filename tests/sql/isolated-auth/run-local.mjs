@@ -275,6 +275,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013174500_hris_learning_program_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -700,9 +701,29 @@ try {
 } catch (error) {
   learningBrowserError = String(error.stderr || error.message || 'local learning browser run failed').slice(-1800);
 }
-record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, roster retry, cancellation, refresh and responsive recovery',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, employee enrollment, cancellation, and recovery passed.'),
+record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, roster retry, authorized meeting access, cancellation, refresh and responsive recovery',
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.'),
   learningBrowserError);
+const joinLinkEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000001',
+  p_session_id: '91000000-0000-4000-8000-000000000001',
+});
+const learningJoinLinksA = await employeeA.client.rpc('hris_get_my_learning_join_links', { p_tenant_id: ids.tenantA });
+const learningJoinLinksForeignTenant = await employeeB.client.rpc('hris_get_my_learning_join_links', { p_tenant_id: ids.tenantA });
+const anonymousLearningJoinLinks = attemptAs(null,
+  `SELECT public.hris_get_my_learning_join_links('${ids.tenantA}'::uuid)`, 'anon');
+const learningJoinLinkAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_learning_join_links(uuid)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_learning_join_links(uuid)','EXECUTE'))`);
+record('Only an enrolled employee receives their tenant-bound scheduled session join URL',
+  !joinLinkEnrollment.error && typeof learningJoinLinksA.data?.[joinLinkEnrollment.data.id] === 'string'
+    && learningJoinLinksA.data[joinLinkEnrollment.data.id] === 'https://meet.example.test/qa-learning'
+    && !learningJoinLinksForeignTenant.error && Object.keys(learningJoinLinksForeignTenant.data || {}).length === 0
+    && !anonymousLearningJoinLinks.ok && learningJoinLinkAcl.anon === false
+    && learningJoinLinkAcl.authenticated === true,
+  JSON.stringify({ enrollment: joinLinkEnrollment.error?.code || joinLinkEnrollment.data?.status,
+    linksA: learningJoinLinksA.data, foreignTenant: learningJoinLinksForeignTenant.data,
+    anonymous: anonymousLearningJoinLinks.ok ? 'unexpectedly accepted' : 'denied', acl: learningJoinLinkAcl }));
 const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   'program_count',count(DISTINCT p.id)::integer,
   'active',COALESCE(bool_or(p.active),false),
@@ -715,7 +736,7 @@ const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   LEFT JOIN public.learning_enrollments e ON e.tenant_id=p.tenant_id AND e.program_id=p.id
   WHERE p.tenant_id='${ids.tenantA}'::uuid AND p.title=${sqlLiteral(browserLearningProgramTitle)}`);
 record('Manager-published learning program and session persist and become employee enrollment history',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, employee enrollment, cancellation, and recovery passed.')
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.')
     && browserLearningProgramPersistence.program_count === 1 && browserLearningProgramPersistence.active
     && browserLearningProgramPersistence.self_enrollment && browserLearningProgramPersistence.session_count === 1
     && browserLearningProgramPersistence.scheduled && browserLearningProgramPersistence.enrollment_count === 1,

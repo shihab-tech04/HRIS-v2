@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, CalendarClock, CheckCircle2, Clock3, GraduationCap, RefreshCw, Search } from 'lucide-react';
+import { BookOpen, CalendarClock, CheckCircle2, Clock3, ExternalLink, GraduationCap, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 type LearningSession = {
@@ -47,6 +47,7 @@ type Enrollment = {
   created_at: string;
 };
 type LearningSkill = { skill_name: string; proficiency: string | null; verified: boolean };
+type LearningJoinLinks = Record<string, string>;
 type LearningContext = {
   tenant_id: string;
   employee_id: string | null;
@@ -71,10 +72,22 @@ function isOpen(enrollment: Enrollment): boolean {
   return enrollment.status === 'requested' || enrollment.status === 'enrolled';
 }
 
+function safeMeetingUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function MyLearning({ tenantId }: { tenantId: string }) {
   const [programs, setPrograms] = useState<LearningProgram[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [skills, setSkills] = useState<LearningSkill[]>([]);
+  const [joinLinks, setJoinLinks] = useState<LearningJoinLinks>({});
+  const [joinError, setJoinError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -99,6 +112,8 @@ export function MyLearning({ tenantId }: { tenantId: string }) {
     setError('');
     setActionError('');
     setMessage('');
+    setJoinError('');
+    setJoinLinks({});
     try {
       const result = await supabase.rpc('hris_get_my_learning_context', { p_tenant_id: requestedTenant });
       if (!current()) return;
@@ -120,6 +135,17 @@ export function MyLearning({ tenantId }: { tenantId: string }) {
         }
         return next;
       });
+      const linksResult = await supabase.rpc('hris_get_my_learning_join_links', { p_tenant_id: requestedTenant });
+      if (!current()) return;
+      if (linksResult.error) {
+        setJoinError('Online session links could not be loaded. Refresh to try again.');
+      } else if (!linksResult.data || typeof linksResult.data !== 'object' || Array.isArray(linksResult.data)) {
+        setJoinError('Online session links returned an invalid response. Refresh to try again.');
+      } else {
+        const safeLinks = Object.fromEntries(Object.entries(linksResult.data as Record<string, unknown>)
+          .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(safeMeetingUrl(entry[1]))));
+        setJoinLinks(safeLinks);
+      }
     } catch (cause) {
       if (current()) setError(cause instanceof Error ? cause.message : 'Unable to load your learning workspace.');
     } finally {
@@ -131,6 +157,8 @@ export function MyLearning({ tenantId }: { tenantId: string }) {
     setPrograms([]);
     setEnrollments([]);
     setSkills([]);
+    setJoinLinks({});
+    setJoinError('');
     setSearch('');
     setCategory('all');
     setSessionSelection({});
@@ -193,6 +221,7 @@ export function MyLearning({ tenantId }: { tenantId: string }) {
 
     {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">Retry</button></div>}
     {actionError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{actionError}</div>}
+    {joinError && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p role="status">{joinError}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-9 rounded-lg border border-amber-300 bg-white px-3 font-medium">Refresh</button></div>}
     {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
 
     <div className="grid gap-3 sm:grid-cols-3">
@@ -245,6 +274,7 @@ export function MyLearning({ tenantId }: { tenantId: string }) {
         : enrollments.length === 0 ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">Your learning activity will appear here after you enroll or request a program.</p>
           : <div className="grid min-w-0 gap-3 lg:grid-cols-2">{enrollments.map(enrollment => <article key={enrollment.id} data-learning-enrollment={enrollment.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-slate-500">{enrollment.mandatory ? 'Assigned learning' : statusName(enrollment.source)}</p><h4 className="mt-1 break-words font-semibold text-slate-900">{enrollment.program_title}</h4></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{statusName(enrollment.status)}</span></div>
               {enrollment.session_start_at && <p className="mt-2 text-sm text-slate-600">{dateTime(enrollment.session_start_at)}{enrollment.session_location ? ` · ${enrollment.session_location}` : ''}</p>}
+              {enrollment.status === 'enrolled' && safeMeetingUrl(joinLinks[enrollment.id]) && <a href={safeMeetingUrl(joinLinks[enrollment.id])!} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#B9DCE2] bg-[#F8FCFC] px-3 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">Join online session<ExternalLink className="h-4 w-4" aria-hidden="true" /></a>}
               {enrollment.due_date && <p className="mt-2 text-sm text-slate-600">Due {new Date(`${enrollment.due_date}T12:00:00`).toLocaleDateString()}</p>}
               {enrollment.recommendation_reason && <p className="mt-2 break-words text-sm text-slate-600">Request note: {enrollment.recommendation_reason}</p>}
               {enrollment.resolution_note && <p className="mt-2 break-words text-sm text-slate-600">Update: {enrollment.resolution_note}</p>}
