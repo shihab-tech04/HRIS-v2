@@ -12,7 +12,7 @@ const jwtPayload = Buffer.from(JSON.stringify({ sub: userId, aud: 'authenticated
   exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-async function interceptAuth(page: import('@playwright/test').Page) {
+async function interceptAuth(page: import('@playwright/test').Page, teamTenantFilters: string[] = []) {
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -31,6 +31,7 @@ async function interceptAuth(page: import('@playwright/test').Page) {
     const request = route.request();
     const url = new URL(request.url());
     const endpoint = url.pathname.split('/').pop() ?? '';
+    if (endpoint === 'teams') teamTenantFilters.push(url.searchParams.get('tenant_id') || '');
     if (url.pathname.includes('/rpc/')) {
       const rpcData: Record<string, unknown> = {
         has_tenant_permission: true,
@@ -56,7 +57,14 @@ async function interceptAuth(page: import('@playwright/test').Page) {
     else if (endpoint === 'admin_users') data = { active: true, is_super_admin: true };
     else if (endpoint === 'tenants') data = requested === 'id'
       ? { id: tenantId } : [{ id: tenantId, name: 'Synthetic Synesis', slug: 'synesis-it', timezone: 'Asia/Dhaka' }];
-    else if (endpoint === 'departments') data = [{ id: 'dept-1', name: 'Engineering', code: 'ENG', active: true }];
+    else if (endpoint === 'departments') data = [
+      { id: 'dept-1', name: 'Engineering' },
+      { id: 'dept-2', name: 'Customer Success' },
+    ];
+    else if (endpoint === 'teams') data = [
+      { id: 'team-1', name: 'Design Systems', code: 'DS', department_id: 'dept-1', active: true },
+      { id: 'team-2', name: 'Client Operations', code: 'OPS', department_id: 'dept-2', active: false },
+    ];
     if (request.method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
       return;
@@ -84,4 +92,41 @@ test('Super Admin with active tenant membership opens the authorized HRIS worksp
 
   await moduleNav.getByRole('button', { name: /Leave/ }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+});
+
+test('organization Teams directory filters only the active tenant rows', async ({ page }) => {
+  const teamTenantFilters: string[] = [];
+  await interceptAuth(page, teamTenantFilters);
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
+  const teamsNav = moduleNav.getByRole('button', { name: 'Teams', exact: true });
+  await expect(teamsNav).toBeVisible();
+  await teamsNav.click();
+  await expect(page.getByRole('heading', { name: 'Teams', exact: true })).toBeVisible();
+  const table = page.getByRole('table', { name: 'Organization teams' });
+  await expect(table.getByRole('row')).toHaveCount(2);
+  await expect(table).toContainText('Design Systems');
+  await expect(table).not.toContainText('Client Operations');
+  await expect(table).toContainText('Engineering');
+
+  await page.getByLabel('Team status').selectOption('all');
+  await page.getByLabel('Search teams').fill('Customer Success');
+  await expect(table.getByRole('row')).toHaveCount(2);
+  await expect(table).toContainText('Client Operations');
+  await expect(table).not.toContainText('Design Systems');
+
+  await page.getByLabel('Team status').selectOption('inactive');
+  await expect(table).toContainText('Inactive');
+  expect(teamTenantFilters.length).toBeGreaterThan(0);
+  expect(teamTenantFilters.every(value => value === `eq.${tenantId}`)).toBe(true);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByRole('heading', { name: 'Teams', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const tableRegion = page.getByRole('region', { name: 'Scrollable teams table' });
+  expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
 });

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+const teams = readFileSync(new URL('../../src/live/OrganizationTeams.tsx', import.meta.url), 'utf8');
 
 test('authenticated Synesis admins enter the RPC-backed workspace instead of the generic table browser', () => {
   assert.match(app, /import \{ LiveHrisWorkspace \} from '\.\/LiveHrisWorkspace'/);
@@ -24,7 +25,7 @@ test('ordinary linked employees enter a tenant-scoped personal workspace', () =>
 });
 
 test('admin navigation uses permissions evaluated for each active tenant membership', () => {
-  for (const permission of ['dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view', 'leave.view', 'leave.manage']) {
+  for (const permission of ['dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view', 'leave.view', 'leave.manage', 'organization.view', 'organization.manage']) {
     assert.ok(app.includes(permission), `missing permission check: ${permission}`);
   }
   assert.match(app, /rpc\('has_tenant_permission'/);
@@ -35,6 +36,15 @@ test('admin navigation uses permissions evaluated for each active tenant members
   assert.match(app, /attendanceView: grants\.get\('attendance\.view'\) === true/);
   assert.match(workspace, /canView=\{permissions\.attendanceView\}/);
   assert.match(workspace, /const showDetails = canView \|\| canManage/);
+});
+
+test('organization team directory is permission-gated and queries tenant-filtered RLS tables without write paths', () => {
+  assert.match(app, /organization: grants\.get\('organization\.view'\) === true \|\| grants\.get\('organization\.manage'\) === true/);
+  assert.match(workspace, /if \(permissions\.organization\) items\.push\(\{ id: 'teams'/);
+  assert.match(workspace, /page === 'teams' && permissions\.organization && <OrganizationTeams tenantId=\{tenantId\}/);
+  assert.match(teams, /supabase\.from\('teams'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
+  assert.match(teams, /supabase\.from\('departments'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
+  assert.doesNotMatch(teams, /\.insert\(|\.update\(|\.delete\(/);
 });
 
 test('live HRIS pages use tenant-checked RPC responses and omit the global candidate count', () => {

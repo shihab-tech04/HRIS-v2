@@ -4,6 +4,7 @@ import attendanceDownloadIcon from '../assets/attendance-download.png';
 import attendanceFilterIcon from '../assets/attendance-filter.svg';
 import attendanceSearchIcon from '../assets/attendance-search.svg';
 import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
+import { OrganizationTeams } from './OrganizationTeams';
 import {
   Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
@@ -20,8 +21,9 @@ type PermissionSet = {
   attendanceReport: boolean;
   leave: boolean;
   leaveManage: boolean;
+  organization: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'my-dashboard' | 'my-leave' | 'my-timesheets';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'teams' | 'my-dashboard' | 'my-leave' | 'my-timesheets';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -59,7 +61,7 @@ type LeaveData = {
 
 const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
-  attendanceReport: false, leave: false, leaveManage: false,
+  attendanceReport: false, leave: false, leaveManage: false, organization: false,
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -2192,6 +2194,7 @@ export function LiveHrisWorkspace({
     if (permissions.dashboard) return 'dashboard';
     if (permissions.attendance) return 'attendance';
     if (permissions.leave) return 'leave';
+    if (permissions.organization) return 'teams';
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -2201,6 +2204,7 @@ export function LiveHrisWorkspace({
     if (permissions.attendance) items.push({ id: 'attendance', label: 'Attendance', icon: <CalendarDays className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.attendanceView || permissions.attendanceManage) items.push({ id: 'shift-roster', label: 'Roster', icon: <Clock3 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.leave) items.push({ id: 'leave', label: 'Leave', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.organization) items.push({ id: 'teams', label: 'Teams', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
@@ -2212,7 +2216,7 @@ export function LiveHrisWorkspace({
     setPage(nav[0]?.id || 'dashboard');
   }, [nav, page]);
 
-  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave ? 'HRIS Administrator' : 'Employee';
+  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const current = nav.find(item => item.id === page);
 
@@ -2260,6 +2264,7 @@ export function LiveHrisWorkspace({
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
+          {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}

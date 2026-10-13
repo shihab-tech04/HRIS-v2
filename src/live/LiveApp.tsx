@@ -16,11 +16,11 @@ type Records = { employees: Employee[]; departments: Department[]; leaves: Leave
 type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
-  attendanceReport: boolean; leave: boolean; leaveManage: boolean;
+  attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
-  attendanceReport: false, leave: false, leaveManage: false,
+  attendanceReport: false, leave: false, leaveManage: false, organization: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -261,7 +261,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           .map(e => e.tenant_id);
         const permissionIds = [
           'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view',
-          'leave.view', 'leave.manage',
+          'leave.view', 'leave.manage', 'organization.view', 'organization.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -280,6 +280,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             attendanceReport: grants.get('reports.view') === true,
             leave: grants.get('leave.view') === true || grants.get('leave.manage') === true,
             leaveManage: grants.get('leave.manage') === true,
+            organization: grants.get('organization.view') === true || grants.get('organization.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
