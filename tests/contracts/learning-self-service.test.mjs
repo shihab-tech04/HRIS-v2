@@ -53,6 +53,9 @@ test('employee learning UI is mounted for linked employees and uses only tenant 
   }
   assert.match(ui, /Join online session/);
   assert.match(ui, /noopener noreferrer/);
+  assert.match(ui, /safeMeetingUrl\(enrollment\.certificate_url \|\| undefined\)/);
+  assert.match(ui, /href=\{certificateUrl\} target="_blank" rel="noopener noreferrer"[^>]*>View certificate/);
+  assert.doesNotMatch(ui, /href=\{enrollment\.certificate_url\}/);
   assert.match(ui, /Retry/);
   assert.match(ui, /role="alertdialog"/);
   assert.match(ui, /No learning programs match your search/);

@@ -145,6 +145,10 @@ try {
   const requestProgram = page.locator('[data-learning-program="90000000-0000-4000-8000-000000000002"]');
   await directProgram.getByRole('heading', { name: 'QA A Direct Learning' }).waitFor({ state: 'visible' });
   await requestProgram.getByRole('heading', { name: 'QA A Approval Learning' }).waitFor({ state: 'visible' });
+  const unsafeCertificateEnrollment = page.locator('[data-learning-enrollment="92000000-0000-4000-8000-000000000003"]');
+  if (await unsafeCertificateEnrollment.getByRole('link', { name: 'View certificate' }).count() !== 0) {
+    throw new Error('An unsafe certificate URL must not render as a navigable link.');
+  }
   await page.getByRole('heading', { name: 'QA B Private Learning' }).waitFor({ state: 'detached' });
   await assertNoOverflow(page, 'Learning catalog mobile');
 
