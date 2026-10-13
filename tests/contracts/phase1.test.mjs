@@ -90,7 +90,8 @@ test('real workspace uses membership-scoped admin access and linked employee ide
   assert.match(app, /rpc\('has_tenant_permission'/);
   assert.match(app, /employeeTenantIds\.includes\(tenantId\)/);
   assert.doesNotMatch(app, /rpc\('has_permission'/);
-  assert.match(app, /canAdminSelectedTenant\s*\?\s*supabase\.from\('employees'\)/);
+  assert.match(app, /canReadAdminDirectories\s*\?\s*supabase\.from\('employees'\)/);
+  assert.ok(app.includes('workspacePermissions.recruitment'));
   assert.match(app, /previewEnabled\s*&&/);
 });
 test('preview audit is explicitly not an authenticated database RLS certification', () => {

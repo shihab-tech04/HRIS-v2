@@ -17,12 +17,12 @@ type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
-  organizationManage: boolean; performance: boolean;
+  organizationManage: boolean; performance: boolean; recruitment: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false, performance: false,
+  organizationManage: false, performance: false, recruitment: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -151,7 +151,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const workspacePermissions = tenantWorkspacePermissions[tenantId] || noWorkspacePermissions;
   const canAdminSelectedTenant = tenants.some(t => t.id === tenantId) && (
     isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.attendance || workspacePermissions.leave
-    || workspacePermissions.organization || workspacePermissions.performance
+    || workspacePermissions.organization || workspacePermissions.performance || workspacePermissions.recruitment
+  );
+  const canReadAdminDirectories = tenants.some(t => t.id === tenantId) && (
+    isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.organization
+    || workspacePermissions.performance || workspacePermissions.attendance || workspacePermissions.leave
   );
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
@@ -265,6 +269,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const permissionIds = [
           'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view',
           'leave.view', 'leave.manage', 'organization.view', 'organization.manage', 'performance.view', 'performance.manage',
+          'recruitment.view', 'recruitment.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -286,6 +291,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             organization: grants.get('organization.view') === true || grants.get('organization.manage') === true,
             organizationManage: grants.get('organization.manage') === true,
             performance: grants.get('performance.view') === true || grants.get('performance.manage') === true,
+            recruitment: grants.get('recruitment.view') === true || grants.get('recruitment.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
@@ -329,8 +335,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const [leaves, types, employees, departments] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
-          canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
-          canAdminSelectedTenant ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
+          canReadAdminDirectories ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
+          canReadAdminDirectories ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
         ]);
         const denied = [leaves, types, employees, departments].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -346,7 +352,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user?.id, tenantId, canAdminSelectedTenant, refreshKey, membershipLoading, tenants]);
+  }, [user?.id, tenantId, canReadAdminDirectories, refreshKey, membershipLoading, tenants]);
 
   async function signOut() {
     setView('employee');

@@ -14,6 +14,11 @@ DROP POLICY IF EXISTS hris_leave_evidence_tenant_read_guard ON storage.objects;
 DROP POLICY IF EXISTS hris_leave_evidence_employee_delete ON storage.objects;
 DROP POLICY IF EXISTS hris_leave_evidence_delete_tenant_guard ON storage.objects;
 
+-- The recruitment test fixture is synthetic and must be reset on every run.
+DROP TABLE IF EXISTS public.candidate_application_stage_history CASCADE;
+DROP TABLE IF EXISTS public.job_applications CASCADE;
+DROP TABLE IF EXISTS public.jobs CASCADE;
+
 DROP FUNCTION IF EXISTS public.admin_resolve_attendance_correction(uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.admin_resolve_leave_request(uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.admin_save_attendance(uuid,date,jsonb) CASCADE;

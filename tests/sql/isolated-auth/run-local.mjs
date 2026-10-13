@@ -247,6 +247,7 @@ const reportViewerA = await signIn(emails[9]);
 const superAdmin = await signIn(emails[10]);
 for (const file of [
   path.join(here, 'fixture.sql'),
+  path.join(here, 'recruitment-fixture.sql'),
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql'),
@@ -256,6 +257,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
@@ -323,6 +325,101 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const recruitmentIds = {
+  jobA1: 'a1111111-1111-4111-8111-111111111111',
+  jobA2: 'a2222222-2222-4222-8222-222222222222',
+  jobB: 'b1111111-1111-4111-8111-111111111111',
+  applicationA1: 'c1111111-1111-4111-8111-111111111111',
+  applicationA2: 'c2222222-2222-4222-8222-222222222222',
+  applicationB: 'd1111111-1111-4111-8111-111111111111',
+  historyA1: 'e1111111-1111-4111-8111-111111111111',
+  historyA1Second: 'e2222222-2222-4222-8222-222222222222',
+  historyB: 'f1111111-1111-4111-8111-111111111111',
+};
+psqlSync(`INSERT INTO public.jobs(id,tenant_id,reference_number,title) VALUES
+  ('${recruitmentIds.jobA1}'::uuid,'${ids.tenantA}'::uuid,'QA-ENG-1','Platform Engineer'),
+  ('${recruitmentIds.jobA2}'::uuid,'${ids.tenantA}'::uuid,'QA-DES-2','Product Designer'),
+  ('${recruitmentIds.jobB}'::uuid,'${ids.tenantB}'::uuid,'QB-OPS-1','Tenant B Analyst');
+INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,phone,years_experience,skills,cv_url,cover_letter,stage,status_note,applied_at,application_data) VALUES
+  ('${recruitmentIds.applicationA1}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA1}'::uuid,'55555555-5555-4555-8555-555555555581'::uuid,'Candidate A One','private-email-a@candidate.test','private-phone-a',5,ARRAY['sql'],'private-cv-url-a','private-cover-letter-a','submitted','private-status-note-a','2026-10-12T09:00:00Z','{"answer":"private-screening-answer-a"}'),
+  ('${recruitmentIds.applicationA2}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA2}'::uuid,'55555555-5555-4555-8555-555555555582'::uuid,'Candidate A Two','private-email-a2@candidate.test','private-phone-a2',3,ARRAY['design'],'private-cv-url-a2','private-cover-letter-a2','interview_scheduled','private-status-note-a2','2026-10-12T10:00:00Z','{"answer":"private-screening-answer-a2"}'),
+  ('${recruitmentIds.applicationB}'::uuid,'${ids.tenantB}'::uuid,'${recruitmentIds.jobB}'::uuid,'66666666-6666-4666-8666-666666666681'::uuid,'Candidate B Only','private-email-b@candidate.test','private-phone-b',2,ARRAY['ops'],'private-cv-url-b','private-cover-letter-b','submitted','private-status-note-b','2026-10-12T11:00:00Z','{"answer":"private-screening-answer-b"}');
+INSERT INTO public.candidate_application_stage_history(id,application_id,stage,note,actor_type,actor_user_id,created_at) VALUES
+  ('${recruitmentIds.historyA1}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'submitted','private-reviewer-note-a','employee','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T09:01:00Z'),
+  ('${recruitmentIds.historyA1Second}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'screening','candidate-visible-milestone-note-a','employee','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T10:01:00Z'),
+  ('${recruitmentIds.historyB}'::uuid,'${recruitmentIds.applicationB}'::uuid,'submitted','private-reviewer-note-b','employee','66666666-6666-4666-8666-666666666601'::uuid,'2026-10-12T11:01:00Z');`);
+
+const recruitmentA = await managerA.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
+const recruitmentB = await managerB.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantB });
+const recruitmentFiltered = await managerA.client.rpc('hris_get_recruitment_pipeline', {
+  p_tenant_id: ids.tenantA, p_search: 'platform engineer', p_stage: 'submitted', p_limit: 1, p_offset: 0,
+});
+const recruitmentPageTwo = await managerA.client.rpc('hris_get_recruitment_pipeline', {
+  p_tenant_id: ids.tenantA, p_limit: 1, p_offset: 1,
+});
+const recruitmentEmailSearch = await managerA.client.rpc('hris_get_recruitment_pipeline', {
+  p_tenant_id: ids.tenantA, p_search: 'private-email-a@candidate.test',
+});
+const recruitmentCrossTenant = await managerA.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantB });
+const recruitmentNoPermission = await noPermission.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
+const recruitmentGlobalOnly = await globalOnly.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
+const recruitmentAnon = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
+const recruitmentDirectTable = await managerA.client.from('job_applications').select('id').eq('tenant_id', ids.tenantA);
+const recruitmentSafePayload = JSON.stringify(recruitmentA.data);
+record('Recruitment pipeline returns paginated tenant-matched names, jobs, stages, and sanitized milestones',
+  !recruitmentA.error && recruitmentA.data?.applications?.length === 2
+    && recruitmentA.data.total_count === 2
+    && recruitmentA.data.available_stages.join(',') === 'interview_scheduled,submitted'
+    && recruitmentA.data.applications.find(row => row.application_id === recruitmentIds.applicationA1)?.milestones.length === 2
+    && !recruitmentSafePayload.includes('private-email-a@candidate.test')
+    && !recruitmentSafePayload.includes('private-phone-a')
+    && !recruitmentSafePayload.includes('private-cv-url-a')
+    && !recruitmentSafePayload.includes('private-cover-letter-a')
+    && !recruitmentSafePayload.includes('private-screening-answer-a')
+    && !recruitmentSafePayload.includes('private-status-note-a')
+    && !recruitmentSafePayload.includes('private-reviewer-note-a')
+    && !recruitmentSafePayload.includes('actor_user_id'));
+record('Recruitment pipeline filters by candidate/job/stage fields and paginates without searching private email',
+  !recruitmentFiltered.error && recruitmentFiltered.data?.applications?.length === 1
+    && recruitmentFiltered.data.total_count === 1
+    && recruitmentFiltered.data.applications[0].application_id === recruitmentIds.applicationA1
+    && !recruitmentPageTwo.error && recruitmentPageTwo.data?.applications?.length === 1
+    && recruitmentPageTwo.data.total_count === 2
+    && !recruitmentEmailSearch.error && recruitmentEmailSearch.data?.applications?.length === 0);
+record('Recruitment pipeline isolates tenant A and tenant B records',
+  !recruitmentB.error && recruitmentB.data?.applications?.length === 1
+    && recruitmentB.data.applications[0].candidate_name === 'Candidate B Only'
+    && !JSON.stringify(recruitmentB.data).includes('Candidate A One')
+    && Boolean(recruitmentCrossTenant.error?.code === '42501'));
+record('Recruitment pipeline rejects no-permission, global-only and anonymous callers and denies direct application reads',
+  Boolean(recruitmentNoPermission.error?.code === '42501')
+    && Boolean(recruitmentGlobalOnly.error?.code === '42501')
+    && Boolean(recruitmentAnon.error)
+    && Boolean(recruitmentDirectTable.error));
+let recruitmentBrowserOutput = '';
+let recruitmentBrowserError = '';
+try {
+  recruitmentBrowserOutput = execFileSync('node', [path.join(here, 'run-recruitment-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[0],
+      HRIS_LOCAL_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  recruitmentBrowserError = String(error.stderr || error.message || 'local recruitment browser run failed').slice(-1400);
+}
+record('Real 375px/1280px browser reads the tenant-scoped recruitment pipeline from local Auth/Postgres',
+  recruitmentBrowserOutput.includes('Local Auth-to-Postgres recruitment pipeline journey passed at 375px mobile and 1280px desktop.'),
+  recruitmentBrowserError);
 
 const employeeAGoalId = '88888888-8888-4888-8888-888888888801';
 const employeeBGoalId = '88888888-8888-4888-8888-888888888802';
