@@ -7,6 +7,7 @@ on:
       - 'tests/sql/candidate-c1/**'
       - 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'
       - 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'
+      - 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'
       - '.github/workflows/phase2a-postgres.yml'
   push:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'tests/sql/candidate-c1/**'
       - 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'
       - 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'
+      - 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'
       - '.github/workflows/phase2a-postgres.yml'
   workflow_dispatch:
 
@@ -63,6 +65,13 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/verify.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/cleanup-fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/tenant-fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/verify.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/tenant-verify.sql
       - name: Report boundaries
         run: |
           echo "Executed Phase 2A tenant SQL in synthetic PostgreSQL 17."

@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "check": "npm run lint && npm run test:contracts && npm run build",
     "test:contracts": "node --test tests/contracts/*.test.mjs",
+    "test:candidate-c1-auth": "node tests/sql/candidate-c1/run-local-tenant-auth.mjs",
     "test:e2e": "playwright test --project=chromium"
   },
   "dependencies": {
