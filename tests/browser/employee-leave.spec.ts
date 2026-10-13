@@ -28,6 +28,7 @@ test('linked employee can complete the private evidence leave request on mobile'
   let submitted = false;
   let savedEvidencePath = '';
   let denyNextEvidenceDownload = true;
+  const evidenceUploadPaths: string[] = [];
   const evidenceDownloadPaths: string[] = [];
   let correctionSubmitted = false;
   let correctionPayload: Record<string, unknown> | null = null;
@@ -75,7 +76,7 @@ test('linked employee can complete the private evidence leave request on mobile'
     } else if (endpoint === 'hris_get_my_dashboard_data') {
       const requestHistory = submitted ? [{
         id: 'f5555555-5555-4555-8555-555555555555', leave_type_id: leaveTypeId,
-        leave_type_name: 'Medical leave', from_date: isoDateAfter(9), to_date: isoDateAfter(9),
+        leave_type_name: 'Medical leave', from_date: isoDateAfter(12), to_date: isoDateAfter(12),
         requested_days: 1, reason: 'Synthetic mobile leave request', status: 'pending',
         attachment_url: savedEvidencePath,
       }, {
@@ -103,7 +104,7 @@ test('linked employee can complete the private evidence leave request on mobile'
           used_days: 0, pending_days: submitted ? 1 : 0 }],
         requests: requestHistory,
         leave_types: [{ id: leaveTypeId, name: 'Medical leave', annual_entitlement: 20,
-          min_days_notice: null, requires_document_proof: true }],
+          min_days_notice: 10, requires_document_proof: true }],
         holidays: [{ id: 'f7777777-7777-4777-8777-777777777777', name: 'Synthetic Staff Day', start_date: '2026-10-13', end_date: '2026-10-13' }],
         weekly_off_days: [0, 6], balance_year: new Date().getFullYear(),
       }) });
@@ -159,7 +160,7 @@ test('linked employee can complete the private evidence leave request on mobile'
       await route.fulfill({ status: 200, contentType: 'application/pdf', body: '%PDF-1.4 synthetic evidence download' });
       return;
     }
-    if (request.method() === 'POST') savedEvidencePath = path;
+    if (request.method() === 'POST') { savedEvidencePath = path; evidenceUploadPaths.push(path); }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ Key: 'synthetic-evidence' }) });
   });
 
@@ -236,12 +237,22 @@ test('linked employee can complete the private evidence leave request on mobile'
 
   await page.getByRole('button', { name: 'Request for leave' }).click();
   await page.getByLabel('Leave type').selectOption(leaveTypeId);
-  await page.getByLabel('From date').fill(isoDateAfter(9));
-  await page.getByLabel('To date').fill(isoDateAfter(9));
+  const fromDate = page.getByLabel('From date');
+  await expect(fromDate).toHaveAttribute('min', '2026-10-22');
+  await expect(page.getByText(/Earliest start date: 2026-10-22/)).toBeVisible();
+  await fromDate.fill('2026-10-21');
+  await page.getByLabel('To date').fill('2026-10-21');
   await page.getByLabel('Reason').fill('Synthetic mobile leave request');
   await page.locator('#personal-leave-evidence').setInputFiles({
     name: 'medical-evidence.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 synthetic test evidence'),
   });
+  await page.getByRole('button', { name: 'Send request' }).click();
+  expect(await fromDate.evaluate((input: HTMLInputElement) => input.validity.rangeUnderflow)).toBe(true);
+  expect(evidenceUploadPaths).toHaveLength(0);
+  expect(submitted).toBe(false);
+  await expect(dialog).toBeVisible();
+  await fromDate.fill(isoDateAfter(12));
+  await page.getByLabel('To date').fill(isoDateAfter(12));
   const formBody = dialog.locator('form > div').first();
   await formBody.evaluate(element => { element.scrollTop = element.scrollHeight; });
   const evidenceClearsFooter = await page.evaluate(() => {
@@ -255,6 +266,7 @@ test('linked employee can complete the private evidence leave request on mobile'
   await page.screenshot({ path: '/private/tmp/hris-employee-leave-mobile.png', fullPage: false });
   await page.getByRole('button', { name: 'Send request' }).click();
   await expect(page.getByText('Leave request submitted. You can follow its status in your history.')).toBeVisible();
+  expect(evidenceUploadPaths).toHaveLength(1);
   await expect(page.getByText('Synthetic mobile leave request')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await page.getByRole('button', { name: 'Request for leave' }).click();

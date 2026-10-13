@@ -146,6 +146,14 @@ function localIsoDate(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
+function addIsoDateDays(value: string, count: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isInteger(count) || count < 0) return '';
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return '';
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+}
+
 function startOfRecentWeek(): string {
   const date = new Date();
   date.setDate(date.getDate() - 6);
@@ -1242,6 +1250,10 @@ function PersonalLeaveRequests({
   const balances = asRows(leave.balances);
   const requests = asRows(leave.requests);
   const selectedLeaveType = leaveTypes.find(item => item.id === leaveTypeId);
+  const noticeDays = selectedLeaveType?.min_days_notice == null ? null : Number(selectedLeaveType.min_days_notice);
+  const earliestStartDate = noticeDays != null && Number.isInteger(noticeDays) && noticeDays >= 0
+    ? addIsoDateDays(String(leave.dashboard_date || ''), noticeDays)
+    : '';
 
   useEffect(() => {
     if (!requestOpen) return;
@@ -1279,6 +1291,10 @@ function PersonalLeaveRequests({
     const selected = leaveTypes.find(item => item.id === leaveTypeId);
     if (!selected) { setFormError('Choose a leave type.'); return; }
     if (fromDate > toDate) { setFormError('The end date must be on or after the start date.'); return; }
+    if (earliestStartDate && fromDate < earliestStartDate) {
+      setFormError(`Choose a start date on or after ${earliestStartDate} to meet the ${noticeDays}-day advance notice.`);
+      return;
+    }
     if (dayPortion !== 'full' && fromDate !== toDate) {
       setFormError('A half-day request must use one date.'); return;
     }
@@ -1415,12 +1431,12 @@ function PersonalLeaveRequests({
                 <option value="">Choose a leave type</option>{leaveTypes.map(item => <option key={String(item.id)} value={String(item.id)}>{display(item.name)}</option>)}
               </select>
               {selectedLeaveType?.min_days_notice != null && Number(selectedLeaveType.min_days_notice) > 0 &&
-                <p className="mt-1 text-xs text-slate-600">This leave type requires {display(selectedLeaveType.min_days_notice)} days’ advance notice.</p>}
+                <p className="mt-1 text-xs text-slate-600">This leave type requires {display(selectedLeaveType.min_days_notice)} days’ advance notice{earliestStartDate ? ` · Earliest start date: ${earliestStartDate}` : ''}.</p>}
               {selectedLeaveType?.requires_document_proof === true && <p className="mt-1 text-xs text-slate-600">Supporting evidence is required for this leave type.</p>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><label htmlFor="personal-leave-from" className="mb-1 block text-sm font-medium text-slate-700">From date <span aria-hidden="true">*</span></label>
-                <input id="personal-leave-from" type="date" required value={fromDate} onChange={event => setFromDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+                <input id="personal-leave-from" type="date" required min={earliestStartDate || undefined} value={fromDate} onChange={event => setFromDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
               <div><label htmlFor="personal-leave-to" className="mb-1 block text-sm font-medium text-slate-700">To date <span aria-hidden="true">*</span></label>
                 <input id="personal-leave-to" type="date" required min={fromDate || undefined} value={toDate} onChange={event => setToDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
             </div>
