@@ -2128,6 +2128,12 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
   const [attendance, setAttendance] = useState<Record<string, unknown> | null>(null);
   const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
   const [loadedTenantId, setLoadedTenantId] = useState('');
+  const [selectedAttendanceMonth, setSelectedAttendanceMonth] = useState('');
+  const [monthlyAttendance, setMonthlyAttendance] = useState<Record<string, unknown>[]>([]);
+  const [loadedAttendanceMonth, setLoadedAttendanceMonth] = useState('');
+  const [attendanceMonthLoading, setAttendanceMonthLoading] = useState(false);
+  const [attendanceMonthError, setAttendanceMonthError] = useState('');
+  const [attendanceMonthRevision, setAttendanceMonthRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [attendanceAction, setAttendanceAction] = useState<'check_in' | 'check_out' | null>(null);
@@ -2135,6 +2141,9 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
   const [attendanceActionSuccess, setAttendanceActionSuccess] = useState('');
   const [activePanel, setActivePanel] = useState<EmployeePanelId>('working-hours');
   const requestSequence = useRef(0);
+  const attendanceMonthSequence = useRef(0);
+  const activeTenantId = useRef(tenantId);
+  activeTenantId.current = tenantId;
 
   async function load(showLoading = true) {
     const requestId = ++requestSequence.current;
@@ -2148,7 +2157,10 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
       const dashboardData = asObject(data);
       const attendanceData = asObject(dashboardData?.attendance);
       if (!attendanceData || !dashboardData) throw new Error('Employee services returned an invalid response.');
+      const dashboardDate = typeof dashboardData.dashboard_date === 'string' ? dashboardData.dashboard_date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dashboardDate)) throw new Error('Employee services returned an invalid organization date.');
       if (requestId !== requestSequence.current) return;
+      if (loadedTenantId !== tenantId) setSelectedAttendanceMonth(dashboardDate.slice(0, 7));
       setAttendance(attendanceData);
       setLeave(dashboardData);
       setLoadedTenantId(tenantId);
@@ -2174,6 +2186,7 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
       if (rpcError) throw rpcError;
       setAttendanceActionSuccess(event === 'check_in' ? 'You are checked in for today.' : 'You are checked out for today.');
       await load(false);
+      setAttendanceMonthRevision(value => value + 1);
     } catch (cause) {
       setAttendanceActionError(cause instanceof Error ? cause.message : 'Unable to update your attendance. Please retry.');
     } finally {
@@ -2187,6 +2200,48 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
     return () => { requestSequence.current += 1; };
   }, [tenantId]);
 
+  useEffect(() => {
+    const requestId = ++attendanceMonthSequence.current;
+    const monthKey = `${tenantId}:${selectedAttendanceMonth}`;
+    const isCurrent = () => requestId === attendanceMonthSequence.current
+      && activeTenantId.current === tenantId;
+    if (!selectedAttendanceMonth || loadedTenantId !== tenantId) {
+      setMonthlyAttendance([]);
+      setLoadedAttendanceMonth('');
+      setAttendanceMonthLoading(false);
+      setAttendanceMonthError('');
+      return () => { attendanceMonthSequence.current += 1; };
+    }
+
+    setAttendanceMonthLoading(true);
+    setAttendanceMonthError('');
+    void (async () => {
+      try {
+        const result = await supabase.rpc('hris_get_my_attendance_period', {
+          p_tenant_id: tenantId,
+          p_month_start: `${selectedAttendanceMonth}-01`,
+        });
+        if (result.error) throw result.error;
+        const data = asObject(result.data);
+        const rows = asRows(data?.records);
+        if (!data || data.tenant_id !== tenantId || data.month_start !== `${selectedAttendanceMonth}-01` || !Array.isArray(data.records)) {
+          throw new Error('Monthly attendance returned an invalid response.');
+        }
+        if (!isCurrent()) return;
+        setMonthlyAttendance(rows);
+        setLoadedAttendanceMonth(monthKey);
+      } catch (cause) {
+        if (!isCurrent()) return;
+        setMonthlyAttendance([]);
+        setLoadedAttendanceMonth('');
+        setAttendanceMonthError(cause instanceof Error ? cause.message : 'Unable to load this month of attendance.');
+      } finally {
+        if (isCurrent()) setAttendanceMonthLoading(false);
+      }
+    })();
+    return () => { attendanceMonthSequence.current += 1; };
+  }, [tenantId, selectedAttendanceMonth, attendanceMonthRevision, loadedTenantId]);
+
   const currentTenantDataReady = loadedTenantId === tenantId && Boolean(attendance && leave);
   const employee = asObject(leave?.employee);
   const fullName = typeof employee?.full_name === 'string' ? employee.full_name : '';
@@ -2198,13 +2253,35 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
   const balances = asRows(leave?.balances);
   const holidays = asRows(leave?.holidays);
   const requests = asRows(leave?.requests);
-  const workHours = attendanceRecords.map(row => ({
+  const attendanceMonthKey = `${tenantId}:${selectedAttendanceMonth}`;
+  const attendanceMonthReady = loadedAttendanceMonth === attendanceMonthKey;
+  const monthAttendanceRows = attendanceMonthReady ? monthlyAttendance : [];
+  const monthParts = selectedAttendanceMonth.split('-').map(Number);
+  const monthDayCount = monthParts.length === 2 && monthParts.every(Number.isFinite)
+    ? new Date(Date.UTC(monthParts[0], monthParts[1], 0)).getUTCDate() : 31;
+  const workHours = monthAttendanceRows.map(row => ({
     row,
     hours: row.work_hours === null || row.work_hours === undefined ? null : Number(row.work_hours),
-  })).filter(item => item.hours === null || Number.isFinite(item.hours)).reverse();
+  })).filter(item => item.hours === null || Number.isFinite(item.hours));
   const recordedHours = workHours.reduce((sum, item) => sum + (item.hours ?? 0), 0);
-  const maxHours = Math.max(0, ...workHours.map(item => item.hours ?? 0));
-  const workModes = attendanceRecords.reduce<Record<string, number>>((counts, row) => {
+  const weekBuckets = Array.from({ length: Math.ceil(monthDayCount / 7) }, (_, index) => ({
+    label: `${index * 7 + 1}–${Math.min(monthDayCount, index * 7 + 7)}`,
+    hours: 0,
+    count: 0,
+  }));
+  for (const item of workHours) {
+    const day = Number(String(item.row.attendance_date || '').slice(8, 10));
+    if (!Number.isInteger(day) || day < 1 || day > 31) continue;
+    const bucket = weekBuckets[Math.min(4, Math.floor((day - 1) / 7))];
+    bucket.hours += item.hours ?? 0;
+    if (item.hours !== null) bucket.count += 1;
+  }
+  const maxWeekHours = Math.max(0, ...weekBuckets.map(bucket => bucket.hours));
+  const attendanceMonthLabel = selectedAttendanceMonth && monthParts.length === 2
+    ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      .format(new Date(Date.UTC(monthParts[0], monthParts[1] - 1, 1)))
+    : 'selected month';
+  const workModes = monthAttendanceRows.reduce<Record<string, number>>((counts, row) => {
     const mode = displayWorkMode(row.work_mode);
     if (mode !== 'Not recorded') counts[mode] = (counts[mode] || 0) + 1;
     return counts;
@@ -2220,7 +2297,9 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 id="employee-summary-heading" className="text-2xl font-medium text-[#49454F]">Personal Dashboard</h2>
         <p className="mt-1 text-sm text-slate-500">Your attendance and leave information for {tenantName}</p></div>
-      <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Refresh</button>
+      <button type="button" disabled={loading} onClick={() => {
+        void load().finally(() => setAttendanceMonthRevision(value => value + 1));
+      }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Refresh</button>
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your HRIS summary…</p>}
@@ -2275,25 +2354,38 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
               </div>
             </div>
             <div className="min-h-56 p-4 sm:p-5" aria-live="polite">
+              {attendanceMonthLoading && <p role="status" className="mb-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Loading {attendanceMonthLabel} attendance…</p>}
+              {attendanceMonthError && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                <span>{attendanceMonthError}</span>
+                <button type="button" onClick={() => setAttendanceMonthRevision(value => value + 1)} className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">Retry attendance month</button>
+              </div>}
               {activePanel === 'working-hours' && <div>
                 <div className="flex flex-wrap items-end justify-between gap-2">
-                  <div><h4 className="font-medium text-slate-800">Recorded working hours</h4><p className="mt-1 text-xs text-slate-500">Last 7 days</p></div>
-                  <p className="text-right"><span className="block text-xl font-semibold tabular-nums text-[#08558B]">{recordedHours.toFixed(1)} hr</span><span className="text-xs text-slate-500">from complete check-in pairs</span></p>
+                  <div><h4 className="font-medium text-slate-800">Recorded working hours</h4>
+                    <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                      <span>Attendance month</span>
+                      <input aria-label="Attendance month" type="month" value={selectedAttendanceMonth}
+                        max={today.slice(0, 7)} onChange={event => setSelectedAttendanceMonth(event.target.value)}
+                        className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#08558B] focus:outline-none focus:ring-2 focus:ring-[#08558B]/20" />
+                    </label>
+                  </div>
+                  <p className="text-right"><span className="block text-xl font-semibold tabular-nums text-[#08558B]">{attendanceMonthReady ? recordedHours.toFixed(1) : '—'} hr</span><span className="text-xs text-slate-500">{attendanceMonthLabel} · complete check-in pairs</span></p>
                 </div>
-                {workHours.some(item => item.hours !== null) ? <div role="img" aria-label={`Recorded work hours for ${workHours.length} recent dates`} className="mt-5 grid grid-cols-7 items-end gap-2 border-b border-slate-200 pb-2">
-                  {workHours.map(({ row, hours }, index) => <div key={String(row.id || row.attendance_date || index)} className="min-w-0 text-center">
-                    <div className="flex h-28 items-end justify-center"><div title={`${hours?.toFixed(1) || '0.0'} recorded hours`} className="w-full max-w-8 rounded-t bg-[#08558B]" style={{ height: `${maxHours > 0 && hours ? Math.max(6, (hours / maxHours) * 100) : 0}%` }} /></div>
-                    <span className="mt-2 block truncate text-[10px] text-slate-500">{displayShortDate(row.attendance_date)}</span>
-                    <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{hours === null ? '—' : `${hours.toFixed(1)}h`}</span>
+                {attendanceMonthReady && (workHours.some(item => item.hours !== null) ? <div role="img" aria-label={`Recorded work hours for ${attendanceMonthLabel} by week`} className="mt-5 grid grid-cols-4 items-end gap-2 border-b border-slate-200 pb-2 sm:grid-cols-5">
+                  {weekBuckets.map((bucket, index) => <div key={bucket.label} className="min-w-0 text-center">
+                    <div className="flex h-28 items-end justify-center"><div title={`${bucket.hours.toFixed(1)} recorded hours`} className="w-full max-w-10 rounded-t bg-[#08558B]" style={{ height: `${maxWeekHours > 0 && bucket.hours ? Math.max(6, (bucket.hours / maxWeekHours) * 100) : 0}%` }} /></div>
+                    <span className="mt-2 block truncate text-[10px] text-slate-500">Week {index + 1} · {bucket.label}</span>
+                    <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{bucket.count ? `${bucket.hours.toFixed(1)}h` : '—'}</span>
                   </div>)}
-                </div> : <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No complete check-in and check-out pairs are available for this date range.</p>}
-                <p className="mt-3 text-xs text-slate-500">Scheduled hours are not returned in this personal summary, so no required-hours target is shown.</p>
+                </div> : null)}
+                {attendanceMonthReady && !workHours.some(item => item.hours !== null) && <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No complete check-in and check-out pairs are available for {attendanceMonthLabel}.</p>}
+                {attendanceMonthReady && <p className="mt-3 text-xs text-slate-500">Scheduled hours are not returned in this personal summary, so no required-hours target is shown.</p>}
               </div>}
               {activePanel === 'work-location' && <div>
-                <h4 className="font-medium text-slate-800">Recorded work locations</h4><p className="mt-1 text-xs text-slate-500">Based on your recent attendance entries</p>
-                {Object.keys(workModes).length ? <div className="mt-4 grid grid-cols-2 gap-3">{Object.entries(workModes).map(([mode, count]) => <div key={mode} className="rounded-lg border border-slate-200 p-3">
+                <h4 className="font-medium text-slate-800">Recorded work locations</h4><p className="mt-1 text-xs text-slate-500">{attendanceMonthLabel}</p>
+                {attendanceMonthReady && (Object.keys(workModes).length ? <div className="mt-4 grid grid-cols-2 gap-3">{Object.entries(workModes).map(([mode, count]) => <div key={mode} className="rounded-lg border border-slate-200 p-3">
                   <p className="flex items-center gap-2 text-sm text-slate-600"><MapPin className="h-4 w-4 text-[#08558B]" />{mode}</p><p className="mt-2 text-xl font-semibold tabular-nums">{count}</p><p className="text-xs text-slate-500">attendance entries</p>
-                </div>)}</div> : <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No work location is recorded in the recent attendance entries.</p>}
+                </div>)}</div> : <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No work location is recorded for {attendanceMonthLabel}.</p>)}
               </div>}
               {activePanel === 'leave-type' && <div>
                 <h4 className="font-medium text-slate-800">Leave balances · {display(leave.balance_year)}</h4>
@@ -2302,11 +2394,11 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
                 </div>)}</div> : <p className="mt-3 text-sm text-slate-600">No leave balance records are available.</p>}
               </div>}
               {activePanel === 'check-in-times' && <div>
-                <h4 className="font-medium text-slate-800">Recent check-in times</h4>
-                {attendanceRecords.length ? <ul className="mt-2 divide-y divide-slate-100">{attendanceRecords.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                <h4 className="font-medium text-slate-800">Check-in history · {attendanceMonthLabel}</h4>
+                {attendanceMonthReady && (monthAttendanceRows.length ? <ul className="mt-2 divide-y divide-slate-100">{monthAttendanceRows.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                   <span><strong>{displayShortDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{display(row.status)}</span></span>
                   <span className="tabular-nums">{displayTime(row.check_in)} – {displayTime(row.check_out)}</span>
-                </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No recent attendance records are available.</p>}
+                </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No attendance records are available for {attendanceMonthLabel}.</p>)}
               </div>}
             </div>
           </section>

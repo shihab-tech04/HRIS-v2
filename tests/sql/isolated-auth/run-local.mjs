@@ -142,6 +142,13 @@ function queryAdmin(sql) {
 }
 
 const localCurrentDate = psqlSync("SELECT (now() AT TIME ZONE 'Asia/Dhaka')::date::text;").trim();
+const currentAttendanceMonth = `${localCurrentDate.slice(0, 7)}-01`;
+const currentAttendanceMonthParts = currentAttendanceMonth.split('-').map(Number);
+const attendanceMonthDays = new Date(Date.UTC(currentAttendanceMonthParts[0], currentAttendanceMonthParts[1], 0)).getUTCDate();
+const previousAttendanceMonthStart = `${addCalendarDays(currentAttendanceMonth, -1).slice(0, 7)}-01`;
+const previousAttendanceMonthDate = `${previousAttendanceMonthStart.slice(0, 7)}-10`;
+const nextAttendanceMonthStart = addCalendarDays(currentAttendanceMonth, attendanceMonthDays);
+const emptyAttendanceMonth = `${addCalendarDays(previousAttendanceMonthStart, -1).slice(0, 7)}-01`;
 
 function quoteNote(note) {
   return note === null ? 'NULL' : sqlLiteral(note);
@@ -296,6 +303,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013221700_employee_leave_history_private_evidence.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014110000_hris_employee_payslip_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014120000_hris_tenant_payroll_register_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013215431_employee_dashboard_attendance_period_read.sql'),
 ]) applySql(file);
 // The local PostgREST container predates SQL applied directly by this harness.
 // Refresh its function catalog before testing newly installed RPCs.
@@ -405,6 +413,15 @@ const ids = {
   leaveTypeB: '99999999-9999-4999-8999-999999999903',
   leaveTypeEvidence: '99999999-9999-4999-8999-999999999904',
 };
+psqlSync(`INSERT INTO public.attendance_records(
+  id,tenant_id,employee_id,attendance_date,check_in,check_out,work_mode,status,source,remarks
+) VALUES (
+  'bbbbbbbb-0000-4000-8000-000000000006','${ids.tenantA}','55555555-5555-4555-8555-555555555555',
+  '${previousAttendanceMonthDate}'::date,
+  (('${previousAttendanceMonthDate}'::date + time '09:00') AT TIME ZONE 'Asia/Dhaka'),
+  (('${previousAttendanceMonthDate}'::date + time '17:00') AT TIME ZONE 'Asia/Dhaka'),
+  'office','present','employee','Synthetic isolated prior-month attendance acceptance fixture'
+);`);
 psqlSync(`UPDATE public.leave_requests
   SET from_date='${localCurrentDate}'::date,to_date='${localCurrentDate}'::date
   WHERE id='${ids.leaveApprove}'::uuid`);
@@ -2051,6 +2068,69 @@ record('Employee dashboard profile and date belong to the linked tenant-local em
   JSON.stringify({ employeeA: employeeSummaryA.employee, employeeB: employeeSummaryB.employee,
     dateA: employeeSummaryA.dashboard_date, dateB: employeeSummaryB.dashboard_date }));
 
+const employeeAttendanceMonthA = await employeeA.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth,
+});
+const employeeAttendanceMonthB = await employeeB.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantB, p_month_start: currentAttendanceMonth,
+});
+const employeeAttendancePreviousMonth = await employeeA.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: previousAttendanceMonthStart,
+});
+record('Employee attendance period returns persisted rows for the selected month and tenant only',
+  !employeeAttendanceMonthA.error && employeeAttendanceMonthA.data?.tenant_id === ids.tenantA
+    && employeeAttendanceMonthA.data.month_start === currentAttendanceMonth
+    && employeeAttendanceMonthA.data.records.some(row => row.id === ids.attendanceRecord)
+    && employeeAttendanceMonthA.data.records.every(row => String(row.attendance_date).startsWith(currentAttendanceMonth.slice(0, 7)))
+    && !employeeAttendanceMonthB.error && employeeAttendanceMonthB.data?.tenant_id === ids.tenantB
+    && employeeAttendanceMonthB.data.records.length === 1
+    && employeeAttendanceMonthB.data.records[0].id === 'bbbbbbbb-0000-4000-8000-000000000002'
+    && !employeeAttendancePreviousMonth.error && employeeAttendancePreviousMonth.data.records.length === 1
+    && employeeAttendancePreviousMonth.data.records[0].id === 'bbbbbbbb-0000-4000-8000-000000000006'
+    && Number(employeeAttendancePreviousMonth.data.records[0].work_hours) === 8,
+  JSON.stringify({ a: employeeAttendanceMonthA.data?.records?.map(row => row.id),
+    b: employeeAttendanceMonthB.data?.records?.map(row => row.id),
+    previous: employeeAttendancePreviousMonth.data?.records?.map(row => ({ id: row.id, work_hours: row.work_hours })) }));
+
+const attendancePeriodCrossTenant = await employeeB.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth,
+});
+const attendancePeriodNoPermission = await noPermission.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth,
+});
+const attendancePeriodGlobalOnly = await globalOnly.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth,
+});
+const attendancePeriodAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_my_attendance_period', { p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth });
+record('Attendance period rejects cross-tenant, unlinked, global-only, and anonymous callers',
+  Boolean(attendancePeriodCrossTenant.error?.code === '42501')
+    && Boolean(attendancePeriodNoPermission.error?.code === '42501')
+    && Boolean(attendancePeriodGlobalOnly.error?.code === '42501')
+    && Boolean(attendancePeriodAnonymous.error),
+  JSON.stringify({ cross: attendancePeriodCrossTenant.error?.code,
+    unlinked: attendancePeriodNoPermission.error?.code, globalOnly: attendancePeriodGlobalOnly.error?.code,
+    anonymous: attendancePeriodAnonymous.error?.code }));
+
+const attendancePeriodInvalidMonth = await employeeA.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: `${currentAttendanceMonth.slice(0, 7)}-02`,
+});
+const attendancePeriodFutureMonth = await employeeA.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: nextAttendanceMonthStart,
+});
+record('Attendance period rejects non-month-start and future month ranges',
+  Boolean(attendancePeriodInvalidMonth.error?.code === '22023')
+    && Boolean(attendancePeriodFutureMonth.error?.code === '22023'),
+  JSON.stringify({ invalid: attendancePeriodInvalidMonth.error?.code,
+    future: attendancePeriodFutureMonth.error?.code }));
+
+const attendancePeriodAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon_execute',has_function_privilege('anon','public.hris_get_my_attendance_period(uuid,date)','EXECUTE'),
+  'authenticated_execute',has_function_privilege('authenticated','public.hris_get_my_attendance_period(uuid,date)','EXECUTE'))`);
+record('Attendance period RPC is executable by authenticated users and not anonymous users',
+  attendancePeriodAcl.anon_execute === false && attendancePeriodAcl.authenticated_execute === true,
+  JSON.stringify(attendancePeriodAcl));
+
 const clockOutBeforeCheckIn = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
   p_tenant_id: ids.tenantA, p_event: 'check_out',
 });
@@ -3579,6 +3659,33 @@ record('Peer-review submission rechecks assignment overlap in the backend',
     persistedStatus: injectedReviewState.status }));
 
 const browserTaskTitle = `Local browser integration ${Date.now()}`;
+let employeeAttendanceBrowserOutput = '';
+let employeeAttendanceBrowserError = '';
+try {
+  employeeAttendanceBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-dashboard-attendance-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_ATTENDANCE_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_ATTENDANCE_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH: currentAttendanceMonth.slice(0, 7),
+      HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
+      HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  employeeAttendanceBrowserError = String(error.stderr || error.message || 'local employee attendance browser run failed').slice(-1800);
+  employeeAttendanceBrowserOutput = String(error.stdout || '');
+}
+record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
+  employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
+  employeeAttendanceBrowserError);
+
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';
 try {
