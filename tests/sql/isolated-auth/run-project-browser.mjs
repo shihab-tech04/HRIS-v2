@@ -149,11 +149,25 @@ try {
   await assertNoHorizontalOverflow(pmPage, 'Desktop task completion and feedback state');
 
   const reviewerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  let notificationOutagePending = true;
+  let notificationOutages = 0;
+  let notificationReads = 0;
   let inboxOutagePending = true;
   let inboxOutages = 0;
   let inboxReadCalls = 0;
   await reviewerPage.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_notifications')
+        && route.request().method() === 'POST') {
+      notificationReads += 1;
+      if (notificationOutagePending) {
+        notificationOutagePending = false;
+        notificationOutages += 1;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic notification inbox outage.' }) });
+        return;
+      }
+    }
     if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
         && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_peer_reviews')
         && route.request().method() === 'POST') {
@@ -170,6 +184,19 @@ try {
     return route.abort();
   });
   await signIn(reviewerPage, process.env.HRIS_LOCAL_REVIEWER_EMAIL);
+  await navigateTo(reviewerPage, 'Notifications');
+  await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review notifications');
+  await reviewerPage.getByRole('heading', { name: 'Notifications', exact: true }).waitFor({ state: 'visible' });
+  const notificationRetry = reviewerPage.getByRole('button', { name: 'Retry', exact: true });
+  await notificationRetry.waitFor({ state: 'visible' });
+  if (notificationOutages !== 1 || notificationReads !== 1) throw new Error(`Expected one isolated notification outage before recovery; outages=${notificationOutages}, reads=${notificationReads}.`);
+  await notificationRetry.click();
+  const reviewNotification = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await reviewNotification.waitFor({ state: 'visible' });
+  const unreadBadge = reviewerPage.getByText(/^\d+ unread$/);
+  const unreadBeforeSubmit = Number((await unreadBadge.innerText()).split(' ')[0]);
+  await assertVisibleText(reviewNotification, 'Peer review for Synthetic Employee A');
+  await reviewNotification.getByRole('button', { name: 'Open review' }).click();
   await navigateTo(reviewerPage, 'My Projects');
   await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review inbox');
   await reviewerPage.getByRole('heading', { name: 'My project work' }).waitFor({ state: 'visible' });
@@ -192,8 +219,16 @@ try {
     'Review for Synthetic Employee A submitted.');
   await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review submission');
   await review.waitFor({ state: 'detached' });
+  await navigateTo(reviewerPage, 'Notifications');
+  const completedNotification = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await assertVisibleText(completedNotification, 'Review for Synthetic Employee A completed');
+  const unreadAfterSubmit = Number((await unreadBadge.innerText()).split(' ')[0]);
+  if (unreadAfterSubmit !== unreadBeforeSubmit - 1) {
+    throw new Error(`Submitting the displayed peer review should clear one unread alert; before=${unreadBeforeSubmit}, after=${unreadAfterSubmit}.`);
+  }
+  if (notificationReads < 3) throw new Error(`Expected notification outage, retry, and post-submit reload; reads=${notificationReads}.`);
   await reviewerPage.setViewportSize({ width: 1280, height: 900 });
-  await assertNoHorizontalOverflow(reviewerPage, 'Desktop peer-review inbox and completion');
+  await assertNoHorizontalOverflow(reviewerPage, 'Desktop peer-review notifications and completion');
   if (inboxReadCalls < 3) throw new Error(`Expected outage, successful retry, and post-submit reload; inbox reads=${inboxReadCalls}.`);
 
   const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });

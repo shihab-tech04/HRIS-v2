@@ -292,6 +292,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013095450_hris_learning_manager_decisions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013174500_hris_learning_program_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
@@ -3367,6 +3368,33 @@ record('Project Manager release creates overlap-based review obligations without
     && afterTaskRelease.data.tasks[0].feedback_pending === 1
     && releaseCreatedReviews.count === 1 && releaseCreatedReviews.reviewee && releaseCreatedReviews.reviewer);
 
+const releaseNotificationsA = await employeeA.client.rpc('hris_get_my_project_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 50, p_before_created_at: null, p_before_id: null,
+});
+const releaseNotificationsB = await managerA2.client.rpc('hris_get_my_project_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 50, p_before_created_at: null, p_before_id: null,
+});
+const releaseNotificationsTenantB = await employeeB.client.rpc('hris_get_my_project_notifications', {
+  p_tenant_id: ids.tenantB, p_limit: 50, p_before_created_at: null, p_before_id: null,
+});
+const releaseNotificationsDirectA = await employeeA.client.from('hris_in_app_notifications').select('id,tenant_id')
+  .eq('tenant_id', ids.tenantA);
+const releaseNotificationsDirectForeign = await employeeB.client.from('hris_in_app_notifications').select('id')
+  .eq('tenant_id', ids.tenantA);
+const releaseNotificationRowsA = releaseNotificationsA.data?.notifications || [];
+record('Eligible task-review notification is visible only to its reviewer in the active tenant',
+  !releaseNotificationsA.error && releaseNotificationsA.data.unread_count === 1
+    && releaseNotificationRowsA.length === 1
+    && releaseNotificationRowsA[0].task_id === projectTaskId
+    && releaseNotificationRowsA[0].review_status === 'pending'
+    && !releaseNotificationsB.error && releaseNotificationsB.data.notifications.length === 0
+    && !releaseNotificationsTenantB.error && releaseNotificationsTenantB.data.notifications.length === 0
+    && !releaseNotificationsDirectA.error && releaseNotificationsDirectA.data.length === 1
+    && !releaseNotificationsDirectForeign.error && releaseNotificationsDirectForeign.data.length === 0,
+  JSON.stringify({ reviewerUnread: releaseNotificationsA.data?.unread_count,
+    reviewerRows: releaseNotificationRowsA.length,
+    otherTenantMemberRows: releaseNotificationsDirectForeign.data?.length }));
+
 const taskStart = await employeeA.client.rpc('hris_start_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
 const taskCompleteDenied = await managerA.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
 const taskCompleteBySuperAdmin = await superAdmin.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
@@ -3457,6 +3485,14 @@ const reviewRowsAfterSubmit = queryAdmin(`SELECT jsonb_build_object(
   'not_observed_separate',bool_or(collaboration_teamwork_not_observed AND collaboration_teamwork_score IS NULL),
   'zero_score',bool_or(quality_of_work_score=0),'self_review_count',count(*) FILTER (WHERE reviewer_employee_id=employee_id)::integer)
   FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${projectTaskId}'::uuid`);
+const submittedReviewNotificationsA = await employeeA.client.rpc('hris_get_my_project_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 100, p_before_created_at: null, p_before_id: null,
+});
+const submittedReviewNotificationsB = await managerA2.client.rpc('hris_get_my_project_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 100, p_before_created_at: null, p_before_id: null,
+});
+const submittedNotificationA = submittedReviewNotificationsA.data?.notifications?.find(row => row.peer_review_id === reviewAtoB?.id);
+const submittedNotificationB = submittedReviewNotificationsB.data?.notifications?.find(row => row.peer_review_id === reviewBtoA?.id);
 const closedFeedbackCount = completedWorkspaceAfterReviews.data?.tasks?.find(task => task.id === projectTaskId)?.feedback_pending;
 record('Peer-review authorization, score validation, self-review exclusion, and history visibility',
   Boolean(reviewAtoB) && Boolean(reviewBtoA)
@@ -3468,6 +3504,8 @@ record('Peer-review authorization, score validation, self-review exclusion, and 
     && !revieweeDirectRead.error && revieweeDirectRead.data.length === 1
     && !ordinaryAdminReviewRead.error && ordinaryAdminReviewRead.data.length === 0
     && !completedWorkspaceAfterReviews.error
+    && !submittedReviewNotificationsA.error && !submittedReviewNotificationsB.error
+    && Boolean(submittedNotificationA?.read_at) && Boolean(submittedNotificationB?.read_at)
     && reviewRowsAfterSubmit.count === 2 && reviewRowsAfterSubmit.all_submitted
     && reviewRowsAfterSubmit.not_observed_separate && reviewRowsAfterSubmit.zero_score
     && reviewRowsAfterSubmit.self_review_count === 0 && closedFeedbackCount === 0,

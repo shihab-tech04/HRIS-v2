@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql', import.meta.url), 'utf8');
 const eligibilityMigration = readFileSync(new URL('../../supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql', import.meta.url), 'utf8');
+const notificationMigration = readFileSync(new URL('../../supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql', import.meta.url), 'utf8');
 const managerUi = readFileSync(new URL('../../src/live/ProjectTaskManager.tsx', import.meta.url), 'utf8');
 const employeeUi = readFileSync(new URL('../../src/live/MyProjectWork.tsx', import.meta.url), 'utf8');
 const performanceUi = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.meta.url), 'utf8');
@@ -58,6 +59,24 @@ test('the submission RPC revalidates task state and overlapping assignment eligi
   assert.match(submission, /reviewer_assignment\.employee_id=r\.reviewer_employee_id/);
   assert.match(submission, /reviewee_assignment\.employee_id=r\.employee_id/);
   assert.match(submission, /Pending eligible peer review assigned to this employee was not found/);
+});
+
+test('eligible peer reviews create tenant-scoped in-app notifications and the isolated runner applies that migration', () => {
+  assert.match(notificationMigration, /CREATE TABLE public\.hris_in_app_notifications/);
+  assert.match(notificationMigration, /ALTER TABLE public\.hris_in_app_notifications ENABLE ROW LEVEL SECURITY/);
+  assert.match(notificationMigration, /recipient_employee_id = public\.hris_own_employee_for_tenant\(tenant_id\)/);
+  assert.match(notificationMigration, /AFTER INSERT OR UPDATE OF status ON public\.project_task_peer_reviews/);
+  assert.match(notificationMigration, /t\.status = 'completed' OR reviewee_assignment\.released_at IS NOT NULL/);
+  assert.match(notificationMigration, /reviewer_assignment\.assigned_at < COALESCE\(reviewee_assignment\.released_at/);
+  assert.match(notificationMigration, /ON CONFLICT \(tenant_id, recipient_employee_id, peer_review_id\) DO NOTHING/);
+  assert.match(notificationMigration, /CREATE OR REPLACE FUNCTION public\.hris_get_my_project_notifications/);
+  assert.match(notificationMigration, /read_at = COALESCE\(n\.read_at, NEW\.submitted_at/);
+  assert.match(notificationMigration, /REVOKE ALL ON FUNCTION public\.hris_get_my_project_notifications[^;]+FROM PUBLIC, anon/);
+  const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /supabase\/migrations\/20261013222433_hris_peer_review_in_app_notifications\.sql/);
+  const browser = readFileSync(new URL('../sql/isolated-auth/run-project-browser.mjs', import.meta.url), 'utf8');
+  assert.match(browser, /getByRole\('button', \{ name: 'Open review' \}\)/);
+  assert.match(browser, /Review for Synthetic Employee A completed/);
 });
 
 test('manager and employee screens complete task, release, review, and performance-history journeys', () => {

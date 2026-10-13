@@ -7,6 +7,7 @@ import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
 import { OrganizationTeams } from './OrganizationTeams';
 import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
+import { ProjectNotifications } from './ProjectNotifications';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
@@ -23,7 +24,7 @@ import { RecruitmentPipeline } from './RecruitmentPipeline';
 import { EmployeeReferrals } from './EmployeeReferrals';
 import { downloadCsv } from './csv';
 import {
-  Activity, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -57,7 +58,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -2493,6 +2494,7 @@ export function LiveHrisWorkspace({
     if (permissions.payroll) items.push({ id: 'payroll-register', label: 'Payroll register', icon: <Receipt className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-notifications', label: 'Notifications', icon: <Bell className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-learning', label: 'My Learning', icon: <BookOpen className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-payslips', label: 'My Payslips', icon: <Receipt className="h-5 w-5" />, group: 'Personal' });
@@ -2572,6 +2574,7 @@ export function LiveHrisWorkspace({
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
+          {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} onOpenProjects={() => navigate('my-projects')} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
