@@ -44,6 +44,8 @@ test('organization team directory is permission-gated and queries tenant-filtere
   assert.match(workspace, /page === 'teams' && permissions\.organization && <OrganizationTeams tenantId=\{tenantId\}/);
   assert.match(teams, /supabase\.from\('teams'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
   assert.match(teams, /supabase\.from\('departments'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
+  assert.match(teams, /downloadCsv\(`organization-teams-/);
+  assert.match(teams, /visibleTeams\.map\(team => \[team\.name, team\.code/);
   assert.doesNotMatch(teams, /\.insert\(|\.update\(|\.delete\(/);
 });
 

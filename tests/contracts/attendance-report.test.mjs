@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261012183000_hris_attendance_report_team_name.sql', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+const csv = readFileSync(new URL('../../src/live/csv.ts', import.meta.url), 'utf8');
 const searchAsset = readFileSync(new URL('../../src/assets/attendance-search.svg', import.meta.url), 'utf8');
 const downloadAsset = readFileSync(new URL('../../src/assets/attendance-download.png', import.meta.url));
 const filterAsset = readFileSync(new URL('../../src/assets/attendance-filter.svg', import.meta.url), 'utf8');
@@ -73,13 +74,9 @@ test('attendance report filter disclosure keeps its controlled panel target moun
 });
 
 test('shared CSV export neutralizes formula-leading text while preserving numeric literals', () => {
-  const start = workspace.indexOf('function csvCell(');
-  const end = workspace.indexOf('\nfunction downloadCsv', start);
-  const cell = workspace.slice(start, end);
-  assert.ok(start >= 0 && end > start);
-  assert.match(cell, /startsWithFormula/);
-  assert.match(cell, /isNumericLiteral/);
-  assert.match(cell, /safeText/);
+  assert.match(csv, /startsWithFormula/);
+  assert.match(csv, /isNumericLiteral/);
+  assert.match(csv, /safeText/);
   assert.match(browser, /'=HYPERLINK/);
   assert.match(browser, /"-0\.7"/);
 });

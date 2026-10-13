@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
@@ -63,7 +64,7 @@ async function interceptAuth(page: import('@playwright/test').Page, teamTenantFi
     ];
     else if (endpoint === 'teams') data = [
       { id: 'team-1', name: 'Design Systems', code: 'DS', department_id: 'dept-1', active: true },
-      { id: 'team-2', name: 'Client Operations', code: 'OPS', department_id: 'dept-2', active: false },
+      { id: 'team-2', name: 'Client Operations', code: '=OPS', department_id: 'dept-2', active: false },
     ];
     if (request.method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
@@ -121,6 +122,15 @@ test('organization Teams directory filters only the active tenant rows', async (
 
   await page.getByLabel('Team status').selectOption('inactive');
   await expect(table).toContainText('Inactive');
+  const downloadReady = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  const download = await downloadReady;
+  expect(download.suggestedFilename()).toMatch(/^organization-teams-\d{4}-\d{2}-\d{2}\.csv$/);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const csv = await readFile(downloadPath!, 'utf8');
+  expect(csv).toContain('"Client Operations","\'=OPS","Customer Success","Inactive"');
+  expect(csv).not.toContain('Design Systems');
   expect(teamTenantFilters.length).toBeGreaterThan(0);
   expect(teamTenantFilters.every(value => value === `eq.${tenantId}`)).toBe(true);
 

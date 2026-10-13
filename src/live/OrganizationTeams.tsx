@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, RefreshCw, Search, Users } from 'lucide-react';
+import { Building2, Download, RefreshCw, Search, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { downloadCsv } from './csv';
 
 type TeamRow = {
   id: string;
@@ -81,16 +82,28 @@ export function OrganizationTeams({ tenantId }: { tenantId: string }) {
   const activeCount = teams.filter(team => team.active === true).length;
   const departmentCount = new Set(teams.map(team => team.department_id).filter(Boolean)).size;
 
+  function exportVisibleTeams() {
+    downloadCsv(`organization-teams-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Team', 'Code', 'Department', 'Status'],
+      visibleTeams.map(team => [team.name, team.code, departmentNames.get(team.department_id || '') || '', team.active ? 'Active' : 'Inactive']));
+  }
+
   return <section aria-labelledby="organization-teams-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 id="organization-teams-heading" className="text-2xl font-medium text-[#49454F]">Teams</h2>
         <p className="mt-1 text-sm text-slate-500">Teams and departments in your current organization</p>
       </div>
-      <button type="button" onClick={() => setRetryKey(value => value + 1)} disabled={loading}
-        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-50">
-        <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={exportVisibleTeams} disabled={loading || Boolean(error) || visibleTeams.length === 0}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-50">
+          <Download className="h-4 w-4" aria-hidden="true" /> Export CSV
+        </button>
+        <button type="button" onClick={() => setRetryKey(value => value + 1)} disabled={loading}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
+        </button>
+      </div>
     </div>
 
     <div className="grid gap-3 sm:grid-cols-3">
