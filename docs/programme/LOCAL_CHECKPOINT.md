@@ -1,18 +1,18 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-13 09:34 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-13 09:45 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
 ## Current checkpoint — Phase 10 project permission correction
 
-- Latest feature commit: `a2d5007814af244d059c0e4563b210052d453dc8`. Active Super Admins alone can create projects and appoint Project Managers; only each assigned Project Manager can add/release project members. Ordinary Admin/Manager and direct reassignment paths are denied. The UI capabilities match the RPC authorization.
-- Verification: TypeScript/build PASS, **55/55 contracts PASS**, project-workspace browser **5/5 PASS**, full Chromium **48/48 PASS**, isolated local Auth/RLS **103/103 PASS**, all five prior tenant-security cases PASS. The existing Vite chunk advisory remains. Browser-generated screenshots were restored.
+- Latest feature commit: `a2d5007814af244d059c0e4563b210052d453dc8`; additional acceptance tests `ab21b62559ae73231048ef7dfcab4194df97acd9`. Active Super Admins alone can create projects and appoint Project Managers; only each assigned Project Manager can add/release project members. Same-tenant other-manager access is denied; employee team membership is preserved across multiple project allocations. Ordinary Admin/Manager and direct reassignment paths are denied. The UI capabilities match the RPC authorization.
+- Verification: TypeScript/build PASS, **55/55 contracts PASS**, project-workspace browser **5/5 PASS**, full Chromium **48/48 PASS**, isolated local Auth/RLS **105/105 PASS**, all five prior tenant-security cases PASS. The existing Vite chunk advisory remains. Browser-generated screenshots were restored.
 - Phase 11 appraisal status/cycle implementation remains preserved at `590baf650015aba04e91ab4bbb74980c013a7eeb`; Phase 11 code was not changed for this correction.
 - Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The current Project `sources/` mount remains empty; the expected catalogue hash is unverified. No requirement text or IDs were inferred.
-- See `EXECUTION_CHECKPOINT_20261013_0934.md`, `ACCEPTANCE_EVIDENCE_20261013_0934.md`, and `MASTER_PHASE_LEDGER_20261013_0934.md`. A verified full-history local bundle and Drive receipt are being prepared. Complete acceptance and verify the full-source Drive archive before final GitHub push and deployment.
+- See `EXECUTION_CHECKPOINT_20261013_0945.md`, `ACCEPTANCE_EVIDENCE_20261013_0945.md`, and `MASTER_PHASE_LEDGER_20261013_0945.md`. A verified full-history local bundle and Drive receipt are being prepared. Complete acceptance and verify the full-source Drive archive before final GitHub push and deployment.
 
 ## Previous checkpoint — Phase 10 Teams directory and filtered CSV export
 
-## Current checkpoint — Phase 10 Teams directory and filtered CSV export
+## Historical checkpoint details — Phase 10 Teams directory and filtered CSV export
 
 - Latest feature commit: `a2834b6550d2f42c56c94c1ace066d99f6b4e6a1`; Phase 10's tenant-filtered Teams directory now exports only visible filtered rows through the shared spreadsheet-safe CSV utility.
 - Verification: TypeScript/build PASS, **45/45 contracts PASS**, focused browser **2/2 PASS**, full Chromium **41/41 PASS**, latest unchanged-SQL local Auth/RLS **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. Current source diff from baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`: **32 unique paths, +8,550/-51**. Browser-generated screenshots were restored.
