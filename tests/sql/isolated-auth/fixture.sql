@@ -447,11 +447,27 @@ CREATE TABLE public.org_locations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
 );
 CREATE TABLE public.pay_periods (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Synthetic pay period',
+  start_date date NOT NULL DEFAULT '2026-09-01', end_date date NOT NULL DEFAULT '2026-09-30',
+  pay_date date, status text NOT NULL DEFAULT 'draft', currency text NOT NULL DEFAULT 'BDT',
+  UNIQUE (tenant_id,id)
 );
 CREATE TABLE public.payslips (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
-  employee_id uuid, status text NOT NULL DEFAULT 'released'
+  pay_period_id uuid NOT NULL, employee_id uuid NOT NULL,
+  currency text NOT NULL DEFAULT 'BDT',
+  basic_salary numeric NOT NULL DEFAULT 0, house_rent_allowance numeric NOT NULL DEFAULT 0,
+  medical_allowance numeric NOT NULL DEFAULT 0, transport_allowance numeric NOT NULL DEFAULT 0,
+  special_allowance numeric NOT NULL DEFAULT 0, overtime_pay numeric NOT NULL DEFAULT 0,
+  bonus numeric NOT NULL DEFAULT 0, tax_deduction numeric NOT NULL DEFAULT 0,
+  provident_fund_deduction numeric NOT NULL DEFAULT 0,
+  leave_without_pay_deduction numeric NOT NULL DEFAULT 0, other_deductions numeric NOT NULL DEFAULT 0,
+  gross_earnings numeric DEFAULT 0, total_deductions numeric DEFAULT 0, net_salary numeric DEFAULT 0,
+  bank_name text, bank_account_no text, tax_identification_no text,
+  status text NOT NULL DEFAULT 'draft', note text, released_at timestamptz,
+  UNIQUE (tenant_id,id),
+  FOREIGN KEY (tenant_id,pay_period_id) REFERENCES public.pay_periods(tenant_id,id)
 );
 CREATE TABLE public.performance_cycles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1172,11 +1188,18 @@ INSERT INTO public.notices(tenant_id,active) VALUES
   ('11111111-1111-4111-8111-111111111111',true),('22222222-2222-4222-8222-222222222222',true);
 INSERT INTO public.org_locations(tenant_id) VALUES
   ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
-INSERT INTO public.pay_periods(tenant_id) VALUES
-  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
-INSERT INTO public.payslips(tenant_id,employee_id,status) VALUES
-  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','released'),
-  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','released');
+INSERT INTO public.pay_periods(id,tenant_id,name,start_date,end_date,pay_date,status,currency) VALUES
+  ('99999999-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','September 2026','2026-09-01','2026-09-30','2026-10-05','released','BDT'),
+  ('99999999-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','September 2026','2026-09-01','2026-09-30','2026-10-05','released','BDT');
+INSERT INTO public.payslips(
+  id,tenant_id,pay_period_id,employee_id,currency,basic_salary,house_rent_allowance,medical_allowance,
+  transport_allowance,bonus,tax_deduction,provident_fund_deduction,gross_earnings,total_deductions,net_salary,
+  bank_name,bank_account_no,tax_identification_no,status,released_at
+) VALUES
+  ('99999999-0000-4000-8000-000000000101','11111111-1111-4111-8111-111111111111','99999999-0000-4000-8000-000000000001','55555555-5555-4555-8555-555555555555','BDT',100000,50000,10000,5000,2000,10000,5000,167000,15000,152000,'Synthetic Bank','Synthetic Account 001','SYN-TAX-001','released','2026-10-05T10:00:00Z'),
+  ('99999999-0000-4000-8000-000000000102','11111111-1111-4111-8111-111111111111','99999999-0000-4000-8000-000000000001','55555555-5555-4555-8555-555555555557','BDT',90000,40000,9000,4000,0,8000,4000,143000,12000,131000,'Synthetic Bank','Synthetic Account 002','SYN-TAX-002','released','2026-10-05T10:00:00Z'),
+  ('99999999-0000-4000-8000-000000000103','11111111-1111-4111-8111-111111111111','99999999-0000-4000-8000-000000000001','55555555-5555-4555-8555-555555555555','BDT',100000,0,0,0,0,0,0,100000,0,100000,'Synthetic Bank','Synthetic Account 001','SYN-TAX-001','draft',NULL),
+  ('99999999-0000-4000-8000-000000000201','22222222-2222-4222-8222-222222222222','99999999-0000-4000-8000-000000000002','66666666-6666-4666-8666-666666666666','BDT',80000,30000,8000,3000,0,7000,3000,121000,10000,111000,'Synthetic Bank','Synthetic Account 101','SYN-TAX-101','released','2026-10-05T10:00:00Z');
 INSERT INTO public.performance_cycles(id,tenant_id,name,start_date,end_date,self_review_deadline,manager_review_deadline,status) VALUES
   ('88888888-8888-4888-8888-888888888901','11111111-1111-4111-8111-111111111111','QA A Annual Review','2026-01-01','2026-12-31','2026-11-15','2026-12-15','active'),
   ('88888888-8888-4888-8888-888888888902','22222222-2222-4222-8222-222222222222','QA B Annual Review','2026-01-01','2026-12-31','2026-11-15','2026-12-15','active');

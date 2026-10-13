@@ -9,6 +9,7 @@ import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
+import { MyPayslips } from './MyPayslips';
 import { LearningRequests } from './LearningRequests';
 import { LearningProgramAdmin } from './LearningProgramAdmin';
 import { OrganizationHolidayCalendar } from './OrganizationHolidayCalendar';
@@ -53,7 +54,7 @@ type PermissionSet = {
   expensesView: boolean;
   expensesManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -2397,6 +2398,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-learning', label: 'My Learning', icon: <BookOpen className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-payslips', label: 'My Payslips', icon: <Receipt className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-travel', label: 'My Travel', icon: <MapPin className="h-5 w-5" />, group: 'Personal' });
@@ -2474,6 +2476,7 @@ export function LiveHrisWorkspace({
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} />}
+          {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} />}

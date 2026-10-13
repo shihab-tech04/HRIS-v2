@@ -292,7 +292,12 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013175151_employee_referral_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221600_hris_organization_holiday_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221700_employee_leave_history_private_evidence.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014110000_hris_employee_payslip_history.sql'),
 ]) applySql(file);
+// The local PostgREST container predates SQL applied directly by this harness.
+// Refresh its function catalog before testing newly installed RPCs.
+psqlSync("NOTIFY pgrst, 'reload schema';");
+await new Promise(resolve => setTimeout(resolve, 500));
 const evidenceBucketCheck = await adminAuth.storage.getBucket('leave-evidence');
 const evidenceMimeTypes = [
   'application/pdf', 'application/msword',
@@ -426,6 +431,78 @@ const learningIds = {
   capacityRequestOne: '92000000-0000-4000-8000-000000000006',
   capacityRequestTwo: '92000000-0000-4000-8000-000000000007',
 };
+const payslipA = await employeeA.client.rpc('hris_get_my_payslips', { p_tenant_id: ids.tenantA });
+const payslipB = await employeeB.client.rpc('hris_get_my_payslips', { p_tenant_id: ids.tenantB });
+const payslipCrossTenant = await employeeA.client.rpc('hris_get_my_payslips', { p_tenant_id: ids.tenantB });
+const payslipNoPermission = await noPermission.client.rpc('hris_get_my_payslips', { p_tenant_id: ids.tenantA });
+const payslipGlobalOnly = await globalOnly.client.rpc('hris_get_my_payslips', { p_tenant_id: ids.tenantA });
+const payslipAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_my_payslips', { p_tenant_id: ids.tenantA });
+const payslipAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_payslips(uuid)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_payslips(uuid)','EXECUTE'),
+  'rls', (SELECT relrowsecurity FROM pg_class WHERE oid='public.payslips'::regclass))`);
+const employeePayslip = payslipA.data?.payslips?.[0];
+record('Employee payslip history returns only the linked employee’s released rows with recorded amounts and same-tenant period details',
+  !payslipA.error && payslipA.data?.tenant_id === ids.tenantA
+    && payslipA.data.payslips.length === 1
+    && employeePayslip?.id === '99999999-0000-4000-8000-000000000101'
+    && employeePayslip?.currency === 'BDT'
+    && employeePayslip?.gross_earnings === 167000
+    && employeePayslip?.total_deductions === 15000
+    && employeePayslip?.net_salary === 152000
+    && employeePayslip?.period?.id === '99999999-0000-4000-8000-000000000001'
+    && employeePayslip?.period?.name === 'September 2026'
+    && employeePayslip?.period?.start_date === '2026-09-01'
+    && employeePayslip?.period?.end_date === '2026-09-30'
+    && employeePayslip?.period?.pay_date === '2026-10-05'
+    && !['bank_name', 'bank_account_no', 'tax_identification_no', 'note'].some(key => key in employeePayslip),
+  JSON.stringify({ error: payslipA.error?.code || null, ids: payslipA.data?.payslips?.map(row => row.id),
+    amount: employeePayslip?.net_salary, period: employeePayslip?.period?.name,
+    sensitiveKeys: employeePayslip ? Object.keys(employeePayslip).filter(key => ['bank_name', 'bank_account_no', 'tax_identification_no', 'note'].includes(key)) : [] }));
+record('Payslip RPC enforces tenant and linked-employee access and denies anonymous callers',
+  !payslipB.error && payslipB.data?.tenant_id === ids.tenantB
+    && payslipB.data.payslips.length === 1
+    && payslipB.data.payslips[0].id === '99999999-0000-4000-8000-000000000201'
+    && payslipCrossTenant.error?.code === '42501'
+    && payslipNoPermission.error?.code === '42501'
+    && payslipGlobalOnly.error?.code === '42501'
+    && Boolean(payslipAnonymous.error)
+    && payslipAcl.anon === false && payslipAcl.authenticated === true
+    && payslipAcl.rls === true,
+  JSON.stringify({ tenantBRows: payslipB.data?.payslips?.map(row => row.id),
+    denialCodes: [payslipCrossTenant.error?.code, payslipNoPermission.error?.code, payslipGlobalOnly.error?.code, payslipAnonymous.error?.code],
+    acl: payslipAcl }));
+const directPayslipsA = await employeeA.client.from('payslips').select('id,tenant_id,employee_id,status').eq('tenant_id', ids.tenantA);
+const directPayslipsB = await employeeB.client.from('payslips').select('id,tenant_id,employee_id,status').eq('tenant_id', ids.tenantB);
+const directPayslipInsert = await employeeA.client.from('payslips').insert({
+  id: '99999999-0000-4000-8000-000000000104', tenant_id: ids.tenantA,
+  pay_period_id: '99999999-0000-4000-8000-000000000001',
+  employee_id: '55555555-5555-4555-8555-555555555555', status: 'released',
+});
+const directPayslipUpdate = await employeeA.client.from('payslips').update({ status: 'void' })
+  .eq('id', '99999999-0000-4000-8000-000000000101').select('id');
+const payslipAfterDirectWrite = queryAdmin(`SELECT jsonb_build_object(
+  'status',status,'count',(SELECT count(*)::integer FROM public.payslips
+    WHERE id='99999999-0000-4000-8000-000000000104'::uuid))
+  FROM public.payslips WHERE id='99999999-0000-4000-8000-000000000101'::uuid`);
+record('Payslip table RLS exposes only each employee’s own released rows and hides drafts and other employees',
+  !directPayslipsA.error && directPayslipsA.data.length === 1
+    && directPayslipsA.data[0].id === '99999999-0000-4000-8000-000000000101'
+    && directPayslipsA.data.every(row => row.tenant_id === ids.tenantA
+      && row.employee_id === '55555555-5555-4555-8555-555555555555' && row.status === 'released')
+    && !directPayslipsB.error && directPayslipsB.data.length === 1
+    && directPayslipsB.data[0].id === '99999999-0000-4000-8000-000000000201'
+    && directPayslipsB.data.every(row => row.tenant_id === ids.tenantB
+      && row.employee_id === '66666666-6666-4666-8666-666666666666' && row.status === 'released')
+    && payslipAcl.rls === true
+    && Boolean(directPayslipInsert.error?.code === '42501')
+    && !directPayslipUpdate.error && directPayslipUpdate.data.length === 0
+    && payslipAfterDirectWrite.status === 'released' && payslipAfterDirectWrite.count === 0,
+  JSON.stringify({ tenantA: directPayslipsA.data?.map(row => row.id), tenantB: directPayslipsB.data?.map(row => row.id),
+    aError: directPayslipsA.error?.code || null, bError: directPayslipsB.error?.code || null,
+    insertCode: directPayslipInsert.error?.code || null, updateRows: directPayslipUpdate.data?.length,
+    afterWrite: payslipAfterDirectWrite }));
 const learningContextA = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
 const learningContextB = await employeeB.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantB });
 const learningCrossTenant = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantB });
@@ -772,6 +849,39 @@ try {
 record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, roster retry, authorized meeting access, cancellation, refresh and responsive recovery',
   learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link with outage recovery, employee enrollment, cancellation, and recovery passed.'),
   learningBrowserError);
+let payslipBrowserOutput = '';
+let payslipBrowserError = '';
+try {
+  payslipBrowserOutput = execFileSync('node', [path.join(here, 'run-payslips-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_PAYSLIP_EMAIL: emails[5],
+      HRIS_LOCAL_PAYSLIP_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  payslipBrowserError = String(error.stderr || error.message || 'local payslip browser run failed').slice(-1800);
+}
+record('Real local Auth-to-Postgres payslip journey passes outage retry, released data, private-field omission, refresh, and mobile/desktop layouts',
+  payslipBrowserOutput.includes('Local Auth-to-Postgres employee payslip journey passed: outage retry, released period and persisted amounts, private-field omission, refresh recovery, and 375px mobile/1280px desktop layouts.'),
+  payslipBrowserError);
+const payslipAfterBrowser = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,'gross',max(gross_earnings),'deductions',max(total_deductions),'net',max(net_salary),
+  'status',max(status),'period',max(pay_period_id::text))
+  FROM public.payslips WHERE id='99999999-0000-4000-8000-000000000101'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid`);
+record('Employee payslip refresh reads persisted isolated database data without changing payroll records',
+  payslipAfterBrowser.count === 1 && Number(payslipAfterBrowser.gross) === 167000
+    && Number(payslipAfterBrowser.deductions) === 15000 && Number(payslipAfterBrowser.net) === 152000
+    && payslipAfterBrowser.status === 'released'
+    && payslipAfterBrowser.period === '99999999-0000-4000-8000-000000000001',
+  JSON.stringify(payslipAfterBrowser));
 const joinLinkEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
   p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000001',
   p_session_id: '91000000-0000-4000-8000-000000000001',
