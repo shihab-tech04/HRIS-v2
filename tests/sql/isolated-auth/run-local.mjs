@@ -191,7 +191,7 @@ const emails = [
   'manager-a@hris.test', 'manager-b@hris.test', 'no-permission@hris.test',
   'global-only@hris.test', 'tenant-viewer@hris.test',
   'employee-a@hris.test', 'employee-b@hris.test', 'manager-a2@hris.test',
-  'employee-clock@hris.test', 'report-viewer-a@hris.test',
+  'employee-clock@hris.test', 'report-viewer-a@hris.test', 'super-admin@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -244,6 +244,7 @@ const employeeB = await signIn(emails[6]);
 const managerA2 = await signIn(emails[7]);
 const employeeClock = await signIn(emails[8]);
 const reportViewerA = await signIn(emails[9]);
+const superAdmin = await signIn(emails[10]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
@@ -256,6 +257,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -330,6 +332,14 @@ record('Performance goal reads are filtered to the employee’s linked tenant an
   !ownGoalRead.error && ownGoalRead.data.length === 1
     && ownGoalRead.data[0].id === employeeAGoalId
     && !otherTenantGoalRead.error && otherTenantGoalRead.data.length === 0);
+
+const managerGoalTenantsA = new Set(queryAs(managerA, `SELECT coalesce(jsonb_agg(tenant_id::text ORDER BY tenant_id::text),'[]'::jsonb)
+  FROM (SELECT DISTINCT tenant_id FROM public.performance_goals) visible`));
+const managerGoalTenantsB = new Set(queryAs(managerB, `SELECT coalesce(jsonb_agg(tenant_id::text ORDER BY tenant_id::text),'[]'::jsonb)
+  FROM (SELECT DISTINCT tenant_id FROM public.performance_goals) visible`));
+record('Performance viewers can read their own tenant goals but not another tenant',
+  managerGoalTenantsA.has(ids.tenantA) && !managerGoalTenantsA.has(ids.tenantB)
+    && managerGoalTenantsB.has(ids.tenantB) && !managerGoalTenantsB.has(ids.tenantA));
 
 const selfProgressUpdate = await employeeA.client.from('performance_goals')
   .update({ current_progress: 37.5 }).eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId)
@@ -1152,40 +1162,65 @@ async function createProject(session, tenantId, code, leadId) {
 }
 
 psqlSync(`UPDATE public.tenants SET timezone='Pacific/Honolulu' WHERE id='${ids.tenantB}'::uuid;`);
-const projectAResult = await createProject(managerA, ids.tenantA, 'QA-A-ALPHA', '55555555-5555-4555-8555-555555555555');
-const projectA2Result = await createProject(managerA, ids.tenantA, 'QA-A-BETA', '55555555-5555-4555-8555-555555555555');
-const projectA3Result = await createProject(managerA, ids.tenantA, 'QA-A-GAMMA', '55555555-5555-4555-8555-555555555555');
-const projectBResult = await createProject(managerB, ids.tenantB, 'QA-B-ALPHA', '66666666-6666-4666-8666-666666666666');
-const projectB2Result = await createProject(managerB, ids.tenantB, 'QA-B-BETA', '66666666-6666-4666-8666-666666666666');
+const deniedProjectA = await createProject(managerA, ids.tenantA, 'QA-A-DENIED', '55555555-5555-4555-8555-555555555555');
+const deniedProjectB = await createProject(managerB, ids.tenantB, 'QA-B-DENIED', '66666666-6666-4666-8666-666666666666');
+record('Ordinary Admin cannot create a project or appoint its Project Manager', Boolean(deniedProjectA.error));
+record('Ordinary Manager cannot create a project or appoint its Project Manager', Boolean(deniedProjectB.error));
+
+const projectAResult = await createProject(superAdmin, ids.tenantA, 'QA-A-ALPHA', '55555555-5555-4555-8555-555555555555');
+const projectA2Result = await createProject(superAdmin, ids.tenantA, 'QA-A-BETA', '55555555-5555-4555-8555-555555555555');
+const projectA3Result = await createProject(superAdmin, ids.tenantA, 'QA-A-GAMMA', '55555555-5555-4555-8555-555555555555');
+const projectBResult = await createProject(superAdmin, ids.tenantB, 'QA-B-ALPHA', '66666666-6666-4666-8666-666666666666');
+const projectB2Result = await createProject(superAdmin, ids.tenantB, 'QA-B-BETA', '66666666-6666-4666-8666-666666666666');
 const projectA = projectAResult.data;
 const projectA2 = projectA2Result.data;
 const projectA3 = projectA3Result.data;
 const projectB = projectBResult.data;
 const projectB2 = projectB2Result.data;
-record('Project create RPC writes to the selected tenant and records an audit event',
+record('Active Super Admin creates tenant projects and appoints active employee Project Managers',
   !projectAResult.error && !projectBResult.error
     && projectA?.tenant_id === ids.tenantA && projectB?.tenant_id === ids.tenantB
+    && projectA?.project_lead_id === '55555555-5555-4555-8555-555555555555'
     && auditCount(projectA?.id, 'project.created') === 1
     && auditCount(projectB?.id, 'project.created') === 1);
 
 const noPermissionProject = await createProject(noPermission, ids.tenantA, 'QA-NO-PERM', '55555555-5555-4555-8555-555555555555');
 const managerBProjectA = await managerB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
 const globalOnlyProjectA = await globalOnly.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
+const superAdminWorkspace = await superAdmin.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
 const anonymousProjectRead = attemptAs(null,
   `SELECT public.hris_get_tenant_project_workspace('${ids.tenantA}'::uuid)`, 'anon');
-record('Project RPCs deny users without tenant permission, cross-tenant managers, global-only roles and anon',
+record('Project workspace denies unauthorized users and marks Super Admin creation capability',
   Boolean(noPermissionProject.error) && Boolean(managerBProjectA.error)
-    && Boolean(globalOnlyProjectA.error) && !anonymousProjectRead.ok);
+    && Boolean(globalOnlyProjectA.error) && !anonymousProjectRead.ok
+    && !superAdminWorkspace.error && superAdminWorkspace.data.can_create === true);
 
 const workspaceA = await managerA.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
 const workspaceB = await managerB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantB });
+const projectManagerWorkspaceA = await employeeA.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
+const projectManagerWorkspaceB = await employeeB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantB });
 const directProjectsA = await managerA.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
 const directProjectsB = await managerB.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
-record('Project workspace and table RLS return only the active manager’s tenant',
+const directProjectsSuperAdmin = await superAdmin.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+const directProjectsProjectManager = await employeeA.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+record('Organization readers retain tenant scope; assigned Project Managers see and manage only their projects',
   !workspaceA.error && !workspaceB.error
     && workspaceA.data.projects.length === 3 && workspaceB.data.projects.length === 2
+    && workspaceA.data.can_create === false && workspaceA.data.projects.every(project => project.can_manage === false)
+    && !projectManagerWorkspaceA.error && projectManagerWorkspaceA.data.projects.length === 3
+    && projectManagerWorkspaceA.data.projects.every(project => project.can_manage === true)
+    && !projectManagerWorkspaceB.error && projectManagerWorkspaceB.data.projects.length === 2
+    && projectManagerWorkspaceB.data.projects.every(project => project.can_manage === true)
+    && !directProjectsSuperAdmin.error && directProjectsSuperAdmin.data.length === 3
+    && !directProjectsProjectManager.error && directProjectsProjectManager.data.length === 3
     && !directProjectsA.error && directProjectsA.data.every(row => row.tenant_id === ids.tenantA)
-    && !directProjectsB.error && directProjectsB.data.length === 0);
+    && !directProjectsB.error && directProjectsB.data.length === 0,
+  JSON.stringify({
+    managerA: workspaceA.error ? workspaceA.error.message : { count: workspaceA.data.projects.length, can_create: workspaceA.data.can_create, can_manage: workspaceA.data.projects.map(project => project.can_manage) },
+    managerB: workspaceB.error ? workspaceB.error.message : { count: workspaceB.data.projects.length },
+    projectManagerA: projectManagerWorkspaceA.error ? projectManagerWorkspaceA.error.message : { count: projectManagerWorkspaceA.data.projects.length, can_manage: projectManagerWorkspaceA.data.projects.map(project => project.can_manage) },
+    projectManagerB: projectManagerWorkspaceB.error ? projectManagerWorkspaceB.error.message : { count: projectManagerWorkspaceB.data.projects.length, can_manage: projectManagerWorkspaceB.data.projects.map(project => project.can_manage) },
+  }));
 
 const projectDirectWrite = attemptAs(managerA, `INSERT INTO public.projects
   (tenant_id,code,name,project_lead_id,start_date) VALUES
@@ -1194,36 +1229,48 @@ record('Authenticated users cannot bypass audited project RPCs with direct table
 
 psqlSync(`UPDATE public.employees SET employment_status='on_leave'
   WHERE tenant_id='${ids.tenantA}'::uuid AND id='55555555-5555-4555-8555-555555555555'::uuid;`);
-const allocationA60 = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+const allocationA60 = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
   p_employee_id: '55555555-5555-4555-8555-555555555555',
   p_role_on_project: 'Delivery lead', p_allocation_percentage: 60,
   p_assigned_date: localCurrentDate, p_release_date: null,
 });
-const allocationA40 = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+const allocationA40 = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA2.id,
   p_employee_id: '55555555-5555-4555-8555-555555555555',
   p_role_on_project: 'Contributor', p_allocation_percentage: 40,
   p_assigned_date: localCurrentDate, p_release_date: null,
 });
-const allocationAOver = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+const allocationAOver = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA3.id,
   p_employee_id: '55555555-5555-4555-8555-555555555555',
   p_role_on_project: 'Contributor', p_allocation_percentage: 1,
   p_assigned_date: localCurrentDate, p_release_date: null,
 });
-const foreignEmployeeAllocation = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+const foreignEmployeeAllocation = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
   p_employee_id: '66666666-6666-4666-8666-666666666666',
   p_role_on_project: 'Contributor', p_allocation_percentage: 10,
   p_assigned_date: localCurrentDate, p_release_date: null,
 });
-record('Allocation RPC enforces same-tenant employees and the 100% overlap cap',
+record('Assigned Project Manager can add members across projects within the shared 100% overlap cap',
   !allocationA60.error && !allocationA40.error
     && Boolean(allocationAOver.error) && Boolean(foreignEmployeeAllocation.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.assigned') === 1
     && auditCount(allocationA40.data?.id, 'project.allocation.assigned') === 1);
 
+const ordinaryAdminAssignment = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_role_on_project: 'Unauthorized', p_allocation_percentage: 1,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const ordinaryManagerAssignment = await managerB.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantB, p_project_id: projectB.id,
+  p_employee_id: '66666666-6666-4666-8666-666666666666',
+  p_role_on_project: 'Unauthorized', p_allocation_percentage: 1,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
 const crossTenantAssignment = await managerB.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
   p_employee_id: '55555555-5555-4555-8555-555555555555',
@@ -1233,8 +1280,9 @@ const crossTenantAssignment = await managerB.client.rpc('hris_assign_tenant_proj
 const directAllocationWrite = attemptAs(managerA, `INSERT INTO public.project_allocations
   (tenant_id,project_id,employee_id,allocation_percentage,assigned_date) VALUES
   ('${ids.tenantA}'::uuid,'${projectA.id}'::uuid,'55555555-5555-4555-8555-555555555555'::uuid,5,'${localCurrentDate}'::date)`);
-record('Cross-tenant assignment and unaudited direct allocation writes are denied',
-  Boolean(crossTenantAssignment.error) && !directAllocationWrite.ok);
+record('Ordinary Admin, ordinary Manager, cross-tenant, and direct allocation writes are denied',
+  Boolean(ordinaryAdminAssignment.error) && Boolean(ordinaryManagerAssignment.error)
+    && Boolean(crossTenantAssignment.error) && !directAllocationWrite.ok);
 
 const myProjectsA = await employeeA.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantA });
 const myProjectsB = await employeeB.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantB });
@@ -1250,10 +1298,10 @@ record('Employee project view exposes only linked employee allocations and denie
     && employeeDirectAllocations.data.every(row => row.employee_id === employeeA.userId || row.employee_id === '55555555-5555-4555-8555-555555555555'));
 
 const concurrentAssignments = await Promise.all([
-  psqlAsync(sessionSql(managerB, `SELECT public.hris_assign_tenant_project_allocation(
+  psqlAsync(sessionSql(employeeB, `SELECT public.hris_assign_tenant_project_allocation(
     '${ids.tenantB}'::uuid,'${projectB.id}'::uuid,'66666666-6666-4666-8666-666666666666'::uuid,
     'Member',60,'${localCurrentDate}'::date,NULL)::text`)).then(() => true, () => false),
-  psqlAsync(sessionSql(managerB, `SELECT public.hris_assign_tenant_project_allocation(
+  psqlAsync(sessionSql(employeeB, `SELECT public.hris_assign_tenant_project_allocation(
     '${ids.tenantB}'::uuid,'${projectB2.id}'::uuid,'66666666-6666-4666-8666-666666666666'::uuid,
     'Member',60,'${localCurrentDate}'::date,NULL)::text`)).then(() => true, () => false),
 ]);
@@ -1268,13 +1316,13 @@ const tenantBLocalToday = queryAdmin(`SELECT jsonb_build_object('today',
   (now() AT TIME ZONE 'Pacific/Honolulu')::date::text)`).today;
 const tenantBLocalTomorrow = addCalendarDays(tenantBLocalToday, 1);
 const futureProjectId = concurrentAssignments[0] ? projectB2.id : projectB.id;
-const upcomingAllocation = await managerB.client.rpc('hris_assign_tenant_project_allocation', {
+const upcomingAllocation = await employeeB.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantB, p_project_id: futureProjectId,
   p_employee_id: '66666666-6666-4666-8666-666666666666',
   p_role_on_project: 'Future contributor', p_allocation_percentage: 40,
   p_assigned_date: tenantBLocalTomorrow, p_release_date: null,
 });
-const upcomingWorkspace = await managerB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantB });
+const upcomingWorkspace = await employeeB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantB });
 const upcomingSelfView = await employeeB.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantB });
 const upcomingRow = upcomingWorkspace.data?.projects.flatMap(project => project.allocations)
   .find(allocation => allocation.id === upcomingAllocation.data?.id);
@@ -1284,7 +1332,13 @@ record('Upcoming allocation status follows the tenant-local date for manager and
     && upcomingAllocation.data?.status === 'upcoming'
     && upcomingRow?.status === 'upcoming' && upcomingSelfRow?.status === 'upcoming');
 
-const releasedA60 = await managerA.client.rpc('hris_release_tenant_project_allocation', {
+const ordinaryAdminRelease = await managerA.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
+});
+const ordinaryManagerRelease = await managerB.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantB, p_allocation_id: upcomingAllocation.data?.id,
+});
+const releasedA60 = await employeeA.client.rpc('hris_release_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
 });
 const employeeAStatusAfterRelease = queryAdmin(`SELECT jsonb_build_object('status',employment_status)
@@ -1294,7 +1348,8 @@ const releaseRepeat = await managerA.client.rpc('hris_release_tenant_project_all
   p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
 });
 record('Releasing an allocation preserves the employee status and writes one release audit event',
-  !releasedA60.error && releasedA60.data?.status === 'released'
+  Boolean(ordinaryAdminRelease.error) && Boolean(ordinaryManagerRelease.error)
+    && !releasedA60.error && releasedA60.data?.status === 'released'
     && employeeAStatusAfterRelease === 'on_leave'
     && Boolean(releaseRepeat.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.released') === 1);

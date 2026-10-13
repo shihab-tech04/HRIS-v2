@@ -43,7 +43,7 @@ test('admin navigation uses permissions evaluated for each active tenant members
 
 test('organization team directory is permission-gated and queries tenant-filtered RLS tables without write paths', () => {
   assert.match(app, /organization: grants\.get\('organization\.view'\) === true \|\| grants\.get\('organization\.manage'\) === true/);
-  assert.match(workspace, /if \(permissions\.organization\) \{[\s\S]*?items\.push\(\{ id: 'projects'[\s\S]*?items\.push\(\{ id: 'teams'/);
+  assert.match(workspace, /if \(permissions\.organization \|\| isSuperAdmin\) \{[\s\S]*?items\.push\(\{ id: 'projects'[\s\S]*?if \(permissions\.organization\) items\.push\(\{ id: 'teams'/);
   assert.match(workspace, /page === 'teams' && permissions\.organization && <OrganizationTeams tenantId=\{tenantId\}/);
   assert.match(teams, /supabase\.from\('teams'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
   assert.match(teams, /supabase\.from\('departments'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
@@ -54,12 +54,16 @@ test('organization team directory is permission-gated and queries tenant-filtere
 
 test('project workspace and employee allocations use tenant-bound audited RPCs', () => {
   assert.match(app, /organizationManage: grants\.get\('organization\.manage'\) === true/);
-  assert.match(workspace, /page === 'projects' && permissions\.organization && <OrganizationProjects tenantId=\{tenantId\} canManage=\{permissions\.organizationManage\}/);
+  assert.match(workspace, /page === 'projects' && \(permissions\.organization \|\| isSuperAdmin \|\| isEmployee\) && <OrganizationProjects tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /else if \(isEmployee\) items\.push\(\{ id: 'projects', label: 'Project Workspace'/);
   assert.match(workspace, /page === 'my-projects' && isEmployee && <MyProjects tenantId=\{tenantId\}/);
   for (const rpc of ['hris_get_tenant_project_workspace', 'hris_create_tenant_project', 'hris_assign_tenant_project_allocation', 'hris_release_tenant_project_allocation']) {
     assert.ok(projects.includes(`supabase.rpc('${rpc}'`), `missing project RPC: ${rpc}`);
   }
   assert.match(projects, /project_lead_id|leadId/);
+  assert.match(projects, /workspace\.can_create/);
+  assert.match(projects, /project\.can_manage/);
+  assert.match(projects, /Project Manager/);
   assert.match(projects, /Allocation %/);
   assert.match(projects, /window\.confirm\(`Release \$\{allocation\.employee_name\} from this project\?/);
   assert.match(projects, /employment status will not change/);
@@ -67,6 +71,13 @@ test('project workspace and employee allocations use tenant-bound audited RPCs',
   assert.match(myProjects, /My Projects &amp; Allocations/);
   assert.match(myProjects, /does not change your employment record/);
   assert.doesNotMatch(projects, /\.from\('projects'\)\.(?:insert|update|delete)/);
+});
+
+test('project permissions come from the server workspace capability fields, never organization.manage', () => {
+  assert.match(app, /isSuperAdmin \|\| workspacePermissions\.dashboard/);
+  assert.match(app, /const activeSuperAdmin = adminResult\.data\?\.active === true && adminResult\.data\?\.is_super_admin === true/);
+  assert.match(workspace, /if \(isSuperAdmin && !permissions\.dashboard && !permissions\.attendance && !permissions\.leave/);
+  assert.doesNotMatch(projects, /canManage/);
 });
 
 test('live HRIS pages use tenant-checked RPC responses and omit the global candidate count', () => {

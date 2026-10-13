@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.meta.url), 'utf8');
+const managerPage = readFileSync(new URL('../../src/live/OrganizationPerformance.tsx', import.meta.url), 'utf8');
+const liveApp = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/performance.spec.ts', import.meta.url), 'utf8');
 
@@ -35,4 +37,12 @@ test('browser journey checks progress save, tenant filter, and narrow viewport',
   assert.match(browser, /Progress saved/);
   assert.match(browser, /eq\.\$\{tenantId\}/);
   assert.match(browser, /width: 375/);
+});
+
+test('organization performance is permission-gated and reads only tenant-visible goals', () => {
+  assert.match(liveApp, /'performance\.view', 'performance\.manage'/);
+  assert.match(liveApp, /performance: grants\.get\('performance\.view'\) === true \|\| grants\.get\('performance\.manage'\) === true/);
+  assert.match(managerPage, /\.from\('performance_goals'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+  assert.match(managerPage, /\.from\('employees'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+  assert.doesNotMatch(managerPage, /\.(?:insert|update|delete)\(/);
 });

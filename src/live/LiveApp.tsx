@@ -17,12 +17,12 @@ type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
-  organizationManage: boolean;
+  organizationManage: boolean; performance: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false,
+  organizationManage: false, performance: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -150,8 +150,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [tenantWorkspacePermissions, setTenantWorkspacePermissions] = useState<Record<string, WorkspacePermissions>>({});
   const workspacePermissions = tenantWorkspacePermissions[tenantId] || noWorkspacePermissions;
   const canAdminSelectedTenant = tenants.some(t => t.id === tenantId) && (
-    workspacePermissions.dashboard || workspacePermissions.attendance || workspacePermissions.leave
-    || workspacePermissions.organization
+    isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.attendance || workspacePermissions.leave
+    || workspacePermissions.organization || workspacePermissions.performance
   );
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
@@ -264,7 +264,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           .map(e => e.tenant_id);
         const permissionIds = [
           'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view',
-          'leave.view', 'leave.manage', 'organization.view', 'organization.manage',
+          'leave.view', 'leave.manage', 'organization.view', 'organization.manage', 'performance.view', 'performance.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -285,12 +285,16 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             leaveManage: grants.get('leave.manage') === true,
             organization: grants.get('organization.view') === true || grants.get('organization.manage') === true,
             organizationManage: grants.get('organization.manage') === true,
+            performance: grants.get('performance.view') === true || grants.get('performance.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
 
         const tenantIds = Array.from(new Set([...mine.map(m => m.tenant_id), ...ownedTenantIds]));
-        const found = tenantIds.length
+        const activeSuperAdmin = adminResult.data?.active === true && adminResult.data?.is_super_admin === true;
+        const found = activeSuperAdmin
+          ? await supabase.from('tenants').select('id,name,slug,timezone').eq('is_active', true).order('name')
+          : tenantIds.length
           ? await supabase.from('tenants').select('id,name,slug,timezone')
               .eq('is_active', true).in('id', tenantIds)
           : { data: [] as Tenant[], error: null };
@@ -302,7 +306,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         setTenantWorkspacePermissions(tenantPermissions);
         setTenantId(previous => (found.data || []).some(t => t.id === previous)
           ? previous : (found.data?.[0]?.id || ''));
-        setIsSuperAdmin(adminResult.data?.active === true && adminResult.data?.is_super_admin === true);
+        setIsSuperAdmin(activeSuperAdmin);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');
       } finally { if (active) setMembershipLoading(false); }

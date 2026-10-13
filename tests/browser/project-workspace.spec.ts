@@ -3,8 +3,11 @@ import { test, expect } from '@playwright/test';
 const tenantId = 'faaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const managerId = 'fbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const employeeId = 'fccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const projectManagerId = 'fccccccc-cccc-4ccc-8ccc-cccccccccccd';
 const projectId = 'fddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const allocationId = 'feeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const newAllocationId = 'f1111111-1111-4111-8111-111111111111';
+type Mode = 'manager' | 'super-admin' | 'project-manager' | 'employee';
 type BrowserAllocation = {
   id: string; employee_id: string; employee_name: string; employee_number: string;
   role_on_project: string; allocation_percentage: number; assigned_date: string;
@@ -14,7 +17,7 @@ type BrowserProject = {
   id: string; tenant_id: string; code: string; name: string; client_name: string | null;
   description: string | null; project_lead_id: string; project_lead_name: string;
   start_date: string; target_end_date: string | null; status: string;
-  allocations: BrowserAllocation[];
+  can_manage: boolean; allocations: BrowserAllocation[];
 };
 
 function authFixture(userId: string, email: string) {
@@ -33,20 +36,32 @@ function authFixture(userId: string, email: string) {
   return { user, token };
 }
 
-async function openWorkspace(page: import('@playwright/test').Page, mode: 'manager' | 'employee') {
-  const userId = mode === 'manager' ? managerId : employeeId;
-  const email = mode === 'manager' ? 'project-manager@hris.test' : 'project-employee@hris.test';
+async function openWorkspace(page: import('@playwright/test').Page, mode: Mode) {
+  const userId = mode === 'manager' ? managerId
+    : mode === 'super-admin' ? 'faaaaaab-aaaa-4aaa-8aaa-aaaaaaaaaaab'
+    : mode === 'project-manager' ? projectManagerId : employeeId;
+  const email = mode === 'manager' ? 'ordinary-admin@hris.test'
+    : mode === 'super-admin' ? 'super-admin@hris.test'
+    : mode === 'project-manager' ? 'assigned-project-manager@hris.test' : 'project-employee@hris.test';
   const { user, token } = authFixture(userId, email);
   const project: BrowserProject = {
     id: projectId, tenant_id: tenantId, code: 'PRJ-001', name: 'Design Platform',
     client_name: 'QA Client', description: 'Synthetic end-to-end project.',
-    project_lead_id: employeeId, project_lead_name: 'Synthetic Employee',
-    start_date: '2026-10-01', target_end_date: '2026-12-31', status: 'active', allocations: [],
+    project_lead_id: projectManagerId, project_lead_name: 'Assigned Project Manager',
+    start_date: '2026-10-01', target_end_date: '2026-12-31', status: 'active',
+    can_manage: mode === 'project-manager' || mode === 'super-admin',
+    allocations: [{ id: allocationId, employee_id: employeeId, employee_name: 'Synthetic Employee',
+      employee_number: 'QA-001', role_on_project: 'Designer', allocation_percentage: 60,
+      assigned_date: '2026-10-01', release_date: null, status: 'active' }],
   };
-  const employees = [{ id: employeeId, employee_number: 'QA-001', full_name: 'Synthetic Employee' }];
+  const employees = [
+    { id: employeeId, employee_number: 'QA-001', full_name: 'Synthetic Employee' },
+    { id: projectManagerId, employee_number: 'QA-PM-001', full_name: 'Assigned Project Manager' },
+  ];
   const projects = [project];
   let nextProjectNumber = 2;
   const projectRpcTenants: string[] = [];
+  const projectCreateBodies: Record<string, unknown>[] = [];
   const allocationRpcBodies: Record<string, unknown>[] = [];
 
   await page.route('**/*', async route => {
@@ -73,24 +88,29 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: 'manag
     if (endpoint === 'hris_get_tenant_project_workspace') {
       const body = request.postDataJSON() as { p_tenant_id?: string };
       projectRpcTenants.push(body.p_tenant_id || '');
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ projects, employees }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        projects, employees,
+        can_create: mode === 'super-admin',
+      }) });
     }
     if (endpoint === 'hris_get_my_projects') {
       const body = request.postDataJSON() as { p_tenant_id?: string };
       projectRpcTenants.push(body.p_tenant_id || '');
       const mine = mode === 'employee' ? [{ allocation_id: allocationId, project_id: projectId,
         project_code: 'PRJ-001', project_name: 'Design Platform', client_name: 'QA Client',
-        project_lead_name: 'Project Lead', project_status: 'active', role_on_project: 'Designer',
+        project_lead_name: 'Assigned Project Manager', project_status: 'active', role_on_project: 'Designer',
         allocation_percentage: 60, assigned_date: '2026-10-01', release_date: null, status: 'active' }] : [];
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ projects: mine }) });
     }
     if (endpoint === 'hris_create_tenant_project') {
       const body = request.postDataJSON() as Record<string, unknown>;
-      const created = { ...project, id: `project-${nextProjectNumber}`, code: String(body.p_code),
+      projectCreateBodies.push(body);
+      const created: BrowserProject = { ...project, id: `project-${nextProjectNumber}`, code: String(body.p_code),
         name: String(body.p_name), client_name: body.p_client_name as string | null,
         description: body.p_description as string | null, project_lead_id: String(body.p_project_lead_id),
-        project_lead_name: 'Synthetic Employee', start_date: String(body.p_start_date),
-        target_end_date: body.p_target_end_date as string | null, status: String(body.p_status), allocations: [] };
+        project_lead_name: employees.find(employee => employee.id === body.p_project_lead_id)?.full_name || 'Synthetic Employee',
+        start_date: String(body.p_start_date), target_end_date: body.p_target_end_date as string | null,
+        status: String(body.p_status), can_manage: mode === 'super-admin', allocations: [] };
       nextProjectNumber += 1;
       projects.push(created);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(created) });
@@ -99,12 +119,12 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: 'manag
       const body = request.postDataJSON() as Record<string, unknown>;
       allocationRpcBodies.push(body);
       const target = projects.find(row => row.id === body.p_project_id);
-      if (target) target.allocations.push({ id: allocationId, employee_id: employeeId,
+      if (target) target.allocations.push({ id: newAllocationId, employee_id: employeeId,
         employee_name: 'Synthetic Employee', employee_number: 'QA-001',
         role_on_project: String(body.p_role_on_project), allocation_percentage: Number(body.p_allocation_percentage),
         assigned_date: String(body.p_assigned_date), release_date: body.p_release_date as string | null,
         status: 'active' });
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: allocationId, status: 'active' }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: newAllocationId, status: 'active' }) });
     }
     if (endpoint === 'hris_release_tenant_project_allocation') {
       const body = request.postDataJSON() as Record<string, unknown>;
@@ -122,13 +142,13 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: 'manag
     if (endpoint === 'tenant_memberships') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mode === 'manager' ? [{ tenant_id: tenantId, role: 'qa_tenant_manager', status: 'active' }] : []) });
     if (endpoint === 'employees') {
       const select = url.searchParams.get('select') || '';
-      const linkedEmployee = mode === 'employee' && select.includes('employment_status');
-      const adminEmployeeList = mode === 'manager' && select.includes('full_name');
+      const linkedEmployee = ['project-manager', 'employee'].includes(mode) && select.includes('employment_status');
+      const adminEmployeeList = ['manager', 'super-admin'].includes(mode) && select.includes('full_name');
       const data = linkedEmployee ? [{ tenant_id: tenantId, employment_status: 'active' }]
-        : adminEmployeeList ? [{ id: employeeId, full_name: 'Synthetic Employee', employee_number: 'QA-001', employment_status: 'active' }] : [];
+        : adminEmployeeList ? employees.map(employee => ({ ...employee, employment_status: 'active' })) : [];
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
     }
-    if (endpoint === 'admin_users') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ active: false, is_super_admin: false }) });
+    if (endpoint === 'admin_users') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ active: mode === 'super-admin', is_super_admin: mode === 'super-admin' }) });
     if (endpoint === 'tenants') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: tenantId, name: 'Synthetic Organization', slug: 'synthetic', timezone: 'Asia/Dhaka' }]) });
     if (endpoint === 'leave_requests' || endpoint === 'leave_types' || endpoint === 'departments') return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
     if (request.method() === 'HEAD') return route.fulfill({ status: 200, headers: { 'content-range': '0-0/0' }, body: '' });
@@ -139,45 +159,55 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: 'manag
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  if (mode === 'manager') await expect(page.getByRole('heading', { name: 'Projects & Resource Allocation' })).toBeVisible();
+  if (mode === 'manager' || mode === 'super-admin') await expect(page.getByRole('heading', { name: 'Projects & Resource Allocation' })).toBeVisible();
   else await expect(page.getByRole('heading', { name: 'Personal Dashboard' })).toBeVisible();
-
-  return { projectRpcTenants, allocationRpcBodies };
+  return { projectRpcTenants, projectCreateBodies, allocationRpcBodies };
 }
 
-test('organization manager creates a project, assigns a resource, and releases the allocation', async ({ page }) => {
-  const { projectRpcTenants, allocationRpcBodies } = await openWorkspace(page, 'manager');
-  await expect(page.getByRole('heading', { name: 'Design Platform' })).toBeVisible();
+test('Super Admin creates a project and appoints its Project Manager', async ({ page }) => {
+  const { projectRpcTenants, projectCreateBodies } = await openWorkspace(page, 'super-admin');
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project code').fill('PRJ-002');
   await page.getByLabel('Project name').fill('People Operations Refresh');
-  await page.getByLabel('Project lead').selectOption(employeeId);
+  await page.getByLabel('Project Manager').selectOption(projectManagerId);
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'People Operations Refresh' })).toBeVisible();
+  expect(projectCreateBodies).toHaveLength(1);
+  expect(projectCreateBodies[0].p_tenant_id).toBe(tenantId);
+  expect(projectCreateBodies[0].p_project_lead_id).toBe(projectManagerId);
+  expect(projectRpcTenants.every(id => id === tenantId)).toBe(true);
+});
 
+test('ordinary Admin or Manager cannot create projects or manage project membership in the UI', async ({ page }) => {
+  await openWorkspace(page, 'manager');
+  await expect(page.getByRole('heading', { name: 'Design Platform' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New project' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Assign employee' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Release' })).toHaveCount(0);
+});
+
+test('assigned Project Manager can add and remove a member from their project', async ({ page }) => {
+  const { projectRpcTenants, allocationRpcBodies } = await openWorkspace(page, 'project-manager');
+  await page.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'Project Workspace', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Design Platform' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New project' })).toHaveCount(0);
   const projectCard = page.locator('article').filter({ hasText: 'PRJ-001' }).first();
   await projectCard.getByRole('button', { name: 'Assign employee' }).click();
   await page.getByLabel('Employee', { exact: true }).selectOption(employeeId);
   await page.getByLabel('Project role', { exact: true }).fill('Designer');
-  await page.getByLabel('Allocation %', { exact: true }).fill('60');
+  await page.getByLabel('Allocation %', { exact: true }).fill('20');
   await page.getByRole('button', { name: 'Save allocation' }).click();
-  const allocationRow = projectCard.getByRole('row').filter({ hasText: 'QA-001' });
-  await expect(allocationRow).toContainText('Synthetic Employee');
-  await expect(allocationRow).toContainText('60%');
-
+  expect(allocationRpcBodies[0].p_tenant_id).toBe(tenantId);
   page.on('dialog', dialog => dialog.accept());
-  await projectCard.getByRole('button', { name: 'Release' }).click();
-  await expect(projectCard.getByText('released', { exact: true })).toBeVisible();
-  await expect(page.getByRole('status')).toContainText('Employment status is unchanged');
-  expect(projectRpcTenants.length).toBeGreaterThan(1);
+  await projectCard.getByRole('button', { name: 'Release' }).first().click();
+  await expect(page.getByText(/Synthetic Employee was released from the project\. Employment status is unchanged\./)).toBeVisible();
+  expect(allocationRpcBodies).toHaveLength(2);
   expect(projectRpcTenants.every(id => id === tenantId)).toBe(true);
-  expect(allocationRpcBodies.map(body => body.p_tenant_id)).toEqual([tenantId, tenantId]);
-
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test('employee sees only their personal project allocations and no management actions', async ({ page }) => {
+test('employee sees personal project allocations with no management actions', async ({ page }) => {
   const { projectRpcTenants } = await openWorkspace(page, 'employee');
   await page.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'My Projects', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'My Projects & Allocations' })).toBeVisible();
