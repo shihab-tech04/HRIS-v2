@@ -6,12 +6,16 @@ on:
       - 'tests/sql/phase2a/**'
       - 'tests/sql/candidate-c1/**'
       - 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'
+      - 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'
       - '.github/workflows/phase2a-postgres.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/staging/phase2a/**'
       - 'tests/sql/phase2a/**'
+      - 'tests/sql/candidate-c1/**'
+      - 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'
+      - 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'
       - '.github/workflows/phase2a-postgres.yml'
   workflow_dispatch:
 
@@ -57,6 +61,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/verify_admin_roles.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/fixture.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/verify.sql
       - name: Report boundaries
         run: |
