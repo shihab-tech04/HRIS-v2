@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const migration = readFileSync(new URL('../../supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql', import.meta.url), 'utf8');
 const eligibilityMigration = readFileSync(new URL('../../supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql', import.meta.url), 'utf8');
 const notificationMigration = readFileSync(new URL('../../supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql', import.meta.url), 'utf8');
+const taskEditMigration = readFileSync(new URL('../../supabase/migrations/20261013224251_hris_project_task_edit_workflow.sql', import.meta.url), 'utf8');
 const managerUi = readFileSync(new URL('../../src/live/ProjectTaskManager.tsx', import.meta.url), 'utf8');
 const employeeUi = readFileSync(new URL('../../src/live/MyProjectWork.tsx', import.meta.url), 'utf8');
 const performanceUi = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.meta.url), 'utf8');
@@ -79,8 +80,22 @@ test('eligible peer reviews create tenant-scoped in-app notifications and the is
   assert.match(browser, /Review for Synthetic Employee A completed/);
 });
 
+test('unfinished task edits persist through a tenant-scoped assigned-Project-Manager RPC', () => {
+  assert.match(taskEditMigration, /ADD COLUMN IF NOT EXISTS updated_at timestamptz/);
+  assert.match(taskEditMigration, /CREATE OR REPLACE FUNCTION public\.hris_update_project_task/);
+  assert.match(taskEditMigration, /hris_can_manage_project_tasks\(p_tenant_id, v_task\.project_id\)/);
+  assert.match(taskEditMigration, /v_task\.status = 'completed'/);
+  assert.match(taskEditMigration, /updated_at = clock_timestamp\(\)/);
+  assert.match(taskEditMigration, /REVOKE ALL ON FUNCTION public\.hris_update_project_task[^;]+FROM PUBLIC, anon/);
+  assert.match(taskEditMigration, /GRANT EXECUTE ON FUNCTION public\.hris_update_project_task[^;]+TO authenticated, service_role/);
+  const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /20261013224251_hris_project_task_edit_workflow\.sql/);
+  assert.match(runner, /Task details persist only through the assigned Project Manager/);
+  assert.match(runner, /completedTaskEdit\.error\?\.code === '42501'/);
+});
+
 test('manager and employee screens complete task, release, review, and performance-history journeys', () => {
-  for (const rpc of ['hris_create_project_task', 'hris_start_project_task', 'hris_assign_project_task_member', 'hris_release_project_task_member', 'hris_complete_project_task']) {
+  for (const rpc of ['hris_create_project_task', 'hris_update_project_task', 'hris_start_project_task', 'hris_assign_project_task_member', 'hris_release_project_task_member', 'hris_complete_project_task']) {
     assert.ok(managerUi.includes(`'${rpc}'`), `manager UI must call ${rpc}`);
   }
   assert.match(managerUi, /role="alertdialog" aria-modal="true"/);
@@ -90,6 +105,8 @@ test('manager and employee screens complete task, release, review, and performan
   assert.match(browser, /getByRole\('button', \{ name: 'Release Synthetic Absent Employee A from '/);
   assert.match(browser, /pmPage\.keyboard\.press\('Escape'\)/);
   assert.match(managerUi, /Feedback Pending/);
+  assert.match(managerUi, /Edit task/);
+  assert.match(managerUi, /Task details saved\./);
   assert.match(organizationProjects, /project\.can_manage && <ProjectTaskManager/);
   assert.match(myProjects, /<MyProjectWork tenantId=\{tenantId\} \/>/);
   assert.match(employeeUi, /hris_get_my_project_tasks/);

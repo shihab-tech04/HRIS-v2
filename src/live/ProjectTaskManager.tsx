@@ -9,6 +9,7 @@ type ProjectTask = { id: string; title: string; description: string; due_date: s
 type PendingConfirmation =
   | { kind: 'release'; taskId: string; taskTitle: string; member: TaskMember }
   | { kind: 'complete'; taskId: string; taskTitle: string };
+type TaskEdit = { taskId: string; title: string; description: string; dueDate: string };
 
 function errorMessage(cause: unknown, fallback: string) {
   if (cause instanceof Error && cause.message) return cause.message;
@@ -30,6 +31,7 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [addMember, setAddMember] = useState<Record<string, string>>({});
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [taskEdit, setTaskEdit] = useState<TaskEdit | null>(null);
   const requestSequence = useRef(0);
   const savingRef = useRef(false);
   const cancelConfirmationRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +113,24 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
     } finally { setSaving(false); }
   }
 
+  async function saveTaskEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!taskEdit) return;
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const result = await supabase.rpc('hris_update_project_task', {
+        p_tenant_id: tenantId, p_task_id: taskEdit.taskId, p_title: taskEdit.title.trim(),
+        p_description: taskEdit.description.trim(), p_due_date: taskEdit.dueDate || null,
+      });
+      if (result.error) throw result.error;
+      setTaskEdit(null);
+      setNotice('Task details saved.');
+      refresh();
+    } catch (cause) {
+      setError(errorMessage(cause, 'Unable to save these task details.'));
+    } finally { setSaving(false); }
+  }
+
   async function confirmTaskAction() {
     if (!pendingConfirmation || saving) return;
     const confirmation = pendingConfirmation;
@@ -145,7 +165,16 @@ export function ProjectTaskManager({ tenantId, projectId, members }: { tenantId:
     </form>}
     {loading ? <p role="status" className="mt-4 rounded-lg bg-white p-4 text-sm text-slate-600">Loading project tasks…</p> : tasks.length === 0 ? <p role="status" className="mt-4 rounded-lg bg-white p-4 text-sm text-slate-600">No project tasks yet.</p> :
       <div className="mt-4 space-y-3">{tasks.map(task => <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h5 tabIndex={-1} className="break-words font-semibold text-slate-900">{task.title}</h5>{task.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{task.description}</p>}<p className="mt-1 text-xs text-slate-500">Due: {task.due_date || 'Not set'} · {task.members.filter(member => !member.released_at).length} assigned</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{task.status.replace('_', ' ')}</span></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h5 tabIndex={-1} className="break-words font-semibold text-slate-900">{task.title}</h5>{task.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{task.description}</p>}<p className="mt-1 text-xs text-slate-500">Due: {task.due_date || 'Not set'} · {task.members.filter(member => !member.released_at).length} assigned</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{task.status.replace('_', ' ')}</span>{task.status !== 'completed' && <button type="button" disabled={saving} onClick={() => { setError(''); setNotice(''); setTaskEdit({ taskId: task.id, title: task.title, description: task.description || '', dueDate: task.due_date || '' }); }} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-medium disabled:opacity-50">Edit task</button>}</div></div>
+        {taskEdit?.taskId === task.id && <form onSubmit={saveTaskEdit} aria-label={`Edit ${task.title}`} className="mt-4 space-y-3 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-medium text-slate-600">Task title *<input required maxLength={160} value={taskEdit.title} onChange={event => setTaskEdit(current => current ? { ...current, title: event.target.value } : current)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" /></label>
+            <label className="text-xs font-medium text-slate-600">Due date<input type="date" value={taskEdit.dueDate} onChange={event => setTaskEdit(current => current ? { ...current, dueDate: event.target.value } : current)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" /></label>
+            <label className="text-xs font-medium text-slate-600 sm:col-span-2">Description<textarea rows={2} maxLength={4000} value={taskEdit.description} onChange={event => setTaskEdit(current => current ? { ...current, description: event.target.value } : current)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" /></label>
+          </div>
+          {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+          <div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={saving} onClick={() => { setTaskEdit(null); setError(''); }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">Cancel</button><button type="submit" disabled={saving || !taskEdit.title.trim()} className="min-h-10 rounded-lg bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : error ? 'Retry save' : 'Save task'}</button></div>
+        </form>}
         <ul className="mt-3 flex flex-wrap gap-2" aria-label={`${task.title} members`}>{task.members.map(member => <li key={member.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs text-slate-700">{member.employee_name}{member.released_at ? ' · released' : ''}{!member.released_at && task.status !== 'completed' && <button type="button" aria-label={`Release ${member.employee_name} from ${task.title}`} disabled={saving} onClick={event => { confirmationOriginRef.current = event.currentTarget.closest('article')?.querySelector('h5') || event.currentTarget; setError(''); setPendingConfirmation({ kind: 'release', taskId: task.id, taskTitle: task.title, member }); }} className="grid h-7 w-7 place-items-center rounded-full hover:bg-rose-100"><X className="h-3.5 w-3.5" aria-hidden="true"/></button>}</li>)}</ul>
         {task.status !== 'completed' && <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="min-w-[220px] flex-1 text-xs font-medium text-slate-600">Add project member<select aria-label={`Add member to ${task.title}`} value={addMember[task.id] || ''} onChange={event => setAddMember(value => ({ ...value, [task.id]: event.target.value }))} className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="">Select member</option>{members.filter(member => member.status === 'active' && !task.members.some(existing => existing.project_allocation_id === member.id && !existing.released_at)).map(member => <option key={member.id} value={member.id}>{member.employee_name}</option>)}</select></label>

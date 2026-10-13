@@ -94,9 +94,20 @@ async function assertNoHorizontalOverflow(page, label) {
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
+  let failTaskEditOnce = true;
+  let taskEditCalls = 0;
   const pmPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   await pmPage.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_update_project_task')
+        && route.request().method() === 'POST') {
+      taskEditCalls += 1;
+      if (failTaskEditOnce) {
+        failTaskEditOnce = false;
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Temporary task edit outage.' }) });
+      }
+    }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
     return route.abort();
@@ -115,7 +126,21 @@ try {
 
   const task = manager.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
   await assertVisibleText(task, 'Synthetic Employee A');
-  await task.getByLabel(`Add member to ${process.env.HRIS_LOCAL_TASK_TITLE}`)
+  await task.getByRole('button', { name: 'Edit task' }).click();
+  const taskEdit = task.getByRole('form', { name: `Edit ${process.env.HRIS_LOCAL_TASK_TITLE}` });
+  const revisedTaskTitle = `${process.env.HRIS_LOCAL_TASK_TITLE} updated`;
+  await taskEdit.getByLabel('Task title *').fill(revisedTaskTitle);
+  await taskEdit.getByLabel('Due date').fill('2098-08-20');
+  await taskEdit.getByLabel('Description').fill('Updated details persisted after retry.');
+  await taskEdit.getByRole('button', { name: 'Save task' }).click();
+  await assertVisibleText(taskEdit.getByRole('alert'), 'Temporary task edit outage.');
+  if (taskEditCalls !== 1) throw new Error(`Expected one simulated task edit outage; calls=${taskEditCalls}.`);
+  await taskEdit.getByRole('button', { name: 'Retry save' }).click();
+  await assertVisibleText(task, revisedTaskTitle);
+  await assertVisibleText(task, 'Updated details persisted after retry.');
+  await assertVisibleText(task, 'Due: 2098-08-20');
+  if (taskEditCalls !== 2) throw new Error(`Expected task edit retry to persist once; calls=${taskEditCalls}.`);
+  await task.getByLabel(`Add member to ${revisedTaskTitle}`)
     .selectOption(process.env.HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID);
   await task.getByRole('button', { name: 'Add member', exact: true }).click();
   await assertNoHorizontalOverflow(pmPage, 'Mobile task member assignment');
@@ -123,21 +148,21 @@ try {
   await task.getByRole('button', { name: 'Start task' }).click();
   await assertVisibleText(task, 'in progress');
 
-  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).click();
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).click();
   const releaseDialog = pmPage.getByRole('alertdialog');
   await assertVisibleText(releaseDialog, 'Collaborators whose assignments overlapped will receive required peer reviews. The release will not wait for feedback.');
   await releaseDialog.getByRole('button', { name: 'Cancel' }).click();
   await releaseDialog.waitFor({ state: 'detached' });
-  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, process.env.HRIS_LOCAL_TASK_TITLE);
-  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).waitFor({ state: 'visible' });
-  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).click();
+  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).waitFor({ state: 'visible' });
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).click();
   await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm release' }).click();
   await assertVisibleText(task, 'Feedback Pending · 1 required reviews');
   await task.getByRole('button', { name: 'Mark complete' }).click();
   const completionDialog = pmPage.getByRole('alertdialog');
   await pmPage.keyboard.press('Escape');
   await completionDialog.waitFor({ state: 'detached' });
-  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, process.env.HRIS_LOCAL_TASK_TITLE);
+  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);
   await assertVisibleText(task, 'in progress');
   await task.getByRole('button', { name: 'Mark complete' }).click();
   await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm completion' }).click();
@@ -249,7 +274,7 @@ try {
   await revieweePage.setViewportSize({ width: 375, height: 812 });
   const width = await revieweePage.evaluate(() => document.documentElement.scrollWidth);
   if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
-  console.log('Mobile/desktop browser-to-local-Supabase task, review validation, outage recovery, submission, and performance-history journey passed.');
+  console.log('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, review validation/submission, and performance-history journey passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

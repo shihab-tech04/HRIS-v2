@@ -293,6 +293,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013174500_hris_learning_program_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013224251_hris_project_task_edit_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
@@ -3307,11 +3308,40 @@ const projectTaskCreate = await employeeA.client.rpc('hris_create_project_task',
   p_due_date: null, p_project_allocation_ids: taskAllocationIds,
 });
 const projectTaskId = projectTaskCreate.data?.id;
+const adminTaskEdit = await managerA.client.rpc('hris_update_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId, p_title: 'Unauthorized task edit',
+  p_description: 'Must remain unchanged.', p_due_date: null,
+});
+const crossTenantTaskEdit = await managerB.client.rpc('hris_update_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId, p_title: 'Cross-tenant task edit',
+  p_description: 'Must remain unchanged.', p_due_date: null,
+});
+const taskEdit = await employeeA.client.rpc('hris_update_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId, p_title: 'Synthetic peer review task — revised',
+  p_description: 'Updated task details persist without changing task members.', p_due_date: localCurrentDate,
+});
+const invalidPastTaskEdit = await employeeA.client.rpc('hris_update_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId, p_title: 'Synthetic peer review task — revised',
+  p_description: 'This rejected update must not persist.', p_due_date: addCalendarDays(localCurrentDate, -1),
+});
+const editedTaskRow = queryAdmin(`SELECT jsonb_build_object(
+  'title',title,'description',description,'due_date',due_date::text,
+  'updated_at_after_created',updated_at>created_at)
+  FROM public.project_tasks WHERE tenant_id='${ids.tenantA}'::uuid AND id='${projectTaskId}'::uuid`);
 record('Only the assigned Project Manager creates a task with same-project employee allocations',
   !taskMemberAllocation.error && Boolean(adminTaskCreate.error?.code === '42501')
     && Boolean(tenantManagerTaskCreate.error?.code === '42501')
     && Boolean(superAdminTaskCreate.error?.code === '42501')
     && !projectTaskCreate.error && projectTaskCreate.data?.status === 'open');
+record('Task details persist only through the assigned Project Manager while ordinary and cross-tenant edits are denied',
+  Boolean(adminTaskEdit.error?.code === '42501') && Boolean(crossTenantTaskEdit.error?.code === '42501')
+    && !taskEdit.error && Boolean(invalidPastTaskEdit.error?.code === '22023')
+    && taskEdit.data?.title === 'Synthetic peer review task — revised'
+    && editedTaskRow.title === 'Synthetic peer review task — revised'
+    && editedTaskRow.description === 'Updated task details persist without changing task members.'
+    && editedTaskRow.due_date === localCurrentDate && editedTaskRow.updated_at_after_created === true,
+  JSON.stringify({ adminCode: adminTaskEdit.error?.code, crossTenantCode: crossTenantTaskEdit.error?.code,
+    editError: taskEdit.error?.message, persisted: editedTaskRow }));
 
 const taskWorkspacePM = await employeeA.client.rpc('hris_get_project_task_workspace', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
@@ -3399,6 +3429,10 @@ const taskStart = await employeeA.client.rpc('hris_start_project_task', { p_tena
 const taskCompleteDenied = await managerA.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
 const taskCompleteBySuperAdmin = await superAdmin.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
 const taskComplete = await employeeA.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
+const completedTaskEdit = await employeeA.client.rpc('hris_update_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId, p_title: 'Completed task must remain unchanged',
+  p_description: 'Completed work history is immutable.', p_due_date: null,
+});
 const completedTaskWorkspace = await employeeA.client.rpc('hris_get_project_task_workspace', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
 });
@@ -3406,6 +3440,7 @@ const duplicateTaskComplete = await employeeA.client.rpc('hris_complete_project_
 record('Assigned Project Manager completes operational work while two mandatory reviews remain pending',
   !taskStart.error && Boolean(taskCompleteDenied.error?.code === '42501')
     && Boolean(taskCompleteBySuperAdmin.error?.code === '42501') && !taskComplete.error
+    && Boolean(completedTaskEdit.error?.code === '42501')
     && taskComplete.data?.task?.status === 'completed' && taskComplete.data?.feedback_pending === 2
     && !completedTaskWorkspace.error && completedTaskWorkspace.data.tasks[0].feedback_pending === 2
     && Boolean(duplicateTaskComplete.error));
@@ -3751,7 +3786,8 @@ try {
   browserIntegrationError = String(error.stderr || error.message || 'local browser run failed').slice(-1200);
 }
 const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_object(
-  'status',t.status,
+  'title',t.title,'description',t.description,'due_date',t.due_date::text,
+  'updated_at_after_created',t.updated_at>t.created_at,'status',t.status,
   'pending',(SELECT count(*)::integer FROM public.project_task_peer_reviews r
     WHERE r.tenant_id=t.tenant_id AND r.task_id=t.id AND r.status='pending'),
   'review_total',(SELECT count(*)::integer FROM public.project_task_peer_reviews r
@@ -3764,9 +3800,12 @@ const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_o
       AND r.employee_id='55555555-5555-4555-8555-555555555555'::uuid
       AND r.quality_of_work_not_observed AND r.quality_of_work_score IS NULL))
   FROM public.project_tasks t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.project_id='${projectA.id}'::uuid
-    AND t.title=${sqlLiteral(browserTaskTitle)}), 'null'::jsonb)`);
-record('Real browser UI uses isolated Auth/RPC and persists task, overlapping reviews, and Not Observed in local Postgres',
-  browserIntegrationOutput.includes('Mobile/desktop browser-to-local-Supabase task, review validation, outage recovery, submission, and performance-history journey passed.')
+    AND t.title=${sqlLiteral(`${browserTaskTitle} updated`)}), 'null'::jsonb)`);
+record('Real browser UI edits task details with retry, then completes work and persists reviews in local Postgres',
+  browserIntegrationOutput.includes('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, review validation/submission, and performance-history journey passed.')
+    && browserTaskPersistence?.title === `${browserTaskTitle} updated`
+    && browserTaskPersistence?.description === 'Updated details persisted after retry.'
+    && browserTaskPersistence?.due_date === '2098-08-20' && browserTaskPersistence?.updated_at_after_created === true
     && browserTaskPersistence?.status === 'completed' && browserTaskPersistence?.pending === 1
     && browserTaskPersistence.review_total === 2 && browserTaskPersistence.review_submitted
     && browserTaskPersistence.not_observed,
