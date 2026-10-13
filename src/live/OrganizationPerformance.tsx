@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Search, Target } from 'lucide-react';
+import { Download, RefreshCw, Search, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { downloadCsv } from './csv';
 
 type Goal = {
   id: string;
@@ -172,16 +173,49 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     : 0;
   const completed = cycleGoals.filter(goal => goal.status === 'completed').length;
 
+  function exportPerformance() {
+    const rows: unknown[][] = [
+      ...visibleGoals.map(goal => {
+        const employee = employees[goal.employee_id];
+        const cycle = cycles.find(item => item.id === goal.cycle_id);
+        return [
+          'Goal', employee?.full_name || '', employee?.employee_number || '', cycle?.name || '',
+          goal.title, goal.category, goal.target_metric, Number(goal.current_progress),
+          statusLabel(goal.status), goal.due_date || '',
+        ];
+      }),
+      ...visibleAppraisals.map(appraisal => {
+        const employee = employees[appraisal.employee_id];
+        const cycle = cycles.find(item => item.id === appraisal.cycle_id);
+        return [
+          'Appraisal', employee?.full_name || '', employee?.employee_number || '', cycle?.name || '',
+          '', '', '', '', statusLabel(appraisal.status), '',
+        ];
+      }),
+    ];
+    const cyclePart = selectedCycle?.name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      || (cycleFilter === 'all' ? 'all-cycles' : 'selected-cycle');
+    downloadCsv(`organization-performance-${cyclePart}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Record type', 'Employee name', 'Employee number', 'Review cycle', 'Goal', 'Category', 'Target', 'Progress', 'Status', 'Due date'],
+      rows);
+  }
+
   return <section aria-labelledby="organization-performance-heading" className="space-y-5">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h2 id="organization-performance-heading" className="text-2xl font-semibold text-[#1E1B39]">Performance</h2>
         <p className="mt-1 text-sm text-[#86929E]">Review goal progress visible to your organization role.</p>
       </div>
-      <button type="button" disabled={loading} onClick={() => void load()} aria-label="Refresh organization performance"
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] disabled:opacity-50">
-        <RefreshCw className="h-4 w-4" /> Refresh
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={loading} onClick={() => void load()} aria-label="Refresh organization performance"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" /> Refresh
+        </button>
+        <button type="button" disabled={loading || (!visibleGoals.length && !visibleAppraisals.length)} onClick={exportPerformance}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#085587] bg-white px-3 text-sm font-medium text-[#085587] disabled:opacity-50">
+          <Download className="h-4 w-4" aria-hidden="true" /> Export CSV
+        </button>
+      </div>
     </div>
 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -120,6 +121,20 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   await page.getByRole('combobox', { name: 'Filter organization performance by status' }).selectOption('completed');
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Improve onboarding quality' })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Filter organization performance by status' }).selectOption('all');
+  await cycleFilter.selectOption('cycle-2026');
+  await page.getByRole('searchbox', { name: 'Search organization performance' }).fill('onboarding');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Export CSV' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^organization-performance-annual-review-2026-\d{4}-\d{2}-\d{2}\.csv$/);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const csv = await readFile(downloadPath!, 'utf8');
+  expect(csv).toContain('"Goal","Avery Example","SYN-014","Annual review 2026","Improve onboarding quality"');
+  expect(csv).not.toContain('Publish team handbook');
+  expect(csv).not.toMatch(/score|feedback/i);
   expect(goalQueries.length).toBeGreaterThan(0);
   expect(goalQueries.every(value => value === `eq.${tenantId}`)).toBe(true);
   expect(cycleQueries.length).toBeGreaterThan(0);

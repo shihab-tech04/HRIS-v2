@@ -9,6 +9,7 @@ const liveApp = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.u
 const migration = readFileSync(new URL('../../supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql', import.meta.url), 'utf8');
 const appraisalMigration = readFileSync(new URL('../../supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/performance.spec.ts', import.meta.url), 'utf8');
+const managerBrowser = readFileSync(new URL('../browser/manager-performance.spec.ts', import.meta.url), 'utf8');
 
 test('personal performance page is mounted only for linked employees', () => {
   assert.match(app, /id: 'my-performance', label: 'My Performance'/);
@@ -61,4 +62,14 @@ test('appraisal pages read tenant-scoped status metadata without exposing scores
   assert.match(appraisalMigration, /CREATE POLICY hris_performance_cycles_membership_guard/);
   assert.doesNotMatch(page, /select\('[^']*(?:manager_scores|final_rating|final_feedback)/);
   assert.match(browser, /Final scores and feedback are not shown/);
+});
+
+test('organization performance CSV export follows visible filters and excludes appraisal scores and feedback', () => {
+  assert.match(managerPage, /import \{ downloadCsv \} from '\.\/csv'/);
+  assert.match(managerPage, /visibleGoals\.map/);
+  assert.match(managerPage, /visibleAppraisals\.map/);
+  assert.match(managerPage, /'Record type', 'Employee name', 'Employee number', 'Review cycle'/);
+  assert.doesNotMatch(managerPage, /manager_scores|final_rating|final_feedback/);
+  assert.match(managerBrowser, /Export CSV/);
+  assert.match(managerBrowser, /Publish team handbook/);
 });
