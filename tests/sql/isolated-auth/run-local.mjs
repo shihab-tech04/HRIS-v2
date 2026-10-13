@@ -274,6 +274,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013095450_hris_learning_manager_decisions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013174500_hris_learning_program_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -566,6 +567,52 @@ record('Concurrent learning approvals serialize on session capacity; full-sessio
 
 const learningAdminCatalogA = await learningManagerA.client.rpc('hris_get_learning_admin_catalog', { p_tenant_id: ids.tenantA });
 const learningAdminCatalogCrossTenant = await learningManagerA.client.rpc('hris_get_learning_admin_catalog', { p_tenant_id: ids.tenantB });
+const learningRosterA = await learningManagerA.client.rpc('hris_get_learning_session_roster', {
+  p_tenant_id: ids.tenantA, p_session_id: learningIds.fullSession,
+});
+const learningRosterCrossTenant = await learningManagerA.client.rpc('hris_get_learning_session_roster', {
+  p_tenant_id: ids.tenantB, p_session_id: learningIds.tenantBSession,
+});
+const learningRosterForeignSession = await learningManagerA.client.rpc('hris_get_learning_session_roster', {
+  p_tenant_id: ids.tenantA, p_session_id: learningIds.tenantBSession,
+});
+const learningRosterOrdinaryManager = await managerA.client.rpc('hris_get_learning_session_roster', {
+  p_tenant_id: ids.tenantA, p_session_id: learningIds.fullSession,
+});
+const learningRosterEmployee = await employeeA.client.rpc('hris_get_learning_session_roster', {
+  p_tenant_id: ids.tenantA, p_session_id: learningIds.fullSession,
+});
+const learningRosterGlobalOnly = await globalOnly.client.rpc('hris_get_learning_session_roster', {
+  p_tenant_id: ids.tenantA, p_session_id: learningIds.fullSession,
+});
+const learningRosterAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_learning_session_roster', { p_tenant_id: ids.tenantA, p_session_id: learningIds.fullSession });
+const learningRosterAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon_execute',has_function_privilege('anon','public.hris_get_learning_session_roster(uuid,uuid)','EXECUTE'),
+  'authenticated_execute',has_function_privilege('authenticated','public.hris_get_learning_session_roster(uuid,uuid)','EXECUTE'),
+  'helper_anon_execute',has_function_privilege('anon','private.hris_get_learning_session_roster(uuid,uuid)','EXECUTE'),
+  'helper_authenticated_execute',has_function_privilege('authenticated','private.hris_get_learning_session_roster(uuid,uuid)','EXECUTE'),
+  'private_schema_anon_usage',has_schema_privilege('anon','private','USAGE'),
+  'private_schema_authenticated_usage',has_schema_privilege('authenticated','private','USAGE'))`);
+record('Scheduled learning rosters return only active tenant enrollments and deny non-managers, anonymous, and cross-tenant access',
+  !learningRosterA.error && learningRosterA.data?.session?.id === learningIds.fullSession
+    && learningRosterA.data.session.program_title === 'QA A Full Session'
+    && learningRosterA.data.learners.length === 1
+    && learningRosterA.data.learners[0].employee_name === 'Synthetic Clock Employee'
+    && learningRosterA.data.learners[0].employee_number === 'QA-A-006'
+    && Boolean(learningRosterCrossTenant.error?.code === '42501')
+    && Boolean(learningRosterForeignSession.error?.code === 'P0002')
+    && Boolean(learningRosterOrdinaryManager.error?.code === '42501')
+    && Boolean(learningRosterEmployee.error?.code === '42501')
+    && Boolean(learningRosterGlobalOnly.error?.code === '42501')
+    && Boolean(learningRosterAnonymous.error?.code === '42501')
+    && learningRosterAcl.anon_execute === false && learningRosterAcl.authenticated_execute === true
+    && learningRosterAcl.helper_anon_execute === false && learningRosterAcl.helper_authenticated_execute === true
+    && learningRosterAcl.private_schema_anon_usage === false && learningRosterAcl.private_schema_authenticated_usage === true,
+  JSON.stringify({ roster: learningRosterA.data, crossTenant: learningRosterCrossTenant.error?.code,
+    foreignSession: learningRosterForeignSession.error?.code, ordinaryManager: learningRosterOrdinaryManager.error?.code,
+    employee: learningRosterEmployee.error?.code, globalOnly: learningRosterGlobalOnly.error?.code,
+    anonymous: learningRosterAnonymous.error?.code, acl: learningRosterAcl }));
 const learningAdminCatalogIds = (learningAdminCatalogA.data || []).map(row => `${sqlLiteral(row.id)}::uuid`).join(',');
 const learningAdminCatalogTenantBound = queryAdmin(`SELECT jsonb_build_object(
   'tenant_a_count',count(*) FILTER (WHERE tenant_id='${ids.tenantA}'::uuid)::integer,
@@ -653,8 +700,8 @@ try {
 } catch (error) {
   learningBrowserError = String(error.stderr || error.message || 'local learning browser run failed').slice(-1800);
 }
-record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, cancellation, refresh and responsive recovery',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval and program/session administration, employee catalog enrollment, cancellation, and responsive recovery passed.'),
+record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, roster retry, cancellation, refresh and responsive recovery',
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, employee enrollment, cancellation, and recovery passed.'),
   learningBrowserError);
 const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   'program_count',count(DISTINCT p.id)::integer,
@@ -668,7 +715,7 @@ const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   LEFT JOIN public.learning_enrollments e ON e.tenant_id=p.tenant_id AND e.program_id=p.id
   WHERE p.tenant_id='${ids.tenantA}'::uuid AND p.title=${sqlLiteral(browserLearningProgramTitle)}`);
 record('Manager-published learning program and session persist and become employee enrollment history',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval and program/session administration, employee catalog enrollment, cancellation, and responsive recovery passed.')
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, employee enrollment, cancellation, and recovery passed.')
     && browserLearningProgramPersistence.program_count === 1 && browserLearningProgramPersistence.active
     && browserLearningProgramPersistence.self_enrollment && browserLearningProgramPersistence.session_count === 1
     && browserLearningProgramPersistence.scheduled && browserLearningProgramPersistence.enrollment_count === 1,

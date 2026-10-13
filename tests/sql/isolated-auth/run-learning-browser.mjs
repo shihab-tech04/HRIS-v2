@@ -107,7 +107,7 @@ try {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
     }
-    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request|hris_get_learning_admin_catalog|hris_save_learning_program|hris_save_learning_session)$/);
+    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request|hris_get_learning_admin_catalog|hris_get_learning_session_roster|hris_save_learning_program|hris_save_learning_session)$/);
     if (managerRpc && request.method() === 'POST') {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
@@ -268,6 +268,26 @@ try {
   await managerProgramCard.getByRole('button', { name: 'Schedule session', exact: true }).click();
   const createdSession = await rpcBody(await sessionResponse);
   await managerProgramCard.getByText('QA Learning Room', { exact: false }).waitFor({ state: 'visible' });
+  let injectRosterFailure = true;
+  await managerPage.route('**/rest/v1/rpc/hris_get_learning_session_roster', async route => {
+    if (injectRosterFailure) {
+      injectRosterFailure = false;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary roster outage.' }) });
+      return;
+    }
+    await route.continue();
+  });
+  const emptyRosterResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_session_roster'));
+  await managerProgramCard.getByRole('button', { name: `View enrolled employees for ${programTitle}` }).click();
+  const emptyRoster = managerProgramCard.locator(`[data-learning-session-roster="${createdSession.id}"]`);
+  await emptyRosterResponse;
+  await emptyRoster.getByRole('alert').waitFor({ state: 'visible' });
+  const retriedEmptyRosterResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_session_roster') && response.status() === 200);
+  await emptyRoster.getByRole('button', { name: 'Retry roster' }).click();
+  await retriedEmptyRosterResponse;
+  await emptyRoster.getByText('No employees are currently enrolled in this session.', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Empty session roster mobile');
+  await managerProgramCard.getByRole('button', { name: `Hide enrolled employees for ${programTitle}` }).click();
   await assertNoOverflow(managerPage, 'Learning program and session creation mobile');
 
   await managerPage.setViewportSize({ width: 1280, height: 900 });
@@ -297,6 +317,25 @@ try {
   await persistedEmployeeRefresh;
   await page.locator(`[data-learning-enrollment="${newEnrollment.id}"]`).getByText(programTitle, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Employee enrollment in newly published learning session mobile');
+
+  await managerPage.setViewportSize({ width: 375, height: 812 });
+  const managerRosterRefresh = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_admin_catalog'));
+  await managerPage.getByRole('button', { name: 'Refresh learning programs' }).click();
+  await managerRosterRefresh;
+  const mobileRosterResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_session_roster'));
+  await managerProgramCard.getByRole('button', { name: `View enrolled employees for ${programTitle}` }).click();
+  const enrolledRoster = managerProgramCard.locator(`[data-learning-session-roster="${createdSession.id}"]`);
+  await mobileRosterResponse;
+  await enrolledRoster.getByText('Synthetic Employee A', { exact: true }).waitFor({ state: 'visible' });
+  await enrolledRoster.getByText('QA-A-001', { exact: false }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Enrolled employee roster mobile');
+  await managerPage.setViewportSize({ width: 1280, height: 900 });
+  await managerProgramCard.getByRole('button', { name: `Hide enrolled employees for ${programTitle}` }).click();
+  const desktopRosterResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_session_roster'));
+  await managerProgramCard.getByRole('button', { name: `View enrolled employees for ${programTitle}` }).click();
+  await desktopRosterResponse;
+  await enrolledRoster.getByText('Synthetic Employee A', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Enrolled employee roster desktop');
   await managerContext.close();
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -307,7 +346,7 @@ try {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval and program/session administration, employee catalog enrollment, cancellation, and responsive recovery passed.');
+  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, employee enrollment, cancellation, and recovery passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

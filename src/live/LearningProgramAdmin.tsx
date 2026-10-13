@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { BookOpenCheck, CalendarClock, Check, Pencil, Plus, RefreshCw, X } from 'lucide-react';
+import { BookOpenCheck, CalendarClock, Check, Pencil, Plus, RefreshCw, UsersRound, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 type ProgramSession = {
@@ -28,6 +28,18 @@ type Program = {
   active: boolean;
   enrollment_count: number;
   sessions: ProgramSession[];
+};
+type RosterLearner = {
+  enrollment_id: string;
+  employee_number: string;
+  employee_name: string;
+  enrolled_at: string;
+  mandatory: boolean;
+  due_date: string | null;
+};
+type SessionRoster = {
+  session: { id: string; program_title: string; status: string };
+  learners: RosterLearner[];
 };
 type ProgramDraft = {
   title: string;
@@ -97,7 +109,13 @@ export function LearningProgramAdmin({ tenantId }: { tenantId: string }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [revision, setRevision] = useState(0);
+  const [rosterSelection, setRosterSelection] = useState<{ tenantId: string; session: ProgramSession } | null>(null);
+  const [roster, setRoster] = useState<SessionRoster | null>(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState('');
+  const [rosterRevision, setRosterRevision] = useState(0);
   const requestSequence = useRef(0);
+  const rosterRequestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
   const previousTenantId = useRef(tenantId);
   activeTenantId.current = tenantId;
@@ -131,6 +149,9 @@ export function LearningProgramAdmin({ tenantId }: { tenantId: string }) {
       setEditingProgramId(null);
       setSessionDraft(null);
       setMessage('');
+      setRosterSelection(null);
+      setRoster(null);
+      setRosterError('');
     }
     previousTenantId.current = tenantId;
     setPrograms([]);
@@ -139,6 +160,48 @@ export function LearningProgramAdmin({ tenantId }: { tenantId: string }) {
     // Revision is the explicit save recovery and refresh trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, revision]);
+
+  useEffect(() => {
+    const selection = rosterSelection;
+    if (!selection || selection.tenantId !== tenantId) return;
+    const requestId = ++rosterRequestSequence.current;
+    const requestedTenant = selection.tenantId;
+    const current = () => requestId === rosterRequestSequence.current
+      && activeTenantId.current === requestedTenant;
+    setRosterLoading(true);
+    setRosterError('');
+    void (async () => {
+      try {
+        const result = await supabase.rpc('hris_get_learning_session_roster', {
+          p_tenant_id: requestedTenant,
+          p_session_id: selection.session.id,
+        });
+        if (!current()) return;
+        if (result.error) throw result.error;
+        const data = result.data as SessionRoster | null;
+        if (!data || data.session?.id !== selection.session.id || !Array.isArray(data.learners)
+            || data.learners.some(learner => !learner || typeof learner.enrollment_id !== 'string'
+              || typeof learner.employee_name !== 'string' || typeof learner.employee_number !== 'string')) {
+          throw new Error('The session roster returned an invalid response.');
+        }
+        setRoster(data);
+      } catch (cause) {
+        if (current()) setRosterError(cause instanceof Error ? cause.message : 'Unable to load enrolled employees.');
+      } finally {
+        if (current()) setRosterLoading(false);
+      }
+    })();
+    return () => {
+      if (requestId === rosterRequestSequence.current) rosterRequestSequence.current += 1;
+    };
+  }, [tenantId, rosterSelection, rosterRevision]);
+
+  function toggleRoster(session: ProgramSession) {
+    setRosterError('');
+    setRoster(null);
+    setRosterSelection(current => current?.tenantId === tenantId && current.session.id === session.id
+      ? null : { tenantId, session });
+  }
 
   function editProgram(program: Program) {
     setMessage('');
@@ -281,7 +344,19 @@ export function LearningProgramAdmin({ tenantId }: { tenantId: string }) {
           <p className="mt-2 text-sm text-slate-600">{program.self_enrollment ? 'Direct enrollment' : 'Manager approval required'} · {program.enrollment_count} open enrollments</p>
           {program.description && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">{program.description}</p>}
           <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => editProgram(program)} aria-label={`Edit program ${program.title}`} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium"><Pencil className="h-4 w-4" aria-hidden="true"/>Edit program</button><button type="button" disabled={saving || !program.active} onClick={() => editSession(program)} aria-label={`Schedule session for ${program.title}`} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#08558B] px-3 text-sm font-medium text-white disabled:opacity-50"><Plus className="h-4 w-4" aria-hidden="true"/>Schedule session</button></div>
-          {program.sessions.length === 0 ? <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">No sessions scheduled.</p> : <ul className="mt-4 divide-y divide-slate-100">{program.sessions.map(session => <li key={session.id} className="py-3 first:pt-0 last:pb-0"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="flex items-center gap-2 text-sm font-medium text-slate-800"><CalendarClock className="h-4 w-4 shrink-0 text-[#08558B]" aria-hidden="true"/>{displayDate(session.start_at)}{session.end_at ? ` – ${displayDate(session.end_at)}` : ''}</p><p className="mt-1 break-words text-xs text-slate-600">{session.location || 'Location to be confirmed'} · {session.enrolled_count}{session.capacity === null ? '' : `/${session.capacity}`} enrolled · {session.status}</p></div>{session.status === 'scheduled' && <button type="button" disabled={saving} onClick={() => editSession(program, session)} aria-label={`Edit session ${displayDate(session.start_at)} for ${program.title}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 px-2 text-xs font-medium"><Pencil className="h-3.5 w-3.5" aria-hidden="true"/>Edit</button>}</div></li>)}</ul>}
+          {program.sessions.length === 0 ? <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">No sessions scheduled.</p> : <ul className="mt-4 divide-y divide-slate-100">{program.sessions.map(session => {
+            const rosterOpen = rosterSelection?.tenantId === tenantId && rosterSelection.session.id === session.id;
+            const rosterId = `learning-roster-${session.id}`;
+            return <li key={session.id} className="py-3 first:pt-0 last:pb-0"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="flex items-center gap-2 text-sm font-medium text-slate-800"><CalendarClock className="h-4 w-4 shrink-0 text-[#08558B]" aria-hidden="true"/>{displayDate(session.start_at)}{session.end_at ? ` – ${displayDate(session.end_at)}` : ''}</p><p className="mt-1 break-words text-xs text-slate-600">{session.location || 'Location to be confirmed'} · {session.enrolled_count}{session.capacity === null ? '' : `/${session.capacity}`} enrolled · {session.status}</p></div>{session.status === 'scheduled' && <div className="flex flex-wrap gap-2"><button type="button" aria-expanded={rosterOpen} aria-controls={rosterId} onClick={() => toggleRoster(session)} aria-label={`${rosterOpen ? 'Hide' : 'View'} enrolled employees for ${program.title}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 px-2 text-xs font-medium"><UsersRound className="h-3.5 w-3.5" aria-hidden="true"/>{rosterOpen ? 'Hide roster' : 'View roster'}</button><button type="button" disabled={saving} onClick={() => editSession(program, session)} aria-label={`Edit session ${displayDate(session.start_at)} for ${program.title}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 px-2 text-xs font-medium"><Pencil className="h-3.5 w-3.5" aria-hidden="true"/>Edit</button></div>}</div>
+              {rosterOpen && <section id={rosterId} data-learning-session-roster={session.id} aria-label={`Enrolled employees for ${program.title}`} className="mt-3 min-w-0 rounded-lg border border-[#B9DCE2] bg-[#F8FCFC] p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><h4 className="font-semibold text-slate-900">Enrolled employees</h4><p className="text-xs text-slate-600">{roster?.session.id === session.id ? roster.learners.length : session.enrolled_count} currently enrolled</p></div><button type="button" aria-label="Refresh enrolled employees" disabled={rosterLoading} onClick={() => setRosterRevision(value => value + 1)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5" aria-hidden="true"/>Refresh roster</button></div>
+                {rosterLoading && <p role="status" className="mt-3 text-sm text-slate-600">Loading enrolled employees…</p>}
+                {rosterError && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><p role="alert">{rosterError}</p><button type="button" onClick={() => setRosterRevision(value => value + 1)} className="min-h-9 rounded-lg border border-rose-300 bg-white px-3 text-xs font-medium">Retry roster</button></div>}
+                {!rosterLoading && !rosterError && roster?.session.id === session.id && roster.learners.length === 0 && <p role="status" className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-600">No employees are currently enrolled in this session.</p>}
+                {!rosterLoading && !rosterError && roster?.session.id === session.id && roster.learners.length > 0 && <ul className="mt-3 divide-y divide-slate-200 rounded-lg bg-white px-3">{roster.learners.map(learner => <li key={learner.enrollment_id} className="flex flex-wrap items-start justify-between gap-2 py-3"><div className="min-w-0"><p className="break-words text-sm font-medium text-slate-900">{learner.employee_name}</p><p className="text-xs text-slate-600">{learner.employee_number} · Enrolled {displayDate(learner.enrolled_at)}</p></div>{learner.mandatory && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">Mandatory</span>}</li>)}</ul>}
+              </section>}
+            </li>;
+          })}</ul>}
           {sessionDraft?.programId === program.id && <form onSubmit={saveSession} className="mt-4 space-y-3 rounded-lg border border-[#B9DCE2] bg-[#F8FCFC] p-3 sm:p-4">
             <div className="flex items-center justify-between gap-2"><h4 className="font-semibold text-slate-900">{sessionDraft.sessionId ? 'Edit scheduled session' : `Schedule a session for ${program.title}`}</h4><button type="button" aria-label="Close session form" disabled={saving} onClick={() => setSessionDraft(null)} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-white"><X className="h-4 w-4" aria-hidden="true"/></button></div>
             <div className="grid gap-3 sm:grid-cols-2"><label className={labelClass}>Trainer<input maxLength={200} value={sessionDraft.trainerName} onChange={event => setSessionDraft(value => value && ({ ...value, trainerName: event.target.value }))} className={fieldClass}/></label><label className={labelClass}>Location<input maxLength={300} value={sessionDraft.location} onChange={event => setSessionDraft(value => value && ({ ...value, location: event.target.value }))} className={fieldClass}/></label>
