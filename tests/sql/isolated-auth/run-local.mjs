@@ -291,6 +291,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013175151_employee_referral_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221600_hris_organization_holiday_calendar.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013221700_employee_leave_history_private_evidence.sql'),
 ]) applySql(file);
 const evidenceBucketCheck = await adminAuth.storage.getBucket('leave-evidence');
 const evidenceMimeTypes = [
@@ -1712,6 +1713,12 @@ const employeeSummaryA = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
 const employeeSummaryB = queryAs(employeeB,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
+const employeeEvidenceRequest = employeeSummaryA.requests.find(row => row.id === evidenceRequestId);
+record('Employee leave history returns its own private evidence path and excludes it from another tenant',
+  employeeEvidenceRequest?.attachment_url === evidencePathA
+  && !JSON.stringify(employeeSummaryB.requests).includes(evidencePathA),
+  JSON.stringify({ ownerPathReturned: employeeEvidenceRequest?.attachment_url === evidencePathA,
+    foreignTenantContainsPath: JSON.stringify(employeeSummaryB.requests).includes(evidencePathA) }));
 record('Ordinary employees can read their own attendance and leave summary without admin or membership roles',
   employeeSummaryA.attendance.records.length === 1
   && employeeSummaryA.attendance.records[0].id === ids.attendanceRecord

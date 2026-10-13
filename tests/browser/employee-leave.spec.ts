@@ -26,6 +26,9 @@ function isoDateAfter(days: number) {
 test('linked employee can complete the private evidence leave request on mobile', async ({ page }) => {
   let authenticated = false;
   let submitted = false;
+  let savedEvidencePath = '';
+  let denyNextEvidenceDownload = true;
+  const evidenceDownloadPaths: string[] = [];
   let correctionSubmitted = false;
   let correctionPayload: Record<string, unknown> | null = null;
   let attendanceState: 'not-started' | 'checked-in' | 'checked-out' = 'not-started';
@@ -74,6 +77,7 @@ test('linked employee can complete the private evidence leave request on mobile'
         id: 'f5555555-5555-4555-8555-555555555555', leave_type_id: leaveTypeId,
         leave_type_name: 'Medical leave', from_date: isoDateAfter(9), to_date: isoDateAfter(9),
         requested_days: 1, reason: 'Synthetic mobile leave request', status: 'pending',
+        attachment_url: savedEvidencePath,
       }, {
         id: 'f9999999-9999-4999-8999-999999999999', leave_type_id: leaveTypeId,
         leave_type_name: 'Medical leave', from_date: '2025-08-13', to_date: '2025-08-14',
@@ -142,6 +146,20 @@ test('linked employee can complete the private evidence leave request on mobile'
   });
 
   await page.route('**/storage/v1/object/leave-evidence/**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = decodeURIComponent(url.pathname.split('/object/leave-evidence/')[1] || '');
+    if (request.method() === 'GET') {
+      evidenceDownloadPaths.push(path);
+      if (denyNextEvidenceDownload) {
+        denyNextEvidenceDownload = false;
+        await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Evidence access denied in isolated UI test.' }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/pdf', body: '%PDF-1.4 synthetic evidence download' });
+      return;
+    }
+    if (request.method() === 'POST') savedEvidencePath = path;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ Key: 'synthetic-evidence' }) });
   });
 
@@ -246,7 +264,17 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByRole('heading', { name: 'Personal leave' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Available leave breakdown' })).toBeVisible();
   const history = page.getByRole('table', { name: `Personal leave history for ${new Date().getFullYear()}` });
-  await expect(history.getByRole('row', { name: /Synthetic mobile leave request/ })).toContainText(/pending/i);
+  const submittedHistoryRow = history.getByRole('row', { name: /Synthetic mobile leave request/ });
+  await expect(submittedHistoryRow).toContainText(/pending/i);
+  await expect(submittedHistoryRow.getByRole('button', { name: 'Download evidence' })).toBeVisible();
+  await submittedHistoryRow.getByRole('button', { name: 'Download evidence' }).click();
+  await expect(page.getByRole('alert')).toContainText('Evidence access denied in isolated UI test.');
+  const evidenceDownload = page.waitForEvent('download');
+  await submittedHistoryRow.getByRole('button', { name: 'Download evidence' }).click();
+  expect((await evidenceDownload).suggestedFilename()).toBe('personal-leave-evidence-f5555555.pdf');
+  expect(savedEvidencePath).toMatch(new RegExp(`^${userId}/${tenantId}/[0-9a-f-]{36}\\.pdf$`, 'i'));
+  expect(evidenceDownloadPaths).toEqual([savedEvidencePath, savedEvidencePath]);
+  await expect(page.getByRole('status').filter({ hasText: 'Evidence downloaded.' })).toBeVisible();
   await expect(history.getByRole('row', { name: /Synthetic prior-year leave request/ })).toHaveCount(0);
   await page.getByLabel('Leave history of').selectOption('2025');
   const priorYearHistory = page.getByRole('table', { name: 'Personal leave history for 2025' });
@@ -265,5 +293,11 @@ test('linked employee can complete the private evidence leave request on mobile'
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await expect(page.getByRole('region', { name: 'Personal leave history' })).toBeVisible();
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/personal-leave-mobile-20261012.png'), fullPage: true });
+  const mobileEvidenceRow = page.getByRole('table', { name: `Personal leave history for ${new Date().getFullYear()}` })
+    .getByRole('row', { name: /Synthetic mobile leave request/ });
+  await expect(mobileEvidenceRow.getByRole('button', { name: 'Download evidence' })).toBeVisible();
+  const mobileEvidenceDownload = page.waitForEvent('download');
+  await mobileEvidenceRow.getByRole('button', { name: 'Download evidence' }).click();
+  expect((await mobileEvidenceDownload).suggestedFilename()).toBe('personal-leave-evidence-f5555555.pdf');
   expect(externalRequests).toEqual([]);
 });

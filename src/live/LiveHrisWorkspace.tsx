@@ -1453,8 +1453,13 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
   const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [evidenceError, setEvidenceError] = useState('');
+  const [evidenceMessage, setEvidenceMessage] = useState('');
+  const [downloadingEvidenceId, setDownloadingEvidenceId] = useState('');
   const [historyYear, setHistoryYear] = useState('');
   const requestSequence = useRef(0);
+  const activeTenantId = useRef(tenantId);
+  activeTenantId.current = tenantId;
 
   async function load(showLoading = true) {
     const requestId = ++requestSequence.current;
@@ -1478,6 +1483,9 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
   useEffect(() => {
     setLeave(null);
     setHistoryYear('');
+    setEvidenceError('');
+    setEvidenceMessage('');
+    setDownloadingEvidenceId('');
     void load();
     return () => { requestSequence.current += 1; };
   }, [tenantId]);
@@ -1499,6 +1507,50 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
     const last = Number(String(row.to_date || '').slice(0, 4));
     return Number.isInteger(first) && Number.isInteger(last) && first <= yearNumber && last >= yearNumber;
   });
+  const historyHasEvidence = history.some(row => String(row.attachment_url || '').trim());
+
+  async function downloadHistoryEvidence(row: Record<string, unknown>) {
+    const id = String(row.id || '');
+    const objectPath = String(row.attachment_url || '').trim();
+    const parts = objectPath.split('/');
+    const extension = parts.at(-1)?.split('.').at(-1)?.toLowerCase() || '';
+    if (!id || parts.length !== 3 || parts.some(part => !part || part === '.' || part === '..')
+        || parts[0] !== userId || parts[1] !== tenantId
+        || !/^[0-9a-f-]{36}\.(pdf|doc|docx|jpg|png)$/i.test(parts[2])) {
+      setEvidenceMessage('');
+      setEvidenceError('This evidence reference is not valid for your active organization.');
+      return;
+    }
+    if (downloadingEvidenceId) return;
+    const actionTenantId = tenantId;
+    setDownloadingEvidenceId(id);
+    setEvidenceError('');
+    setEvidenceMessage('');
+    try {
+      // The signed-in Storage client enforces the existing private bucket owner policy.
+      const { data: file, error: storageError } = await supabase.storage.from('leave-evidence').download(objectPath);
+      if (storageError) throw storageError;
+      if (!file) throw new Error('The evidence file was not returned.');
+      if (activeTenantId.current !== actionTenantId) return;
+      const objectUrl = URL.createObjectURL(file);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `personal-leave-evidence-${id.slice(0, 8)}.${extension}`;
+      anchor.rel = 'noopener';
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setEvidenceMessage('Evidence downloaded.');
+    } catch (cause) {
+      if (activeTenantId.current === actionTenantId) {
+        setEvidenceError(cause instanceof Error ? cause.message : 'Unable to download your private evidence.');
+      }
+    } finally {
+      if (activeTenantId.current === actionTenantId) setDownloadingEvidenceId('');
+    }
+  }
 
   function downloadHistory() {
     downloadCsv(`personal-leave-history-${selectedYear}.csv`,
@@ -1517,6 +1569,8 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
       </button>
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
+    {evidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{evidenceError}</p>}
+    {evidenceMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{evidenceMessage}</p>}
     {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your leave information…</p>}
     {currentTenantDataReady && leave && <>
       <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(210px,0.7fr)_minmax(0,2fr)]">
@@ -1551,9 +1605,9 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
           </div>
         </div>
         {history.length ? <div role="region" aria-label="Personal leave history" tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#085587]">
-          <table aria-label={`Personal leave history for ${selectedYear}`} className="w-full min-w-[720px] text-left text-sm">
+          <table aria-label={`Personal leave history for ${selectedYear}`} className={`w-full ${historyHasEvidence ? 'min-w-[860px]' : 'min-w-[720px]'} text-left text-sm`}>
             <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
-              {['Applicable from', 'Applicable to', 'No. of days', 'Leave type', 'Remarks', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+              {['Applicable from', 'Applicable to', 'No. of days', 'Leave type', 'Remarks', 'Status', ...(historyHasEvidence ? ['Evidence'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">{history.map((row, index) => {
               const status = String(row.status || '').toLowerCase();
@@ -1567,6 +1621,13 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
                 <td className="max-w-56 px-3 py-3"><span className="block truncate" title={String(row.reason || '')}>{display(row.reason)}</span>
                   {Boolean(row.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(row.resolution_note)}</span>}</td>
                 <td className={`whitespace-nowrap px-3 py-3 font-semibold capitalize ${statusClass}`}>{display(row.status)}</td>
+                {historyHasEvidence && <td className="px-3 py-3">{String(row.attachment_url || '').trim()
+                  ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
+                      aria-label={`Download evidence for ${display(row.leave_type_name)} leave request`}
+                      onClick={() => void downloadHistoryEvidence(row)}
+                      className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
+                      {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
+                    </button> : '—'}</td>}
               </tr>;
             })}</tbody>
           </table>

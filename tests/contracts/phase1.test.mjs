@@ -29,6 +29,13 @@ test('release candidate scopes tenant permissions through active membership role
   assert.match(sql, /LEFT JOIN public\.departments d ON d\.id=e\.department_id AND d\.tenant_id=e\.tenant_id[\s\S]+?LEFT JOIN public\.designations ds ON ds\.id=e\.designation_id AND ds\.tenant_id=e\.tenant_id/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.hris_get_my_dashboard_data\(uuid\) FROM PUBLIC, anon/);
 });
+test('employee leave history returns only the employee’s private evidence path', () => {
+  const sql = source('supabase/migrations/20261013221700_employee_leave_history_private_evidence.sql');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.hris_get_my_dashboard_data\(p_tenant_id uuid\)[\s\S]+?SECURITY DEFINER/);
+  assert.match(sql, /hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(sql, /'attachment_url',r\.attachment_url[\s\S]+?WHERE r\.tenant_id=p_tenant_id AND r\.employee_id=v_employee/);
+  assert.doesNotMatch(sql, /CREATE POLICY|GRANT EXECUTE|REVOKE ALL/i);
+});
 test('all 20 legacy tenant-readable tables have membership reads and restrictive Auth/anon guards', () => {
   const membershipSql = source('supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql');
   const guardsSql = source('supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql');
