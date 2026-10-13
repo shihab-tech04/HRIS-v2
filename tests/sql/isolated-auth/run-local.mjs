@@ -1341,6 +1341,40 @@ const superAdminMemberRelease = await superAdmin.client.rpc('hris_release_tenant
 record('Super Admin project creation does not grant project membership management',
   superAdminMemberAssignment.error?.code === '42501' && superAdminMemberRelease.error?.code === '42501');
 
+const otherProjectManagerResult = await createProject(superAdmin, ids.tenantA,
+  'QA-A-OTHER-PM', '55555555-5555-4555-8555-555555555560');
+const otherProjectManagerProject = otherProjectManagerResult.data;
+const otherProjectManagerWorkspace = await employeeClock.client.rpc('hris_get_tenant_project_workspace', {
+  p_tenant_id: ids.tenantA,
+});
+const otherManagerAdd = await employeeClock.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: otherProjectManagerProject?.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555557',
+  p_role_on_project: 'Contributor', p_allocation_percentage: 25,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const assignedManagerAUnauthorizedAdd = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: otherProjectManagerProject?.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555558',
+  p_role_on_project: 'Unauthorized', p_allocation_percentage: 10,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const assignedManagerAUnauthorizedRelease = await employeeA.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_allocation_id: otherManagerAdd.data?.id,
+});
+const actualOtherManagerRelease = await employeeClock.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_allocation_id: otherManagerAdd.data?.id,
+});
+record('A Project Manager can add/release only members on projects they manage in the same tenant',
+  !otherProjectManagerResult.error && !otherProjectManagerWorkspace.error
+    && otherProjectManagerWorkspace.data.projects.length === 1
+    && otherProjectManagerWorkspace.data.projects[0].id === otherProjectManagerProject?.id
+    && otherProjectManagerWorkspace.data.projects[0].can_manage === true
+    && !otherManagerAdd.error
+    && assignedManagerAUnauthorizedAdd.error?.code === '42501'
+    && assignedManagerAUnauthorizedRelease.error?.code === '42501'
+    && !actualOtherManagerRelease.error && actualOtherManagerRelease.data?.status === 'released');
+
 const projectDirectWrite = attemptAs(managerA, `INSERT INTO public.projects
   (tenant_id,code,name,project_lead_id,start_date) VALUES
   ('${ids.tenantA}'::uuid,'QA-DIRECT','Direct write','55555555-5555-4555-8555-555555555555','${localCurrentDate}'::date)`);
@@ -1377,6 +1411,20 @@ record('Assigned Project Manager can add members across projects within the shar
     && Boolean(allocationAOver.error) && Boolean(foreignEmployeeAllocation.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.assigned') === 1
     && auditCount(allocationA40.data?.id, 'project.allocation.assigned') === 1);
+const employeeATeamAndProjectMembership = queryAdmin(`SELECT jsonb_build_object(
+  'team_id',e.team_id::text,
+  'project_count',(SELECT count(DISTINCT a.project_id)::integer FROM public.project_allocations a
+    WHERE a.tenant_id=e.tenant_id AND a.employee_id=e.id AND a.status IN ('active','upcoming')),
+  'allocation_total',(SELECT COALESCE(sum(a.allocation_percentage),0)::numeric
+    FROM public.project_allocations a WHERE a.tenant_id=e.tenant_id AND a.employee_id=e.id
+      AND a.status IN ('active','upcoming')))
+  FROM public.employees e WHERE e.tenant_id='${ids.tenantA}'::uuid
+    AND e.id='55555555-5555-4555-8555-555555555555'::uuid`);
+record('Employee remains on their organizational team while belonging to multiple projects',
+  employeeATeamAndProjectMembership.team_id === 'dddddddd-0000-4000-8000-000000000001'
+    && employeeATeamAndProjectMembership.project_count === 2
+    && Number(employeeATeamAndProjectMembership.allocation_total) === 100,
+  JSON.stringify(employeeATeamAndProjectMembership));
 
 const ordinaryAdminAssignment = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
