@@ -7,11 +7,12 @@ const page = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.met
 const managerPage = readFileSync(new URL('../../src/live/OrganizationPerformance.tsx', import.meta.url), 'utf8');
 const liveApp = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql', import.meta.url), 'utf8');
+const appraisalMigration = readFileSync(new URL('../../supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/performance.spec.ts', import.meta.url), 'utf8');
 
 test('personal performance page is mounted only for linked employees', () => {
   assert.match(app, /id: 'my-performance', label: 'My Performance'/);
-  assert.match(app, /page === 'my-performance' && isEmployee && <MyPerformance tenantId=\{tenantId\} \/>/);
+  assert.match(app, /page === 'my-performance' && isEmployee && <MyPerformance tenantId=\{tenantId\} userId=\{userId\} \/>/);
 });
 
 test('employee performance reads are tenant-filtered and use explicit columns', () => {
@@ -49,4 +50,15 @@ test('organization performance is permission-gated and reads only tenant-visible
   assert.match(managerPage, /Filter organization performance by review cycle/);
   assert.match(managerPage, /manager_review_deadline/);
   assert.doesNotMatch(managerPage, /\.(?:insert|update|delete)\(/);
+});
+
+test('appraisal pages read tenant-scoped status metadata without exposing scores or feedback', () => {
+  assert.match(page, /\.from\('performance_appraisals'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+  assert.match(managerPage, /\.from\('performance_appraisals'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+  assert.match(appraisalMigration, /reviewer_employee_id = public\.hris_own_employee_for_tenant\(tenant_id\)[\s\S]*?hris_is_active_tenant_member\(tenant_id\)/);
+  assert.match(appraisalMigration, /GRANT SELECT \([\s\S]*?reviewer_employee_id, status, created_at, updated_at[\s\S]*?\) ON TABLE public\.performance_appraisals TO authenticated/);
+  assert.match(appraisalMigration, /REVOKE SELECT ON TABLE public\.performance_appraisals FROM PUBLIC, anon, authenticated/);
+  assert.match(appraisalMigration, /CREATE POLICY hris_performance_cycles_membership_guard/);
+  assert.doesNotMatch(page, /select\('[^']*(?:manager_scores|final_rating|final_feedback)/);
+  assert.match(browser, /Final scores and feedback are not shown/);
 });

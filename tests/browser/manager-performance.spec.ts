@@ -28,6 +28,11 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   ];
   const goalQueries: string[] = [];
   const cycleQueries: string[] = [];
+  const appraisalQueries: string[] = [];
+  const appraisals = [
+    { id: 'appraisal-1', tenant_id: tenantId, cycle_id: 'cycle-2026', employee_id: 'employee-1',
+      reviewer_employee_id: null, status: 'submitted_by_employee', created_at: '2026-11-10T00:00:00.000Z' },
+  ];
   const cycles = [
     { id: 'cycle-2026', tenant_id: tenantId, name: 'Annual review 2026', start_date: '2026-01-01', end_date: '2026-12-31',
       self_review_deadline: '2026-11-15', manager_review_deadline: '2026-12-15', status: 'active' },
@@ -81,6 +86,10 @@ test('performance viewer sees filtered tenant goals without write controls', asy
       goalQueries.push(url.searchParams.get('tenant_id') || '');
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(goals) });
     }
+    if (endpoint === 'performance_appraisals') {
+      appraisalQueries.push(url.searchParams.get('tenant_id') || '');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(appraisals) });
+    }
     if (request.method() === 'HEAD') return route.fulfill({ status: 200, headers: { 'content-range': '0-0/0' }, body: '' });
     return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
@@ -91,7 +100,11 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Performance', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Performance', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Appraisal reviews' })).toBeVisible();
   await expect(page.getByText('Avery Example').first()).toBeVisible();
+  const appraisalCard = page.locator('article').filter({ hasText: 'Submitted By Employee' });
+  await expect(appraisalCard).toContainText('Annual review 2026');
+  await expect(appraisalCard).toContainText('Avery Example');
   await expect(page.getByText('Goals', { exact: true })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Search organization performance' }).fill('handbook');
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toBeVisible();
@@ -100,6 +113,7 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   const cycleFilter = page.getByRole('combobox', { name: 'Filter organization performance by review cycle' });
   await cycleFilter.selectOption('cycle-2026');
   await expect(page.getByRole('heading', { name: 'Improve onboarding quality' })).toBeVisible();
+  await expect(appraisalCard).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toHaveCount(0);
   await expect(page.getByText('Self review due Nov 15, 2026')).toBeVisible();
   await cycleFilter.selectOption('all');
@@ -110,6 +124,8 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   expect(goalQueries.every(value => value === `eq.${tenantId}`)).toBe(true);
   expect(cycleQueries.length).toBeGreaterThan(0);
   expect(cycleQueries.every(value => value === `eq.${tenantId}`)).toBe(true);
+  expect(appraisalQueries.length).toBeGreaterThan(0);
+  expect(appraisalQueries.every(value => value === 'eq.' + tenantId)).toBe(true);
   expect(await page.getByRole('button', { name: 'Save progress' }).count()).toBe(0);
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

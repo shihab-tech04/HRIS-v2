@@ -14,6 +14,21 @@ type Goal = {
   weight: number;
   origin: string;
 };
+type Appraisal = {
+  id: string;
+  cycle_id: string;
+  employee_id: string;
+  reviewer_employee_id: string | null;
+  status: string;
+  created_at: string;
+};
+type ReviewCycle = {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+};
 
 type GoalFilter = 'all' | 'not_started' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -91,10 +106,45 @@ function GoalCard({
   </article>;
 }
 
-export function MyPerformance({ tenantId }: { tenantId: string }) {
+function AppraisalCard({
+  appraisal,
+  cycle,
+  ownEmployeeId,
+}: {
+  appraisal: Appraisal;
+  cycle?: ReviewCycle;
+  ownEmployeeId: string;
+}) {
+  const assignment = ownEmployeeId && appraisal.reviewer_employee_id === ownEmployeeId
+    ? 'Assigned review'
+    : ownEmployeeId && appraisal.employee_id === ownEmployeeId
+      ? 'Your appraisal'
+      : 'Appraisal';
+  return <article className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-[#615E83]">{assignment}</p>
+        <h4 className="mt-1 break-words font-semibold text-[#1E1B39]">{cycle?.name || 'Review cycle details unavailable'}</h4>
+        {cycle && <p className="mt-1 text-sm text-slate-600">{dateLabel(cycle.start_date)} – {dateLabel(cycle.end_date)}</p>}
+      </div>
+      <span className="shrink-0 rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#08558B]">{statusLabel(appraisal.status)}</span>
+    </div>
+    <p className="mt-3 text-sm text-slate-600">
+      {assignment === 'Assigned review'
+        ? 'This review is assigned to you. Review actions are available only through the approved appraisal workflow.'
+        : 'Review status is read only here. Final scores and feedback are not shown in this view.'}
+    </p>
+  </article>;
+}
+
+export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: string }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
+  const [cycles, setCycles] = useState<ReviewCycle[]>([]);
+  const [ownEmployeeId, setOwnEmployeeId] = useState('');
+  const [appraisalLoadError, setAppraisalLoadError] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -109,21 +159,54 @@ export function MyPerformance({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError('');
     setMessage('');
+    setAppraisalLoadError(false);
     try {
-      const { data, error: queryError } = await supabase.from('performance_goals')
-        .select('id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
-        .eq('tenant_id', requestTenantId)
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .limit(100);
-      if (queryError) throw queryError;
+      const [goalResult, appraisalResult, employeeResult] = await Promise.all([
+        supabase.from('performance_goals')
+          .select('id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
+          .eq('tenant_id', requestTenantId)
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .limit(100),
+        supabase.from('performance_appraisals')
+          .select('id,cycle_id,employee_id,reviewer_employee_id,status,created_at')
+          .eq('tenant_id', requestTenantId)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase.from('employees')
+          .select('id')
+          .eq('tenant_id', requestTenantId)
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
+      if (goalResult.error) throw goalResult.error;
       if (!current()) return;
-      const safeGoals = (Array.isArray(data) ? data : []) as Goal[];
+      const safeGoals = (Array.isArray(goalResult.data) ? goalResult.data : []) as Goal[];
       setGoals(safeGoals);
       setDrafts(Object.fromEntries(safeGoals.map(goal => [goal.id, String(goal.current_progress)])));
+      const safeAppraisals = appraisalResult.error ? []
+        : (Array.isArray(appraisalResult.data) ? appraisalResult.data : []) as Appraisal[];
+      setAppraisals(safeAppraisals);
+      setAppraisalLoadError(Boolean(appraisalResult.error));
+      setOwnEmployeeId(employeeResult.error ? '' : employeeResult.data?.id || '');
+
+      const cycleIds = Array.from(new Set(safeAppraisals.map(appraisal => appraisal.cycle_id).filter(Boolean)));
+      const cycleResult = cycleIds.length
+        ? await supabase.from('performance_cycles')
+          .select('id,name,start_date,end_date,status')
+          .eq('tenant_id', requestTenantId)
+          .in('id', cycleIds)
+        : { data: [], error: null };
+      if (!current()) return;
+      setCycles(cycleResult.error ? [] : (Array.isArray(cycleResult.data) ? cycleResult.data : []) as ReviewCycle[]);
+      setAppraisalLoadError(currentError => currentError || Boolean(cycleResult.error));
     } catch (cause) {
       if (!current()) return;
       setGoals([]);
       setDrafts({});
+      setAppraisals([]);
+      setCycles([]);
+      setOwnEmployeeId('');
+      setAppraisalLoadError(true);
       setError(cause instanceof Error ? cause.message : 'Unable to load your performance goals.');
     } finally {
       if (current()) setLoading(false);
@@ -134,9 +217,13 @@ export function MyPerformance({ tenantId }: { tenantId: string }) {
     let active = true;
     setGoals([]);
     setDrafts({});
+    setAppraisals([]);
+    setCycles([]);
+    setOwnEmployeeId('');
+    setAppraisalLoadError(false);
     void load(() => active);
     return () => { active = false; };
-  }, [tenantId]);
+  }, [tenantId, userId]);
 
   async function saveProgress(goal: Goal) {
     const saveTenantId = tenantId;
@@ -203,6 +290,26 @@ export function MyPerformance({ tenantId }: { tenantId: string }) {
       <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Completed goals</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{completedCount}</p></div>
     </div>
 
+    <section aria-labelledby="my-appraisals-heading" className="space-y-3">
+      <div>
+        <h3 id="my-appraisals-heading" className="text-lg font-semibold text-[#1E1B39]">Appraisals</h3>
+        <p className="mt-1 text-sm text-slate-600">Your review status and any appraisal reviews assigned to you.</p>
+      </div>
+      {appraisalLoadError
+        ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Appraisal status is temporarily unavailable. Your goal progress remains available.
+          <button type="button" onClick={() => void load()} className="ml-2 min-h-10 font-semibold underline">Retry</button>
+        </div>
+        : loading
+          ? <p role="status" className="rounded-xl border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">Loading appraisal status…</p>
+          : appraisals.length === 0
+          ? <p role="status" className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-5 text-sm text-slate-600">No appraisals are available for your employee record yet.</p>
+          : <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+            {appraisals.map(appraisal => <AppraisalCard key={appraisal.id} appraisal={appraisal}
+              cycle={cycles.find(cycle => cycle.id === appraisal.cycle_id)} ownEmployeeId={ownEmployeeId} />)}
+          </div>}
+    </section>
+
     <section aria-label="Performance goal filters" className="grid gap-3 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86929E]" />
@@ -241,7 +348,7 @@ export function MyPerformance({ tenantId }: { tenantId: string }) {
       : <p role="status" className="rounded-lg border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">No goals match the current search and status filters.</p>)}
 
     <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-      Saving changes only your goal’s recorded progress. Goal details, ownership and review status remain governed by your organization’s HRIS access rules.
+      Saving changes only your goal’s recorded progress. Appraisal status is read only here; scoring and final feedback require the approved review workflow.
     </p>
   </section>;
 }

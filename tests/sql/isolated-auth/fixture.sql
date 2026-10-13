@@ -49,6 +49,7 @@ DROP TABLE IF EXISTS public.org_locations CASCADE;
 DROP TABLE IF EXISTS public.pay_periods CASCADE;
 DROP TABLE IF EXISTS public.payslips CASCADE;
 DROP TABLE IF EXISTS public.performance_cycles CASCADE;
+DROP TABLE IF EXISTS public.performance_appraisals CASCADE;
 DROP TABLE IF EXISTS public.performance_goals CASCADE;
 DROP TABLE IF EXISTS public.project_performance_reviews CASCADE;
 DROP TABLE IF EXISTS public.timesheet_entries CASCADE;
@@ -322,7 +323,37 @@ CREATE TABLE public.payslips (
   employee_id uuid, status text NOT NULL DEFAULT 'released'
 );
 CREATE TABLE public.performance_cycles (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Synthetic review cycle',
+  start_date date NOT NULL DEFAULT '2026-01-01',
+  end_date date NOT NULL DEFAULT '2026-12-31',
+  self_review_deadline date,
+  manager_review_deadline date,
+  status text NOT NULL DEFAULT 'active',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.performance_appraisals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  cycle_id uuid NOT NULL REFERENCES public.performance_cycles(id),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  reviewer_employee_id uuid REFERENCES public.employees(id),
+  self_scores jsonb NOT NULL DEFAULT '{}'::jsonb,
+  manager_scores jsonb,
+  self_overall_comment text,
+  manager_overall_comment text,
+  manager_rating integer CHECK (manager_rating BETWEEN 1 AND 5),
+  final_rating integer CHECK (final_rating BETWEEN 1 AND 5),
+  final_feedback text,
+  finalized_at timestamptz,
+  released_at timestamptz,
+  acknowledged_at timestamptz,
+  status text NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft','submitted_by_employee','reviewed_by_manager','finalized')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.performance_goals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
@@ -549,6 +580,7 @@ ALTER TABLE public.org_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pay_periods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payslips ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.performance_cycles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.performance_appraisals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.performance_goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_performance_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_requests ENABLE ROW LEVEL SECURITY;
@@ -690,6 +722,7 @@ GRANT SELECT ON public.employees,public.departments,public.designations,public.l
   public.employee_leave_balances,public.confirmation_reviews,public.employee_referrals,
   public.grades,public.holidays,public.hr_policies,public.manpower_requisitions,public.notices,
   public.org_locations,public.pay_periods,public.payslips,public.performance_cycles,
+  public.performance_appraisals,
   public.performance_goals,public.project_performance_reviews,public.service_requests,
   public.shifts,public.teams,public.timesheet_activities,public.timesheets,
   public.timesheet_entries TO authenticated,anon;
@@ -707,6 +740,7 @@ INSERT INTO public.tenants(id,slug,code,name,is_active) VALUES
 INSERT INTO public.roles(id,name) VALUES
   ('qa_global_manager','Synthetic global-only role'),
   ('qa_tenant_manager_a','Synthetic tenant A HR manager'),
+  ('qa_tenant_reviewer_a','Synthetic tenant A workflow reviewer'),
   ('qa_tenant_manager_b','Synthetic tenant B HR manager'),
   ('qa_tenant_viewer_b','Synthetic tenant B viewer'),
   ('qa_tenant_reporter_a','Synthetic tenant A report-only viewer');
@@ -721,6 +755,9 @@ INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_tenant_manager_a','leave.manage'),('qa_tenant_manager_a','leave.view'),
   ('qa_tenant_manager_a','attendance.manage'),('qa_tenant_manager_a','attendance.view'),
   ('qa_tenant_manager_a','dashboard.view'),('qa_tenant_manager_a','reports.view'),
+  ('qa_tenant_reviewer_a','leave.manage'),('qa_tenant_reviewer_a','leave.view'),
+  ('qa_tenant_reviewer_a','attendance.manage'),('qa_tenant_reviewer_a','attendance.view'),
+  ('qa_tenant_reviewer_a','dashboard.view'),('qa_tenant_reviewer_a','reports.view'),
   ('qa_tenant_manager_b','leave.manage'),('qa_tenant_manager_b','leave.view'),
   ('qa_tenant_manager_b','attendance.manage'),('qa_tenant_manager_b','attendance.view'),
   ('qa_tenant_manager_b','dashboard.view'),('qa_tenant_manager_b','reports.view'),
@@ -757,7 +794,7 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_manager_a','active'
   FROM auth.users WHERE email='manager-a@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
-  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_manager_a','active'
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_reviewer_a','active'
   FROM auth.users WHERE email='manager-a2@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '22222222-2222-4222-8222-222222222222',id,'qa_tenant_manager_b','active'
@@ -794,6 +831,9 @@ INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,offi
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+UPDATE public.employees
+SET user_id=(SELECT id FROM auth.users WHERE email='manager-a2@hris.test')
+WHERE id='55555555-5555-4555-8555-555555555556';
 INSERT INTO public.timesheet_activities(id,tenant_id,activity_type,name,code,active) VALUES
   ('88888888-8888-4888-8888-888888888901','11111111-1111-4111-8111-111111111111','activity','QA A Delivery','QA-A-DELIVERY',true),
   ('88888888-8888-4888-8888-888888888902','22222222-2222-4222-8222-222222222222','activity','QA B Delivery','QA-B-DELIVERY',true),
@@ -825,8 +865,18 @@ INSERT INTO public.pay_periods(tenant_id) VALUES
 INSERT INTO public.payslips(tenant_id,employee_id,status) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','released'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','released');
-INSERT INTO public.performance_cycles(tenant_id) VALUES
-  ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
+INSERT INTO public.performance_cycles(id,tenant_id,name,start_date,end_date,self_review_deadline,manager_review_deadline,status) VALUES
+  ('88888888-8888-4888-8888-888888888901','11111111-1111-4111-8111-111111111111','QA A Annual Review','2026-01-01','2026-12-31','2026-11-15','2026-12-15','active'),
+  ('88888888-8888-4888-8888-888888888902','22222222-2222-4222-8222-222222222222','QA B Annual Review','2026-01-01','2026-12-31','2026-11-15','2026-12-15','active');
+INSERT INTO public.performance_appraisals(id,tenant_id,cycle_id,employee_id,reviewer_employee_id,status) VALUES
+  ('88888888-8888-4888-8888-888888888931','11111111-1111-4111-8111-111111111111','88888888-8888-4888-8888-888888888901','55555555-5555-4555-8555-555555555555','55555555-5555-4555-8555-555555555556','submitted_by_employee'),
+  ('88888888-8888-4888-8888-888888888932','11111111-1111-4111-8111-111111111111','88888888-8888-4888-8888-888888888901','55555555-5555-4555-8555-555555555557','55555555-5555-4555-8555-555555555556','draft'),
+  ('88888888-8888-4888-8888-888888888933','11111111-1111-4111-8111-111111111111','88888888-8888-4888-8888-888888888901','55555555-5555-4555-8555-555555555557',NULL,'draft'),
+  ('88888888-8888-4888-8888-888888888934','22222222-2222-4222-8222-222222222222','88888888-8888-4888-8888-888888888902','66666666-6666-4666-8666-666666666666',NULL,'draft');
+UPDATE public.performance_appraisals
+SET manager_scores='{"dimension":"restricted"}'::jsonb,
+    manager_rating=4, final_rating=5, final_feedback='Synthetic unreleased feedback'
+WHERE id='88888888-8888-4888-8888-888888888931';
 INSERT INTO public.performance_goals(tenant_id,employee_id,title,target_metric) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','Tenant A guarded goal','Test tenant isolation'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','Tenant B guarded goal','Test tenant isolation');

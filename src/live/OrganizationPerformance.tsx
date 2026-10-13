@@ -25,6 +25,13 @@ type PerformanceCycle = {
   manager_review_deadline: string | null;
   status: string;
 };
+type Appraisal = {
+  id: string;
+  employee_id: string;
+  reviewer_employee_id: string | null;
+  cycle_id: string;
+  status: string;
+};
 type Employee = { id: string; full_name: string; employee_number: string };
 type GoalFilter = 'all' | 'not_started' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -41,11 +48,13 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
   const [cycles, setCycles] = useState<PerformanceCycle[]>([]);
   const [employees, setEmployees] = useState<Record<string, Employee>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cycleLoadError, setCycleLoadError] = useState(false);
+  const [appraisalLoadError, setAppraisalLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<GoalFilter>('all');
   const [cycleFilter, setCycleFilter] = useState('all');
@@ -56,8 +65,9 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError('');
     setCycleLoadError(false);
+    setAppraisalLoadError(false);
     try {
-      const [cycleResult, goalResult] = await Promise.all([
+      const [cycleResult, goalResult, appraisalResult] = await Promise.all([
         supabase.from('performance_cycles')
           .select('id,name,start_date,end_date,self_review_deadline,manager_review_deadline,status')
           .eq('tenant_id', requestTenantId)
@@ -67,6 +77,11 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
           .select('id,employee_id,cycle_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
           .eq('tenant_id', requestTenantId)
           .order('due_date', { ascending: true, nullsFirst: false })
+          .limit(250),
+        supabase.from('performance_appraisals')
+          .select('id,employee_id,reviewer_employee_id,cycle_id,status')
+          .eq('tenant_id', requestTenantId)
+          .order('created_at', { ascending: false })
           .limit(250),
       ]);
       if (goalResult.error) throw goalResult.error;
@@ -81,7 +96,14 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
       setCycleLoadError(Boolean(cycleResult.error));
       const rows = (Array.isArray(goalResult.data) ? goalResult.data : []) as Goal[];
       setGoals(rows);
-      const employeeIds = Array.from(new Set(rows.map(goal => goal.employee_id).filter(Boolean)));
+      const appraisalRows = appraisalResult.error ? []
+        : (Array.isArray(appraisalResult.data) ? appraisalResult.data : []) as Appraisal[];
+      setAppraisals(appraisalRows);
+      setAppraisalLoadError(Boolean(appraisalResult.error));
+      const employeeIds = Array.from(new Set([
+        ...rows.map(goal => goal.employee_id),
+        ...appraisalRows.map(appraisal => appraisal.employee_id),
+      ].filter(Boolean)));
       if (!employeeIds.length) { setEmployees({}); return; }
 
       // Employee names are optional because employee RLS can be narrower than performance RLS.
@@ -96,9 +118,11 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     } catch (cause) {
       if (!current()) return;
       setGoals([]);
+      setAppraisals([]);
       setCycles([]);
       setCycleFilter('all');
       setEmployees({});
+      setAppraisalLoadError(true);
       setError(cause instanceof Error ? cause.message : 'Unable to load performance goals for this organization.');
     } finally {
       if (current()) setLoading(false);
@@ -108,6 +132,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
   useEffect(() => {
     let active = true;
     setGoals([]);
+    setAppraisals([]);
     setCycles([]);
     setEmployees({});
     setCycleFilter('all');
@@ -126,6 +151,20 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
         .some(value => value.toLocaleLowerCase().includes(query));
     });
   }, [cycleFilter, employees, filter, goals, search]);
+  const visibleAppraisals = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return appraisals.filter(appraisal => {
+      if (cycleFilter !== 'all' && appraisal.cycle_id !== cycleFilter) return false;
+      const employee = employees[appraisal.employee_id];
+      const cycle = cycles.find(item => item.id === appraisal.cycle_id);
+      return !query || [
+        employee?.full_name || '',
+        employee?.employee_number || '',
+        cycle?.name || '',
+        statusLabel(appraisal.status),
+      ].some(value => value.toLocaleLowerCase().includes(query));
+    });
+  }, [appraisals, cycleFilter, cycles, employees, search]);
   const cycleGoals = cycleFilter === 'all' ? goals : goals.filter(goal => goal.cycle_id === cycleFilter);
   const selectedCycle = cycles.find(cycle => cycle.id === cycleFilter);
   const average = cycleGoals.length
@@ -155,7 +194,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input type="search" value={search} onChange={event => setSearch(event.target.value)}
-          aria-label="Search organization performance" placeholder="Search employee or goal"
+          aria-label="Search organization performance" placeholder="Search employee, goal or appraisal"
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-2 focus:outline-[#08558B]" />
       </label>
       <label className="block text-xs font-medium text-slate-600">
@@ -195,6 +234,38 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
         {selectedCycle.manager_review_deadline && <span className="text-slate-600">Manager review due {dueDate(selectedCycle.manager_review_deadline)}</span>}
       </div>
     </section>}
+
+    <section aria-labelledby="organization-appraisals-heading" className="space-y-3">
+      <div>
+        <h3 id="organization-appraisals-heading" className="text-lg font-semibold text-[#1E1B39]">Appraisal reviews</h3>
+        <p className="mt-1 text-sm text-slate-600">Review status available to your performance role.</p>
+      </div>
+      {appraisalLoadError
+        ? <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Appraisal status is temporarily unavailable. Goal progress is still shown.</p>
+        : loading
+          ? <p role="status" className="rounded-xl border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">Loading appraisal reviews…</p>
+          : appraisals.length === 0
+            ? <p className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-5 text-sm text-slate-600">No appraisal reviews are available to this role.</p>
+            : visibleAppraisals.length === 0
+              ? <p role="status" className="rounded-xl border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">No appraisals match the current search and cycle.</p>
+              : <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+                {visibleAppraisals.map(appraisal => {
+                  const employee = employees[appraisal.employee_id];
+                  const cycle = cycles.find(item => item.id === appraisal.cycle_id);
+                  return <article key={appraisal.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#615E83]">{employee?.employee_number || 'Employee details unavailable'}</p>
+                        <h4 className="mt-1 break-words font-semibold text-[#1E1B39]">{employee?.full_name || 'Appraisal review'}</h4>
+                        <p className="mt-1 text-sm text-slate-600">{cycle?.name || 'Review cycle details unavailable'}</p>
+                        {cycle && <p className="mt-1 text-xs text-slate-500">{dueDate(cycle.start_date)} – {dueDate(cycle.end_date)}</p>}
+                      </div>
+                      <span className="shrink-0 rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#08558B]">{statusLabel(appraisal.status)}</span>
+                    </div>
+                  </article>;
+                })}
+              </div>}
+    </section>
 
     {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
       <p role="alert">{error}</p>

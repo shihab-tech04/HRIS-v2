@@ -254,6 +254,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
@@ -323,6 +324,92 @@ function record(label, ok, note = '') {
 
 const employeeAGoalId = '88888888-8888-4888-8888-888888888801';
 const employeeBGoalId = '88888888-8888-4888-8888-888888888802';
+const appraisalAEmployeeId = '88888888-8888-4888-8888-888888888931';
+const appraisalAReviewerId = '88888888-8888-4888-8888-888888888932';
+const appraisalAUnassignedId = '88888888-8888-4888-8888-888888888933';
+const appraisalBEmployeeId = '88888888-8888-4888-8888-888888888934';
+const employeeAAppraisals = await employeeA.client.from('performance_appraisals')
+  .select('id,tenant_id,employee_id,reviewer_employee_id').eq('tenant_id', ids.tenantA);
+const employeeACrossTenantAppraisals = await employeeA.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantB);
+const employeeBAppraisals = await employeeB.client.from('performance_appraisals')
+  .select('id,tenant_id,employee_id').eq('tenant_id', ids.tenantB);
+const employeeACycles = await employeeA.client.from('performance_cycles')
+  .select('id,tenant_id,name,status').eq('tenant_id', ids.tenantA);
+const employeeBCycles = await employeeB.client.from('performance_cycles')
+  .select('id,tenant_id,name,status').eq('tenant_id', ids.tenantB);
+record('Employees can read only their own tenant-bound appraisals',
+  !employeeAAppraisals.error && employeeAAppraisals.data.length === 1
+    && employeeAAppraisals.data[0].id === appraisalAEmployeeId
+    && !employeeACrossTenantAppraisals.error && employeeACrossTenantAppraisals.data.length === 0
+    && !employeeBAppraisals.error && employeeBAppraisals.data.length === 1
+    && employeeBAppraisals.data[0].id === appraisalBEmployeeId);
+record('Employees can read only the review-cycle context linked to their own appraisal',
+  !employeeACycles.error && employeeACycles.data.length === 1
+    && employeeACycles.data[0].id === '88888888-8888-4888-8888-888888888901'
+    && employeeACycles.data[0].name === 'QA A Annual Review'
+    && !employeeBCycles.error && employeeBCycles.data.length === 1
+    && employeeBCycles.data[0].id === '88888888-8888-4888-8888-888888888902');
+
+const assignedReviewerAppraisals = await managerA2.client.from('performance_appraisals')
+  .select('id,tenant_id,reviewer_employee_id').eq('tenant_id', ids.tenantA);
+const assignedReviewerCrossTenant = await managerA2.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantB);
+const reviewerCycles = await managerA2.client.from('performance_cycles')
+  .select('id,tenant_id,name,status').eq('tenant_id', ids.tenantA);
+record('Assigned in-tenant reviewer sees only explicitly assigned appraisals',
+  !assignedReviewerAppraisals.error && assignedReviewerAppraisals.data.length === 2
+    && assignedReviewerAppraisals.data.some(row => row.id === appraisalAEmployeeId)
+    && assignedReviewerAppraisals.data.some(row => row.id === appraisalAReviewerId)
+    && assignedReviewerAppraisals.data.every(row => row.reviewer_employee_id === '55555555-5555-4555-8555-555555555556')
+    && !assignedReviewerAppraisals.data.some(row => row.id === appraisalAUnassignedId)
+    && !assignedReviewerCrossTenant.error && assignedReviewerCrossTenant.data.length === 0
+    && !reviewerCycles.error && reviewerCycles.data.length === 1
+    && reviewerCycles.data[0].id === '88888888-8888-4888-8888-888888888901',
+  JSON.stringify({ tenantA: assignedReviewerAppraisals.data, tenantB: assignedReviewerCrossTenant.data }));
+
+const managerAAppraisals = await managerA.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantA);
+const managerACrossTenantAppraisals = await managerA.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantB);
+const managerBAppraisals = await managerB.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantB);
+const managerBCrossTenantAppraisals = await managerB.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantA);
+record('Performance managers can read authorized appraisals in their own tenant only',
+  !managerAAppraisals.error && managerAAppraisals.data.length === 3
+    && !managerACrossTenantAppraisals.error && managerACrossTenantAppraisals.data.length === 0
+    && !managerBAppraisals.error && managerBAppraisals.data.length === 1
+    && managerBAppraisals.data[0].id === appraisalBEmployeeId
+    && !managerBCrossTenantAppraisals.error && managerBCrossTenantAppraisals.data.length === 0);
+
+const reportOnlyAppraisals = await reportViewerA.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantA);
+const viewerAppraisals = await tenantViewer.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantB);
+const globalOnlyAppraisals = await globalOnly.client.from('performance_appraisals')
+  .select('id,tenant_id');
+const anonymousAppraisalAttempt = attemptAs(null,
+  'SELECT count(*) FROM public.performance_appraisals', 'anon');
+record('Unassigned report/view roles, global role without membership, and anon cannot read appraisals',
+  !reportOnlyAppraisals.error && reportOnlyAppraisals.data.length === 0
+    && !viewerAppraisals.error && viewerAppraisals.data.length === 0
+    && !globalOnlyAppraisals.error && globalOnlyAppraisals.data.length === 0
+    && !anonymousAppraisalAttempt.ok);
+const unreleasedScoreRead = await employeeA.client.from('performance_appraisals')
+  .select('manager_scores,final_rating,final_feedback').eq('id', appraisalAEmployeeId);
+record('Appraisal scores and final feedback are not available through direct table reads',
+  Boolean(unreleasedScoreRead.error));
+
+psqlSync("UPDATE public.tenant_memberships SET status='inactive' WHERE tenant_id='"
+  + ids.tenantA + "'::uuid AND user_id='" + managerA2.userId + "'::uuid");
+const inactiveReviewerAppraisals = await managerA2.client.from('performance_appraisals')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantA);
+psqlSync("UPDATE public.tenant_memberships SET status='active' WHERE tenant_id='"
+  + ids.tenantA + "'::uuid AND user_id='" + managerA2.userId + "'::uuid");
+record('Assigned reviewer access ends when the tenant membership becomes inactive',
+  !inactiveReviewerAppraisals.error && inactiveReviewerAppraisals.data.length === 0);
+
 const ownGoalRead = await employeeA.client.from('performance_goals')
   .select('id,tenant_id,employee_id,current_progress')
   .eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId);
