@@ -1,0 +1,58 @@
+{
+  "checkpoint": "2026-10-13T22:52:00+06:00",
+  "state": "local_archive_validated_and_drive_upload_readback_size_verified",
+  "repositories": [
+    {
+      "name": "HRIS-v2",
+      "commit": "d0e74a7d2aa44b75860379584bce1666ac788b07",
+      "branch": "codex/recovery-checkpoint-20261012",
+      "archive": {
+        "file_name": "Synesis-HRIS-v2-20261013_2252-d0e74a7.zip",
+        "drive_file_id": "1p-5nLEZLt7PkOSWNDlvuXgr5J5aq38kC",
+        "bytes": 2677264,
+        "sha256_local": "86d11a0f3a15c07ceaca048b7acb569d5820c3c6b316a5548aef799ebcb69c8c",
+        "local_zip_integrity": "PASS",
+        "drive_parent_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+        "drive_bytes": 2677264,
+        "drive_size_matches_local": true,
+        "drive_sha256": "not_verified; signed download reference could not be materialized by the restricted runtime"
+      }
+    },
+    {
+      "name": "HRIS-Candidate-v2",
+      "commit": "3f9ff7dfcac0256aab65017c42defb5baa57ee74",
+      "branch": "codex/recovery-checkpoint-20261012",
+      "archive": {
+        "file_name": "Synesis-HRIS-Candidate-v2-20261013_2252-3f9ff7d.zip",
+        "drive_file_id": "1oBD6Kf5xz4CgTaVMVu_UDVNwvmUTzaV_",
+        "bytes": 2705381,
+        "sha256_local": "7831457b87ab9812683b3f45f8a46956fc39e98b5d4acebb4ec009fad04847b3",
+        "local_zip_integrity": "PASS",
+        "drive_parent_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+        "drive_bytes": 2705381,
+        "drive_size_matches_local": true,
+        "drive_sha256": "not_verified; signed download reference could not be materialized by the restricted runtime"
+      }
+    }
+  ],
+  "drive_destination": {
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "folder_name": "HRMIS Preservation 2026-10-11",
+    "owner": "shihabshajib01@gmail.com",
+    "owner_verified": true,
+    "upload_permission_verified": "successful uploads and Drive readbacks to the same owned folder",
+    "checkpoint_file_ids": {
+      "execution_checkpoint": "1uYNNv_0O_jTUZ-_c0DrzRP-MAZD5m7mi",
+      "acceptance_evidence": "1rmGbAdrY1G8iriatbe4APUVWm39y06tb",
+      "master_phase_ledger": "1q7e1lX9oD7hdR4PJI1_WZstj2qfdxbrw",
+      "initial_manifest": "1l6ZkDxqNirAQ0RHbhp6FOEqPEZlbJ2Mn"
+    }
+  },
+  "release_boundary": {
+    "github_push": false,
+    "deployment": false,
+    "production_migration": false,
+    "paid_services": false,
+    "final_release_gate": "Verify remote archive SHA-256 before final GitHub push"
+  }
+}
