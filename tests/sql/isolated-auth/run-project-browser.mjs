@@ -54,7 +54,19 @@ async function signIn(page, email) {
   await emailInput.fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible' });
+  if ((await page.evaluate(() => window.innerWidth)) < 1024) {
+    await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  } else {
+    await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible' });
+  }
+}
+
+async function navigateTo(page, label) {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) {
+    await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  }
+  await navigation.getByRole('button', { name: label, exact: true }).click();
 }
 
 async function assertVisibleText(locator, text) {
@@ -69,10 +81,20 @@ async function assertVisibleText(locator, text) {
   throw new Error(`Expected UI text ${JSON.stringify(text)}; received ${JSON.stringify(actual)}.`);
 }
 
+async function assertNoHorizontalOverflow(page, label) {
+  const dimensions = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+  }));
+  if (dimensions.document > dimensions.viewport) {
+    throw new Error(`${label} overflowed ${dimensions.viewport}px to ${dimensions.document}px.`);
+  }
+}
+
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
-  const pmPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const pmPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   await pmPage.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -80,8 +102,8 @@ try {
     return route.abort();
   });
   await signIn(pmPage, process.env.HRIS_LOCAL_PM_EMAIL);
-  await pmPage.getByRole('navigation', { name: 'HRIS modules' })
-    .getByRole('button', { name: 'Project Workspace', exact: true }).click();
+  await navigateTo(pmPage, 'Project Workspace');
+  await assertNoHorizontalOverflow(pmPage, 'Mobile Project Workspace');
   const project = pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first();
   await project.waitFor({ state: 'visible' });
   const manager = project.getByRole('region', { name: 'Project task management' });
@@ -89,12 +111,14 @@ try {
   await manager.getByLabel('Task title *').fill(process.env.HRIS_LOCAL_TASK_TITLE);
   await manager.locator('fieldset label').filter({ hasText: 'Synthetic Employee A' }).getByRole('checkbox').check();
   await manager.getByRole('button', { name: 'Create task' }).click();
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task creation');
 
   const task = manager.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
   await assertVisibleText(task, 'Synthetic Employee A');
   await task.getByLabel(`Add member to ${process.env.HRIS_LOCAL_TASK_TITLE}`)
     .selectOption(process.env.HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID);
   await task.getByRole('button', { name: 'Add member', exact: true }).click();
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task member assignment');
   await assertVisibleText(task, 'Synthetic Absent Employee A');
   await task.getByRole('button', { name: 'Start task' }).click();
   await assertVisibleText(task, 'in progress');
@@ -106,8 +130,9 @@ try {
   await assertVisibleText(task, 'Feedback Pending · 2 required reviews');
   await assertVisibleText(manager.getByRole('status').filter({ hasText: 'Task completed.' }), 'Task completed.');
   if ((await task.innerText()).includes('Mark complete')) throw new Error('The UI left the completed task actionable.');
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task completion and feedback state');
 
-  const reviewerPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const reviewerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   await reviewerPage.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -115,8 +140,8 @@ try {
     return route.abort();
   });
   await signIn(reviewerPage, process.env.HRIS_LOCAL_REVIEWER_EMAIL);
-  await reviewerPage.getByRole('navigation', { name: 'HRIS modules' })
-    .getByRole('button', { name: 'My Projects', exact: true }).click();
+  await navigateTo(reviewerPage, 'My Projects');
+  await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review inbox');
   await reviewerPage.getByRole('heading', { name: 'My project work' }).waitFor({ state: 'visible' });
   const review = reviewerPage.locator('article').filter({ hasText: 'Review Synthetic Employee A' });
   await review.waitFor({ state: 'visible' });
@@ -128,6 +153,7 @@ try {
   await review.getByRole('button', { name: 'Submit review' }).click();
   await assertVisibleText(reviewerPage.getByRole('status').filter({ hasText: 'Review for Synthetic Employee A submitted.' }),
     'Review for Synthetic Employee A submitted.');
+  await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review submission');
   await reviewerPage.getByText('No peer reviews are waiting for you.').waitFor({ state: 'visible' });
 
   const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -138,8 +164,7 @@ try {
     return route.abort();
   });
   await signIn(revieweePage, process.env.HRIS_LOCAL_REVIEWEE_EMAIL);
-  await revieweePage.getByRole('navigation', { name: 'HRIS modules' })
-    .getByRole('button', { name: 'My Performance', exact: true }).click();
+  await navigateTo(revieweePage, 'My Performance');
   const history = revieweePage.getByRole('region', { name: 'Project peer-review history' });
   await assertVisibleText(history, process.env.HRIS_LOCAL_TASK_TITLE);
   await assertVisibleText(history, 'Feedback from Synthetic Absent Employee A');
@@ -149,7 +174,7 @@ try {
   await revieweePage.setViewportSize({ width: 375, height: 812 });
   const width = await revieweePage.evaluate(() => document.documentElement.scrollWidth);
   if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
-  console.log('Browser-to-local-Supabase task, review submission, and employee performance-history journey passed.');
+  console.log('Mobile 375px browser-to-local-Supabase task, review submission, and performance-history journey passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

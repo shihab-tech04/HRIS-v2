@@ -1701,7 +1701,7 @@ const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_o
   FROM public.project_tasks t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.project_id='${projectA.id}'::uuid
     AND t.title=${sqlLiteral(browserTaskTitle)}), 'null'::jsonb)`);
 record('Real browser UI uses isolated Auth/RPC and persists task, overlapping reviews, and Not Observed in local Postgres',
-  browserIntegrationOutput.includes('Browser-to-local-Supabase task, review submission, and employee performance-history journey passed.')
+  browserIntegrationOutput.includes('Mobile 375px browser-to-local-Supabase task, review submission, and performance-history journey passed.')
     && browserTaskPersistence?.status === 'completed' && browserTaskPersistence?.pending === 1
     && browserTaskPersistence.review_total === 2 && browserTaskPersistence.review_submitted
     && browserTaskPersistence.not_observed,
