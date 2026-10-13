@@ -214,7 +214,10 @@ if (issuer !== `${apiUrl.origin}/auth/v1`) {
 
 const createdUserIds = [];
 const uploadedEvidencePaths = [];
+const uploadedExpensePaths = [];
 let createdEvidenceBucket = false;
+let createdExpenseBucket = false;
+let expenseBucketSafeToClean = false;
 const password = randomBytes(24).toString('base64url');
 try {
   for (const email of emails) {
@@ -277,6 +280,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -305,6 +309,30 @@ if (evidenceBucketCheck.data) {
   });
   if (bucket.error) throw bucket.error;
   createdEvidenceBucket = true;
+}
+const expenseBucketCheck = await adminAuth.storage.getBucket('expense-receipts');
+const expenseMimeTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+if (expenseBucketCheck.data) {
+  const bucket = expenseBucketCheck.data;
+  const existingReceipts = await adminAuth.storage.from('expense-receipts').list('', { limit: 100 });
+  if (existingReceipts.error) throw existingReceipts.error;
+  if (bucket.public || bucket.file_size_limit !== 10485760
+      || JSON.stringify(bucket.allowed_mime_types || []) !== JSON.stringify(expenseMimeTypes)
+      || existingReceipts.data?.length) {
+    throw new Error('Refusing to test: the isolated expense-receipts bucket must be empty and match its production restrictions.');
+  }
+  expenseBucketSafeToClean = true;
+} else {
+  const statusCode = String(expenseBucketCheck.error?.statusCode || '');
+  if (!expenseBucketCheck.error || statusCode !== '404') {
+    throw expenseBucketCheck.error || new Error('Unable to inspect the isolated expense-receipts bucket.');
+  }
+  const bucket = await adminAuth.storage.createBucket('expense-receipts', {
+    public: false, fileSizeLimit: 10485760, allowedMimeTypes: expenseMimeTypes,
+  });
+  if (bucket.error) throw bucket.error;
+  createdExpenseBucket = true;
+  expenseBucketSafeToClean = true;
 }
 const ids = {
   leaveApprove: '88888888-8888-4888-8888-888888888801',
@@ -1301,6 +1329,11 @@ FROM (VALUES
   ('public.hris_submit_my_travel_request(uuid,uuid)'),
   ('public.hris_get_tenant_travel_requests(uuid)'),
   ('public.hris_resolve_travel_request(uuid,uuid,text,text)'),
+  ('public.hris_get_my_expense_context(uuid)'),
+  ('public.hris_save_my_expense_draft(uuid,uuid,text,uuid,date,numeric,text)'),
+  ('public.hris_submit_my_expense_claim(uuid,uuid)'),
+  ('public.hris_reopen_my_expense_claim(uuid,uuid)'),
+  ('public.hris_get_tenant_expense_claims(uuid)'),
   ('public.hris_get_tenant_project_workspace(uuid)'),
   ('public.hris_get_my_projects(uuid)'),
   ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
@@ -1968,6 +2001,216 @@ record('Real browser employee-to-manager-to-employee travel journey persists its
     && JSON.stringify(browserTravelPersistence?.history) === JSON.stringify(['submitted','rejected','submitted','approved'])
     && browserTravelPersistence?.decision_audit === 2,
   travelBrowserError || JSON.stringify(browserTravelPersistence));
+
+const expenseIds = {
+  categoryA: '89898989-8989-4898-8898-989898989811', inactiveCategoryA: '89898989-8989-4898-8898-989898989812',
+  submittedA: '89898989-8989-4898-8898-989898989821', submittedB: '89898989-8989-4898-8898-989898989822',
+  rejectedA: '89898989-8989-4898-8898-989898989823',
+};
+const expenseContextA = await employeeA.client.rpc('hris_get_my_expense_context', { p_tenant_id: ids.tenantA });
+const expenseContextB = await employeeB.client.rpc('hris_get_my_expense_context', { p_tenant_id: ids.tenantB });
+const expenseCrossContext = await employeeA.client.rpc('hris_get_my_expense_context', { p_tenant_id: ids.tenantB });
+const expenseQueueA = await managerA.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantA });
+const expenseQueueB = await managerB.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantB });
+const expenseQueueViewer = await tenantViewer.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantB });
+const expenseQueueCross = await managerA.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantB });
+const expenseQueueNoPermission = await noPermission.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantA });
+const expenseQueueGlobalOnly = await globalOnly.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantA });
+const expenseQueueEmployee = await employeeA.client.rpc('hris_get_tenant_expense_claims', { p_tenant_id: ids.tenantA });
+const expenseDirectEmployeeRead = await employeeA.client.from('expense_claims').select('id,tenant_id');
+const expenseDirectManagerRead = await managerA.client.from('expense_claims').select('id,tenant_id');
+const expenseDirectNoPermissionRead = await noPermission.client.from('expense_claims').select('id,tenant_id');
+const expenseDirectGlobalOnlyRead = await globalOnly.client.from('expense_claims').select('id,tenant_id');
+const expenseDirectCrossTenantRead = await managerA.client.from('expense_claims').select('id,tenant_id').eq('tenant_id', ids.tenantB);
+record('Expense contexts and manager queues stay scoped to active tenant memberships',
+  !expenseContextA.error && expenseContextA.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && expenseContextA.data.categories?.length === 1 && expenseContextA.data.claims?.length === 2
+    && expenseContextA.data.claims.some(row => row.id === expenseIds.rejectedA)
+    && !expenseContextB.error && expenseContextB.data?.claims?.length === 1
+    && Boolean(expenseCrossContext.error?.code === '42501')
+    && !expenseQueueA.error && expenseQueueA.data.length === 1 && expenseQueueA.data[0].id === expenseIds.submittedA
+    && !expenseQueueB.error && expenseQueueB.data.length === 1 && expenseQueueB.data[0].id === expenseIds.submittedB
+    && !expenseQueueViewer.error && expenseQueueViewer.data.length === 1
+    && Boolean(expenseQueueCross.error?.code === '42501')
+    && Boolean(expenseQueueNoPermission.error?.code === '42501')
+    && Boolean(expenseQueueGlobalOnly.error?.code === '42501')
+    && Boolean(expenseQueueEmployee.error?.code === '42501')
+    && !expenseDirectEmployeeRead.error && expenseDirectEmployeeRead.data.length === 2
+    && expenseDirectEmployeeRead.data.every(row => row.tenant_id === ids.tenantA)
+    && !expenseDirectManagerRead.error && expenseDirectManagerRead.data.length >= 1
+    && expenseDirectManagerRead.data.every(row => row.tenant_id === ids.tenantA)
+    && !expenseDirectNoPermissionRead.error && expenseDirectNoPermissionRead.data.length === 0
+    && !expenseDirectGlobalOnlyRead.error && expenseDirectGlobalOnlyRead.data.length === 0
+    && !expenseDirectCrossTenantRead.error && expenseDirectCrossTenantRead.data.length === 0,
+  JSON.stringify({ contextA: expenseContextA.data?.claims?.map(row => row.id), contextB: expenseContextB.data?.claims?.length,
+    queueA: expenseQueueA.data?.map(row => row.id), queueB: expenseQueueB.data?.map(row => row.id),
+    directEmployeeRows: expenseDirectEmployeeRead.data?.length, directManagerRows: expenseDirectManagerRead.data?.length,
+    directNoPermission: expenseDirectNoPermissionRead.data?.length, directGlobalOnly: expenseDirectGlobalOnlyRead.data?.length,
+    viewerQueue: expenseQueueViewer.data?.length, viewerQueueError: expenseQueueViewer.error?.code,
+    crossTenant: expenseQueueCross.error?.code, globalOnly: expenseQueueGlobalOnly.error?.code }));
+
+const partialExpenseDraft = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantA, p_id: null, p_description: '  Partial local expense draft  ',
+  p_category_id: null, p_claim_date: null, p_amount: null, p_currency: null,
+});
+const partialExpenseRow = typeof partialExpenseDraft.data === 'string'
+  ? queryAdmin(`SELECT to_jsonb(c) FROM public.expense_claims c WHERE c.id=${sqlLiteral(partialExpenseDraft.data)}::uuid`)
+  : null;
+const invalidExpenseCategory = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantA, p_id: null, p_description: 'Invalid inactive category',
+  p_category_id: expenseIds.inactiveCategoryA, p_claim_date: localCurrentDate, p_amount: 1, p_currency: 'BDT',
+});
+const invalidExpenseCurrency = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantA, p_id: null, p_description: 'Invalid currency',
+  p_category_id: expenseIds.categoryA, p_claim_date: localCurrentDate, p_amount: 1, p_currency: 'US',
+});
+const invalidExpenseAmount = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantA, p_id: null, p_description: 'Invalid amount',
+  p_category_id: expenseIds.categoryA, p_claim_date: localCurrentDate, p_amount: 1.001, p_currency: 'BDT',
+});
+const crossTenantExpenseDraft = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantB, p_id: null, p_description: 'Cross tenant expense',
+  p_category_id: null, p_claim_date: null, p_amount: null, p_currency: null,
+});
+const incompleteExpenseSubmit = typeof partialExpenseDraft.data === 'string'
+  ? await employeeA.client.rpc('hris_submit_my_expense_claim', { p_tenant_id: ids.tenantA, p_id: partialExpenseDraft.data })
+  : null;
+const completeExpenseSave = typeof partialExpenseDraft.data === 'string'
+  ? await employeeA.client.rpc('hris_save_my_expense_draft', {
+    p_tenant_id: ids.tenantA, p_id: partialExpenseDraft.data, p_description: 'Local completed expense draft',
+    p_category_id: expenseIds.categoryA, p_claim_date: localCurrentDate, p_amount: 2490.75, p_currency: 'bdt',
+  })
+  : null;
+record('Expense drafts validate active categories, dates, amount, currency, and submit completeness',
+  !partialExpenseDraft.error && partialExpenseRow?.status === 'draft'
+    && partialExpenseRow?.description === 'Partial local expense draft'
+    && Boolean(invalidExpenseCategory.error?.code === '22023')
+    && Boolean(invalidExpenseCurrency.error?.code === '22023')
+    && Boolean(invalidExpenseAmount.error?.code === '22023')
+    && Boolean(crossTenantExpenseDraft.error?.code === '42501')
+    && Boolean(incompleteExpenseSubmit?.error?.code === '22023')
+    && !completeExpenseSave?.error && completeExpenseSave?.data === partialExpenseDraft.data,
+  JSON.stringify({ partial: partialExpenseRow?.status, inactiveCategory: invalidExpenseCategory.error?.code,
+    currency: invalidExpenseCurrency.error?.code, amount: invalidExpenseAmount.error?.code,
+    crossTenant: crossTenantExpenseDraft.error?.code, incompleteSubmit: incompleteExpenseSubmit?.error?.code }));
+
+const expenseDraftId = String(partialExpenseDraft.data);
+const employeeDirectDecision = await employeeA.client.from('expense_claims').update({ status: 'approved' }).eq('id', expenseDraftId).select('id');
+const managerDirectDecision = await managerA.client.from('expense_claims').update({ status: 'approved' }).eq('id', expenseIds.submittedA).select('id');
+const expenseSubmit = await employeeA.client.rpc('hris_submit_my_expense_claim', { p_tenant_id: ids.tenantA, p_id: expenseDraftId });
+const expenseDuplicateSubmit = await employeeA.client.rpc('hris_submit_my_expense_claim', { p_tenant_id: ids.tenantA, p_id: expenseDraftId });
+const expenseSavedState = queryAdmin(`SELECT jsonb_build_object(
+  'status',(SELECT status FROM public.expense_claims WHERE id=${sqlLiteral(expenseDraftId)}::uuid),
+  'submitted_at',(SELECT submitted_at FROM public.expense_claims WHERE id=${sqlLiteral(expenseDraftId)}::uuid),
+  'history',(SELECT count(*)::integer FROM public.expense_claim_status_history WHERE claim_id=${sqlLiteral(expenseDraftId)}::uuid))`);
+record('Expense submission stores status history and ordinary employees or managers cannot approve directly',
+  (Boolean(employeeDirectDecision.error) || employeeDirectDecision.data?.length === 0)
+    && !managerDirectDecision.error && managerDirectDecision.data.length === 0
+    && !expenseSubmit.error && expenseSubmit.data === expenseDraftId
+    && Boolean(expenseDuplicateSubmit.error?.code === '42501')
+    && expenseSavedState.status === 'submitted' && Boolean(expenseSavedState.submitted_at)
+    && expenseSavedState.history === 1,
+  JSON.stringify({ employeeRows: employeeDirectDecision.data?.length, managerRows: managerDirectDecision.data?.length,
+    submit: expenseSubmit.error?.code || expenseSubmit.data, duplicate: expenseDuplicateSubmit.error?.code,
+    saved: expenseSavedState }));
+
+const reopenedExpense = await employeeA.client.rpc('hris_reopen_my_expense_claim', { p_tenant_id: ids.tenantA, p_id: expenseIds.rejectedA });
+const reopenedExpenseEdit = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantA, p_id: expenseIds.rejectedA, p_description: 'Revised after reviewer feedback',
+  p_category_id: expenseIds.categoryA, p_claim_date: localCurrentDate, p_amount: 700, p_currency: 'BDT',
+});
+const reopenedExpenseContext = await employeeA.client.rpc('hris_get_my_expense_context', { p_tenant_id: ids.tenantA });
+const reopenedExpenseCard = reopenedExpenseContext.data?.claims?.find(row => row.id === expenseIds.rejectedA);
+record('Returned expense claims reopen and revise while retaining reviewer notes',
+  !reopenedExpense.error && reopenedExpense.data === expenseIds.rejectedA
+    && !reopenedExpenseEdit.error && reopenedExpenseEdit.data === expenseIds.rejectedA
+    && reopenedExpenseCard?.status === 'draft' && reopenedExpenseCard?.review_note === 'Please attach the receipt.',
+  JSON.stringify({ status: reopenedExpenseCard?.status, note: reopenedExpenseCard?.review_note }));
+
+const receiptDraft = await employeeA.client.rpc('hris_save_my_expense_draft', {
+  p_tenant_id: ids.tenantA, p_id: null, p_description: 'Local receipt storage acceptance',
+  p_category_id: expenseIds.categoryA, p_claim_date: localCurrentDate, p_amount: 85.5, p_currency: 'BDT',
+});
+const receiptClaimId = String(receiptDraft.data);
+const receiptStoragePath = `${employeeA.userId}/${receiptClaimId}/${randomBytes(12).toString('hex')}.pdf`;
+const receiptUpload = await employeeA.client.storage.from('expense-receipts').upload(
+  receiptStoragePath, new Blob(['%PDF-1.4 local expense receipt'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!receiptUpload.error) uploadedExpensePaths.push(receiptStoragePath);
+const receiptMetadata = receiptUpload.error ? null : await employeeA.client.from('expense_claim_receipts').insert({
+  tenant_id: ids.tenantA, claim_id: receiptClaimId, employee_id: '55555555-5555-4555-8555-555555555555',
+  storage_path: receiptStoragePath, file_name: 'local-receipt.pdf', mime_type: 'application/pdf', file_size: 30,
+});
+const receiptReadOwn = await employeeA.client.from('expense_claim_receipts').select('id,tenant_id').eq('claim_id', receiptClaimId);
+const receiptReadOther = await employeeB.client.from('expense_claim_receipts').select('id').eq('claim_id', receiptClaimId);
+const receiptDownloadOwn = await employeeA.client.storage.from('expense-receipts').download(receiptStoragePath);
+const receiptDownloadOther = await employeeB.client.storage.from('expense-receipts').download(receiptStoragePath);
+const receiptCrossInsert = await employeeA.client.from('expense_claim_receipts').insert({
+  tenant_id: ids.tenantB, claim_id: expenseIds.submittedB, employee_id: '66666666-6666-4666-8666-666666666666',
+  storage_path: `${employeeA.userId}/${expenseIds.submittedB}/cross-tenant.pdf`, file_name: 'cross-tenant.pdf',
+  mime_type: 'application/pdf', file_size: 25,
+});
+record('Receipt objects and metadata remain private to the owning employee and tenant draft',
+  !receiptDraft.error && !receiptUpload.error && !receiptMetadata?.error
+    && !receiptReadOwn.error && receiptReadOwn.data.length === 1 && receiptReadOwn.data[0].tenant_id === ids.tenantA
+    && !receiptReadOther.error && receiptReadOther.data.length === 0
+    && !receiptDownloadOwn.error && Boolean(receiptDownloadOwn.data)
+    && Boolean(receiptDownloadOther.error) && Boolean(receiptCrossInsert?.error),
+  JSON.stringify({ upload: receiptUpload.error?.message || 'ok', ownRows: receiptReadOwn.data?.length,
+    otherRows: receiptReadOther.data?.length, ownDownload: receiptDownloadOwn.error?.message || 'ok',
+    otherDownload: receiptDownloadOther.error?.statusCode || receiptDownloadOther.error?.message,
+    crossTenantInsert: receiptCrossInsert?.error?.code }));
+
+const anonExpenseContext = attemptAs(null,
+  `SELECT public.hris_get_my_expense_context('${ids.tenantA}'::uuid)`, 'anon');
+const anonExpenseSubmit = attemptAs(null,
+  `SELECT public.hris_submit_my_expense_claim('${ids.tenantA}'::uuid,'${expenseDraftId}'::uuid)`, 'anon');
+record('Anonymous callers cannot execute employee or manager expense RPCs',
+  !anonExpenseContext.ok && !anonExpenseSubmit.ok
+    && functionGrantMatrix['public.hris_get_my_expense_context(uuid)'].anon === false
+    && functionGrantMatrix['public.hris_save_my_expense_draft(uuid,uuid,text,uuid,date,numeric,text)'].anon === false
+    && functionGrantMatrix['public.hris_submit_my_expense_claim(uuid,uuid)'].anon === false
+    && functionGrantMatrix['public.hris_reopen_my_expense_claim(uuid,uuid)'].anon === false
+    && functionGrantMatrix['public.hris_get_tenant_expense_claims(uuid)'].anon === false);
+
+let expenseBrowserOutput = '';
+let expenseBrowserError = '';
+try {
+  expenseBrowserOutput = execFileSync('node', [path.join(here, 'run-expense-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_EXPENSE_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_EXPENSE_MANAGER_EMAIL: emails[0],
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  expenseBrowserError = String(error.stderr || error.message || 'local expense browser run failed').slice(-1800);
+}
+const expenseBrowserId = expenseBrowserOutput.match(/EXPENSE_ACCEPTANCE_ID=([0-9a-f-]{36})/i)?.[1];
+const expenseBrowserPath = expenseBrowserOutput.match(/EXPENSE_ACCEPTANCE_PATH=([^\r\n]+)/i)?.[1];
+if (expenseBrowserPath) uploadedExpensePaths.push(expenseBrowserPath);
+const browserExpensePersistence = expenseBrowserId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',c.tenant_id,'employee_id',c.employee_id,'status',c.status,
+  'receipt_count',(SELECT count(*)::integer FROM public.expense_claim_receipts r WHERE r.claim_id=c.id),
+  'history_count',(SELECT count(*)::integer FROM public.expense_claim_status_history h WHERE h.claim_id=c.id),
+  'history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at),'[]'::jsonb) FROM public.expense_claim_status_history h WHERE h.claim_id=c.id))
+  FROM public.expense_claims c WHERE c.id=${sqlLiteral(expenseBrowserId)}::uuid`) : null;
+record('Real browser employee expense, private receipt, submission history, and read-only manager queue persist in isolated Postgres',
+  expenseBrowserOutput.includes('Local Auth-to-Postgres expense workflow persisted an employee draft, validation recovery, private receipt, submission, history, and tenant-scoped read-only manager queue across mobile and desktop.')
+    && browserExpensePersistence?.tenant_id === ids.tenantA
+    && browserExpensePersistence?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserExpensePersistence?.status === 'submitted'
+    && browserExpensePersistence?.receipt_count === 1
+    && browserExpensePersistence?.history_count === 1
+    && JSON.stringify(browserExpensePersistence?.history) === JSON.stringify(['submitted']),
+  expenseBrowserError || JSON.stringify(browserExpensePersistence));
 
 psqlSync(`UPDATE public.employees SET employment_status='terminated'
   WHERE id='55555555-5555-4555-8555-555555555555';`);
@@ -2924,6 +3167,28 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('leave-evidence');
+    if (deletedBucket.error) throw deletedBucket.error;
+  }
+  const expenseStorage = adminAuth.storage.from('expense-receipts');
+  if (expenseBucketSafeToClean) {
+    const expensePaths = new Set(uploadedExpensePaths);
+    async function collectExpenseObjects(prefix = '') {
+      const listed = await expenseStorage.list(prefix, { limit: 100 });
+      if (listed.error) throw listed.error;
+      for (const item of listed.data || []) {
+        const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
+        if (item.id) expensePaths.add(itemPath);
+        else await collectExpenseObjects(itemPath);
+      }
+    }
+    await collectExpenseObjects();
+    if (expensePaths.size) {
+      const removed = await expenseStorage.remove([...expensePaths]);
+      if (removed.error) throw removed.error;
+    }
+  }
+  if (createdExpenseBucket) {
+    const deletedBucket = await adminAuth.storage.deleteBucket('expense-receipts');
     if (deletedBucket.error) throw deletedBucket.error;
   }
   for (const userId of createdUserIds) {

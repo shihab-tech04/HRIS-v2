@@ -20,6 +20,7 @@ type WorkspacePermissions = {
   organizationManage: boolean; employees: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
   learningManage: boolean;
   travel: boolean; travelView: boolean; travelManage: boolean;
+  expenses: boolean; expensesView: boolean; expensesManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
@@ -27,6 +28,7 @@ const noWorkspacePermissions: WorkspacePermissions = {
   organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
+  expenses: false, expensesView: false, expensesManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -279,6 +281,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           'recruitment.view', 'recruitment.manage',
           'learning.manage',
           'travel.view', 'travel.manage',
+          'expenses.view', 'expenses.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -307,6 +310,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             travel: grants.get('travel.view') === true || grants.get('travel.manage') === true,
             travelView: grants.get('travel.view') === true,
             travelManage: grants.get('travel.manage') === true,
+            expenses: grants.get('expenses.view') === true || grants.get('expenses.manage') === true,
+            expensesView: grants.get('expenses.view') === true,
+            expensesManage: grants.get('expenses.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);

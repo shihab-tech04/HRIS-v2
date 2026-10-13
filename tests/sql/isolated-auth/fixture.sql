@@ -13,6 +13,10 @@ DROP POLICY IF EXISTS hris_leave_evidence_scoped_read ON storage.objects;
 DROP POLICY IF EXISTS hris_leave_evidence_tenant_read_guard ON storage.objects;
 DROP POLICY IF EXISTS hris_leave_evidence_employee_delete ON storage.objects;
 DROP POLICY IF EXISTS hris_leave_evidence_delete_tenant_guard ON storage.objects;
+DROP POLICY IF EXISTS hris_expense_objects_employee_tenant_read ON storage.objects;
+DROP POLICY IF EXISTS hris_expense_objects_manager_tenant_read ON storage.objects;
+DROP POLICY IF EXISTS hris_expense_objects_employee_tenant_insert ON storage.objects;
+DROP POLICY IF EXISTS hris_expense_objects_employee_tenant_delete ON storage.objects;
 
 -- The recruitment test fixture is synthetic and must be reset on every run.
 DROP TABLE IF EXISTS public.candidate_application_stage_history CASCADE;
@@ -59,6 +63,7 @@ DROP FUNCTION IF EXISTS public.hris_can_read_learning_catalog(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_admin_can_read_tenant(uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_is_active_tenant_member(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_own_employee_for_tenant(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_test_expense_claim_status_history() CASCADE;
 DROP FUNCTION IF EXISTS public.employee_for_auth_user() CASCADE;
 DROP FUNCTION IF EXISTS public.has_tenant_permission(uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.has_permission(text) CASCADE;
@@ -94,6 +99,10 @@ DROP TABLE IF EXISTS public.timesheets CASCADE;
 DROP TABLE IF EXISTS public.timesheet_activities CASCADE;
 DROP TABLE IF EXISTS public.travel_status_history CASCADE;
 DROP TABLE IF EXISTS public.travel_requests CASCADE;
+DROP TABLE IF EXISTS public.expense_claim_status_history CASCADE;
+DROP TABLE IF EXISTS public.expense_claim_receipts CASCADE;
+DROP TABLE IF EXISTS public.expense_claims CASCADE;
+DROP TABLE IF EXISTS public.expense_categories CASCADE;
 DROP TABLE IF EXISTS public.service_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_types CASCADE;
@@ -545,6 +554,68 @@ CREATE TABLE public.travel_status_history (
   note text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE public.expense_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.expense_claims (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  description text NOT NULL CHECK (char_length(btrim(description)) BETWEEN 1 AND 2000),
+  category text,
+  claim_date date,
+  amount numeric CHECK (amount IS NULL OR amount > 0),
+  currency varchar(3) CHECK (currency IS NULL OR currency ~ '^[A-Z]{3}$'),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected','paid','cancelled')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  category_id uuid REFERENCES public.expense_categories(id),
+  submitted_at timestamptz,
+  reviewed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  reviewed_at timestamptz,
+  review_note text,
+  reopened_at timestamptz
+);
+CREATE TABLE public.expense_claim_receipts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  claim_id uuid NOT NULL REFERENCES public.expense_claims(id) ON DELETE CASCADE,
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  storage_path text NOT NULL UNIQUE CHECK (storage_path ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/[^/]+$'),
+  file_name text NOT NULL CHECK (char_length(btrim(file_name)) BETWEEN 1 AND 255),
+  mime_type text NOT NULL CHECK (mime_type IN ('application/pdf','image/jpeg','image/png')),
+  file_size bigint NOT NULL CHECK (file_size > 0 AND file_size <= 10485760),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.expense_claim_status_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  claim_id uuid NOT NULL REFERENCES public.expense_claims(id) ON DELETE CASCADE,
+  actor_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  previous_status text,
+  new_status text NOT NULL,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE FUNCTION public.hris_test_expense_claim_status_history()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $function$
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    IF NEW.status='submitted' AND NEW.submitted_at IS NULL THEN NEW.submitted_at := now(); END IF;
+    INSERT INTO public.expense_claim_status_history(tenant_id,claim_id,actor_user_id,previous_status,new_status,note)
+    VALUES(NEW.tenant_id,NEW.id,auth.uid(),OLD.status,NEW.status,NEW.review_note);
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+CREATE TRIGGER hris_test_expense_claim_status_history
+  BEFORE UPDATE ON public.expense_claims
+  FOR EACH ROW EXECUTE FUNCTION public.hris_test_expense_claim_status_history();
 CREATE TABLE public.service_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
   employee_id uuid
@@ -865,6 +936,8 @@ GRANT SELECT ON public.employees,public.departments,public.designations,public.l
   public.performance_goals,public.project_performance_reviews,public.service_requests,
   public.shifts,public.teams,public.timesheet_activities,public.timesheets,
   public.timesheet_entries,public.travel_requests,public.travel_status_history TO authenticated,anon;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.expense_claims,public.expense_claim_receipts TO authenticated;
+GRANT SELECT ON public.expense_categories,public.expense_claim_status_history TO authenticated;
 GRANT ALL ON public.tenants,public.admin_users,public.roles,public.permissions,
   public.role_permissions,public.user_roles,public.tenant_memberships,public.shifts,
   public.departments,public.designations,public.employees,public.holidays,public.leave_types,
@@ -873,6 +946,8 @@ GRANT ALL ON public.tenants,public.admin_users,public.roles,public.permissions,
   TO service_role;
 GRANT ALL ON public.timesheet_activities,public.timesheets,public.timesheet_entries,
   public.travel_requests,public.travel_status_history TO service_role;
+GRANT ALL ON public.expense_categories,public.expense_claims,public.expense_claim_receipts,
+  public.expense_claim_status_history TO service_role;
 
 INSERT INTO public.tenants(id,slug,code,name,is_active) VALUES
   ('11111111-1111-4111-8111-111111111111','synesis-it','SYN','Synthetic Synesis',true),
@@ -919,7 +994,8 @@ INSERT INTO public.permissions(id,module,action) VALUES
   ('notices.view','notices','view'),('notices.manage','notices','manage'),
   ('payroll.view','payroll','view'),('payroll.manage','payroll','manage'),
   ('self_service.view','self_service','view'),('self_service.manage','self_service','manage'),
-  ('employees.view','employees','view'),('employees.manage','employees','manage');
+  ('employees.view','employees','view'),('employees.manage','employees','manage'),
+  ('expenses.view','expenses','view'),('expenses.manage','expenses','manage');
 INSERT INTO public.role_permissions(role_id,permission_id)
 SELECT role_id, permission_id
 FROM (VALUES ('qa_global_manager'),('qa_tenant_admin_a'),('qa_tenant_manager_b')) roles(role_id)
@@ -937,7 +1013,10 @@ VALUES ('qa_tenant_recruitment_a','recruitment.view'),
   ('qa_tenant_learning_manager_a','learning.manage'),
   ('qa_tenant_admin_a','travel.view'),('qa_tenant_admin_a','travel.manage'),
   ('qa_tenant_manager_b','travel.view'),('qa_tenant_manager_b','travel.manage'),
-  ('qa_tenant_viewer_b','travel.view');
+  ('qa_tenant_viewer_b','travel.view'),
+  ('qa_tenant_admin_a','expenses.view'),('qa_tenant_admin_a','expenses.manage'),
+  ('qa_tenant_manager_b','expenses.view'),('qa_tenant_manager_b','expenses.manage'),
+  ('qa_tenant_viewer_b','expenses.view');
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users
   WHERE email IN ('global-only@hris.test','manager-a@hris.test','manager-b@hris.test');
@@ -1035,6 +1114,14 @@ INSERT INTO public.timesheets(id,tenant_id,employee_id,period_type,period_start,
 INSERT INTO public.travel_requests(id,tenant_id,employee_id,destination,from_date,to_date,purpose,status,submitted_at) VALUES
   ('89898989-8989-4898-8898-989898989801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A client site','2026-11-02','2026-11-04','Synthetic tenant A travel request','submitted','2026-10-12 08:00:00+00'),
   ('89898989-8989-4898-8898-989898989802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B client site','2026-11-05','2026-11-06','Synthetic tenant B private request','submitted','2026-10-12 08:30:00+00');
+INSERT INTO public.expense_categories(id,tenant_id,name,active) VALUES
+  ('89898989-8989-4898-8898-989898989811','11111111-1111-4111-8111-111111111111','QA A Transport',true),
+  ('89898989-8989-4898-8898-989898989812','11111111-1111-4111-8111-111111111111','QA A Inactive',false),
+  ('89898989-8989-4898-8898-989898989813','22222222-2222-4222-8222-222222222222','QA B Meals',true);
+INSERT INTO public.expense_claims(id,tenant_id,employee_id,description,category_id,category,claim_date,amount,currency,status,submitted_at,review_note) VALUES
+  ('89898989-8989-4898-8898-989898989821','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A pending expense','89898989-8989-4898-8898-989898989811','QA A Transport','2026-10-10',1250,'BDT','submitted','2026-10-12 08:00:00+00',NULL),
+  ('89898989-8989-4898-8898-989898989822','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B private expense','89898989-8989-4898-8898-989898989813','QA B Meals','2026-10-10',800,'BDT','submitted','2026-10-12 08:30:00+00',NULL),
+  ('89898989-8989-4898-8898-989898989823','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A returned expense','89898989-8989-4898-8898-989898989811','QA A Transport','2026-10-09',700,'BDT','rejected','2026-10-11 08:00:00+00','Please attach the receipt.');
 INSERT INTO public.timesheet_entries(timesheet_id,activity_id,work_date,hours,note) VALUES
   ('77777777-7777-4777-8777-777777777701','88888888-8888-4888-8888-888888888901','2026-10-06',4,'Synthetic A entry'),
   ('77777777-7777-4777-8777-777777777702','88888888-8888-4888-8888-888888888902','2026-10-06',5,'Synthetic B entry');
