@@ -1,5 +1,5 @@
-// Verify the real employee and same-tenant manager leave-evidence journey
-// against the disposable local Auth, Postgres, RPC, and private Storage stack.
+// Verify the real employee evidence and manager approval journey against the
+// disposable local Auth, Postgres, RPC, and private Storage stack.
 import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -162,10 +162,19 @@ try {
   }
   await assertDownloadedEvidence(manager, managerFile, `leave-evidence-${process.env.HRIS_LOCAL_LEAVE_REQUEST_ID.slice(0, 8)}`);
   await manager.getByRole('status').filter({ hasText: 'Evidence downloaded.' }).waitFor({ state: 'visible' });
+  const approvalResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
+  { timeout: 10000 });
+  await managerRow.getByRole('button', { name: 'Approve', exact: true }).click();
+  const resolved = await approvalResponse;
+  if (!resolved.ok()) throw new Error(`Same-tenant manager approval returned ${resolved.status()}.`);
+  await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
+  await managerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
   await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
   await managerContext.close();
 
-  console.log('Real local Auth/Postgres/Storage leave-evidence retrieval passed for employee mobile and same-tenant manager desktop.');
+  console.log('Real local Auth/Postgres/Storage leave-evidence retrieval and manager approval passed for employee mobile and same-tenant manager desktop.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

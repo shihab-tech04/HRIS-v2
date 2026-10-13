@@ -18,6 +18,7 @@ const jwt = [
 test('manager filters the leave queue and completes approval and rejection actions', async ({ page }) => {
   let authenticated = false;
   let failNextLeaveLoad = false;
+  let failNextLeaveDecision = false;
   let failNextEvidenceDownload = false;
   const decisions: Record<string, unknown>[] = [];
   const evidenceDownloads: string[] = [];
@@ -80,6 +81,10 @@ test('manager filters the leave queue and completes approval and rejection actio
     if (endpoint === 'admin_resolve_leave_request') {
       const payload = request.postDataJSON() as Record<string, unknown>;
       decisions.push(payload);
+      if (failNextLeaveDecision) {
+        failNextLeaveDecision = false;
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary decision outage.' }) });
+      }
       const row = requests.find(item => item.id === payload.p_id);
       if (row) {
         row.status = String(payload.p_decision);
@@ -131,11 +136,18 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByLabel('Search requests').fill('');
   await page.getByLabel('Search requests').fill('Amira');
   await expect(table.locator('tbody tr')).toHaveCount(1);
+  failNextLeaveDecision = true;
+  await table.getByRole('button', { name: 'Approve' }).click();
+  const decisionAlert = page.getByRole('alert').filter({ hasText: 'Unable to resolve this leave request.' });
+  await expect(decisionAlert).toBeVisible();
+  await expect(decisionAlert.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('pending');
+  expect(decisions).toHaveLength(1);
   await table.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Leave request approved.')).toBeVisible();
   await page.getByLabel('Filter by status').selectOption('all');
   await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('approved');
-  expect(decisions[0]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333331', p_decision: 'approved', p_note: null });
+  expect(decisions[1]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333331', p_decision: 'approved', p_note: null });
 
   await page.getByLabel('Filter by status').selectOption('pending');
   await page.getByLabel('Search requests').fill('');
@@ -146,14 +158,14 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(rejectionDialog).toContainText('Tanim Chowdhury');
   await rejectionDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(rejectionDialog).toBeHidden();
-  expect(decisions).toHaveLength(1);
+  expect(decisions).toHaveLength(2);
 
   await table.getByRole('button', { name: 'Reject' }).click();
   const escapedRejection = page.getByRole('dialog', { name: 'Reject leave request' });
   await page.keyboard.press('Escape');
   await expect(escapedRejection).toBeHidden();
   await expect(table.getByRole('button', { name: 'Reject' })).toBeFocused();
-  expect(decisions).toHaveLength(1);
+  expect(decisions).toHaveLength(2);
 
   await table.getByRole('button', { name: 'Reject' }).click();
   const confirmedRejection = page.getByRole('dialog', { name: 'Reject leave request' });
@@ -163,7 +175,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByLabel('Filter by status').selectOption('all');
   await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('rejected');
   await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Decision note: Please correct the requested dates before resubmitting.');
-  expect(decisions[1]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333332', p_decision: 'rejected', p_note: 'Please correct the requested dates before resubmitting.' });
+  expect(decisions[2]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333332', p_decision: 'rejected', p_note: 'Please correct the requested dates before resubmitting.' });
 
   await page.getByLabel('Search requests').fill('No matching employee');
   await expect(page.getByText('No requests match these filters.')).toBeVisible();

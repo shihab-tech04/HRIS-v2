@@ -1697,18 +1697,6 @@ record('Duplicate pending leave dates are rejected without incrementing the ledg
     WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'
       AND leave_type_id='${ids.leaveTypeEvidence}'::uuid AND balance_year=2026`).pending_days) === 1);
 
-const evidenceApproved = evidenceRequestId
-  ? resolveLeave(managerA, evidenceRequestId, 'approved', 'synthetic E2E approval')
-  : { success: false };
-const approvedEvidenceBalance = queryAdmin(`SELECT to_jsonb(b) FROM public.employee_leave_balances b
-  WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'
-    AND leave_type_id='${ids.leaveTypeEvidence}'::uuid AND balance_year=2026`);
-record('Employee request completes the manager approval journey and updates its ledger once',
-  evidenceApproved.success === true && tableRow('leave_requests', evidenceRequestId).status === 'approved'
-  && Number(approvedEvidenceBalance.pending_days) === 0
-  && Number(approvedEvidenceBalance.used_days) === 1
-  && auditCount(evidenceRequestId, 'leave.request.approved') === 1);
-
 const employeeSummaryA = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
 const employeeSummaryB = queryAs(employeeB,
@@ -1745,8 +1733,19 @@ try {
   leaveEvidenceBrowserError = String(error.stderr || error.message || 'local leave-evidence browser run failed').slice(-1800);
 }
 record('Real Auth/Postgres/Storage employee and same-tenant manager browsers retrieve persisted private leave evidence',
-  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave-evidence retrieval passed for employee mobile and same-tenant manager desktop.'),
+  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave-evidence retrieval and manager approval passed for employee mobile and same-tenant manager desktop.'),
   leaveEvidenceBrowserError);
+const browserApprovedEvidence = evidenceRequestId ? tableRow('leave_requests', evidenceRequestId) : null;
+const approvedEvidenceBalance = queryAdmin(`SELECT to_jsonb(b) FROM public.employee_leave_balances b
+  WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'
+    AND leave_type_id='${ids.leaveTypeEvidence}'::uuid AND balance_year=2026`);
+record('Real manager leave UI approves the persisted employee request and updates its ledger once',
+  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave-evidence retrieval and manager approval passed for employee mobile and same-tenant manager desktop.')
+  && browserApprovedEvidence?.status === 'approved'
+  && Number(approvedEvidenceBalance.pending_days) === 0
+  && Number(approvedEvidenceBalance.used_days) === 1
+  && auditCount(evidenceRequestId, 'leave.request.approved') === 1,
+  JSON.stringify({ status: browserApprovedEvidence?.status, balance: approvedEvidenceBalance }));
 record('Ordinary employees can read their own attendance and leave summary without admin or membership roles',
   employeeSummaryA.attendance.records.length === 1
   && employeeSummaryA.attendance.records[0].id === ids.attendanceRecord
