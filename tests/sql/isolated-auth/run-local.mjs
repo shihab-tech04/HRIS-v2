@@ -1626,8 +1626,8 @@ const tenantBAuth = queryAs(managerB, `SELECT jsonb_build_object(
 record('Tenant B membership grants only tenant B through permission helpers',
   tenantBAuth.legacy_permission === false && tenantBAuth.tenant_b_permission === true);
 
-const evidencePathA = `${employeeA.userId}/${ids.tenantA}/${randomBytes(10).toString('hex')}.pdf`;
-const evidencePathB = `${employeeB.userId}/${ids.tenantB}/${randomBytes(10).toString('hex')}.pdf`;
+const evidencePathA = `${employeeA.userId}/${ids.tenantA}/${randomUUID()}.pdf`;
+const evidencePathB = `${employeeB.userId}/${ids.tenantB}/${randomUUID()}.pdf`;
 const sampleEvidence = new Blob(['%PDF-1.4\n% isolated synthetic evidence\n'], { type: 'application/pdf' });
 const uploadEvidenceA = await employeeA.client.storage.from('leave-evidence').upload(
   evidencePathA, sampleEvidence, { contentType: 'application/pdf', upsert: false },
@@ -1719,6 +1719,34 @@ record('Employee leave history returns its own private evidence path and exclude
   && !JSON.stringify(employeeSummaryB.requests).includes(evidencePathA),
   JSON.stringify({ ownerPathReturned: employeeEvidenceRequest?.attachment_url === evidencePathA,
     foreignTenantContainsPath: JSON.stringify(employeeSummaryB.requests).includes(evidencePathA) }));
+let leaveEvidenceBrowserOutput = '';
+let leaveEvidenceBrowserError = '';
+try {
+  leaveEvidenceBrowserOutput = execFileSync('node', [path.join(here, 'run-leave-evidence-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_LEAVE_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_LEAVE_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_LEAVE_EMPLOYEE_ID: employeeA.userId,
+      HRIS_LOCAL_LEAVE_REQUEST_ID: evidenceRequestId,
+      HRIS_LOCAL_LEAVE_EVIDENCE_PATH: evidencePathA,
+      HRIS_LOCAL_LEAVE_REQUEST_REASON: 'Synthetic evidence-backed leave request',
+      HRIS_LOCAL_LEAVE_HISTORY_YEAR: String(evidenceRequest?.from_date).slice(0, 4),
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  leaveEvidenceBrowserError = String(error.stderr || error.message || 'local leave-evidence browser run failed').slice(-1800);
+}
+record('Real Auth/Postgres/Storage employee and same-tenant manager browsers retrieve persisted private leave evidence',
+  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave-evidence retrieval passed for employee mobile and same-tenant manager desktop.'),
+  leaveEvidenceBrowserError);
 record('Ordinary employees can read their own attendance and leave summary without admin or membership roles',
   employeeSummaryA.attendance.records.length === 1
   && employeeSummaryA.attendance.records[0].id === ids.attendanceRecord
