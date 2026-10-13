@@ -5,11 +5,14 @@ import { readFileSync } from 'node:fs';
 const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const teams = readFileSync(new URL('../../src/live/OrganizationTeams.tsx', import.meta.url), 'utf8');
+const projects = readFileSync(new URL('../../src/live/OrganizationProjects.tsx', import.meta.url), 'utf8');
+const myProjects = readFileSync(new URL('../../src/live/MyProjects.tsx', import.meta.url), 'utf8');
 
 test('authenticated Synesis admins enter the RPC-backed workspace instead of the generic table browser', () => {
   assert.match(app, /import \{ LiveHrisWorkspace \} from '\.\/LiveHrisWorkspace'/);
   assert.doesNotMatch(app, /LiveSystemWorkspace/);
   assert.match(app, /const opensAdminWorkspace = currentView === 'system' && canAdminSelectedTenant/);
+  assert.match(app, /workspacePermissions\.leave\s*\|\|\s*workspacePermissions\.organization/);
   assert.match(app, /permissions=\{opensAdminWorkspace \? workspacePermissions : noWorkspacePermissions\}/);
 });
 
@@ -40,13 +43,30 @@ test('admin navigation uses permissions evaluated for each active tenant members
 
 test('organization team directory is permission-gated and queries tenant-filtered RLS tables without write paths', () => {
   assert.match(app, /organization: grants\.get\('organization\.view'\) === true \|\| grants\.get\('organization\.manage'\) === true/);
-  assert.match(workspace, /if \(permissions\.organization\) items\.push\(\{ id: 'teams'/);
+  assert.match(workspace, /if \(permissions\.organization\) \{[\s\S]*?items\.push\(\{ id: 'projects'[\s\S]*?items\.push\(\{ id: 'teams'/);
   assert.match(workspace, /page === 'teams' && permissions\.organization && <OrganizationTeams tenantId=\{tenantId\}/);
   assert.match(teams, /supabase\.from\('teams'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
   assert.match(teams, /supabase\.from\('departments'\)[\s\S]*?\.eq\('tenant_id', tenantId\)/);
   assert.match(teams, /downloadCsv\(`organization-teams-/);
   assert.match(teams, /visibleTeams\.map\(team => \[team\.name, team\.code/);
   assert.doesNotMatch(teams, /\.insert\(|\.update\(|\.delete\(/);
+});
+
+test('project workspace and employee allocations use tenant-bound audited RPCs', () => {
+  assert.match(app, /organizationManage: grants\.get\('organization\.manage'\) === true/);
+  assert.match(workspace, /page === 'projects' && permissions\.organization && <OrganizationProjects tenantId=\{tenantId\} canManage=\{permissions\.organizationManage\}/);
+  assert.match(workspace, /page === 'my-projects' && isEmployee && <MyProjects tenantId=\{tenantId\}/);
+  for (const rpc of ['hris_get_tenant_project_workspace', 'hris_create_tenant_project', 'hris_assign_tenant_project_allocation', 'hris_release_tenant_project_allocation']) {
+    assert.ok(projects.includes(`supabase.rpc('${rpc}'`), `missing project RPC: ${rpc}`);
+  }
+  assert.match(projects, /project_lead_id|leadId/);
+  assert.match(projects, /Allocation %/);
+  assert.match(projects, /window\.confirm\(`Release \$\{allocation\.employee_name\} from this project\?/);
+  assert.match(projects, /employment status will not change/);
+  assert.match(myProjects, /hris_get_my_projects/);
+  assert.match(myProjects, /My Projects &amp; Allocations/);
+  assert.match(myProjects, /does not change your employment record/);
+  assert.doesNotMatch(projects, /\.from\('projects'\)\.(?:insert|update|delete)/);
 });
 
 test('live HRIS pages use tenant-checked RPC responses and omit the global candidate count', () => {

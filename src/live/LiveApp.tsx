@@ -17,10 +17,12 @@ type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
+  organizationManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
+  organizationManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -149,6 +151,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const workspacePermissions = tenantWorkspacePermissions[tenantId] || noWorkspacePermissions;
   const canAdminSelectedTenant = tenants.some(t => t.id === tenantId) && (
     workspacePermissions.dashboard || workspacePermissions.attendance || workspacePermissions.leave
+    || workspacePermissions.organization
   );
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
@@ -281,6 +284,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             leave: grants.get('leave.view') === true || grants.get('leave.manage') === true,
             leaveManage: grants.get('leave.manage') === true,
             organization: grants.get('organization.view') === true || grants.get('organization.manage') === true,
+            organizationManage: grants.get('organization.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);

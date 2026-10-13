@@ -20,6 +20,12 @@ DROP FUNCTION IF EXISTS public.admin_save_attendance(uuid,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_timesheet_context(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_submit_my_timesheet(uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_tenant_project_workspace(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_my_projects(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_assign_tenant_project_allocation(uuid,uuid,uuid,text,numeric,date,date) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_release_tenant_project_allocation(uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_can_access_project(uuid,uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_admin_can_read_tenant(uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_is_active_tenant_member(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_own_employee_for_tenant(uuid) CASCADE;
@@ -56,6 +62,8 @@ DROP TABLE IF EXISTS public.designations CASCADE;
 DROP TABLE IF EXISTS public.teams CASCADE;
 DROP TABLE IF EXISTS public.departments CASCADE;
 DROP TABLE IF EXISTS public.employee_shift_assignments CASCADE;
+DROP TABLE IF EXISTS public.project_allocations CASCADE;
+DROP TABLE IF EXISTS public.projects CASCADE;
 DROP TABLE IF EXISTS public.employees CASCADE;
 DROP TABLE IF EXISTS public.shifts CASCADE;
 DROP TABLE IF EXISTS public.admin_audit_logs CASCADE;
@@ -318,7 +326,18 @@ CREATE TABLE public.performance_cycles (
 );
 CREATE TABLE public.performance_goals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
-  employee_id uuid
+  employee_id uuid NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL DEFAULT '',
+  category text NOT NULL DEFAULT 'Individual',
+  target_metric text NOT NULL DEFAULT '',
+  current_progress numeric NOT NULL DEFAULT 0 CHECK (current_progress >= 0 AND current_progress <= 100),
+  due_date date,
+  status text NOT NULL DEFAULT 'not_started'
+    CHECK (status IN ('not_started','in_progress','completed','cancelled')),
+  weight numeric NOT NULL DEFAULT 0 CHECK (weight >= 0 AND weight <= 100),
+  origin text NOT NULL DEFAULT 'assigned' CHECK (origin IN ('assigned','personal')),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.project_performance_reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
@@ -653,6 +672,9 @@ CREATE POLICY performance_goals_admin_read ON public.performance_goals
   FOR SELECT TO authenticated USING (
     public.has_permission('performance.view') OR employee_id=public.employee_for_auth_user()
   );
+CREATE POLICY performance_goals_employee_update ON public.performance_goals
+  FOR UPDATE TO authenticated USING (employee_id=public.employee_for_auth_user())
+  WITH CHECK (employee_id=public.employee_for_auth_user());
 CREATE POLICY project_performance_reviews_admin_read ON public.project_performance_reviews
   FOR SELECT TO authenticated USING (
     public.has_permission('performance.view') OR employee_id=public.employee_for_auth_user()
@@ -762,6 +784,9 @@ INSERT INTO public.employees(id,tenant_id,user_id,department_id,team_id,designat
   ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','2026-01-01'),
   ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','dddddddd-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555560','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-clock@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-006','Synthetic Clock Employee','employee-clock@hris.test','2026-01-01');
+INSERT INTO public.performance_goals(id,tenant_id,employee_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin) VALUES
+  ('88888888-8888-4888-8888-888888888801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A goal','Synthetic own goal','Individual','Complete local acceptance',20,'2026-12-31','in_progress',50,'assigned'),
+  ('88888888-8888-4888-8888-888888888802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B goal','Synthetic other-tenant goal','Individual','Complete local acceptance',10,'2026-12-31','in_progress',50,'assigned');
 INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,official_email,joining_date) VALUES
   ('55555555-5555-4555-8555-555555555556','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000002','QA-A-002','Synthetic Absent Employee A','employee-a-absent@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
@@ -800,9 +825,9 @@ INSERT INTO public.payslips(tenant_id,employee_id,status) VALUES
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','released');
 INSERT INTO public.performance_cycles(tenant_id) VALUES
   ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
-INSERT INTO public.performance_goals(tenant_id,employee_id) VALUES
-  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
-  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.performance_goals(tenant_id,employee_id,title,target_metric) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','Tenant A guarded goal','Test tenant isolation'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','Tenant B guarded goal','Test tenant isolation');
 INSERT INTO public.project_performance_reviews(tenant_id,employee_id,project_manager_employee_id) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','55555555-5555-4555-8555-555555555555'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','66666666-6666-4666-8666-666666666666');

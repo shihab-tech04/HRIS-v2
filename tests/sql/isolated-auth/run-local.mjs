@@ -94,6 +94,12 @@ function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+function addCalendarDays(value, days) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function sessionSql(session, statement, role = 'authenticated') {
   const claims = JSON.parse(Buffer.from(session.accessToken.split('.')[1], 'base64url').toString('utf8'));
   if (!claims.sub || !claims.session_id) throw new Error('Local Auth token lacks user or session identity claims.');
@@ -247,7 +253,9 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -310,6 +318,51 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const employeeAGoalId = '88888888-8888-4888-8888-888888888801';
+const employeeBGoalId = '88888888-8888-4888-8888-888888888802';
+const ownGoalRead = await employeeA.client.from('performance_goals')
+  .select('id,tenant_id,employee_id,current_progress')
+  .eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId);
+const otherTenantGoalRead = await employeeB.client.from('performance_goals')
+  .select('id,tenant_id,employee_id,current_progress').eq('tenant_id', ids.tenantA);
+record('Performance goal reads are filtered to the employee’s linked tenant and self rows',
+  !ownGoalRead.error && ownGoalRead.data.length === 1
+    && ownGoalRead.data[0].id === employeeAGoalId
+    && !otherTenantGoalRead.error && otherTenantGoalRead.data.length === 0);
+
+const selfProgressUpdate = await employeeA.client.from('performance_goals')
+  .update({ current_progress: 37.5 }).eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId)
+  .select('id,current_progress,updated_at');
+const savedGoal = queryAdmin(`SELECT jsonb_build_object('progress',current_progress,'title',title,'tenant_id',tenant_id)
+  FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`);
+record('Employee can save progress on their own goal and the update remains tenant-bound',
+  !selfProgressUpdate.error && selfProgressUpdate.data.length === 1
+    && Number(selfProgressUpdate.data[0].current_progress) === 37.5
+    && Number(savedGoal.progress) === 37.5 && savedGoal.title === 'QA A goal'
+    && savedGoal.tenant_id === ids.tenantA);
+
+const employeeFieldUpdate = await employeeA.client.from('performance_goals')
+  .update({ title: 'Unauthorized title change' }).eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId)
+  .select('id,title');
+const invalidProgressUpdate = await employeeA.client.from('performance_goals')
+  .update({ current_progress: 120 }).eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId)
+  .select('id,current_progress');
+const afterRejectedGoalWrites = queryAdmin(`SELECT jsonb_build_object('progress',current_progress,'title',title)
+  FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`);
+record('Employee cannot edit goal ownership/details or save progress outside 0–100',
+  Boolean(employeeFieldUpdate.error) && Boolean(invalidProgressUpdate.error)
+    && Number(afterRejectedGoalWrites.progress) === 37.5
+    && afterRejectedGoalWrites.title === 'QA A goal');
+
+const crossTenantGoalUpdate = await employeeB.client.from('performance_goals')
+  .update({ current_progress: 90 }).eq('tenant_id', ids.tenantA).eq('id', employeeAGoalId)
+  .select('id,current_progress');
+const crossTenantGoalAfter = queryAdmin(`SELECT jsonb_build_object('progress',current_progress)
+  FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`);
+record('Employee in tenant B cannot modify an employee goal in tenant A',
+  !crossTenantGoalUpdate.error && crossTenantGoalUpdate.data.length === 0
+    && Number(crossTenantGoalAfter.progress) === 37.5);
 
 const guardedTenantTables = [
   'attendance_corrections', 'attendance_records', 'confirmation_reviews', 'designations',
@@ -374,6 +427,11 @@ FROM (VALUES
   ('public.hris_get_my_timesheet_context(uuid)'),
   ('public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)'),
   ('public.hris_submit_my_timesheet(uuid,uuid)'),
+  ('public.hris_get_tenant_project_workspace(uuid)'),
+  ('public.hris_get_my_projects(uuid)'),
+  ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
+  ('public.hris_assign_tenant_project_allocation(uuid,uuid,uuid,text,numeric,date,date)'),
+  ('public.hris_release_tenant_project_allocation(uuid,uuid)'),
   ('public.admin_resolve_leave_request(uuid,text,text)'),
   ('public.admin_resolve_attendance_correction(uuid,text,text)'),
   ('public.hris_can_access_leave_evidence(text,text)'),
@@ -1078,6 +1136,168 @@ record('Tenant B manager can approve its own correction while preserving other p
   && tenantBAttendance.work_mode === 'office'
   && auditCount(ids.attendanceCorrectionB, 'attendance.correction.approved') === 1,
   ownAttendanceB.success === true ? JSON.stringify(tenantBAttendance) : 'correction was rejected');
+
+async function createProject(session, tenantId, code, leadId) {
+  return session.client.rpc('hris_create_tenant_project', {
+    p_tenant_id: tenantId,
+    p_code: code,
+    p_name: `Synthetic ${code}`,
+    p_client_name: 'QA client',
+    p_description: 'Disposable project allocation acceptance fixture.',
+    p_project_lead_id: leadId,
+    p_start_date: localCurrentDate,
+    p_target_end_date: localCurrentDate,
+    p_status: 'active',
+  });
+}
+
+psqlSync(`UPDATE public.tenants SET timezone='Pacific/Honolulu' WHERE id='${ids.tenantB}'::uuid;`);
+const projectAResult = await createProject(managerA, ids.tenantA, 'QA-A-ALPHA', '55555555-5555-4555-8555-555555555555');
+const projectA2Result = await createProject(managerA, ids.tenantA, 'QA-A-BETA', '55555555-5555-4555-8555-555555555555');
+const projectA3Result = await createProject(managerA, ids.tenantA, 'QA-A-GAMMA', '55555555-5555-4555-8555-555555555555');
+const projectBResult = await createProject(managerB, ids.tenantB, 'QA-B-ALPHA', '66666666-6666-4666-8666-666666666666');
+const projectB2Result = await createProject(managerB, ids.tenantB, 'QA-B-BETA', '66666666-6666-4666-8666-666666666666');
+const projectA = projectAResult.data;
+const projectA2 = projectA2Result.data;
+const projectA3 = projectA3Result.data;
+const projectB = projectBResult.data;
+const projectB2 = projectB2Result.data;
+record('Project create RPC writes to the selected tenant and records an audit event',
+  !projectAResult.error && !projectBResult.error
+    && projectA?.tenant_id === ids.tenantA && projectB?.tenant_id === ids.tenantB
+    && auditCount(projectA?.id, 'project.created') === 1
+    && auditCount(projectB?.id, 'project.created') === 1);
+
+const noPermissionProject = await createProject(noPermission, ids.tenantA, 'QA-NO-PERM', '55555555-5555-4555-8555-555555555555');
+const managerBProjectA = await managerB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
+const globalOnlyProjectA = await globalOnly.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
+const anonymousProjectRead = attemptAs(null,
+  `SELECT public.hris_get_tenant_project_workspace('${ids.tenantA}'::uuid)`, 'anon');
+record('Project RPCs deny users without tenant permission, cross-tenant managers, global-only roles and anon',
+  Boolean(noPermissionProject.error) && Boolean(managerBProjectA.error)
+    && Boolean(globalOnlyProjectA.error) && !anonymousProjectRead.ok);
+
+const workspaceA = await managerA.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantA });
+const workspaceB = await managerB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantB });
+const directProjectsA = await managerA.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+const directProjectsB = await managerB.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+record('Project workspace and table RLS return only the active manager’s tenant',
+  !workspaceA.error && !workspaceB.error
+    && workspaceA.data.projects.length === 3 && workspaceB.data.projects.length === 2
+    && !directProjectsA.error && directProjectsA.data.every(row => row.tenant_id === ids.tenantA)
+    && !directProjectsB.error && directProjectsB.data.length === 0);
+
+const projectDirectWrite = attemptAs(managerA, `INSERT INTO public.projects
+  (tenant_id,code,name,project_lead_id,start_date) VALUES
+  ('${ids.tenantA}'::uuid,'QA-DIRECT','Direct write','55555555-5555-4555-8555-555555555555','${localCurrentDate}'::date)`);
+record('Authenticated users cannot bypass audited project RPCs with direct table writes', !projectDirectWrite.ok);
+
+psqlSync(`UPDATE public.employees SET employment_status='on_leave'
+  WHERE tenant_id='${ids.tenantA}'::uuid AND id='55555555-5555-4555-8555-555555555555'::uuid;`);
+const allocationA60 = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_role_on_project: 'Delivery lead', p_allocation_percentage: 60,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const allocationA40 = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA2.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_role_on_project: 'Contributor', p_allocation_percentage: 40,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const allocationAOver = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA3.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_role_on_project: 'Contributor', p_allocation_percentage: 1,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const foreignEmployeeAllocation = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '66666666-6666-4666-8666-666666666666',
+  p_role_on_project: 'Contributor', p_allocation_percentage: 10,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+record('Allocation RPC enforces same-tenant employees and the 100% overlap cap',
+  !allocationA60.error && !allocationA40.error
+    && Boolean(allocationAOver.error) && Boolean(foreignEmployeeAllocation.error)
+    && auditCount(allocationA60.data?.id, 'project.allocation.assigned') === 1
+    && auditCount(allocationA40.data?.id, 'project.allocation.assigned') === 1);
+
+const crossTenantAssignment = await managerB.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_role_on_project: 'Contributor', p_allocation_percentage: 10,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const directAllocationWrite = attemptAs(managerA, `INSERT INTO public.project_allocations
+  (tenant_id,project_id,employee_id,allocation_percentage,assigned_date) VALUES
+  ('${ids.tenantA}'::uuid,'${projectA.id}'::uuid,'55555555-5555-4555-8555-555555555555'::uuid,5,'${localCurrentDate}'::date)`);
+record('Cross-tenant assignment and unaudited direct allocation writes are denied',
+  Boolean(crossTenantAssignment.error) && !directAllocationWrite.ok);
+
+const myProjectsA = await employeeA.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantA });
+const myProjectsB = await employeeB.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantB });
+const employeeOtherTenant = await employeeA.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantB });
+const employeeDirectAllocations = await employeeA.client.from('project_allocations')
+  .select('id,tenant_id,employee_id').eq('tenant_id', ids.tenantA);
+record('Employee project view exposes only linked employee allocations and denies a foreign tenant',
+  !myProjectsA.error && myProjectsA.data.projects.length === 2
+    && !myProjectsB.error && myProjectsB.data.projects.length === 0
+    && Boolean(employeeOtherTenant.error)
+    && !employeeDirectAllocations.error
+    && employeeDirectAllocations.data.length === 2
+    && employeeDirectAllocations.data.every(row => row.employee_id === employeeA.userId || row.employee_id === '55555555-5555-4555-8555-555555555555'));
+
+const concurrentAssignments = await Promise.all([
+  psqlAsync(sessionSql(managerB, `SELECT public.hris_assign_tenant_project_allocation(
+    '${ids.tenantB}'::uuid,'${projectB.id}'::uuid,'66666666-6666-4666-8666-666666666666'::uuid,
+    'Member',60,'${localCurrentDate}'::date,NULL)::text`)).then(() => true, () => false),
+  psqlAsync(sessionSql(managerB, `SELECT public.hris_assign_tenant_project_allocation(
+    '${ids.tenantB}'::uuid,'${projectB2.id}'::uuid,'66666666-6666-4666-8666-666666666666'::uuid,
+    'Member',60,'${localCurrentDate}'::date,NULL)::text`)).then(() => true, () => false),
+]);
+const concurrentAllocationCount = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
+  FROM public.project_allocations
+  WHERE tenant_id='${ids.tenantB}'::uuid AND employee_id='66666666-6666-4666-8666-666666666666'::uuid`).count;
+record('Concurrent allocation requests serialize on the employee and cannot exceed 100%',
+  concurrentAssignments.filter(Boolean).length === 1 && concurrentAllocationCount === 1,
+  `accepted=${concurrentAssignments.filter(Boolean).length}, rows=${concurrentAllocationCount}`);
+
+const tenantBLocalToday = queryAdmin(`SELECT jsonb_build_object('today',
+  (now() AT TIME ZONE 'Pacific/Honolulu')::date::text)`).today;
+const tenantBLocalTomorrow = addCalendarDays(tenantBLocalToday, 1);
+const futureProjectId = concurrentAssignments[0] ? projectB2.id : projectB.id;
+const upcomingAllocation = await managerB.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantB, p_project_id: futureProjectId,
+  p_employee_id: '66666666-6666-4666-8666-666666666666',
+  p_role_on_project: 'Future contributor', p_allocation_percentage: 40,
+  p_assigned_date: tenantBLocalTomorrow, p_release_date: null,
+});
+const upcomingWorkspace = await managerB.client.rpc('hris_get_tenant_project_workspace', { p_tenant_id: ids.tenantB });
+const upcomingSelfView = await employeeB.client.rpc('hris_get_my_projects', { p_tenant_id: ids.tenantB });
+const upcomingRow = upcomingWorkspace.data?.projects.flatMap(project => project.allocations)
+  .find(allocation => allocation.id === upcomingAllocation.data?.id);
+const upcomingSelfRow = upcomingSelfView.data?.projects.find(project => project.allocation_id === upcomingAllocation.data?.id);
+record('Upcoming allocation status follows the tenant-local date for manager and employee views',
+  !upcomingAllocation.error && !upcomingWorkspace.error && !upcomingSelfView.error
+    && upcomingAllocation.data?.status === 'upcoming'
+    && upcomingRow?.status === 'upcoming' && upcomingSelfRow?.status === 'upcoming');
+
+const releasedA60 = await managerA.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
+});
+const employeeAStatusAfterRelease = queryAdmin(`SELECT jsonb_build_object('status',employment_status)
+  FROM public.employees WHERE tenant_id='${ids.tenantA}'::uuid
+    AND id='55555555-5555-4555-8555-555555555555'::uuid`).status;
+const releaseRepeat = await managerA.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
+});
+record('Releasing an allocation preserves the employee status and writes one release audit event',
+  !releasedA60.error && releasedA60.data?.status === 'released'
+    && employeeAStatusAfterRelease === 'on_leave'
+    && Boolean(releaseRepeat.error)
+    && auditCount(allocationA60.data?.id, 'project.allocation.released') === 1);
 
 const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(
   'global_role',EXISTS (SELECT 1 FROM public.user_roles ur

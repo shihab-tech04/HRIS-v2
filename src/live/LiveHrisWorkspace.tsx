@@ -5,11 +5,14 @@ import attendanceFilterIcon from '../assets/attendance-filter.svg';
 import attendanceSearchIcon from '../assets/attendance-search.svg';
 import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
 import { OrganizationTeams } from './OrganizationTeams';
+import { OrganizationProjects } from './OrganizationProjects';
+import { MyProjects } from './MyProjects';
+import { MyPerformance } from './MyPerformance';
 import { downloadCsv } from './csv';
 import {
   Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
-  RefreshCw, Search, ShieldCheck, SlidersHorizontal, Users, X, XCircle,
+  RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, Users, X, XCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -23,8 +26,9 @@ type PermissionSet = {
   leave: boolean;
   leaveManage: boolean;
   organization: boolean;
+  organizationManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'teams' | 'my-dashboard' | 'my-leave' | 'my-timesheets';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-leave' | 'my-timesheets';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -63,6 +67,7 @@ type LeaveData = {
 const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
+  organizationManage: false,
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -2175,7 +2180,7 @@ export function LiveHrisWorkspace({
     if (permissions.dashboard) return 'dashboard';
     if (permissions.attendance) return 'attendance';
     if (permissions.leave) return 'leave';
-    if (permissions.organization) return 'teams';
+    if (permissions.organization) return 'projects';
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -2185,8 +2190,13 @@ export function LiveHrisWorkspace({
     if (permissions.attendance) items.push({ id: 'attendance', label: 'Attendance', icon: <CalendarDays className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.attendanceView || permissions.attendanceManage) items.push({ id: 'shift-roster', label: 'Roster', icon: <Clock3 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.leave) items.push({ id: 'leave', label: 'Leave', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
-    if (permissions.organization) items.push({ id: 'teams', label: 'Teams', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.organization) {
+      items.push({ id: 'projects', label: 'Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'HRIS' });
+      items.push({ id: 'teams', label: 'Teams', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    }
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     return items;
@@ -2245,8 +2255,11 @@ export function LiveHrisWorkspace({
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
+          {page === 'projects' && permissions.organization && <OrganizationProjects tenantId={tenantId} canManage={permissions.organizationManage} />}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
+          {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
+          {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
