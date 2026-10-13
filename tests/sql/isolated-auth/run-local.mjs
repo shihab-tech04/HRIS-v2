@@ -193,6 +193,7 @@ const emails = [
   'employee-a@hris.test', 'employee-b@hris.test', 'manager-a2@hris.test',
   'employee-clock@hris.test', 'report-viewer-a@hris.test', 'super-admin@hris.test',
   'recruiter-a@hris.test',
+  'employee-directory-a@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -247,6 +248,7 @@ const employeeClock = await signIn(emails[8]);
 const reportViewerA = await signIn(emails[9]);
 const superAdmin = await signIn(emails[10]);
 const recruiterOnly = await signIn(emails[11]);
+const employeesViewer = await signIn(emails[12]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -258,6 +260,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013073243_hris_tenant_employee_directory.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
@@ -327,6 +330,102 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const employeeDirectoryA = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA,
+});
+const employeeDirectoryFiltered = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA, p_search: 'Synthetic Employee A',
+  p_department_id: 'eeeeeeee-0000-4000-8000-000000000001', p_status: 'active',
+});
+const employeeDirectoryPage = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA, p_limit: 2, p_offset: 2,
+});
+const employeeDirectoryPrivateSearch = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA, p_search: 'employee-a@hris.test',
+});
+const employeeDirectoryB = await managerB.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantB,
+});
+const employeeDirectoryCrossTenant = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantB,
+});
+const employeeDirectoryNoPermission = await noPermission.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA,
+});
+const employeeDirectoryGlobalOnly = await globalOnly.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA,
+});
+const employeeDirectoryRecruiterOnly = await recruiterOnly.client.rpc('hris_get_tenant_employee_directory', {
+  p_tenant_id: ids.tenantA,
+});
+const employeeDirectoryAnon = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_tenant_employee_directory', { p_tenant_id: ids.tenantA });
+const employeeDirectoryDirectRead = await recruiterOnly.client.from('employees')
+  .select('id').eq('tenant_id', ids.tenantA);
+const employeeDirectoryPayload = JSON.stringify(employeeDirectoryA.data);
+record('Employee directory returns tenant A employee records through employees.view with privacy-limited fields',
+  !employeeDirectoryA.error && employeeDirectoryA.data?.employees?.length === 6
+    && employeeDirectoryA.data.total_count === 6
+    && employeeDirectoryA.data.employees.some(row => row.full_name === 'Synthetic Employee A')
+    && employeeDirectoryA.data.departments.some(row => row.id === 'eeeeeeee-0000-4000-8000-000000000001')
+    && ['official_email', 'gender', 'joining_date', 'user_id'].every(field => !employeeDirectoryPayload.includes(field))
+    && !employeeDirectoryPayload.includes('employee-a@hris.test'));
+record('Employee directory search, department/status filters, and non-PII search behave as requested',
+  !employeeDirectoryFiltered.error && employeeDirectoryFiltered.data.employees.length === 1
+    && employeeDirectoryFiltered.data.employees[0].full_name === 'Synthetic Employee A'
+    && !employeeDirectoryPrivateSearch.error && employeeDirectoryPrivateSearch.data.employees.length === 0);
+record('Employee directory clamps page size, preserves the full result count, and returns the requested page',
+  !employeeDirectoryPage.error && employeeDirectoryPage.data.employees.length === 2
+    && employeeDirectoryPage.data.total_count === 6
+    && employeeDirectoryPage.data.limit === 2 && employeeDirectoryPage.data.offset === 2);
+record('Employee directory is tenant-isolated and returns tenant B only to its own authorized manager',
+  !employeeDirectoryB.error && employeeDirectoryB.data.employees.length === 1
+    && employeeDirectoryB.data.employees[0].full_name === 'Synthetic Employee B'
+    && !JSON.stringify(employeeDirectoryB.data).includes('Synthetic Employee A')
+    && Boolean(employeeDirectoryCrossTenant.error?.code === '42501'));
+record('Employee directory rejects no-permission, global-only, recruiter-only, and anonymous access',
+  Boolean(employeeDirectoryNoPermission.error?.code === '42501')
+    && Boolean(employeeDirectoryGlobalOnly.error?.code === '42501')
+    && Boolean(employeeDirectoryRecruiterOnly.error?.code === '42501')
+    && Boolean(employeeDirectoryAnon.error)
+    && !employeeDirectoryDirectRead.error && employeeDirectoryDirectRead.data.length === 0);
+psqlSync(`UPDATE public.tenant_memberships SET status='inactive'
+  WHERE user_id='${employeesViewer.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+let employeeDirectoryInactiveMembership;
+try {
+  employeeDirectoryInactiveMembership = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
+    p_tenant_id: ids.tenantA,
+  });
+} finally {
+  psqlSync(`UPDATE public.tenant_memberships SET status='active'
+    WHERE user_id='${employeesViewer.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('Employee directory immediately denies inactive tenant membership',
+  Boolean(employeeDirectoryInactiveMembership.error?.code === '42501'));
+
+let employeeDirectoryBrowserOutput = '';
+let employeeDirectoryBrowserError = '';
+try {
+  employeeDirectoryBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-directory-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL: emails[12],
+      HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  employeeDirectoryBrowserError = String(error.stderr || error.message || 'local employee-directory browser run failed').slice(-1400);
+}
+record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
+  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory journey passed at 375px mobile and 1280px desktop.'),
+  employeeDirectoryBrowserError);
 
 const recruitmentIds = {
   jobA1: 'a1111111-1111-4111-8111-111111111111',

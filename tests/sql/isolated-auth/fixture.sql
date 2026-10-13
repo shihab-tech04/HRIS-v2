@@ -765,7 +765,8 @@ INSERT INTO public.roles(id,name) VALUES
   ('qa_tenant_manager_b','Synthetic tenant B HR manager'),
   ('qa_tenant_viewer_b','Synthetic tenant B viewer'),
   ('qa_tenant_reporter_a','Synthetic tenant A report-only viewer'),
-  ('qa_tenant_recruitment_a','Synthetic tenant A recruiter-only viewer');
+  ('qa_tenant_recruitment_a','Synthetic tenant A recruiter-only viewer'),
+  ('qa_tenant_employee_viewer_a','Synthetic tenant A employee-directory viewer');
 INSERT INTO public.permissions(id,module,action) VALUES
   ('leave.manage','leave','manage'),('leave.view','leave','view'),
   ('attendance.manage','attendance','manage'),('attendance.view','attendance','view'),
@@ -794,7 +795,8 @@ INSERT INTO public.permissions(id,module,action) VALUES
   ('recruitment.view','recruitment','view'),('recruitment.manage','recruitment','manage'),
   ('notices.view','notices','view'),('notices.manage','notices','manage'),
   ('payroll.view','payroll','view'),('payroll.manage','payroll','manage'),
-  ('self_service.view','self_service','view'),('self_service.manage','self_service','manage');
+  ('self_service.view','self_service','view'),('self_service.manage','self_service','manage'),
+  ('employees.view','employees','view'),('employees.manage','employees','manage');
 INSERT INTO public.role_permissions(role_id,permission_id)
 SELECT role_id, permission_id
 FROM (VALUES ('qa_global_manager'),('qa_tenant_admin_a'),('qa_tenant_manager_b')) roles(role_id)
@@ -803,9 +805,11 @@ CROSS JOIN (VALUES
   ('referrals.view'),('referrals.manage'),('holidays.manage'),('policies.view'),('policies.manage'),
   ('recruitment.view'),('recruitment.manage'),('notices.view'),('notices.manage'),
   ('payroll.view'),('payroll.manage'),('self_service.view'),('self_service.manage')
+  ,('employees.view'),('employees.manage')
 ) perms(permission_id);
 INSERT INTO public.role_permissions(role_id,permission_id)
-VALUES ('qa_tenant_recruitment_a','recruitment.view');
+VALUES ('qa_tenant_recruitment_a','recruitment.view'),
+  ('qa_tenant_employee_viewer_a','employees.view');
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users
   WHERE email IN ('global-only@hris.test','manager-a@hris.test','manager-b@hris.test');
@@ -832,6 +836,9 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_recruitment_a','active'
   FROM auth.users WHERE email='recruiter-a@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee_viewer_a','active'
+  FROM auth.users WHERE email='employee-directory-a@hris.test';
 
 INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minutes,break_minutes,weekly_off_days,full_day_hours,active) VALUES
   ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','Synthetic Day Shift','QA-DAY','09:00','17:00',10,60,ARRAY[0,6],8,true),

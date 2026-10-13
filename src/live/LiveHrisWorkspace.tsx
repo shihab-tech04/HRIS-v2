@@ -9,6 +9,7 @@ import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { MyPerformance } from './MyPerformance';
 import { OrganizationPerformance } from './OrganizationPerformance';
+import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
 import { downloadCsv } from './csv';
 import {
@@ -29,10 +30,11 @@ type PermissionSet = {
   leaveManage: boolean;
   organization: boolean;
   organizationManage: boolean;
+  employees: boolean;
   performance: boolean;
   recruitment: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'performance' | 'recruitment' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-leave' | 'my-timesheets';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-leave' | 'my-timesheets';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -71,7 +73,7 @@ type LeaveData = {
 const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false, performance: false, recruitment: false,
+  organizationManage: false, employees: false, performance: false, recruitment: false,
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -2182,11 +2184,12 @@ export function LiveHrisWorkspace({
 }) {
   const [page, setPage] = useState<PageId>(() => {
     if (isSuperAdmin && !permissions.dashboard && !permissions.attendance && !permissions.leave
-        && !permissions.organization && !permissions.performance) return 'projects';
+        && !permissions.organization && !permissions.employees && !permissions.performance) return 'projects';
     if (permissions.dashboard) return 'dashboard';
     if (permissions.attendance) return 'attendance';
     if (permissions.leave) return 'leave';
     if (permissions.organization) return 'projects';
+    if (permissions.employees) return 'employees';
     if (permissions.performance) return 'performance';
     if (permissions.recruitment) return 'recruitment';
     return isEmployee ? 'my-dashboard' : 'dashboard';
@@ -2203,6 +2206,7 @@ export function LiveHrisWorkspace({
       if (permissions.organization) items.push({ id: 'teams', label: 'Teams', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     }
     else if (isEmployee) items.push({ id: 'projects', label: 'Project Workspace', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
+    if (permissions.employees) items.push({ id: 'employees', label: 'Employees', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.recruitment) items.push({ id: 'recruitment', label: 'Candidate pipeline', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
@@ -2218,7 +2222,7 @@ export function LiveHrisWorkspace({
     setPage(nav[0]?.id || 'dashboard');
   }, [nav, page]);
 
-  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.performance || permissions.recruitment ? 'HRIS Administrator' : 'Employee';
+  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const current = nav.find(item => item.id === page);
 
@@ -2268,6 +2272,7 @@ export function LiveHrisWorkspace({
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <OrganizationProjects tenantId={tenantId} />}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
+          {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
