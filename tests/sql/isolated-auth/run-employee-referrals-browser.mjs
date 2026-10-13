@@ -129,7 +129,7 @@ try {
   const review = manager.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_mark_employee_referral_in_review'));
   await managerDetails.getByRole('button', { name: 'Mark in review' }).click();
   if (!(await (await review).ok())) throw new Error('Manager referral review RPC did not succeed.');
-  await manager.getByText('in review', { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('in review', { exact: true }).waitFor({ state: 'visible' });
   await manager.getByRole('status').filter({ hasText: 'now in review' }).waitFor({ state: 'visible' });
   await assertNoOverflow(manager, 'Recruiter referral queue desktop');
 

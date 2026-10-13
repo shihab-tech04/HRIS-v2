@@ -10,6 +10,7 @@ const required = [
   'HRIS_LOCAL_LEAVE_TENANT_ID', 'HRIS_LOCAL_LEAVE_EMPLOYEE_ID',
   'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
   'HRIS_LOCAL_LEAVE_REQUEST_REASON', 'HRIS_LOCAL_LEAVE_HISTORY_YEAR',
+  'HRIS_LOCAL_LEAVE_REJECTION_NOTE',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -171,6 +172,25 @@ try {
   if (!resolved.ok()) throw new Error(`Same-tenant manager approval returned ${resolved.status()}.`);
   await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
   await managerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+
+  const rejectionRow = leaveTable.getByRole('row', {
+    name: /Synthetic Employee A.*Synthetic annual leave.*2026-10-22/,
+  });
+  await rejectionRow.waitFor({ state: 'visible' });
+  await rejectionRow.getByRole('button', { name: 'Reject', exact: true }).click();
+  const rejectionDialog = manager.getByRole('dialog', { name: 'Reject leave request' });
+  await rejectionDialog.waitFor({ state: 'visible' });
+  await rejectionDialog.getByLabel('Decision note (optional)').fill(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE);
+  const rejectionResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
+  { timeout: 10000 });
+  await rejectionDialog.getByRole('button', { name: 'Reject request', exact: true }).click();
+  const rejected = await rejectionResponse;
+  if (!rejected.ok()) throw new Error(`Same-tenant manager rejection returned ${rejected.status()}.`);
+  await manager.getByRole('status').filter({ hasText: 'Leave request rejected.' }).waitFor({ state: 'visible' });
+  await rejectionRow.getByRole('cell').filter({ hasText: 'rejected' }).waitFor({ state: 'visible' });
+  await rejectionRow.getByText(`Decision note: ${process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE}`).waitFor({ state: 'visible' });
   await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
   await managerContext.close();
 
@@ -191,9 +211,16 @@ try {
     throw new Error('The employee did not see the manager approval after refreshing their leave history.');
   }
   await assertNoHorizontalOverflow(refreshedEmployee, 'Employee refreshed leave history mobile');
+  const employeeRejectedRequest = refreshedHistory.getByRole('row', { name: /Synthetic UI rejection acceptance/ });
+  await employeeRejectedRequest.waitFor({ state: 'visible' });
+  const employeeRejectionText = (await employeeRejectedRequest.innerText()).toLocaleLowerCase();
+  if (!employeeRejectionText.includes('rejected')
+      || !employeeRejectionText.includes(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE.toLocaleLowerCase())) {
+    throw new Error('The employee did not see the manager rejection status and note after refreshing leave history.');
+  }
   await refreshedEmployeeContext.close();
 
-  console.log('Real local Auth/Postgres/Storage leave flow passed: employee evidence retrieval on mobile, same-tenant manager approval on desktop, and refreshed approved status in employee history.');
+  console.log('Real local Auth/Postgres/Storage leave flow passed: employee evidence retrieval, manager approval and rejection with a note, and refreshed decision statuses in employee mobile history.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
