@@ -21,13 +21,15 @@ type Appraisal = {
   reviewer_employee_id: string | null;
   status: string;
   created_at: string;
-};
-type ReviewCycle = {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  status: string;
+  updated_at: string;
+  employee_name: string | null;
+  self_comment: string | null;
+  manager_comment: string | null;
+  cycle_name: string | null;
+  cycle_start_date: string | null;
+  cycle_end_date: string | null;
+  self_review_deadline: string | null;
+  manager_review_deadline: string | null;
 };
 
 type GoalFilter = 'all' | 'not_started' | 'in_progress' | 'completed' | 'cancelled';
@@ -158,32 +160,77 @@ function GoalCard({
 
 function AppraisalCard({
   appraisal,
-  cycle,
   ownEmployeeId,
+  saving,
+  onSave,
 }: {
   appraisal: Appraisal;
-  cycle?: ReviewCycle;
   ownEmployeeId: string;
+  saving: boolean;
+  onSave: (comment: string, submit: boolean) => void;
 }) {
-  const assignment = ownEmployeeId && appraisal.reviewer_employee_id === ownEmployeeId
-    ? 'Assigned review'
-    : ownEmployeeId && appraisal.employee_id === ownEmployeeId
-      ? 'Your appraisal'
-      : 'Appraisal';
-  return <article className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+  const isAssignedReview = Boolean(ownEmployeeId && appraisal.reviewer_employee_id === ownEmployeeId);
+  const assignment = isAssignedReview ? 'Assigned review' : 'Your appraisal';
+  const canEditSelf = !isAssignedReview && appraisal.employee_id === ownEmployeeId && appraisal.status === 'draft';
+  const canEditManager = isAssignedReview && appraisal.status === 'submitted_by_employee';
+  const [comment, setComment] = useState(isAssignedReview ? appraisal.manager_comment || '' : appraisal.self_comment || '');
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+
+  useEffect(() => {
+    setComment(isAssignedReview ? appraisal.manager_comment || '' : appraisal.self_comment || '');
+    setConfirmSubmit(false);
+  }, [appraisal.id, appraisal.status, appraisal.manager_comment, appraisal.self_comment, isAssignedReview]);
+
+  const submitLabel = isAssignedReview ? 'Submit manager feedback' : 'Submit self review';
+  const deadline = isAssignedReview ? appraisal.manager_review_deadline : appraisal.self_review_deadline;
+  return <article data-appraisal-id={appraisal.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <p className="text-xs font-medium text-[#615E83]">{assignment}</p>
-        <h4 className="mt-1 break-words font-semibold text-[#1E1B39]">{cycle?.name || 'Review cycle details unavailable'}</h4>
-        {cycle && <p className="mt-1 text-sm text-slate-600">{dateLabel(cycle.start_date)} – {dateLabel(cycle.end_date)}</p>}
+        <h4 className="mt-1 break-words font-semibold text-[#1E1B39]">{appraisal.cycle_name || 'Review cycle details unavailable'}</h4>
+        {appraisal.cycle_start_date && appraisal.cycle_end_date
+          && <p className="mt-1 text-sm text-slate-600">{dateLabel(appraisal.cycle_start_date)} – {dateLabel(appraisal.cycle_end_date)}</p>}
+        {isAssignedReview && appraisal.employee_name && <p className="mt-1 text-sm text-slate-600">Employee: {appraisal.employee_name}</p>}
+        {deadline && <p className="mt-1 text-xs text-slate-500">{isAssignedReview ? 'Manager review due' : 'Self-review due'} {dateLabel(deadline)}</p>}
       </div>
       <span className="shrink-0 rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#08558B]">{statusLabel(appraisal.status)}</span>
     </div>
-    <p className="mt-3 text-sm text-slate-600">
-      {assignment === 'Assigned review'
-        ? 'This review is assigned to you. Review actions are available only through the approved appraisal workflow.'
-        : 'Review status is read only here. Final scores and feedback are not shown in this view.'}
-    </p>
+    {canEditSelf && <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+      <label className="block text-sm font-medium text-slate-700" htmlFor={`self-review-${appraisal.id}`}>Self-review notes <span className="font-normal text-slate-500">(optional)</span></label>
+      <textarea id={`self-review-${appraisal.id}`} value={comment} maxLength={4000} rows={4}
+        onChange={event => setComment(event.target.value)} className="min-h-28 w-full resize-y rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900 focus:outline-2 focus:outline-[#08558B]"
+        placeholder="Add a narrative about your work during this cycle." />
+      <p className="text-xs text-slate-500">This review collects narrative feedback. Scoring is not part of this workflow.</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={saving} onClick={() => onSave(comment, false)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">{saving ? 'Saving…' : 'Save draft'}</button>
+        <button type="button" disabled={saving} onClick={() => setConfirmSubmit(true)} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">Submit self review</button>
+        <button type="button" disabled={saving} onClick={() => setComment(appraisal.self_comment || '')} className="min-h-11 px-3 text-sm font-medium text-slate-600 disabled:opacity-50">Reset</button>
+      </div>
+    </div>}
+    {canEditManager && <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+      <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">Employee self-review</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{appraisal.self_comment || 'No self-review notes were provided.'}</p></div>
+      <label className="block text-sm font-medium text-slate-700" htmlFor={`manager-review-${appraisal.id}`}>Manager review notes <span className="font-normal text-slate-500">(optional)</span></label>
+      <textarea id={`manager-review-${appraisal.id}`} value={comment} maxLength={4000} rows={4}
+        onChange={event => setComment(event.target.value)} className="min-h-28 w-full resize-y rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900 focus:outline-2 focus:outline-[#08558B]"
+        placeholder="Add narrative feedback for this review." />
+      <p className="text-xs text-slate-500">This review collects narrative feedback. Scoring is not part of this workflow.</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={saving} onClick={() => onSave(comment, false)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">{saving ? 'Saving…' : 'Save draft'}</button>
+        <button type="button" disabled={saving} onClick={() => setConfirmSubmit(true)} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">Submit manager feedback</button>
+        <button type="button" disabled={saving} onClick={() => setComment(appraisal.manager_comment || '')} className="min-h-11 px-3 text-sm font-medium text-slate-600 disabled:opacity-50">Reset</button>
+      </div>
+    </div>}
+    {!canEditSelf && !canEditManager && <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+      {appraisal.self_comment !== null && <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">Employee self-review</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{appraisal.self_comment || 'No self-review notes were provided.'}</p></div>}
+      {appraisal.manager_comment !== null && <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">Manager review</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{appraisal.manager_comment || 'No manager notes were provided.'}</p></div>}
+      <p className="text-sm text-slate-600">{appraisal.status === 'draft' ? 'Waiting for the employee self-review.' : appraisal.status === 'submitted_by_employee' ? 'Your self-review was submitted. The assigned reviewer can now respond.' : 'This review is read only at its current stage.'}</p>
+    </div>}
+    {confirmSubmit && <div role="alertdialog" aria-modal="true" aria-labelledby={`confirm-review-${appraisal.id}`} className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <h5 id={`confirm-review-${appraisal.id}`} className="font-semibold text-blue-950">Submit {isAssignedReview ? 'manager feedback' : 'self-review'}?</h5>
+      <p className="mt-1 text-sm text-blue-900">Submission moves this appraisal to the next review stage. You cannot edit it after submission.</p>
+      <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => setConfirmSubmit(false)} className="min-h-10 rounded-lg border border-blue-300 bg-white px-3 text-sm font-medium">Cancel</button>
+        <button type="button" disabled={saving} onClick={() => { setConfirmSubmit(false); onSave(comment, true); }} className="min-h-10 rounded-lg bg-[#08558B] px-3 text-sm font-medium text-white">Confirm submission</button></div>
+    </div>}
   </article>;
 }
 
@@ -192,9 +239,11 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
   tenantRef.current = tenantId;
   const [goals, setGoals] = useState<Goal[]>([]);
   const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
-  const [cycles, setCycles] = useState<ReviewCycle[]>([]);
   const [ownEmployeeId, setOwnEmployeeId] = useState('');
   const [appraisalLoadError, setAppraisalLoadError] = useState(false);
+  const [appraisalActionError, setAppraisalActionError] = useState('');
+  const [appraisalMessage, setAppraisalMessage] = useState('');
+  const [savingAppraisalId, setSavingAppraisalId] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -210,6 +259,8 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
     setError('');
     setMessage('');
     setAppraisalLoadError(false);
+    setAppraisalActionError('');
+    setAppraisalMessage('');
     try {
       const [goalResult, appraisalResult, employeeResult] = await Promise.all([
         supabase.from('performance_goals')
@@ -217,11 +268,7 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
           .eq('tenant_id', requestTenantId)
           .order('due_date', { ascending: true, nullsFirst: false })
           .limit(100),
-        supabase.from('performance_appraisals')
-          .select('id,cycle_id,employee_id,reviewer_employee_id,status,created_at')
-          .eq('tenant_id', requestTenantId)
-          .order('created_at', { ascending: false })
-          .limit(100),
+        supabase.rpc('hris_get_my_appraisal_work', { p_tenant_id: requestTenantId }),
         supabase.from('employees')
           .select('id')
           .eq('tenant_id', requestTenantId)
@@ -233,28 +280,17 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
       const safeGoals = (Array.isArray(goalResult.data) ? goalResult.data : []) as Goal[];
       setGoals(safeGoals);
       setDrafts(Object.fromEntries(safeGoals.map(goal => [goal.id, String(goal.current_progress)])));
+      const appraisalPayload = appraisalResult.data as { appraisals?: Appraisal[] } | null;
       const safeAppraisals = appraisalResult.error ? []
-        : (Array.isArray(appraisalResult.data) ? appraisalResult.data : []) as Appraisal[];
+        : (Array.isArray(appraisalPayload?.appraisals) ? appraisalPayload.appraisals : []) as Appraisal[];
       setAppraisals(safeAppraisals);
       setAppraisalLoadError(Boolean(appraisalResult.error));
       setOwnEmployeeId(employeeResult.error ? '' : employeeResult.data?.id || '');
-
-      const cycleIds = Array.from(new Set(safeAppraisals.map(appraisal => appraisal.cycle_id).filter(Boolean)));
-      const cycleResult = cycleIds.length
-        ? await supabase.from('performance_cycles')
-          .select('id,name,start_date,end_date,status')
-          .eq('tenant_id', requestTenantId)
-          .in('id', cycleIds)
-        : { data: [], error: null };
-      if (!current()) return;
-      setCycles(cycleResult.error ? [] : (Array.isArray(cycleResult.data) ? cycleResult.data : []) as ReviewCycle[]);
-      setAppraisalLoadError(currentError => currentError || Boolean(cycleResult.error));
     } catch (cause) {
       if (!current()) return;
       setGoals([]);
       setDrafts({});
       setAppraisals([]);
-      setCycles([]);
       setOwnEmployeeId('');
       setAppraisalLoadError(true);
       setError(cause instanceof Error ? cause.message : 'Unable to load your performance goals.');
@@ -268,7 +304,6 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
     setGoals([]);
     setDrafts({});
     setAppraisals([]);
-    setCycles([]);
     setOwnEmployeeId('');
     setAppraisalLoadError(false);
     void load(() => active);
@@ -310,6 +345,46 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
     }
   }
 
+  async function saveAppraisalComment(appraisal: Appraisal, comment: string, submit: boolean) {
+    const saveTenantId = tenantId;
+    const isAssignedReview = appraisal.reviewer_employee_id === ownEmployeeId;
+    setSavingAppraisalId(appraisal.id);
+    setAppraisalActionError('');
+    setAppraisalMessage('');
+    try {
+      const rpcName = isAssignedReview
+        ? 'hris_save_assigned_appraisal_review'
+        : 'hris_save_my_appraisal_self_comment';
+      const { data, error: saveError } = await supabase.rpc(rpcName, {
+        p_tenant_id: saveTenantId,
+        p_appraisal_id: appraisal.id,
+        p_comment: comment,
+        p_submit: submit,
+      });
+      if (saveError) throw saveError;
+      const response = data as { id?: string; status?: string; self_comment?: string | null; manager_comment?: string | null } | null;
+      if (response?.id !== appraisal.id || !response.status) {
+        throw new Error('The appraisal response was incomplete. Refresh and try again.');
+      }
+      if (tenantRef.current !== saveTenantId) return;
+      setAppraisals(current => current.map(item => item.id !== appraisal.id ? item : {
+        ...item,
+        status: response.status || item.status,
+        self_comment: isAssignedReview ? item.self_comment : response.self_comment ?? null,
+        manager_comment: isAssignedReview ? response.manager_comment ?? null : item.manager_comment,
+      }));
+      setAppraisalMessage(submit
+        ? (isAssignedReview ? 'Manager feedback submitted.' : 'Self-review submitted.')
+        : 'Appraisal notes saved as a draft.');
+    } catch (cause) {
+      if (tenantRef.current === saveTenantId) {
+        setAppraisalActionError(cause instanceof Error ? cause.message : 'Unable to save appraisal notes. Try again.');
+      }
+    } finally {
+      if (tenantRef.current === saveTenantId) setSavingAppraisalId('');
+    }
+  }
+
   const visibleGoals = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return goals.filter(goal => (filter === 'all' || goal.status === filter)
@@ -343,8 +418,10 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
     <section aria-labelledby="my-appraisals-heading" className="space-y-3">
       <div>
         <h3 id="my-appraisals-heading" className="text-lg font-semibold text-[#1E1B39]">Appraisals</h3>
-        <p className="mt-1 text-sm text-slate-600">Your review status and any appraisal reviews assigned to you.</p>
+        <p className="mt-1 text-sm text-slate-600">Write your cycle notes or respond to a review assigned to you.</p>
       </div>
+      {appraisalActionError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{appraisalActionError}</p>}
+      {appraisalMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{appraisalMessage}</p>}
       {appraisalLoadError
         ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           Appraisal status is temporarily unavailable. Your goal progress remains available.
@@ -356,7 +433,8 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
           ? <p role="status" className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-5 text-sm text-slate-600">No appraisals are available for your employee record yet.</p>
           : <div className="grid min-w-0 gap-3 xl:grid-cols-2">
             {appraisals.map(appraisal => <AppraisalCard key={appraisal.id} appraisal={appraisal}
-              cycle={cycles.find(cycle => cycle.id === appraisal.cycle_id)} ownEmployeeId={ownEmployeeId} />)}
+              ownEmployeeId={ownEmployeeId} saving={savingAppraisalId === appraisal.id}
+              onSave={(comment, submit) => void saveAppraisalComment(appraisal, comment, submit)} />)}
           </div>}
     </section>
 
@@ -400,7 +478,7 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
       : <p role="status" className="rounded-lg border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">No goals match the current search and status filters.</p>)}
 
     <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-      Saving changes only your goal’s recorded progress. Appraisal status is read only here; scoring and final feedback require the approved review workflow.
+      Goal updates change only your recorded progress. Appraisals here collect narrative notes only; ratings, weighted scores, and finalization are not part of this workflow.
     </p>
   </section>;
 }

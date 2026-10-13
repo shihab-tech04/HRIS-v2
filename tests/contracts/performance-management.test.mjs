@@ -8,6 +8,7 @@ const managerPage = readFileSync(new URL('../../src/live/OrganizationPerformance
 const liveApp = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql', import.meta.url), 'utf8');
 const appraisalMigration = readFileSync(new URL('../../supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql', import.meta.url), 'utf8');
+const appraisalWorkflowMigration = readFileSync(new URL('../../supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/performance.spec.ts', import.meta.url), 'utf8');
 const managerBrowser = readFileSync(new URL('../browser/manager-performance.spec.ts', import.meta.url), 'utf8');
 
@@ -53,15 +54,24 @@ test('organization performance is permission-gated and reads only tenant-visible
   assert.doesNotMatch(managerPage, /\.(?:insert|update|delete)\(/);
 });
 
-test('appraisal pages read tenant-scoped status metadata without exposing scores or feedback', () => {
-  assert.match(page, /\.from\('performance_appraisals'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+test('appraisal pages use the scoped narrative RPC while organization status reads omit score and feedback fields', () => {
+  assert.match(page, /\.rpc\('hris_get_my_appraisal_work', \{ p_tenant_id: requestTenantId \}\)/);
+  assert.match(page, /hris_save_my_appraisal_self_comment/);
+  assert.match(page, /hris_save_assigned_appraisal_review/);
+  assert.doesNotMatch(page, /\.from\('performance_appraisals'\)/);
   assert.match(managerPage, /\.from\('performance_appraisals'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
   assert.match(appraisalMigration, /reviewer_employee_id = public\.hris_own_employee_for_tenant\(tenant_id\)[\s\S]*?hris_is_active_tenant_member\(tenant_id\)/);
   assert.match(appraisalMigration, /GRANT SELECT \([\s\S]*?reviewer_employee_id, status, created_at, updated_at[\s\S]*?\) ON TABLE public\.performance_appraisals TO authenticated/);
   assert.match(appraisalMigration, /REVOKE SELECT ON TABLE public\.performance_appraisals FROM PUBLIC, anon, authenticated/);
   assert.match(appraisalMigration, /CREATE POLICY hris_performance_cycles_membership_guard/);
-  assert.doesNotMatch(page, /select\('[^']*(?:manager_scores|final_rating|final_feedback)/);
-  assert.match(browser, /Final scores and feedback are not shown/);
+  assert.doesNotMatch(page, /manager_scores|final_rating|final_feedback/);
+  assert.match(appraisalWorkflowMigration, /CREATE OR REPLACE FUNCTION public\.hris_get_my_appraisal_work/);
+  assert.match(appraisalWorkflowMigration, /a\.reviewer_employee_id=v_employee_id AND a\.status='submitted_by_employee'/);
+  assert.match(appraisalWorkflowMigration, /a\.employee_id=v_employee_id AND a\.status='draft'/);
+  assert.match(appraisalWorkflowMigration, /REVOKE INSERT, UPDATE, DELETE ON TABLE public\.performance_appraisals FROM PUBLIC, anon, authenticated/);
+  assert.match(appraisalWorkflowMigration, /GRANT EXECUTE ON FUNCTION public\.hris_save_assigned_appraisal_review[^;]* TO authenticated, service_role/);
+  assert.doesNotMatch(appraisalWorkflowMigration, /manager_scores\s*=|manager_rating\s*=|final_rating\s*=|final_feedback\s*=/);
+  assert.match(browser, /Submit self review/);
 });
 
 test('organization performance CSV export follows visible filters and excludes appraisal scores and feedback', () => {

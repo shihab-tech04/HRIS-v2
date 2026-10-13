@@ -255,6 +255,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
@@ -329,6 +330,42 @@ const appraisalAEmployeeId = '88888888-8888-4888-8888-888888888931';
 const appraisalAReviewerId = '88888888-8888-4888-8888-888888888932';
 const appraisalAUnassignedId = '88888888-8888-4888-8888-888888888933';
 const appraisalBEmployeeId = '88888888-8888-4888-8888-888888888934';
+let appraisalBrowserOutput = '';
+let appraisalBrowserError = '';
+try {
+  appraisalBrowserOutput = execFileSync('node', [path.join(here, 'run-appraisal-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_APPRAISAL_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_APPRAISAL_REVIEWER_EMAIL: emails[7],
+      HRIS_LOCAL_APPRAISAL_ID: appraisalAEmployeeId,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  appraisalBrowserError = String(error.stderr || error.message || 'local appraisal browser run failed').slice(-1200);
+}
+const browserAppraisalState = queryAdmin(`SELECT jsonb_build_object(
+  'status',status,'self_comment',self_overall_comment,'manager_comment',manager_overall_comment,
+  'manager_scores',manager_scores,'manager_rating',manager_rating,'final_rating',final_rating,
+  'final_feedback',final_feedback) FROM public.performance_appraisals WHERE id='${appraisalAEmployeeId}'::uuid`);
+record('Real 375px browser completes employee and assigned-reviewer narrative appraisal in local Auth/Postgres',
+  appraisalBrowserOutput.includes('Local Auth-to-Postgres narrative appraisal journey passed at 375px mobile and 1280px desktop.')
+    && browserAppraisalState.status === 'reviewed_by_manager'
+    && browserAppraisalState.self_comment === 'Local Auth employee self-review narrative.'
+    && browserAppraisalState.manager_comment === 'Local Auth manager narrative feedback.'
+    && browserAppraisalState.manager_scores?.dimension === 'restricted'
+    && browserAppraisalState.manager_rating === 4 && browserAppraisalState.final_rating === 5
+    && browserAppraisalState.final_feedback === 'Synthetic unreleased feedback',
+  JSON.stringify({ browserError: appraisalBrowserError, state: browserAppraisalState }));
+psqlSync(`UPDATE public.performance_appraisals SET status='draft',self_overall_comment=NULL,manager_overall_comment=NULL,
+  updated_at=created_at WHERE id='${appraisalAEmployeeId}'::uuid`);
+
 const employeeAAppraisals = await employeeA.client.from('performance_appraisals')
   .select('id,tenant_id,employee_id,reviewer_employee_id').eq('tenant_id', ids.tenantA);
 const employeeACrossTenantAppraisals = await employeeA.client.from('performance_appraisals')
@@ -410,6 +447,92 @@ psqlSync("UPDATE public.tenant_memberships SET status='active' WHERE tenant_id='
   + ids.tenantA + "'::uuid AND user_id='" + managerA2.userId + "'::uuid");
 record('Assigned reviewer access ends when the tenant membership becomes inactive',
   !inactiveReviewerAppraisals.error && inactiveReviewerAppraisals.data.length === 0);
+
+const appraisalWorkBefore = await employeeA.client.rpc('hris_get_my_appraisal_work', { p_tenant_id: ids.tenantA });
+const employeeDraftAppraisal = appraisalWorkBefore.data?.appraisals?.find(row => row.id === appraisalAEmployeeId);
+const employeeCrossTenantWork = await employeeA.client.rpc('hris_get_my_appraisal_work', { p_tenant_id: ids.tenantB });
+const anonymousAppraisalWork = attemptAs(null,
+  `SELECT public.hris_get_my_appraisal_work('${ids.tenantA}'::uuid)`, 'anon');
+record('Appraisal work RPC is employee-bound, tenant-scoped, and excludes score fields',
+  !appraisalWorkBefore.error && employeeDraftAppraisal?.status === 'draft'
+    && employeeDraftAppraisal.self_comment === null && employeeDraftAppraisal.manager_comment === null
+    && !('manager_scores' in employeeDraftAppraisal) && !('final_rating' in employeeDraftAppraisal)
+    && Boolean(employeeCrossTenantWork.error) && !anonymousAppraisalWork.ok);
+
+const selfCommentDraft = await employeeA.client.rpc('hris_save_my_appraisal_self_comment', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Synthetic employee self-review draft.', p_submit: false,
+});
+const directAppraisalWrite = await employeeA.client.from('performance_appraisals')
+  .update({ self_overall_comment: 'Must be denied directly.' }).eq('id', appraisalAEmployeeId);
+const crossTenantSelfWrite = await employeeB.client.rpc('hris_save_my_appraisal_self_comment', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Cross-tenant attempt.', p_submit: true,
+});
+record('Employee can save only their own narrative draft through RPC; direct and cross-tenant writes are denied',
+  !selfCommentDraft.error && selfCommentDraft.data?.status === 'draft'
+    && Boolean(directAppraisalWrite.error) && Boolean(crossTenantSelfWrite.error));
+
+const selfSubmit = await employeeA.client.rpc('hris_save_my_appraisal_self_comment', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Synthetic employee self-review submitted.', p_submit: true,
+});
+const reviewerWork = await managerA2.client.rpc('hris_get_my_appraisal_work', { p_tenant_id: ids.tenantA });
+const assignedReviewRow = reviewerWork.data?.appraisals?.find(row => row.id === appraisalAEmployeeId);
+const wrongReviewerWrite = await employeeClock.client.rpc('hris_save_assigned_appraisal_review', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Unassigned reviewer attempt.', p_submit: true,
+});
+const managerAWork = await managerA.client.rpc('hris_get_my_appraisal_work', { p_tenant_id: ids.tenantA });
+record('Submitted self-review is visible to its assigned active reviewer only',
+  !selfSubmit.error && selfSubmit.data?.status === 'submitted_by_employee'
+    && !reviewerWork.error && assignedReviewRow?.self_comment === 'Synthetic employee self-review submitted.'
+    && assignedReviewRow.manager_comment === null && Boolean(wrongReviewerWrite.error)
+    && Boolean(managerAWork.error));
+
+psqlSync("UPDATE public.tenant_memberships SET status='inactive' WHERE tenant_id='"
+  + ids.tenantA + "'::uuid AND user_id='" + managerA2.userId + "'::uuid");
+const inactiveReviewerWrite = await managerA2.client.rpc('hris_save_assigned_appraisal_review', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Inactive reviewer attempt.', p_submit: false,
+});
+psqlSync("UPDATE public.tenant_memberships SET status='active' WHERE tenant_id='"
+  + ids.tenantA + "'::uuid AND user_id='" + managerA2.userId + "'::uuid");
+const reviewerDraft = await managerA2.client.rpc('hris_save_assigned_appraisal_review', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Synthetic manager review draft.', p_submit: false,
+});
+record('Assigned-reviewer writing requires an active same-tenant membership and preserves submitted state in draft',
+  Boolean(inactiveReviewerWrite.error) && !reviewerDraft.error
+    && reviewerDraft.data?.status === 'submitted_by_employee');
+
+const reviewerSubmit = await managerA2.client.rpc('hris_save_assigned_appraisal_review', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Synthetic manager narrative feedback.', p_submit: true,
+});
+const employeeWorkAfterReview = await employeeA.client.rpc('hris_get_my_appraisal_work', { p_tenant_id: ids.tenantA });
+const completedAppraisalWork = employeeWorkAfterReview.data?.appraisals?.find(row => row.id === appraisalAEmployeeId);
+const unchangedAppraisalScores = queryAdmin(`SELECT jsonb_build_object(
+  'manager_scores',manager_scores,'manager_rating',manager_rating,'final_rating',final_rating,
+  'final_feedback',final_feedback) FROM public.performance_appraisals WHERE id='${appraisalAEmployeeId}'::uuid`);
+record('Manager narrative feedback completes the reviewer journey and returns only after submission without changing scores',
+  !reviewerSubmit.error && reviewerSubmit.data?.status === 'reviewed_by_manager'
+    && !employeeWorkAfterReview.error && completedAppraisalWork?.status === 'reviewed_by_manager'
+    && completedAppraisalWork.self_comment === 'Synthetic employee self-review submitted.'
+    && completedAppraisalWork.manager_comment === 'Synthetic manager narrative feedback.'
+    && unchangedAppraisalScores.manager_scores?.dimension === 'restricted'
+    && unchangedAppraisalScores.manager_rating === 4 && unchangedAppraisalScores.final_rating === 5
+    && unchangedAppraisalScores.final_feedback === 'Synthetic unreleased feedback');
+const duplicateSelfSubmit = await employeeA.client.rpc('hris_save_my_appraisal_self_comment', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Duplicate submit.', p_submit: true,
+});
+const duplicateReviewerSubmit = await managerA2.client.rpc('hris_save_assigned_appraisal_review', {
+  p_tenant_id: ids.tenantA, p_appraisal_id: appraisalAEmployeeId,
+  p_comment: 'Duplicate reviewer submit.', p_submit: true,
+});
+record('Submitted appraisal stages are immutable through the workflow RPCs',
+  Boolean(duplicateSelfSubmit.error) && Boolean(duplicateReviewerSubmit.error));
 
 const ownGoalRead = await employeeA.client.from('performance_goals')
   .select('id,tenant_id,employee_id,current_progress')

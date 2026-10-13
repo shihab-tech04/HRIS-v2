@@ -38,16 +38,29 @@ test('employee updates only their recorded performance goal progress', async ({ 
     origin: 'assigned',
     updated_at: '2026-10-13T00:00:00.000Z',
   };
-  const appraisal = {
+  const appraisal: {
+    id: string; cycle_id: string; employee_id: string; reviewer_employee_id: string | null;
+    employee_name: string | null; status: string; self_comment: string | null; manager_comment: string | null;
+    cycle_name: string; cycle_start_date: string; cycle_end_date: string;
+    self_review_deadline: string; manager_review_deadline: string; created_at: string; updated_at: string;
+  } = {
     id: '88888888-8888-4888-8888-888888888931',
-    tenant_id: tenantId,
     cycle_id: 'cycle-2026',
     employee_id: userId,
     reviewer_employee_id: 'manager-1',
-    status: 'submitted_by_employee',
+    employee_name: null,
+    status: 'draft',
+    self_comment: null,
+    manager_comment: null,
+    cycle_name: 'Annual review 2026',
+    cycle_start_date: '2026-01-01',
+    cycle_end_date: '2026-12-31',
+    self_review_deadline: '2026-11-15',
+    manager_review_deadline: '2026-12-15',
     created_at: '2026-11-10T00:00:00.000Z',
+    updated_at: '2026-11-10T00:00:00.000Z',
   };
-  const appraisalQueries: { tenantFilter: string | null; select: string | null }[] = [];
+  const appraisalRpcRequests: { endpoint: string; body: Record<string, unknown> }[] = [];
   const goalRequests: { method: string; tenantFilter: string | null; body: unknown }[] = [];
 
   await page.route('**/*', async route => {
@@ -95,9 +108,16 @@ test('employee updates only their recorded performance goal progress', async ({ 
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([goal]) });
     }
-    if (endpoint === 'performance_appraisals') {
-      appraisalQueries.push({ tenantFilter: url.searchParams.get('tenant_id'), select: url.searchParams.get('select') });
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([appraisal]) });
+    if (endpoint === 'hris_get_my_appraisal_work') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ appraisals: [appraisal] }) });
+    if (endpoint === 'hris_save_my_appraisal_self_comment') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      appraisalRpcRequests.push({ endpoint, body });
+      appraisal.self_comment = body.p_comment as string;
+      if (body.p_submit === true) appraisal.status = 'submitted_by_employee';
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: appraisal.id, status: appraisal.status, self_comment: appraisal.self_comment,
+        updated_at: new Date().toISOString(),
+      }) });
     }
     if (endpoint === 'performance_cycles') return route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify([
@@ -122,11 +142,22 @@ test('employee updates only their recorded performance goal progress', async ({ 
   await expect(page.getByRole('heading', { name: 'Personal Dashboard' })).toBeVisible();
   await page.getByRole('button', { name: 'My Performance' }).click();
   await expect(page.getByRole('heading', { name: 'My Performance' })).toBeVisible();
-  const appraisalCard = page.locator('article').filter({ hasText: 'Submitted By Employee' });
+  const appraisalCard = page.locator(`[data-appraisal-id="${appraisal.id}"]`);
   await expect(page.getByRole('heading', { name: 'Appraisals' })).toBeVisible();
   await expect(appraisalCard).toContainText('Your appraisal');
   await expect(appraisalCard).toContainText('Annual review 2026');
-  await expect(appraisalCard).toContainText('Final scores and feedback are not shown');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByLabel('Self-review notes').fill('Synthetic narrative self-review.');
+  await appraisalCard.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Appraisal notes saved as a draft.' })).toBeVisible();
+  await appraisalCard.getByRole('button', { name: 'Submit self review' }).click();
+  const confirm = page.getByRole('alertdialog');
+  await expect(confirm).toContainText('You cannot edit it after submission.');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await appraisalCard.getByRole('button', { name: 'Submit self review' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm submission' }).click();
+  await expect(appraisalCard).toContainText('Submitted By Employee');
+  await expect(appraisalCard).toContainText('Synthetic narrative self-review.');
   const goalCard = page.locator('article').filter({ hasText: 'Improve release readiness' });
   await expect(goalCard).toContainText('40%');
   await expect(goalCard).toContainText('Complete the agreed release checklist.');
@@ -140,9 +171,8 @@ test('employee updates only their recorded performance goal progress', async ({ 
   const patchRequest = goalRequests.find(item => item.method === 'PATCH');
   expect(patchRequest?.tenantFilter).toBe(`eq.${tenantId}`);
   expect(patchRequest?.body).toEqual({ current_progress: 72.5 });
-  expect(appraisalQueries.length).toBeGreaterThan(0);
-  expect(appraisalQueries.every(item => item.tenantFilter === 'eq.' + tenantId)).toBe(true);
-  expect(appraisalQueries.every(item => item.select === 'id,cycle_id,employee_id,reviewer_employee_id,status,created_at')).toBe(true);
-  await page.setViewportSize({ width: 375, height: 812 });
+  expect(appraisalRpcRequests.length).toBe(2);
+  expect(appraisalRpcRequests.every(item => item.body.p_tenant_id === tenantId && item.body.p_appraisal_id === appraisal.id)).toBe(true);
+  expect(appraisalRpcRequests.map(item => item.body.p_submit)).toEqual([false, true]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
