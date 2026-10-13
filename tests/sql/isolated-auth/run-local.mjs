@@ -3440,6 +3440,17 @@ record('Holiday manager can persist tenant calendar entries with audit history; 
     invalidRange: holidayInvalidRange.error?.code, crossTenantUpdate: holidayCrossTenantUpdate.error?.code,
     directInsert: holidayDirectInsert.error?.code }));
 
+const employeeHolidaySummary = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+const employeeForeignHolidaySummary = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantB });
+record('Employee upcoming holidays include the managed active entry and remain tenant-bound',
+  !employeeHolidaySummary.error
+    && employeeHolidaySummary.data?.holidays?.some(holiday => holiday.name === 'Isolated Calendar Acceptance Day')
+    && !employeeHolidaySummary.data?.holidays?.some(holiday => holiday.name === 'Synthetic QA holiday B')
+    && Boolean(employeeForeignHolidaySummary.error?.code === '42501'),
+  JSON.stringify({ ownHoliday: employeeHolidaySummary.data?.holidays?.some(holiday => holiday.name === 'Isolated Calendar Acceptance Day'),
+    foreignHoliday: employeeHolidaySummary.data?.holidays?.some(holiday => holiday.name === 'Synthetic QA holiday B'),
+    crossTenant: employeeForeignHolidaySummary.error?.code }));
+
 let holidayBrowserOutput = '';
 let holidayBrowserError = '';
 try {
@@ -3451,6 +3462,7 @@ try {
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_HOLIDAY_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_HOLIDAY_EMPLOYEE_EMAIL: emails[5],
       HRIS_LOCAL_HOLIDAY_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',
@@ -3460,7 +3472,7 @@ try {
   holidayBrowserError = String(error.stderr || error.message || 'local holiday browser run failed').slice(-1800);
 }
 record('Real local Auth-to-Postgres holiday calendar journey passes validation, cancellation, retry, persistence, and responsive recovery',
-  holidayBrowserOutput.includes('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, create, edit, deactivate/activate, persistence refresh, tenant-scoped RPCs, and 375px/1280px layouts.'),
+  holidayBrowserOutput.includes('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, persisted employee upcoming-holiday visibility, tenant isolation, refresh, and mobile/desktop layouts.'),
   holidayBrowserError);
 
 const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(

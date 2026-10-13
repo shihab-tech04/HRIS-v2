@@ -32,6 +32,7 @@ test('holiday calendar is exposed only to the tenant permission and uses RPCs in
   assert.match(app, /holidayManage: grants\.get\('holidays\.manage'\) === true/);
   assert.match(workspace, /id: 'holidays', label: 'Holiday calendar'/);
   assert.match(workspace, /page === 'holidays' && permissions\.holidayManage && <OrganizationHolidayCalendar tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /Upcoming holidays/);
   assert.match(ui, /hris_get_org_holiday_calendar/);
   assert.match(ui, /hris_save_org_holiday/);
   assert.match(ui, /No active holidays/);
@@ -45,7 +46,9 @@ test('local Auth/Postgres and browser acceptance exercises tenant denial and the
   assert.match(runner, /holidayCrossTenantUpdate/);
   assert.match(runner, /holidayDirectInsert/);
   assert.match(runner, /run-holiday-calendar-browser\.mjs/);
+  assert.match(runner, /HRIS_LOCAL_HOLIDAY_EMPLOYEE_EMAIL/);
   assert.match(browser, /Synthetic temporary holiday calendar outage/);
+  assert.match(browser, /My Overview/);
   assert.match(browser, /Deactivate/);
   assert.match(browser, /Activate/);
   assert.match(browser, /assertNoOverflow\(page, 'Holiday calendar mobile'\)/);

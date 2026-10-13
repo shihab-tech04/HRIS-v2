@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
   'HRIS_LOCAL_HOLIDAY_MANAGER_EMAIL', 'HRIS_LOCAL_HOLIDAY_TENANT_ID',
+  'HRIS_LOCAL_HOLIDAY_EMPLOYEE_EMAIL',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -137,7 +138,46 @@ try {
     throw new Error(`Holiday RPC tenant scope was unexpected: ${JSON.stringify(tenantIds)}.`);
   }
   if (directHolidayTableRequests.length) throw new Error(`Holiday UI bypassed RPCs: ${JSON.stringify(directHolidayTableRequests)}.`);
-  console.log('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, create, edit, deactivate/activate, persistence refresh, tenant-scoped RPCs, and 375px/1280px layouts.');
+
+  const employeePage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  const employeeDashboardTenantIds = [];
+  const employeeDirectHolidayTableRequests = [];
+  employeePage.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_dashboard_data') && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      if (body?.p_tenant_id) employeeDashboardTenantIds.push(body.p_tenant_id);
+    }
+    if (/\/rest\/v1\/holidays(?:\?|$)/.test(url.pathname + url.search)) employeeDirectHolidayTableRequests.push(url.pathname);
+  });
+  await employeePage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await employeePage.goto(origin);
+  await employeePage.getByLabel('Email', { exact: true }).fill(process.env.HRIS_LOCAL_HOLIDAY_EMPLOYEE_EMAIL);
+  await employeePage.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
+  await employeePage.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await employeePage.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  const employeeNavigation = employeePage.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await employeeNavigation.isVisible())) await employeePage.getByRole('button', { name: 'Open navigation menu' }).click();
+  await employeeNavigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await employeePage.getByRole('heading', { name: 'Upcoming holidays', exact: true }).waitFor({ state: 'visible' });
+  await employeePage.getByText(title, { exact: true }).waitFor({ state: 'visible' });
+  if (await employeePage.getByText('Synthetic QA holiday B', { exact: true }).count()) {
+    throw new Error('The employee holiday view exposed a holiday from another tenant.');
+  }
+  if (!employeeDashboardTenantIds.length
+      || employeeDashboardTenantIds.some(id => id !== process.env.HRIS_LOCAL_HOLIDAY_TENANT_ID)) {
+    throw new Error(`Employee dashboard tenant scope was unexpected: ${JSON.stringify(employeeDashboardTenantIds)}.`);
+  }
+  if (employeeDirectHolidayTableRequests.length) {
+    throw new Error(`Employee holiday view bypassed the linked-employee dashboard RPC: ${JSON.stringify(employeeDirectHolidayTableRequests)}.`);
+  }
+  await assertNoOverflow(employeePage, 'Employee holiday view mobile');
+  console.log('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, persisted employee upcoming-holiday visibility, tenant isolation, refresh, and mobile/desktop layouts.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');
