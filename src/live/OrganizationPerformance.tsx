@@ -58,6 +58,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
   const [appraisalLoadError, setAppraisalLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<GoalFilter>('all');
+  const [appraisalFilter, setAppraisalFilter] = useState('all');
   const [cycleFilter, setCycleFilter] = useState('all');
 
   async function load(isCurrent: () => boolean = () => true) {
@@ -137,6 +138,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     setCycles([]);
     setEmployees({});
     setCycleFilter('all');
+    setAppraisalFilter('all');
     void load(() => active);
     return () => { active = false; };
   }, [tenantId]);
@@ -155,6 +157,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
   const visibleAppraisals = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return appraisals.filter(appraisal => {
+      if (appraisalFilter !== 'all' && appraisal.status !== appraisalFilter) return false;
       if (cycleFilter !== 'all' && appraisal.cycle_id !== cycleFilter) return false;
       const employee = employees[appraisal.employee_id];
       const cycle = cycles.find(item => item.id === appraisal.cycle_id);
@@ -165,7 +168,10 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
         statusLabel(appraisal.status),
       ].some(value => value.toLocaleLowerCase().includes(query));
     });
-  }, [appraisals, cycleFilter, cycles, employees, search]);
+  }, [appraisals, appraisalFilter, cycleFilter, cycles, employees, search]);
+  const appraisalStatuses = useMemo(() => Array.from(new Set(
+    appraisals.map(appraisal => appraisal.status).filter(Boolean),
+  )).sort((a, b) => statusLabel(a).localeCompare(statusLabel(b))), [appraisals]);
   const cycleGoals = cycleFilter === 'all' ? goals : goals.filter(goal => goal.cycle_id === cycleFilter);
   const selectedCycle = cycles.find(cycle => cycle.id === cycleFilter);
   const average = cycleGoals.length
@@ -224,7 +230,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
       <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Completed goals</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{completed}</p></div>
     </div>
 
-    <section aria-label="Organization performance filters" className="grid gap-3 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_190px_220px]">
+    <section aria-label="Organization performance filters" className="grid gap-3 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_190px_220px_220px]">
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input type="search" value={search} onChange={event => setSearch(event.target.value)}
@@ -243,13 +249,22 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
       <label className="block text-xs font-medium text-slate-600">
         Status
         <select value={filter} onChange={event => setFilter(event.target.value as GoalFilter)}
-          aria-label="Filter organization performance by status"
+          aria-label="Filter performance goals by status"
           className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">
           <option value="all">All statuses</option>
           <option value="not_started">Not started</option>
           <option value="in_progress">In progress</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
+        </select>
+      </label>
+      <label className="block text-xs font-medium text-slate-600">
+        Appraisal status
+        <select value={appraisalFilter} onChange={event => setAppraisalFilter(event.target.value)}
+          aria-label="Filter appraisal reviews by status"
+          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">
+          <option value="all">All appraisal statuses</option>
+          {appraisalStatuses.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
         </select>
       </label>
     </section>
@@ -281,7 +296,7 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
           : appraisals.length === 0
             ? <p className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-5 text-sm text-slate-600">No appraisal reviews are available to this role.</p>
             : visibleAppraisals.length === 0
-              ? <p role="status" className="rounded-xl border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">No appraisals match the current search and cycle.</p>
+              ? <p role="status" className="rounded-xl border border-[#DEE0E3] bg-white p-5 text-sm text-slate-600">No appraisals match the current filters.</p>
               : <div className="grid min-w-0 gap-3 xl:grid-cols-2">
                 {visibleAppraisals.map(appraisal => {
                   const employee = employees[appraisal.employee_id];

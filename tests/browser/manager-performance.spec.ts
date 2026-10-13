@@ -33,6 +33,8 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   const appraisals = [
     { id: 'appraisal-1', tenant_id: tenantId, cycle_id: 'cycle-2026', employee_id: 'employee-1',
       reviewer_employee_id: null, status: 'submitted_by_employee', created_at: '2026-11-10T00:00:00.000Z' },
+    { id: 'appraisal-2', tenant_id: tenantId, cycle_id: 'cycle-2026', employee_id: 'employee-1',
+      reviewer_employee_id: null, status: 'draft', created_at: '2026-11-09T00:00:00.000Z' },
   ];
   const cycles = [
     { id: 'cycle-2026', tenant_id: tenantId, name: 'Annual review 2026', start_date: '2026-01-01', end_date: '2026-12-31',
@@ -106,6 +108,18 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   const appraisalCard = page.locator('article').filter({ hasText: 'Submitted By Employee' });
   await expect(appraisalCard).toContainText('Annual review 2026');
   await expect(appraisalCard).toContainText('Avery Example');
+  const draftAppraisalCard = page.locator('article')
+    .filter({ hasText: 'Avery Example' })
+    .filter({ hasText: 'Annual review 2026' })
+    .filter({ hasText: 'Draft' });
+  const appraisalStatusFilter = page.getByRole('combobox', { name: 'Filter appraisal reviews by status' });
+  await appraisalStatusFilter.selectOption('submitted_by_employee');
+  await expect(appraisalCard).toBeVisible();
+  await expect(draftAppraisalCard).toHaveCount(0);
+  await appraisalStatusFilter.selectOption('draft');
+  await expect(appraisalCard).toHaveCount(0);
+  await expect(draftAppraisalCard).toBeVisible();
+  await appraisalStatusFilter.selectOption('all');
   await expect(page.getByText('Goals', { exact: true })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Search organization performance' }).fill('handbook');
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toBeVisible();
@@ -118,10 +132,10 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toHaveCount(0);
   await expect(page.getByText('Self review due Nov 15, 2026')).toBeVisible();
   await cycleFilter.selectOption('all');
-  await page.getByRole('combobox', { name: 'Filter organization performance by status' }).selectOption('completed');
+  await page.getByRole('combobox', { name: 'Filter performance goals by status' }).selectOption('completed');
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Improve onboarding quality' })).toHaveCount(0);
-  await page.getByRole('combobox', { name: 'Filter organization performance by status' }).selectOption('all');
+  await page.getByRole('combobox', { name: 'Filter performance goals by status' }).selectOption('all');
   await cycleFilter.selectOption('cycle-2026');
   await page.getByRole('searchbox', { name: 'Search organization performance' }).fill('onboarding');
   const [download] = await Promise.all([

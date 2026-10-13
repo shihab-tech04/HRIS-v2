@@ -73,3 +73,11 @@ test('organization performance CSV export follows visible filters and excludes a
   assert.match(managerBrowser, /Export CSV/);
   assert.match(managerBrowser, /Publish team handbook/);
 });
+
+test('organization appraisal status filter uses only statuses returned for the tenant', () => {
+  assert.match(managerPage, /appraisal\.status !== appraisalFilter/);
+  assert.match(managerPage, /appraisals\.map\(appraisal => appraisal\.status\)/);
+  assert.match(managerPage, /Filter appraisal reviews by status/);
+  assert.match(managerBrowser, /submitted_by_employee/);
+  assert.match(managerBrowser, /selectOption\('draft'\)/);
+});
