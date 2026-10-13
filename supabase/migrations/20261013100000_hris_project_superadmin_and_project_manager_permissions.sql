@@ -83,7 +83,7 @@ BEGIN
       'project_lead_id', p.project_lead_id, 'project_lead_name', lead.full_name,
       'start_date', p.start_date, 'target_end_date', p.target_end_date,
       'status', p.status, 'created_at', p.created_at,
-      'can_manage', (v_is_super_admin OR (v_employee_id IS NOT NULL AND p.project_lead_id = v_employee_id)),
+      'can_manage', (v_employee_id IS NOT NULL AND p.project_lead_id = v_employee_id),
       'allocations', COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
           'id', a.id, 'project_id', a.project_id, 'employee_id', a.employee_id,
@@ -187,7 +187,7 @@ DECLARE
   v_allocation public.project_allocations%ROWTYPE;
   v_end_date date := COALESCE(p_release_date, 'infinity'::date);
 BEGIN
-  IF NOT public.hris_is_project_super_admin() AND NOT EXISTS (
+  IF NOT EXISTS (
     SELECT 1 FROM public.projects p
     WHERE p.tenant_id = p_tenant_id AND p.id = p_project_id
       AND p.project_lead_id = public.hris_own_employee_for_tenant(p_tenant_id)
@@ -272,7 +272,7 @@ DECLARE
   v_today date;
   v_release_date date;
 BEGIN
-  IF NOT public.hris_is_project_super_admin() AND NOT EXISTS (
+  IF NOT EXISTS (
     SELECT 1 FROM public.project_allocations a
     JOIN public.projects p ON p.tenant_id = a.tenant_id AND p.id = a.project_id
     WHERE a.tenant_id = p_tenant_id AND a.id = p_allocation_id

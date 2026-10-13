@@ -7,6 +7,8 @@ const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', i
 const teams = readFileSync(new URL('../../src/live/OrganizationTeams.tsx', import.meta.url), 'utf8');
 const projects = readFileSync(new URL('../../src/live/OrganizationProjects.tsx', import.meta.url), 'utf8');
 const myProjects = readFileSync(new URL('../../src/live/MyProjects.tsx', import.meta.url), 'utf8');
+const projectPermissionMigration = readFileSync(new URL('../../supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql', import.meta.url), 'utf8');
+const projectDataMigration = readFileSync(new URL('../../supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql', import.meta.url), 'utf8');
 
 test('authenticated Synesis admins enter the RPC-backed workspace instead of the generic table browser', () => {
   assert.match(app, /import \{ LiveHrisWorkspace \} from '\.\/LiveHrisWorkspace'/);
@@ -78,6 +80,32 @@ test('project permissions come from the server workspace capability fields, neve
   assert.match(app, /const activeSuperAdmin = adminResult\.data\?\.active === true && adminResult\.data\?\.is_super_admin === true/);
   assert.match(workspace, /if \(isSuperAdmin && !permissions\.dashboard && !permissions\.attendance && !permissions\.leave/);
   assert.doesNotMatch(projects, /canManage/);
+});
+
+test('only Super Admin can create and appoint a Project Manager; only the assigned Project Manager manages membership', () => {
+  const createProject = projectPermissionMigration.slice(
+    projectPermissionMigration.indexOf('CREATE OR REPLACE FUNCTION public.hris_create_tenant_project'),
+    projectPermissionMigration.indexOf('CREATE OR REPLACE FUNCTION public.hris_assign_tenant_project_allocation'),
+  );
+  const assignMember = projectPermissionMigration.slice(
+    projectPermissionMigration.indexOf('CREATE OR REPLACE FUNCTION public.hris_assign_tenant_project_allocation'),
+    projectPermissionMigration.indexOf('CREATE OR REPLACE FUNCTION public.hris_release_tenant_project_allocation'),
+  );
+  const releaseMember = projectPermissionMigration.slice(
+    projectPermissionMigration.indexOf('CREATE OR REPLACE FUNCTION public.hris_release_tenant_project_allocation'),
+  );
+  assert.match(createProject, /IF NOT public\.hris_is_project_super_admin\(\) THEN/);
+  assert.match(createProject, /Only an active Super Admin can create projects and appoint Project Managers/);
+  assert.match(projectPermissionMigration, /'can_create', v_is_super_admin/);
+  assert.match(projectPermissionMigration, /'can_manage', \(v_employee_id IS NOT NULL AND p\.project_lead_id = v_employee_id\)/);
+  for (const functionBody of [assignMember, releaseMember]) {
+    assert.match(functionBody, /IF NOT EXISTS \([\s\S]*p\.project_lead_id = public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+    assert.doesNotMatch(functionBody, /hris_is_project_super_admin/);
+  }
+  assert.match(projectDataMigration, /CREATE POLICY hris_projects_tenant_read ON public\.projects\s+FOR SELECT TO authenticated/);
+  assert.match(projectDataMigration, /CREATE POLICY hris_project_allocations_tenant_read ON public\.project_allocations\s+FOR SELECT TO authenticated/);
+  assert.match(projectDataMigration, /REVOKE ALL ON TABLE public\.projects, public\.project_allocations FROM PUBLIC, anon, authenticated;\s+GRANT SELECT ON TABLE public\.projects, public\.project_allocations TO authenticated;/);
+  assert.doesNotMatch(projectDataMigration, /CREATE POLICY hris_(?:projects|project_allocations).*FOR (?:INSERT|UPDATE|DELETE)/);
 });
 
 test('live HRIS pages use tenant-checked RPC responses and omit the global candidate count', () => {

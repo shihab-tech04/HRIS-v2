@@ -739,7 +739,7 @@ INSERT INTO public.tenants(id,slug,code,name,is_active) VALUES
   ('22222222-2222-4222-8222-222222222222','qa-two','QA2','Synthetic Tenant Two',true);
 INSERT INTO public.roles(id,name) VALUES
   ('qa_global_manager','Synthetic global-only role'),
-  ('qa_tenant_manager_a','Synthetic tenant A HR manager'),
+  ('qa_tenant_admin_a','Synthetic tenant A HR admin'),
   ('qa_tenant_reviewer_a','Synthetic tenant A workflow reviewer'),
   ('qa_tenant_manager_b','Synthetic tenant B HR manager'),
   ('qa_tenant_viewer_b','Synthetic tenant B viewer'),
@@ -752,9 +752,9 @@ INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_global_manager','leave.manage'),('qa_global_manager','leave.view'),
   ('qa_global_manager','attendance.manage'),('qa_global_manager','attendance.view'),
   ('qa_global_manager','dashboard.view'),('qa_global_manager','reports.view'),
-  ('qa_tenant_manager_a','leave.manage'),('qa_tenant_manager_a','leave.view'),
-  ('qa_tenant_manager_a','attendance.manage'),('qa_tenant_manager_a','attendance.view'),
-  ('qa_tenant_manager_a','dashboard.view'),('qa_tenant_manager_a','reports.view'),
+  ('qa_tenant_admin_a','leave.manage'),('qa_tenant_admin_a','leave.view'),
+  ('qa_tenant_admin_a','attendance.manage'),('qa_tenant_admin_a','attendance.view'),
+  ('qa_tenant_admin_a','dashboard.view'),('qa_tenant_admin_a','reports.view'),
   ('qa_tenant_reviewer_a','leave.manage'),('qa_tenant_reviewer_a','leave.view'),
   ('qa_tenant_reviewer_a','attendance.manage'),('qa_tenant_reviewer_a','attendance.view'),
   ('qa_tenant_reviewer_a','dashboard.view'),('qa_tenant_reviewer_a','reports.view'),
@@ -775,7 +775,7 @@ INSERT INTO public.permissions(id,module,action) VALUES
   ('self_service.view','self_service','view'),('self_service.manage','self_service','manage');
 INSERT INTO public.role_permissions(role_id,permission_id)
 SELECT role_id, permission_id
-FROM (VALUES ('qa_global_manager'),('qa_tenant_manager_a'),('qa_tenant_manager_b')) roles(role_id)
+FROM (VALUES ('qa_global_manager'),('qa_tenant_admin_a'),('qa_tenant_manager_b')) roles(role_id)
 CROSS JOIN (VALUES
   ('performance.view'),('performance.manage'),('organization.view'),('organization.manage'),
   ('referrals.view'),('referrals.manage'),('holidays.manage'),('policies.view'),('policies.manage'),
@@ -791,7 +791,7 @@ INSERT INTO public.user_roles(user_id,role_id)
   SELECT id,'qa_global_manager' FROM auth.users
   WHERE email IN ('manager-a@hris.test','manager-b@hris.test','global-only@hris.test');
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
-  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_manager_a','active'
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_admin_a','active'
   FROM auth.users WHERE email='manager-a@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_reviewer_a','active'

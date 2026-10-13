@@ -1251,8 +1251,13 @@ async function createProject(session, tenantId, code, leadId) {
 psqlSync(`UPDATE public.tenants SET timezone='Pacific/Honolulu' WHERE id='${ids.tenantB}'::uuid;`);
 const deniedProjectA = await createProject(managerA, ids.tenantA, 'QA-A-DENIED', '55555555-5555-4555-8555-555555555555');
 const deniedProjectB = await createProject(managerB, ids.tenantB, 'QA-B-DENIED', '66666666-6666-4666-8666-666666666666');
-record('Ordinary Admin cannot create a project or appoint its Project Manager', Boolean(deniedProjectA.error));
-record('Ordinary Manager cannot create a project or appoint its Project Manager', Boolean(deniedProjectB.error));
+const projectsAfterDeniedCreate = queryAdmin(`SELECT jsonb_build_object(
+  'tenant_a',(SELECT count(*)::integer FROM public.projects WHERE tenant_id='${ids.tenantA}'::uuid),
+  'tenant_b',(SELECT count(*)::integer FROM public.projects WHERE tenant_id='${ids.tenantB}'::uuid))`);
+record('Ordinary Admin cannot create a project or appoint its Project Manager',
+  deniedProjectA.error?.code === '42501' && projectsAfterDeniedCreate.tenant_a === 0);
+record('Ordinary Manager cannot create a project or appoint its Project Manager',
+  deniedProjectB.error?.code === '42501' && projectsAfterDeniedCreate.tenant_b === 0);
 
 const projectAResult = await createProject(superAdmin, ids.tenantA, 'QA-A-ALPHA', '55555555-5555-4555-8555-555555555555');
 const projectA2Result = await createProject(superAdmin, ids.tenantA, 'QA-A-BETA', '55555555-5555-4555-8555-555555555555');
@@ -1290,13 +1295,28 @@ const directProjectsA = await managerA.client.from('projects').select('id,tenant
 const directProjectsB = await managerB.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
 const directProjectsSuperAdmin = await superAdmin.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
 const directProjectsProjectManager = await employeeA.client.from('projects').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+const projectLeadUpdateAttempts = await Promise.all([
+  managerA.client.from('projects').update({ project_lead_id: '55555555-5555-4555-8555-555555555556' }).eq('tenant_id', ids.tenantA).eq('id', projectA.id).select('id'),
+  managerB.client.from('projects').update({ project_lead_id: '66666666-6666-4666-8666-666666666667' }).eq('tenant_id', ids.tenantB).eq('id', projectB.id).select('id'),
+  employeeA.client.from('projects').update({ project_lead_id: '55555555-5555-4555-8555-555555555556' }).eq('tenant_id', ids.tenantA).eq('id', projectA.id).select('id'),
+  superAdmin.client.from('projects').update({ project_lead_id: '55555555-5555-4555-8555-555555555556' }).eq('tenant_id', ids.tenantA).eq('id', projectA.id).select('id'),
+]);
+const projectLeadAfterAttempts = queryAdmin(`SELECT jsonb_build_object('lead',project_lead_id::text)
+  FROM public.projects WHERE tenant_id='${ids.tenantA}'::uuid AND id='${projectA.id}'::uuid`);
+record('No authenticated Admin, Manager, Project Manager, or Super Admin can appoint a manager by direct table write',
+  projectLeadUpdateAttempts.every(result => Boolean(result.error))
+    && projectLeadAfterAttempts.lead === '55555555-5555-4555-8555-555555555555');
 record('Organization readers retain tenant scope; assigned Project Managers see and manage only their projects',
   !workspaceA.error && !workspaceB.error
     && workspaceA.data.projects.length === 3 && workspaceB.data.projects.length === 2
     && workspaceA.data.can_create === false && workspaceA.data.projects.every(project => project.can_manage === false)
+    && workspaceB.data.can_create === false && workspaceB.data.projects.every(project => project.can_manage === false)
+    && superAdminWorkspace.data.projects.every(project => project.can_manage === false)
     && !projectManagerWorkspaceA.error && projectManagerWorkspaceA.data.projects.length === 3
+    && projectManagerWorkspaceA.data.can_create === false
     && projectManagerWorkspaceA.data.projects.every(project => project.can_manage === true)
     && !projectManagerWorkspaceB.error && projectManagerWorkspaceB.data.projects.length === 2
+    && projectManagerWorkspaceB.data.can_create === false
     && projectManagerWorkspaceB.data.projects.every(project => project.can_manage === true)
     && !directProjectsSuperAdmin.error && directProjectsSuperAdmin.data.length === 3
     && !directProjectsProjectManager.error && directProjectsProjectManager.data.length === 3
@@ -1308,6 +1328,18 @@ record('Organization readers retain tenant scope; assigned Project Managers see 
     projectManagerA: projectManagerWorkspaceA.error ? projectManagerWorkspaceA.error.message : { count: projectManagerWorkspaceA.data.projects.length, can_manage: projectManagerWorkspaceA.data.projects.map(project => project.can_manage) },
     projectManagerB: projectManagerWorkspaceB.error ? projectManagerWorkspaceB.error.message : { count: projectManagerWorkspaceB.data.projects.length, can_manage: projectManagerWorkspaceB.data.projects.map(project => project.can_manage) },
   }));
+
+const superAdminMemberAssignment = await superAdmin.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantB, p_project_id: projectB.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_role_on_project: 'Unauthorized', p_allocation_percentage: 5,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const superAdminMemberRelease = await superAdmin.client.rpc('hris_release_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_allocation_id: '99999999-9999-4999-8999-999999999999',
+});
+record('Super Admin project creation does not grant project membership management',
+  superAdminMemberAssignment.error?.code === '42501' && superAdminMemberRelease.error?.code === '42501');
 
 const projectDirectWrite = attemptAs(managerA, `INSERT INTO public.projects
   (tenant_id,code,name,project_lead_id,start_date) VALUES
