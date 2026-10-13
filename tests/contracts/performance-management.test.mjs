@@ -42,7 +42,11 @@ test('browser journey checks progress save, tenant filter, and narrow viewport',
 test('organization performance is permission-gated and reads only tenant-visible goals', () => {
   assert.match(liveApp, /'performance\.view', 'performance\.manage'/);
   assert.match(liveApp, /performance: grants\.get\('performance\.view'\) === true \|\| grants\.get\('performance\.manage'\) === true/);
+  assert.match(managerPage, /\.from\('performance_cycles'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+  assert.match(managerPage, /\.select\('id,employee_id,cycle_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin'\)/);
   assert.match(managerPage, /\.from\('performance_goals'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
   assert.match(managerPage, /\.from\('employees'\)[\s\S]*?\.eq\('tenant_id', requestTenantId\)/);
+  assert.match(managerPage, /Filter organization performance by review cycle/);
+  assert.match(managerPage, /manager_review_deadline/);
   assert.doesNotMatch(managerPage, /\.(?:insert|update|delete)\(/);
 });

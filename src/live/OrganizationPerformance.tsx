@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 type Goal = {
   id: string;
   employee_id: string;
+  cycle_id: string | null;
   title: string;
   description: string;
   category: string;
@@ -14,6 +15,15 @@ type Goal = {
   status: string;
   weight: number;
   origin: string;
+};
+type PerformanceCycle = {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  self_review_deadline: string | null;
+  manager_review_deadline: string | null;
+  status: string;
 };
 type Employee = { id: string; full_name: string; employee_number: string };
 type GoalFilter = 'all' | 'not_started' | 'in_progress' | 'completed' | 'cancelled';
@@ -31,26 +41,45 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [cycles, setCycles] = useState<PerformanceCycle[]>([]);
   const [employees, setEmployees] = useState<Record<string, Employee>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [cycleLoadError, setCycleLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<GoalFilter>('all');
+  const [cycleFilter, setCycleFilter] = useState('all');
 
   async function load(isCurrent: () => boolean = () => true) {
     const requestTenantId = tenantId;
     const current = () => tenantRef.current === requestTenantId && isCurrent();
     setLoading(true);
     setError('');
+    setCycleLoadError(false);
     try {
-      const { data, error: goalsError } = await supabase.from('performance_goals')
-        .select('id,employee_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
-        .eq('tenant_id', requestTenantId)
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .limit(250);
-      if (goalsError) throw goalsError;
+      const [cycleResult, goalResult] = await Promise.all([
+        supabase.from('performance_cycles')
+          .select('id,name,start_date,end_date,self_review_deadline,manager_review_deadline,status')
+          .eq('tenant_id', requestTenantId)
+          .order('start_date', { ascending: false })
+          .limit(100),
+        supabase.from('performance_goals')
+          .select('id,employee_id,cycle_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
+          .eq('tenant_id', requestTenantId)
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .limit(250),
+      ]);
+      if (goalResult.error) throw goalResult.error;
       if (!current()) return;
-      const rows = (Array.isArray(data) ? data : []) as Goal[];
+      const availableCycles = cycleResult.error ? []
+        : (Array.isArray(cycleResult.data) ? cycleResult.data : []) as PerformanceCycle[];
+      setCycles(availableCycles);
+      if (cycleResult.error) setCycleFilter('all');
+      else setCycleFilter(currentFilter => currentFilter === 'all' || availableCycles.some(cycle => cycle.id === currentFilter)
+        ? currentFilter
+        : 'all');
+      setCycleLoadError(Boolean(cycleResult.error));
+      const rows = (Array.isArray(goalResult.data) ? goalResult.data : []) as Goal[];
       setGoals(rows);
       const employeeIds = Array.from(new Set(rows.map(goal => goal.employee_id).filter(Boolean)));
       if (!employeeIds.length) { setEmployees({}); return; }
@@ -67,6 +96,8 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     } catch (cause) {
       if (!current()) return;
       setGoals([]);
+      setCycles([]);
+      setCycleFilter('all');
       setEmployees({});
       setError(cause instanceof Error ? cause.message : 'Unable to load performance goals for this organization.');
     } finally {
@@ -77,7 +108,9 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
   useEffect(() => {
     let active = true;
     setGoals([]);
+    setCycles([]);
     setEmployees({});
+    setCycleFilter('all');
     void load(() => active);
     return () => { active = false; };
   }, [tenantId]);
@@ -86,16 +119,19 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     const query = search.trim().toLocaleLowerCase();
     return goals.filter(goal => {
       if (filter !== 'all' && goal.status !== filter) return false;
+      if (cycleFilter !== 'all' && goal.cycle_id !== cycleFilter) return false;
       const employee = employees[goal.employee_id];
       return !query || [goal.title, goal.description, goal.category, goal.target_metric,
         employee?.full_name || '', employee?.employee_number || '']
         .some(value => value.toLocaleLowerCase().includes(query));
     });
-  }, [employees, filter, goals, search]);
-  const average = goals.length
-    ? Math.round(goals.reduce((total, goal) => total + Number(goal.current_progress || 0), 0) / goals.length)
+  }, [cycleFilter, employees, filter, goals, search]);
+  const cycleGoals = cycleFilter === 'all' ? goals : goals.filter(goal => goal.cycle_id === cycleFilter);
+  const selectedCycle = cycles.find(cycle => cycle.id === cycleFilter);
+  const average = cycleGoals.length
+    ? Math.round(cycleGoals.reduce((total, goal) => total + Number(goal.current_progress || 0), 0) / cycleGoals.length)
     : 0;
-  const completed = goals.filter(goal => goal.status === 'completed').length;
+  const completed = cycleGoals.filter(goal => goal.status === 'completed').length;
 
   return <section aria-labelledby="organization-performance-heading" className="space-y-5">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -110,17 +146,26 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
     </div>
 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Goals</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{goals.length}</p></div>
-      <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Average recorded progress</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{goals.length ? `${average}%` : '—'}</p></div>
+      <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Goals</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{cycleGoals.length}</p></div>
+      <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Average recorded progress</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{cycleGoals.length ? `${average}%` : '—'}</p></div>
       <div className="rounded-xl border border-[#DEE0E3] bg-white p-4"><p className="text-sm text-slate-600">Completed goals</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#1E1B39]">{completed}</p></div>
     </div>
 
-    <section aria-label="Organization performance filters" className="grid gap-3 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+    <section aria-label="Organization performance filters" className="grid gap-3 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_190px_220px]">
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input type="search" value={search} onChange={event => setSearch(event.target.value)}
           aria-label="Search organization performance" placeholder="Search employee or goal"
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-2 focus:outline-[#08558B]" />
+      </label>
+      <label className="block text-xs font-medium text-slate-600">
+        Review cycle
+        <select value={cycleFilter} onChange={event => setCycleFilter(event.target.value)}
+          aria-label="Filter organization performance by review cycle"
+          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">
+          <option value="all">All review cycles</option>
+          {cycles.map(cycle => <option key={cycle.id} value={cycle.id}>{cycle.name}</option>)}
+        </select>
       </label>
       <label className="block text-xs font-medium text-slate-600">
         Status
@@ -135,6 +180,21 @@ export function OrganizationPerformance({ tenantId }: { tenantId: string }) {
         </select>
       </label>
     </section>
+
+    {cycleLoadError && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      Review cycle details are temporarily unavailable. Goal progress is still shown; refresh to try again.
+    </p>}
+    {selectedCycle && <section aria-label={`${selectedCycle.name} review cycle details`} className="flex flex-col gap-3 rounded-xl border border-[#B9DCE2] bg-[#F4FAFB] p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <h3 className="break-words font-semibold text-[#1E1B39]">{selectedCycle.name}</h3>
+        <p className="mt-1 text-sm text-slate-600">{dueDate(selectedCycle.start_date)} – {dueDate(selectedCycle.end_date)}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <span className="rounded-full bg-white px-3 py-1 font-medium text-[#08558B]">{statusLabel(selectedCycle.status)}</span>
+        {selectedCycle.self_review_deadline && <span className="text-slate-600">Self review due {dueDate(selectedCycle.self_review_deadline)}</span>}
+        {selectedCycle.manager_review_deadline && <span className="text-slate-600">Manager review due {dueDate(selectedCycle.manager_review_deadline)}</span>}
+      </div>
+    </section>}
 
     {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
       <p role="alert">{error}</p>

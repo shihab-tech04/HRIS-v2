@@ -18,15 +18,22 @@ const token = [
 
 test('performance viewer sees filtered tenant goals without write controls', async ({ page }) => {
   const goals = [
-    { id: 'goal-1', tenant_id: tenantId, employee_id: 'employee-1', title: 'Improve onboarding quality',
+    { id: 'goal-1', tenant_id: tenantId, employee_id: 'employee-1', cycle_id: 'cycle-2026', title: 'Improve onboarding quality',
       description: 'Complete the approved onboarding checklist.', category: 'Operational',
       target_metric: 'Checklist completion', current_progress: 65, due_date: '2026-12-31',
       status: 'in_progress', weight: 40, origin: 'assigned' },
-    { id: 'goal-2', tenant_id: tenantId, employee_id: 'employee-1', title: 'Publish team handbook',
+    { id: 'goal-2', tenant_id: tenantId, employee_id: 'employee-1', cycle_id: 'cycle-2025', title: 'Publish team handbook',
       description: 'Finalize the existing handbook draft.', category: 'Team', target_metric: 'Published handbook',
       current_progress: 100, due_date: '2026-11-30', status: 'completed', weight: 60, origin: 'assigned' },
   ];
   const goalQueries: string[] = [];
+  const cycleQueries: string[] = [];
+  const cycles = [
+    { id: 'cycle-2026', tenant_id: tenantId, name: 'Annual review 2026', start_date: '2026-01-01', end_date: '2026-12-31',
+      self_review_deadline: '2026-11-15', manager_review_deadline: '2026-12-15', status: 'active' },
+    { id: 'cycle-2025', tenant_id: tenantId, name: 'Annual review 2025', start_date: '2025-01-01', end_date: '2025-12-31',
+      self_review_deadline: '2025-11-15', manager_review_deadline: '2025-12-15', status: 'completed' },
+  ];
 
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -66,6 +73,10 @@ test('performance viewer sees filtered tenant goals without write controls', asy
         { id: 'employee-1', full_name: 'Avery Example', employee_number: 'SYN-014' },
       ]) });
     }
+    if (endpoint === 'performance_cycles') {
+      cycleQueries.push(url.searchParams.get('tenant_id') || '');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(cycles) });
+    }
     if (endpoint === 'performance_goals') {
       goalQueries.push(url.searchParams.get('tenant_id') || '');
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(goals) });
@@ -86,11 +97,19 @@ test('performance viewer sees filtered tenant goals without write controls', asy
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Improve onboarding quality' })).toHaveCount(0);
   await page.getByRole('searchbox', { name: 'Search organization performance' }).fill('');
+  const cycleFilter = page.getByRole('combobox', { name: 'Filter organization performance by review cycle' });
+  await cycleFilter.selectOption('cycle-2026');
+  await expect(page.getByRole('heading', { name: 'Improve onboarding quality' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toHaveCount(0);
+  await expect(page.getByText('Self review due Nov 15, 2026')).toBeVisible();
+  await cycleFilter.selectOption('all');
   await page.getByRole('combobox', { name: 'Filter organization performance by status' }).selectOption('completed');
   await expect(page.getByRole('heading', { name: 'Publish team handbook' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Improve onboarding quality' })).toHaveCount(0);
   expect(goalQueries.length).toBeGreaterThan(0);
   expect(goalQueries.every(value => value === `eq.${tenantId}`)).toBe(true);
+  expect(cycleQueries.length).toBeGreaterThan(0);
+  expect(cycleQueries.every(value => value === `eq.${tenantId}`)).toBe(true);
   expect(await page.getByRole('button', { name: 'Save progress' }).count()).toBe(0);
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
