@@ -57,6 +57,13 @@ async function openLearningRequests(page) {
   await page.getByRole('heading', { name: 'Learning requests', exact: true }).waitFor({ state: 'visible' });
 }
 
+async function openLearningPrograms(page) {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'Learning programs', exact: true }).click();
+  await page.getByRole('heading', { name: 'Learning programs', exact: true }).waitFor({ state: 'visible' });
+}
+
 async function isolateExternalRequests(page) {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -100,7 +107,7 @@ try {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
     }
-    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request)$/);
+    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request|hris_get_learning_admin_catalog|hris_save_learning_program|hris_save_learning_session)$/);
     if (managerRpc && request.method() === 'POST') {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
@@ -193,6 +200,12 @@ try {
   await isolateExternalRequests(managerPage);
   managerPage.on('request', request => {
     const url = new URL(request.url());
+    if (/\/rest\/v1\/(learning_programs|learning_sessions|learning_enrollments)(\?|$)/.test(url.pathname + url.search)) {
+      directLearningTableReads.push(url.pathname);
+    }
+  });
+  managerPage.on('request', request => {
+    const url = new URL(request.url());
     const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request)$/);
     if (rpc && request.method() === 'POST') {
       const body = request.postDataJSON();
@@ -227,6 +240,63 @@ try {
   await page.getByRole('button', { name: 'Refresh learning' }).click();
   await page.locator(`[data-learning-enrollment="${finalRequest.id}"]`).getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
   await page.locator(`[data-learning-enrollment="${finalRequest.id}"]`).getByText('Update: Approved from the manager queue.', { exact: true }).waitFor({ state: 'visible' });
+
+  const programTitle = process.env.HRIS_LOCAL_MANAGER_PROGRAM_TITLE;
+  if (!programTitle) throw new Error('Missing manager-published program title.');
+  await managerPage.setViewportSize({ width: 375, height: 812 });
+  await openLearningPrograms(managerPage);
+  await assertNoOverflow(managerPage, 'Learning program manager workspace mobile');
+  await managerPage.getByLabel('Program title *').fill(programTitle);
+  await managerPage.getByLabel('Category', { exact: true }).fill('Professional Development');
+  await managerPage.getByLabel('Provider', { exact: true }).fill('Local QA Provider');
+  await managerPage.getByLabel('Delivery mode', { exact: true }).selectOption('hybrid');
+  await managerPage.getByLabel('Employees may enroll directly').check();
+  await managerPage.getByLabel('Target skills (comma-separated)').fill('Learning Administration, Facilitation');
+  const programResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_learning_program'));
+  await managerPage.getByRole('button', { name: 'Create program', exact: true }).click();
+  const createdProgram = await rpcBody(await programResponse);
+  const managerProgramCard = managerPage.locator(`[data-admin-learning-program="${createdProgram.id}"]`);
+  await managerProgramCard.waitFor({ state: 'visible' });
+  await managerProgramCard.getByText(programTitle, { exact: true }).waitFor({ state: 'visible' });
+  await managerProgramCard.getByRole('button', { name: `Schedule session for ${programTitle}` }).click();
+  await managerProgramCard.getByLabel('Trainer').fill('Synthetic Learning Trainer');
+  await managerProgramCard.getByLabel('Location').fill('QA Learning Room');
+  await managerProgramCard.getByLabel('Start date and time').fill('2030-11-15T10:00');
+  await managerProgramCard.getByLabel('End date and time').fill('2030-11-15T11:00');
+  await managerProgramCard.getByLabel('Capacity (blank means no limit)').fill('2');
+  const sessionResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_learning_session'));
+  await managerProgramCard.getByRole('button', { name: 'Schedule session', exact: true }).click();
+  const createdSession = await rpcBody(await sessionResponse);
+  await managerProgramCard.getByText('QA Learning Room', { exact: false }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Learning program and session creation mobile');
+
+  await managerPage.setViewportSize({ width: 1280, height: 900 });
+  await managerProgramCard.getByRole('button', { name: `Edit program ${programTitle}` }).click();
+  await managerPage.getByLabel('Description', { exact: true }).fill('Published and updated through the tenant manager workspace.');
+  const updateProgramResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_learning_program'));
+  await managerPage.getByRole('button', { name: 'Save program', exact: true }).click();
+  await rpcBody(await updateProgramResponse);
+  await managerProgramCard.getByText('Published and updated through the tenant manager workspace.', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Learning program update desktop');
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  const employeeRefresh = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_my_learning_context'));
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await employeeRefresh;
+  const employeeProgramCard = page.locator(`[data-learning-program="${createdProgram.id}"]`);
+  await employeeProgramCard.getByText('Published and updated through the tenant manager workspace.', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByLabel(`Choose session for ${programTitle}`).selectOption(createdSession.id);
+  const newEnrollmentResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_enroll_learning'));
+  await employeeProgramCard.getByRole('button', { name: 'Enroll now', exact: true }).click();
+  const newEnrollment = await rpcBody(await newEnrollmentResponse);
+  const newEnrollmentCard = page.locator(`[data-learning-enrollment="${newEnrollment.id}"]`);
+  await newEnrollmentCard.getByText(programTitle, { exact: true }).waitFor({ state: 'visible' });
+  await newEnrollmentCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
+  const persistedEmployeeRefresh = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_my_learning_context'));
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await persistedEmployeeRefresh;
+  await page.locator(`[data-learning-enrollment="${newEnrollment.id}"]`).getByText(programTitle, { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee enrollment in newly published learning session mobile');
   await managerContext.close();
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -237,7 +307,7 @@ try {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval, employee status refresh, cancellation, and mobile/desktop journey passed.');
+  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval and program/session administration, employee catalog enrollment, cancellation, and responsive recovery passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

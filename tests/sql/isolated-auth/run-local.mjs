@@ -270,9 +270,10 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql'),
-  path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013153500_hris_learning_employee_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013095450_hris_learning_manager_decisions.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013174500_hris_learning_program_management.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -563,8 +564,76 @@ record('Concurrent learning approvals serialize on session capacity; full-sessio
   JSON.stringify({ outcomes: approvalCapacityRace.map(result => result.error?.code || result.data?.status),
     resultingStatuses: approvalCapacityRows.map(row => row.status) }));
 
+const learningAdminCatalogA = await learningManagerA.client.rpc('hris_get_learning_admin_catalog', { p_tenant_id: ids.tenantA });
+const learningAdminCatalogCrossTenant = await learningManagerA.client.rpc('hris_get_learning_admin_catalog', { p_tenant_id: ids.tenantB });
+const learningAdminCatalogIds = (learningAdminCatalogA.data || []).map(row => `${sqlLiteral(row.id)}::uuid`).join(',');
+const learningAdminCatalogTenantBound = queryAdmin(`SELECT jsonb_build_object(
+  'tenant_a_count',count(*) FILTER (WHERE tenant_id='${ids.tenantA}'::uuid)::integer,
+  'foreign_tenant_count',count(*) FILTER (WHERE tenant_id<>'${ids.tenantA}'::uuid)::integer)
+  FROM public.learning_programs WHERE id IN (${learningAdminCatalogIds || "'00000000-0000-0000-0000-000000000000'::uuid"})`);
+const ordinaryLearningProgramCreate = await managerA.client.rpc('hris_save_learning_program', {
+  p_tenant_id: ids.tenantA, p_program_id: null, p_title: 'Unauthorized local program',
+  p_description: '', p_category: '', p_provider: '', p_delivery_mode: 'online',
+  p_duration_hours: null, p_self_enrollment: true, p_target_skills: [], p_active: true,
+});
+const employeeLearningProgramCreate = await employeeA.client.rpc('hris_save_learning_program', {
+  p_tenant_id: ids.tenantA, p_program_id: null, p_title: 'Employee local program',
+  p_description: '', p_category: '', p_provider: '', p_delivery_mode: 'online',
+  p_duration_hours: null, p_self_enrollment: true, p_target_skills: [], p_active: true,
+});
+const globalOnlyLearningProgramCreate = await globalOnly.client.rpc('hris_save_learning_program', {
+  p_tenant_id: ids.tenantA, p_program_id: null, p_title: 'Global-only local program',
+  p_description: '', p_category: '', p_provider: '', p_delivery_mode: 'online',
+  p_duration_hours: null, p_self_enrollment: true, p_target_skills: [], p_active: true,
+});
+const crossTenantLearningProgramUpdate = await learningManagerA.client.rpc('hris_save_learning_program', {
+  p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000004',
+  p_title: 'Cross-tenant program rewrite', p_description: '', p_category: '', p_provider: '',
+  p_delivery_mode: 'online', p_duration_hours: null, p_self_enrollment: true, p_target_skills: [], p_active: true,
+});
+const crossTenantLearningSessionCreate = await learningManagerA.client.rpc('hris_save_learning_session', {
+  p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000004', p_session_id: null,
+  p_trainer_name: '', p_start_at: null, p_end_at: null, p_location: '', p_meeting_url: '',
+  p_capacity: null, p_enrollment_deadline: null,
+});
+const invalidLearningSessionCreate = await learningManagerA.client.rpc('hris_save_learning_session', {
+  p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000001', p_session_id: null,
+  p_trainer_name: '', p_start_at: '2030-01-02T10:00:00Z', p_end_at: '2030-01-02T09:00:00Z',
+  p_location: '', p_meeting_url: '', p_capacity: 10, p_enrollment_deadline: null,
+});
+const directLearningProgramWrite = await learningManagerA.client.from('learning_programs').insert({
+  tenant_id: ids.tenantA, title: 'Direct-write attempt', delivery_mode: 'online',
+});
+const directLearningSessionWrite = await learningManagerA.client.from('learning_sessions').insert({
+  tenant_id: ids.tenantA, program_id: '90000000-0000-4000-8000-000000000001',
+});
+record('Learning program administration is tenant-scoped and enforces direct-write, manager, and cross-tenant denials',
+  !learningAdminCatalogA.error && learningAdminCatalogA.data.length >= 5
+    && learningAdminCatalogTenantBound.tenant_a_count === learningAdminCatalogA.data.length
+    && learningAdminCatalogTenantBound.foreign_tenant_count === 0
+    && Boolean(learningAdminCatalogCrossTenant.error?.code === '42501')
+    && Boolean(ordinaryLearningProgramCreate.error?.code === '42501')
+    && Boolean(employeeLearningProgramCreate.error?.code === '42501')
+    && Boolean(globalOnlyLearningProgramCreate.error?.code === '42501')
+    && Boolean(crossTenantLearningProgramUpdate.error?.code === 'P0002')
+    && Boolean(crossTenantLearningSessionCreate.error?.code === '22023')
+    && Boolean(invalidLearningSessionCreate.error?.code === '22023')
+    && Boolean(directLearningProgramWrite.error?.code === '42501')
+    && Boolean(directLearningSessionWrite.error?.code === '42501'),
+  JSON.stringify({ catalogCount: learningAdminCatalogA.data?.length, catalogTenantBound: learningAdminCatalogTenantBound,
+    crossCatalogCode: learningAdminCatalogCrossTenant.error?.code,
+    ordinaryManagerCode: ordinaryLearningProgramCreate.error?.code,
+    employeeCode: employeeLearningProgramCreate.error?.code,
+    globalOnlyCode: globalOnlyLearningProgramCreate.error?.code,
+    crossProgramCode: crossTenantLearningProgramUpdate.error?.code,
+    crossSessionCode: crossTenantLearningSessionCreate.error?.code,
+    invalidTimeCode: invalidLearningSessionCreate.error?.code,
+    directProgramCode: directLearningProgramWrite.error?.code,
+    directSessionCode: directLearningSessionWrite.error?.code }));
+
 let learningBrowserOutput = '';
 let learningBrowserError = '';
+const browserLearningProgramTitle = `Local Manager Published Program ${Date.now()}`;
 try {
   learningBrowserOutput = execFileSync('node', [path.join(here, 'run-learning-browser.mjs')], {
     cwd: mainRoot,
@@ -576,6 +645,7 @@ try {
       HRIS_LOCAL_LEARNING_EMAIL: emails[5],
       HRIS_LOCAL_LEARNING_MANAGER_EMAIL: emails[13],
       HRIS_LOCAL_LEARNING_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_MANAGER_PROGRAM_TITLE: browserLearningProgramTitle,
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -584,8 +654,52 @@ try {
   learningBrowserError = String(error.stderr || error.message || 'local learning browser run failed').slice(-1800);
 }
 record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, cancellation, refresh and responsive recovery',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, employee status refresh, cancellation, and mobile/desktop journey passed.'),
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval and program/session administration, employee catalog enrollment, cancellation, and responsive recovery passed.'),
   learningBrowserError);
+const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
+  'program_count',count(DISTINCT p.id)::integer,
+  'active',COALESCE(bool_or(p.active),false),
+  'self_enrollment',COALESCE(bool_or(p.self_enrollment),false),
+  'session_count',count(DISTINCT s.id)::integer,
+  'scheduled',COALESCE(bool_or(s.status='scheduled'),false),
+  'enrollment_count',count(DISTINCT e.id) FILTER (WHERE e.employee_id='55555555-5555-4555-8555-555555555555'::uuid AND e.status='enrolled')::integer)
+  FROM public.learning_programs p
+  LEFT JOIN public.learning_sessions s ON s.tenant_id=p.tenant_id AND s.program_id=p.id
+  LEFT JOIN public.learning_enrollments e ON e.tenant_id=p.tenant_id AND e.program_id=p.id
+  WHERE p.tenant_id='${ids.tenantA}'::uuid AND p.title=${sqlLiteral(browserLearningProgramTitle)}`);
+record('Manager-published learning program and session persist and become employee enrollment history',
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval and program/session administration, employee catalog enrollment, cancellation, and responsive recovery passed.')
+    && browserLearningProgramPersistence.program_count === 1 && browserLearningProgramPersistence.active
+    && browserLearningProgramPersistence.self_enrollment && browserLearningProgramPersistence.session_count === 1
+    && browserLearningProgramPersistence.scheduled && browserLearningProgramPersistence.enrollment_count === 1,
+  JSON.stringify(browserLearningProgramPersistence));
+const browserLearningProgramId = queryAdmin(`SELECT jsonb_build_object('id',id::text)
+  FROM public.learning_programs WHERE tenant_id='${ids.tenantA}'::uuid
+    AND title=${sqlLiteral(browserLearningProgramTitle)}`).id;
+const browserLearningSession = queryAdmin(`SELECT jsonb_build_object(
+  'id',id::text,'program_id',program_id::text,'capacity',capacity)
+  FROM public.learning_sessions WHERE tenant_id='${ids.tenantA}'::uuid
+    AND program_id='${browserLearningProgramId}'::uuid`);
+const secondPublishedEnrollment = await managerA2.client.rpc('hris_employee_enroll_learning', {
+  p_tenant_id: ids.tenantA,p_program_id: browserLearningProgramId,p_session_id: browserLearningSession.id,
+});
+const overbookedSessionEdit = await learningManagerA.client.rpc('hris_save_learning_session', {
+  p_tenant_id: ids.tenantA,p_program_id: browserLearningProgramId,p_session_id: browserLearningSession.id,
+  p_trainer_name: '',p_start_at: null,p_end_at: null,p_location: '',p_meeting_url: '',
+  p_capacity: 1,p_enrollment_deadline: null,
+});
+const publishedSessionAfterRejectedCapacity = queryAdmin(`SELECT jsonb_build_object(
+  'capacity',s.capacity,'enrolled',(SELECT count(*)::integer FROM public.learning_enrollments e
+    WHERE e.tenant_id=s.tenant_id AND e.session_id=s.id AND e.status='enrolled'))
+  FROM public.learning_sessions s WHERE s.tenant_id='${ids.tenantA}'::uuid
+    AND s.id='${browserLearningSession.id}'::uuid`);
+record('Published session capacity cannot be reduced below enrolled employees',
+  !secondPublishedEnrollment.error && browserLearningSession.capacity === 2
+    && Boolean(overbookedSessionEdit.error?.code === '22023')
+    && publishedSessionAfterRejectedCapacity.capacity === 2
+    && publishedSessionAfterRejectedCapacity.enrolled === 2,
+  JSON.stringify({ secondEnrollment: secondPublishedEnrollment.error?.code || secondPublishedEnrollment.data?.status,
+    editCode: overbookedSessionEdit.error?.code, session: publishedSessionAfterRejectedCapacity }));
 
 const employeeDirectoryA = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
   p_tenant_id: ids.tenantA,
