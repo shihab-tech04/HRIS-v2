@@ -1,0 +1,143 @@
+// Runs the real HRIS UI against the disposable local Supabase stack. Called
+// only from run-local.mjs after its Auth and database fixture is established.
+import { chromium } from '@playwright/test';
+import { spawn } from 'node:child_process';
+
+const required = [
+  'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
+  'HRIS_LOCAL_PM_EMAIL', 'HRIS_LOCAL_REVIEWER_EMAIL', 'HRIS_LOCAL_TENANT_ID',
+  'HRIS_LOCAL_PROJECT_ID', 'HRIS_LOCAL_PROJECT_CODE', 'HRIS_LOCAL_INITIAL_ALLOCATION_ID',
+  'HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID', 'HRIS_LOCAL_TASK_TITLE',
+];
+for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
+
+const repo = process.cwd();
+const port = '48371';
+const origin = `http://127.0.0.1:${port}`;
+const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+  cwd: repo,
+  env: {
+    ...process.env,
+    VITE_SUPABASE_URL: process.env.HRIS_LOCAL_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY: process.env.HRIS_LOCAL_SUPABASE_ANON_KEY,
+  },
+  stdio: 'ignore',
+});
+
+let browser;
+async function waitForServer() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
+    try {
+      const response = await fetch(origin);
+      if (response.ok) {
+        const html = await response.text();
+        if (!html.includes('Synesis HRIS 360°')) {
+          throw new Error(`Port ${port} is serving a different application; refusing browser integration.`);
+        }
+        return;
+      }
+    } catch { /* the server is still starting */ }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error('Timed out waiting for the local HRIS UI server.');
+}
+
+async function signIn(page, email) {
+  await page.goto(origin);
+  const emailInput = page.getByLabel('Email', { exact: true });
+  try { await emailInput.waitFor({ state: 'visible', timeout: 10000 }); }
+  catch {
+    const visibleText = await page.locator('body').innerText().catch(() => '');
+    throw new Error(`Local sign-in form did not render at ${page.url()} (${await page.title()}). Page text: ${visibleText.slice(0, 700)}`);
+  }
+  await emailInput.fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible' });
+}
+
+async function assertVisibleText(locator, text) {
+  await locator.waitFor({ state: 'visible' });
+  const deadline = Date.now() + 15000;
+  let actual = '';
+  while (Date.now() < deadline) {
+    actual = await locator.innerText().catch(() => '');
+    if (actual.includes(text)) return;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error(`Expected UI text ${JSON.stringify(text)}; received ${JSON.stringify(actual)}.`);
+}
+
+try {
+  await waitForServer();
+  browser = await chromium.launch({ headless: true });
+  const pmPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await pmPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(pmPage, process.env.HRIS_LOCAL_PM_EMAIL);
+  await pmPage.getByRole('navigation', { name: 'HRIS modules' })
+    .getByRole('button', { name: 'Project Workspace', exact: true }).click();
+  const project = pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first();
+  await project.waitFor({ state: 'visible' });
+  const manager = project.getByRole('region', { name: 'Project task management' });
+  await manager.getByRole('button', { name: 'New task' }).click();
+  await manager.getByLabel('Task title *').fill(process.env.HRIS_LOCAL_TASK_TITLE);
+  await manager.locator('fieldset label').filter({ hasText: 'Synthetic Employee A' }).getByRole('checkbox').check();
+  await manager.getByRole('button', { name: 'Create task' }).click();
+
+  const task = manager.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await assertVisibleText(task, 'Synthetic Employee A');
+  await task.getByLabel(`Add member to ${process.env.HRIS_LOCAL_TASK_TITLE}`)
+    .selectOption(process.env.HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID);
+  await task.getByRole('button', { name: 'Add member', exact: true }).click();
+  await assertVisibleText(task, 'Synthetic Absent Employee A');
+  await task.getByRole('button', { name: 'Start task' }).click();
+  await assertVisibleText(task, 'in progress');
+
+  pmPage.on('dialog', dialog => dialog.accept());
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + process.env.HRIS_LOCAL_TASK_TITLE }).click();
+  await assertVisibleText(task, 'Feedback Pending · 1 required reviews');
+  await task.getByRole('button', { name: 'Mark complete' }).click();
+  await assertVisibleText(task, 'Feedback Pending · 2 required reviews');
+  await assertVisibleText(manager.getByRole('status').filter({ hasText: 'Task completed.' }), 'Task completed.');
+  if ((await task.innerText()).includes('Mark complete')) throw new Error('The UI left the completed task actionable.');
+
+  const reviewerPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await reviewerPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(reviewerPage, process.env.HRIS_LOCAL_REVIEWER_EMAIL);
+  await reviewerPage.getByRole('navigation', { name: 'HRIS modules' })
+    .getByRole('button', { name: 'My Projects', exact: true }).click();
+  await reviewerPage.getByRole('heading', { name: 'My project work' }).waitFor({ state: 'visible' });
+  const review = reviewerPage.locator('article').filter({ hasText: 'Review Synthetic Employee A' });
+  await review.waitFor({ state: 'visible' });
+  await reviewerPage.getByLabel('Quality of Work').selectOption('not_observed');
+  await reviewerPage.getByLabel('Collaboration & Teamwork').selectOption('5');
+  await reviewerPage.getByLabel('Delivery & Reliability').selectOption('4');
+  await reviewerPage.getByLabel('Ownership & Communication').selectOption('3');
+  await reviewerPage.getByLabel('Comments (optional)').fill('Local Supabase browser integration review.');
+  await review.getByRole('button', { name: 'Submit review' }).click();
+  await assertVisibleText(reviewerPage.getByRole('status').filter({ hasText: 'Review for Synthetic Employee A submitted.' }),
+    'Review for Synthetic Employee A submitted.');
+  await reviewerPage.getByText('No peer reviews are waiting for you.').waitFor({ state: 'visible' });
+
+  await reviewerPage.setViewportSize({ width: 375, height: 812 });
+  const width = await reviewerPage.evaluate(() => document.documentElement.scrollWidth);
+  if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
+  console.log('Browser-to-local-Supabase task and peer-review journey passed.');
+} finally {
+  if (browser) await browser.close();
+  if (server.exitCode === null) {
+    server.kill('SIGTERM');
+    await new Promise(resolve => server.once('exit', resolve));
+  }
+}

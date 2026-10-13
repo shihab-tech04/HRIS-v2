@@ -1658,6 +1658,54 @@ record('Employee project view exposes only linked employee allocations and denie
     && employeeDirectAllocations.data.length === 3
     && employeeDirectAllocations.data.every(row => ['55555555-5555-4555-8555-555555555555', '55555555-5555-4555-8555-555555555556'].includes(row.employee_id)));
 
+const browserTaskTitle = `Local browser integration ${Date.now()}`;
+let browserIntegrationOutput = '';
+let browserIntegrationError = '';
+try {
+  browserIntegrationOutput = execFileSync('node', [path.join(here, 'run-project-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_PM_EMAIL: emails[5],
+      HRIS_LOCAL_REVIEWER_EMAIL: emails[7],
+      HRIS_LOCAL_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_PROJECT_ID: projectA.id,
+      HRIS_LOCAL_PROJECT_CODE: projectA.code,
+      HRIS_LOCAL_INITIAL_ALLOCATION_ID: allocationA60.data?.id || '',
+      HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID: taskMemberAllocation.data?.id || '',
+      HRIS_LOCAL_TASK_TITLE: browserTaskTitle,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  browserIntegrationError = String(error.stderr || error.message || 'local browser run failed').slice(-1200);
+}
+const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_object(
+  'status',t.status,
+  'pending',(SELECT count(*)::integer FROM public.project_task_peer_reviews r
+    WHERE r.tenant_id=t.tenant_id AND r.task_id=t.id AND r.status='pending'),
+  'review_total',(SELECT count(*)::integer FROM public.project_task_peer_reviews r
+    WHERE r.tenant_id=t.tenant_id AND r.task_id=t.id),
+  'review_submitted',EXISTS (SELECT 1 FROM public.project_task_peer_reviews r
+    WHERE r.tenant_id=t.tenant_id AND r.task_id=t.id AND r.reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid
+      AND r.employee_id='55555555-5555-4555-8555-555555555555'::uuid AND r.status='submitted'),
+  'not_observed',EXISTS (SELECT 1 FROM public.project_task_peer_reviews r
+    WHERE r.tenant_id=t.tenant_id AND r.task_id=t.id AND r.reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid
+      AND r.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+      AND r.quality_of_work_not_observed AND r.quality_of_work_score IS NULL))
+  FROM public.project_tasks t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.project_id='${projectA.id}'::uuid
+    AND t.title=${sqlLiteral(browserTaskTitle)}), 'null'::jsonb)`);
+record('Real browser UI uses isolated Auth/RPC and persists task, overlapping reviews, and Not Observed in local Postgres',
+  browserIntegrationOutput.includes('Browser-to-local-Supabase task and peer-review journey passed.')
+    && browserTaskPersistence?.status === 'completed' && browserTaskPersistence?.pending === 1
+    && browserTaskPersistence.review_total === 2 && browserTaskPersistence.review_submitted
+    && browserTaskPersistence.not_observed,
+  JSON.stringify({ browserError: browserIntegrationError, database: browserTaskPersistence }));
+
 const concurrentAssignments = await Promise.all([
   psqlAsync(sessionSql(employeeB, `SELECT public.hris_assign_tenant_project_allocation(
     '${ids.tenantB}'::uuid,'${projectB.id}'::uuid,'66666666-6666-4666-8666-666666666666'::uuid,

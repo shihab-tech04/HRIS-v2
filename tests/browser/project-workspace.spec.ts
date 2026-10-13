@@ -27,6 +27,7 @@ type BrowserProject = {
 };
 type BrowserTaskMember = { id: string; project_allocation_id: string; employee_id: string; employee_name: string; released_at: string | null };
 type BrowserTask = { id: string; project_id: string; title: string; description: string; due_date: string | null; status: string; feedback_pending: number; members: BrowserTaskMember[] };
+type BrowserEmployeeTask = { task_id: string; project_name: string; project_code: string; title: string; description: string; due_date: string | null; status: string; feedback_pending: number; members: BrowserTaskMember[] };
 type BrowserReview = { id: string; task_title: string; project_name: string; reviewer_employee_id: string; reviewer_name: string; reviewee_employee_id: string; reviewee_name: string; status: 'pending' | 'submitted'; quality_of_work_score: number | null; quality_of_work_not_observed: boolean; collaboration_teamwork_score: number | null; collaboration_teamwork_not_observed: boolean; delivery_reliability_score: number | null; delivery_reliability_not_observed: boolean; ownership_communication_score: number | null; ownership_communication_not_observed: boolean; comments: string };
 
 function authFixture(userId: string, email: string) {
@@ -91,8 +92,8 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: Mode) 
     ownership_communication_score: null, ownership_communication_not_observed: false, comments: '',
   }] : [];
   let failFirstReviewSubmission = mode === 'employee';
-  const employeeTask: BrowserTask = {
-    id: taskId, task_id: taskId, project_id: projectId, project_name: 'Design Platform', project_code: 'PRJ-001',
+  const employeeTask: BrowserEmployeeTask = {
+    task_id: taskId, project_name: 'Design Platform', project_code: 'PRJ-001',
     title: 'Prepare release checklist', description: 'Coordinate the checklist with collaborators.',
     due_date: null, status: 'completed', feedback_pending: 1,
     members: [
