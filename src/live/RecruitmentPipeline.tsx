@@ -4,6 +4,7 @@ import { Download, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
 import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
+import { CandidateAssessmentAssignment, CandidateAssessmentQueue } from './CandidateAssessments';
 
 type Milestone = { stage: string; created_at: string };
 type Application = {
@@ -278,6 +279,7 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, ca
   const [stage, setStage] = useState('');
   const [offset, setOffset] = useState(0);
   const [revision, setRevision] = useState(0);
+  const [assessmentRevision, setAssessmentRevision] = useState(0);
   const [recentlyIssuedApplicationIds, setRecentlyIssuedApplicationIds] = useState<Set<string>>(() => new Set());
   const [recentlyScheduledApplicationIds, setRecentlyScheduledApplicationIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
@@ -439,6 +441,8 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, ca
                 setApplications(current => current.map(value => value.application_id === application.application_id ? { ...value, stage: 'interview_scheduled' } : value));
                 setRevision(value => value + 1);
               }} />}
+            {canManageOffers && !['withdrawn', 'rejected', 'offer_accepted', 'hired'].includes(application.stage)
+              && <CandidateAssessmentAssignment tenantId={tenantId} application={application} onAssigned={() => setAssessmentRevision(value => value + 1)} />}
           </li>)}
         </ul>}
         <footer className="flex items-center justify-between gap-3 border-t border-slate-100 p-3">
@@ -454,6 +458,7 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, ca
       setApplications(current => current.map(value => value.application_id === applicationId ? { ...value, stage: 'interview_scheduled' } : value));
       setRevision(value => value + 1);
     }} />}
+    {canManageOffers && <CandidateAssessmentQueue tenantId={tenantId} revision={assessmentRevision} />}
     {canManagePreboarding && <CandidatePreboardingQueue tenantId={tenantId} />}
   </section>;
 }

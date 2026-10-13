@@ -1,4 +1,8 @@
 -- Drop only tables created by the preceding Candidate C1 synthetic fixture.
+-- Storage policies reference candidate_profiles and must be removed first.
+DROP POLICY IF EXISTS c1_apply_storage_insert_own ON storage.objects;
+DROP POLICY IF EXISTS c1_apply_storage_delete_own ON storage.objects;
+
 DROP TABLE IF EXISTS
   public.candidate_profiles,
   public.candidate_published_jobs,
