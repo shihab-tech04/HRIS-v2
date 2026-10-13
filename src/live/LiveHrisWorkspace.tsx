@@ -939,6 +939,9 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resolvingRequestId, setResolvingRequestId] = useState('');
+  const [downloadingEvidenceId, setDownloadingEvidenceId] = useState('');
+  const [evidenceMessage, setEvidenceMessage] = useState('');
+  const [evidenceError, setEvidenceError] = useState('');
   const [rejectingRequest, setRejectingRequest] = useState<LeaveRequest | null>(null);
   const [resolutionNote, setResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
@@ -956,7 +959,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
   async function load() {
     const requestId = ++requestSequence.current;
     const requestedTenantId = tenantId;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setEvidenceMessage(''); setEvidenceError('');
     try {
       const { data: response, error: rpcError } = await supabase.rpc('hris_get_tenant_leave_data', {
         p_tenant_id: requestedTenantId, p_start: null, p_end: null,
@@ -979,6 +982,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
   useEffect(() => {
     setData(null); dataTenantId.current = '';
     setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
+    setDownloadingEvidenceId(''); setEvidenceMessage(''); setEvidenceError('');
     setSearch(''); setStatusFilter('all');
     void load();
     return () => { requestSequence.current += 1; };
@@ -1055,6 +1059,49 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     }
   }
 
+  async function downloadEvidence(request: LeaveRequest) {
+    const id = String(request.id || '');
+    const path = String(request.attachment_url || '').trim();
+    const parts = path.split('/');
+    const extension = parts.at(-1)?.split('.').at(-1)?.toLowerCase() || '';
+    if (!id || parts.length !== 3 || parts.some(part => !part || part === '.' || part === '..')
+        || parts[1] !== tenantId || !/^[0-9a-f-]{36}$/i.test(parts[0])
+        || !/^[0-9a-f-]{36}\.(pdf|doc|docx|jpg|png)$/i.test(parts[2])) {
+      setEvidenceMessage(''); setEvidenceError('This evidence reference is not valid for the active organization.');
+      return;
+    }
+    if (downloadingEvidenceId) return;
+    const actionTenantId = tenantId;
+    setDownloadingEvidenceId(id); setEvidenceMessage(''); setEvidenceError('');
+    try {
+      // Download through the authenticated Storage client. The private bucket's
+      // SELECT policies remain the authority for employee and tenant access.
+      const { data: file, error: storageError } = await supabase.storage.from('leave-evidence').download(path);
+      if (storageError) throw storageError;
+      if (!file) throw new Error('The evidence file was not returned.');
+      if (activeTenantId.current !== actionTenantId) return;
+      const objectUrl = URL.createObjectURL(file);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `leave-evidence-${id.slice(0, 8)}.${extension}`;
+      anchor.rel = 'noopener';
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setEvidenceMessage('Evidence downloaded.');
+    } catch (cause) {
+      if (activeTenantId.current === actionTenantId) {
+        setEvidenceError(cause instanceof Error ? cause.message : 'Unable to download this private evidence.');
+      }
+    } finally {
+      if (activeTenantId.current === actionTenantId) setDownloadingEvidenceId('');
+    }
+  }
+
+  const hasEvidence = Boolean(visibleData?.requests.some(item => String(item.attachment_url || '').trim()));
+
   return <section aria-labelledby="leave-workspace-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Leave Requests</h2>
@@ -1065,6 +1112,8 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
+    {evidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{evidenceError}</p>}
+    {evidenceMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{evidenceMessage}</p>}
     {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : visibleData && <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Pending requests</p><p className="mt-2 text-2xl font-semibold">{pending.length}</p></div>
@@ -1090,7 +1139,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
           ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
           <table className="w-full min-w-[760px] text-left text-sm" aria-label="Leave requests">
             <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">{filteredRequests.map((row, index) => <tr key={String(row.id || index)}>
               <td className="px-3 py-3 font-medium">{display(row.full_name)}</td><td className="px-3 py-3">{display(row.leave_type_name)}</td>
@@ -1099,6 +1148,13 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
                 <span>{display(row.status)}</span>
                 {Boolean(row.resolution_note) && <span className="mt-1 block whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(row.resolution_note)}</span>}
               </td>
+              {hasEvidence && <td className="px-3 py-3">{String(row.attachment_url || '').trim()
+                ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
+                    aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
+                    onClick={() => void downloadEvidence(row)}
+                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
+                    {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
+                  </button> : '—'}</td>}
               {canManage && <td className="px-3 py-3">
                 {row.status === 'pending' ? <div className="flex gap-2">
                   <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'approved')}

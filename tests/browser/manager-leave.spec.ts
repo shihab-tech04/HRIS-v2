@@ -18,9 +18,11 @@ const jwt = [
 test('manager filters the leave queue and completes approval and rejection actions', async ({ page }) => {
   let authenticated = false;
   let failNextLeaveLoad = false;
+  let failNextEvidenceDownload = false;
   const decisions: Record<string, unknown>[] = [];
+  const evidenceDownloads: string[] = [];
   const requests = [
-    { id: 'e3333333-3333-4333-8333-333333333331', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Medical leave', leave_type_code: 'MED', from_date: '2026-10-20', to_date: '2026-10-20', requested_days: 1, status: 'pending' },
+    { id: 'e3333333-3333-4333-8333-333333333331', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Medical leave', leave_type_code: 'MED', from_date: '2026-10-20', to_date: '2026-10-20', requested_days: 1, status: 'pending', attachment_url: `${userId}/${tenantId}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf` },
     { id: 'e3333333-3333-4333-8333-333333333332', full_name: 'Tanim Chowdhury', employee_number: 'QA-002', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-10-21', to_date: '2026-10-22', requested_days: 2, status: 'pending' },
     { id: 'e3333333-3333-4333-8333-333333333333', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-09-02', to_date: '2026-09-03', requested_days: 2, status: 'approved' },
     { id: 'e3333333-3333-4333-8333-333333333334', full_name: 'Nabil Hasan', employee_number: 'QA-003', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-08-17', to_date: '2026-08-17', requested_days: 1, status: 'rejected', resolution_note: 'Policy evidence was incomplete.' },
@@ -42,6 +44,16 @@ test('manager filters the leave queue and completes approval and rejection actio
     }
     if (path.endsWith('/user') && authenticated) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) });
     return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'No local test session' }) });
+  });
+  await page.route('**/storage/v1/object/leave-evidence/**', async route => {
+    const url = new URL(route.request().url());
+    const path = decodeURIComponent(url.pathname.split('/object/leave-evidence/')[1] || '');
+    evidenceDownloads.push(path);
+    if (failNextEvidenceDownload) {
+      failNextEvidenceDownload = false;
+      return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Storage access denied by policy.' }) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/pdf', body: Buffer.from('%PDF-1.4 synthetic private evidence') });
   });
   await page.route('**/rest/v1/**', async route => {
     const request = route.request();
@@ -101,6 +113,15 @@ test('manager filters the leave queue and completes approval and rejection actio
   const table = page.getByRole('table', { name: 'Leave requests' });
   await expect(table.locator('tbody tr')).toHaveCount(4);
   await expect(table.getByRole('row', { name: /Nabil Hasan/ })).toContainText('Decision note: Policy evidence was incomplete.');
+  const evidenceDownload = page.waitForEvent('download');
+  await table.getByRole('button', { name: 'Download evidence for Amira Rahman’s Medical leave leave request' }).click();
+  expect((await evidenceDownload).suggestedFilename()).toBe('leave-evidence-e3333333.pdf');
+  expect(evidenceDownloads).toEqual([`${userId}/${tenantId}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf`]);
+  await expect(page.getByRole('status').filter({ hasText: 'Evidence downloaded.' })).toBeVisible();
+  failNextEvidenceDownload = true;
+  await table.getByRole('button', { name: 'Download evidence for Amira Rahman’s Medical leave leave request' }).click();
+  await expect(page.getByRole('alert')).toContainText('Storage access denied by policy.');
+  expect(evidenceDownloads).toHaveLength(2);
   await page.getByLabel('Filter by status').selectOption('pending');
   await expect(table.locator('tbody tr')).toHaveCount(2);
   await page.getByLabel('Search requests').fill('Tanim');
