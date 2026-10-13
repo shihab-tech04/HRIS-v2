@@ -44,6 +44,11 @@ DROP FUNCTION IF EXISTS public.hris_get_project_task_workspace(uuid,uuid) CASCAD
 DROP FUNCTION IF EXISTS public.hris_get_my_project_tasks(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_project_peer_reviews(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_submit_project_peer_review(uuid,uuid,jsonb,text[],text) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_my_learning_context(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_employee_enroll_learning(uuid,uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_employee_request_learning(uuid,uuid,uuid,text) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_employee_cancel_learning(uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_can_read_learning_catalog(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_admin_can_read_tenant(uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_is_active_tenant_member(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_own_employee_for_tenant(uuid) CASCADE;
@@ -73,6 +78,10 @@ DROP TABLE IF EXISTS public.project_performance_reviews CASCADE;
 DROP TABLE IF EXISTS public.project_task_peer_reviews CASCADE;
 DROP TABLE IF EXISTS public.project_task_assignments CASCADE;
 DROP TABLE IF EXISTS public.project_tasks CASCADE;
+DROP TABLE IF EXISTS public.learning_enrollments CASCADE;
+DROP TABLE IF EXISTS public.learning_sessions CASCADE;
+DROP TABLE IF EXISTS public.learning_programs CASCADE;
+DROP TABLE IF EXISTS public.employee_skills CASCADE;
 DROP TABLE IF EXISTS public.timesheet_entries CASCADE;
 DROP TABLE IF EXISTS public.timesheets CASCADE;
 DROP TABLE IF EXISTS public.timesheet_activities CASCADE;
@@ -199,6 +208,78 @@ CREATE TABLE public.employees (
   joining_date date NOT NULL,
   gender text,
   employment_status text NOT NULL DEFAULT 'active',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Synthetic Learning & Development tables for the disposable local Auth suite.
+-- These mirror only the production columns used by the employee self-service flow.
+CREATE TABLE public.learning_programs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  title text NOT NULL,
+  description text,
+  category text,
+  provider text,
+  delivery_mode text NOT NULL DEFAULT 'in_person',
+  duration_hours numeric,
+  self_enrollment boolean NOT NULL DEFAULT false,
+  target_skills text[] NOT NULL DEFAULT '{}',
+  active boolean NOT NULL DEFAULT true,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, id)
+);
+CREATE TABLE public.learning_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  program_id uuid NOT NULL,
+  trainer_name text,
+  start_at timestamptz,
+  end_at timestamptz,
+  location text,
+  meeting_url text,
+  capacity integer,
+  enrollment_deadline timestamptz,
+  status text NOT NULL DEFAULT 'scheduled',
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, id),
+  FOREIGN KEY (tenant_id, program_id) REFERENCES public.learning_programs(tenant_id, id)
+);
+CREATE TABLE public.learning_enrollments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  program_id uuid NOT NULL,
+  session_id uuid,
+  source text NOT NULL CHECK (source IN ('self_enrollment','employee_request','admin_assignment','manager_recommendation')),
+  status text NOT NULL CHECK (status IN ('requested','enrolled','rejected','completed','cancelled')),
+  mandatory boolean NOT NULL DEFAULT false,
+  due_date date,
+  recommendation_reason text,
+  skill_gap text,
+  requested_at timestamptz,
+  resolved_at timestamptz,
+  resolution_note text,
+  completed_at timestamptz,
+  certificate_url text,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (tenant_id, program_id) REFERENCES public.learning_programs(tenant_id, id),
+  FOREIGN KEY (tenant_id, session_id) REFERENCES public.learning_sessions(tenant_id, id)
+);
+CREATE UNIQUE INDEX learning_enrollments_open_employee_program_session_uidx
+  ON public.learning_enrollments(employee_id, program_id, coalesce(session_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  WHERE status IN ('requested','enrolled');
+CREATE TABLE public.employee_skills (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  skill_name text NOT NULL,
+  proficiency text,
+  verified boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -865,6 +946,26 @@ INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,offi
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+INSERT INTO public.learning_programs(id,tenant_id,title,description,category,provider,delivery_mode,duration_hours,self_enrollment,target_skills,active) VALUES
+  ('90000000-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','QA A Direct Learning','Synthetic self-enrollment course','Professional Development','QA Provider','online',4,true,ARRAY['Communication','Planning'],true),
+  ('90000000-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','QA A Approval Learning','Synthetic manager approval course','Professional Development','QA Provider','hybrid',8,false,ARRAY['Leadership'],true),
+  ('90000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','QA A Full Session','Synthetic full-capacity course','Professional Development','QA Provider','in_person',2,true,'{}',true),
+  ('90000000-0000-4000-8000-000000000004','22222222-2222-4222-8222-222222222222','QA B Private Learning','Synthetic tenant B course','Professional Development','QA Provider','online',3,true,'{}',true),
+  ('90000000-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','QA A Inactive Learning','Inactive course must stay hidden','Professional Development','QA Provider','online',1,true,'{}',false),
+  ('90000000-0000-4000-8000-000000000006','11111111-1111-4111-8111-111111111111','QA A Concurrent Session','One seat tests safe concurrent enrollment','Professional Development','QA Provider','online',1,true,'{}',true);
+INSERT INTO public.learning_sessions(id,tenant_id,program_id,trainer_name,start_at,end_at,location,capacity,enrollment_deadline,status) VALUES
+  ('91000000-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000001','QA Trainer','2026-11-02 03:00:00+00','2026-11-02 07:00:00+00','Online',10,'2026-10-30 00:00:00+00','scheduled'),
+  ('91000000-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000002','QA Trainer','2026-11-04 03:00:00+00','2026-11-04 11:00:00+00','Training Room',20,'2026-11-01 00:00:00+00','scheduled'),
+  ('91000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000003','QA Trainer','2026-11-06 03:00:00+00','2026-11-06 05:00:00+00','Training Room',1,'2026-11-03 00:00:00+00','scheduled'),
+  ('91000000-0000-4000-8000-000000000004','22222222-2222-4222-8222-222222222222','90000000-0000-4000-8000-000000000004','QA B Trainer','2026-11-08 03:00:00+00','2026-11-08 06:00:00+00','Remote',12,'2026-11-05 00:00:00+00','scheduled'),
+  ('91000000-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000006','QA Trainer','2026-11-10 03:00:00+00','2026-11-10 05:00:00+00','Online',1,'2026-11-07 00:00:00+00','scheduled');
+INSERT INTO public.learning_enrollments(id,tenant_id,employee_id,program_id,session_id,source,status,mandatory,created_by) VALUES
+  ('92000000-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555560','90000000-0000-4000-8000-000000000003','91000000-0000-4000-8000-000000000003','self_enrollment','enrolled',false,NULL),
+  ('92000000-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','90000000-0000-4000-8000-000000000004','91000000-0000-4000-8000-000000000004','self_enrollment','enrolled',false,NULL),
+  ('92000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','90000000-0000-4000-8000-000000000001',NULL,'admin_assignment','enrolled',true,NULL);
+INSERT INTO public.employee_skills(employee_id,skill_name,proficiency,verified) VALUES
+  ('55555555-5555-4555-8555-555555555555','Communication','intermediate',true),
+  ('66666666-6666-4666-8666-666666666666','Data Analysis','beginner',false);
 UPDATE public.employees
 SET user_id=(SELECT id FROM auth.users WHERE email='manager-a2@hris.test')
 WHERE id='55555555-5555-4555-8555-555555555556';

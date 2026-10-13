@@ -268,6 +268,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013153500_hris_learning_employee_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -330,6 +331,173 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const learningIds = {
+  directProgram: '90000000-0000-4000-8000-000000000001',
+  approvalProgram: '90000000-0000-4000-8000-000000000002',
+  fullProgram: '90000000-0000-4000-8000-000000000003',
+  tenantBProgram: '90000000-0000-4000-8000-000000000004',
+  concurrentProgram: '90000000-0000-4000-8000-000000000006',
+  directSession: '91000000-0000-4000-8000-000000000001',
+  approvalSession: '91000000-0000-4000-8000-000000000002',
+  fullSession: '91000000-0000-4000-8000-000000000003',
+  tenantBSession: '91000000-0000-4000-8000-000000000004',
+  concurrentSession: '91000000-0000-4000-8000-000000000005',
+  mandatoryEnrollment: '92000000-0000-4000-8000-000000000003',
+};
+const learningContextA = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+const learningContextB = await employeeB.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantB });
+const learningCrossTenant = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantB });
+const learningNoPermission = await noPermission.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+const learningGlobalOnly = await globalOnly.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+const learningAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+record('Learning catalog and personal history are scoped to each active employee tenant',
+  !learningContextA.error && learningContextA.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && learningContextA.data.programs.some(row => row.id === learningIds.directProgram)
+    && !learningContextA.data.programs.some(row => row.id === learningIds.tenantBProgram || row.title === 'QA A Inactive Learning')
+    && learningContextA.data.enrollments.length === 1
+    && learningContextA.data.enrollments[0].id === learningIds.mandatoryEnrollment
+    && learningContextA.data.skills.some(row => row.skill_name === 'Communication' && row.verified)
+    && !learningContextB.error && learningContextB.data.employee_id === '66666666-6666-4666-8666-666666666666'
+    && learningContextB.data.programs.length === 1 && learningContextB.data.programs[0].id === learningIds.tenantBProgram
+    && learningContextB.data.enrollments.length === 1
+    && Boolean(learningCrossTenant.error?.code === '42501'),
+  JSON.stringify({ aError: learningContextA.error?.code || null,
+    aEmployee: learningContextA.data?.employee_id,
+    aPrograms: learningContextA.data?.programs?.map(row => row.id),
+    aEnrollments: learningContextA.data?.enrollments?.map(row => row.id),
+    aSkills: learningContextA.data?.skills?.map(row => row.skill_name),
+    bError: learningContextB.error?.code || null,
+    bEmployee: learningContextB.data?.employee_id,
+    bPrograms: learningContextB.data?.programs?.map(row => row.id),
+    bEnrollments: learningContextB.data?.enrollments?.map(row => row.id),
+    crossCode: learningCrossTenant.error?.code || null }));
+record('Learning context denies unlinked, global-only, and anonymous callers',
+  Boolean(learningNoPermission.error?.code === '42501')
+    && Boolean(learningGlobalOnly.error?.code === '42501') && Boolean(learningAnonymous.error));
+
+const learningDirectProgramsA = await employeeA.client.from('learning_programs').select('id,title').eq('tenant_id', ids.tenantA);
+const learningDirectProgramsB = await employeeB.client.from('learning_programs').select('id,title').eq('tenant_id', ids.tenantB);
+const learningDirectEnrollmentsA = await employeeA.client.from('learning_enrollments').select('id,tenant_id,employee_id,status').eq('tenant_id', ids.tenantA);
+const learningDirectWrite = await employeeA.client.from('learning_enrollments').insert({
+  tenant_id: ids.tenantA, employee_id: '55555555-5555-4555-8555-555555555555',
+  program_id: learningIds.directProgram, source: 'self_enrollment', status: 'enrolled', mandatory: false,
+});
+record('Learning table RLS exposes only authorized catalog rows and own enrollment history; direct writes are denied',
+  !learningDirectProgramsA.error && learningDirectProgramsA.data.some(row => row.id === learningIds.directProgram)
+    && !learningDirectProgramsA.data.some(row => row.id === learningIds.tenantBProgram)
+    && !learningDirectProgramsB.error && learningDirectProgramsB.data.length === 1
+    && learningDirectProgramsB.data[0].id === learningIds.tenantBProgram
+    && !learningDirectEnrollmentsA.error && learningDirectEnrollmentsA.data.length === 1
+    && learningDirectEnrollmentsA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && Boolean(learningDirectWrite.error));
+
+const directLearningEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.directProgram, p_session_id: learningIds.directSession,
+});
+const duplicateLearningEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.directProgram, p_session_id: learningIds.directSession,
+});
+const directLearningRow = directLearningEnrollment.data?.id
+  ? queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id=${sqlLiteral(directLearningEnrollment.data.id)}::uuid`)
+  : null;
+record('Employees can enroll in an enabled program and duplicates are rejected by the database',
+  !directLearningEnrollment.error && directLearningEnrollment.data?.status === 'enrolled'
+    && directLearningRow?.tenant_id === ids.tenantA
+    && directLearningRow?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && directLearningRow?.source === 'self_enrollment'
+    && Boolean(duplicateLearningEnrollment.error?.code === '23505'));
+
+const approvalRequest = await employeeA.client.rpc('hris_employee_request_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.approvalProgram,
+  p_session_id: learningIds.approvalSession, p_reason: '  Build leadership skills  ',
+});
+const approvalRequestRow = approvalRequest.data?.id
+  ? queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id=${sqlLiteral(approvalRequest.data.id)}::uuid`)
+  : null;
+const requestViaDirectEnroll = await employeeA.client.rpc('hris_employee_enroll_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.approvalProgram, p_session_id: learningIds.approvalSession,
+});
+const requestViaApprovalForOpenProgram = await employeeA.client.rpc('hris_employee_request_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.directProgram, p_session_id: learningIds.directSession, p_reason: null,
+});
+const requestWrongSession = await employeeA.client.rpc('hris_employee_request_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.approvalProgram, p_session_id: learningIds.tenantBSession, p_reason: null,
+});
+record('Approval-only learning creates a pending request and rejects the wrong action or cross-program session',
+  !approvalRequest.error && approvalRequest.data?.status === 'requested'
+    && approvalRequestRow?.source === 'employee_request' && approvalRequestRow?.status === 'requested'
+    && approvalRequestRow?.recommendation_reason === 'Build leadership skills'
+    && Boolean(requestViaDirectEnroll.error?.code === '42501')
+    && Boolean(requestViaApprovalForOpenProgram.error?.code === '42501')
+    && Boolean(requestWrongSession.error?.code === '22023'));
+
+const capacityDenied = await employeeA.client.rpc('hris_employee_enroll_learning', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.fullProgram, p_session_id: learningIds.fullSession,
+});
+const capacityRace = await Promise.all([
+  employeeA.client.rpc('hris_employee_enroll_learning', {
+    p_tenant_id: ids.tenantA, p_program_id: learningIds.concurrentProgram, p_session_id: learningIds.concurrentSession,
+  }),
+  managerA2.client.rpc('hris_employee_enroll_learning', {
+    p_tenant_id: ids.tenantA, p_program_id: learningIds.concurrentProgram, p_session_id: learningIds.concurrentSession,
+  }),
+]);
+const concurrentSeatCount = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.learning_enrollments
+  WHERE tenant_id='${ids.tenantA}'::uuid AND session_id='${learningIds.concurrentSession}'::uuid AND status='enrolled'`).count;
+record('Learning session capacity is enforced, including concurrent enrollment attempts',
+  Boolean(capacityDenied.error?.code === '22023')
+    && capacityRace.filter(result => !result.error).length === 1
+    && capacityRace.filter(result => result.error?.code === '22023').length === 1
+    && Number(concurrentSeatCount) === 1,
+  JSON.stringify({ fullSessionCode: capacityDenied.error?.code || null,
+    concurrentCodes: capacityRace.map(result => result.error?.code || 'accepted'),
+    concurrentSeatCount: Number(concurrentSeatCount) }));
+
+const directCancel = await employeeA.client.rpc('hris_employee_cancel_learning', {
+  p_tenant_id: ids.tenantA, p_id: directLearningEnrollment.data?.id,
+});
+const ownRequestCancel = await employeeA.client.rpc('hris_employee_cancel_learning', {
+  p_tenant_id: ids.tenantA, p_id: approvalRequest.data?.id,
+});
+const otherEmployeeCancel = await managerA2.client.rpc('hris_employee_cancel_learning', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.mandatoryEnrollment,
+});
+const mandatoryCancel = await employeeA.client.rpc('hris_employee_cancel_learning', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.mandatoryEnrollment,
+});
+const cancelledLearningRow = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id=${sqlLiteral(directLearningEnrollment.data?.id)}::uuid`);
+const cancelledRequestRow = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id=${sqlLiteral(approvalRequest.data?.id)}::uuid`);
+const mandatoryLearningRow = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id='${learningIds.mandatoryEnrollment}'::uuid`);
+record('Employees can cancel only their own non-mandatory open learning and requests',
+  !directCancel.error && !ownRequestCancel.error
+    && cancelledLearningRow.status === 'cancelled' && cancelledRequestRow.status === 'cancelled'
+    && Boolean(otherEmployeeCancel.error?.code === '42501')
+    && Boolean(mandatoryCancel.error?.code === '42501') && mandatoryLearningRow.status === 'enrolled');
+
+let learningBrowserOutput = '';
+let learningBrowserError = '';
+try {
+  learningBrowserOutput = execFileSync('node', [path.join(here, 'run-learning-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_LEARNING_EMAIL: emails[5],
+      HRIS_LOCAL_LEARNING_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  learningBrowserError = String(error.stderr || error.message || 'local learning browser run failed').slice(-1800);
+}
+record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, cancellation, refresh and responsive recovery',
+  learningBrowserOutput.includes('Local Auth-to-Postgres learning enrollment, approval request, cancellation, refresh, and mobile/desktop journey passed.'),
+  learningBrowserError);
 
 const employeeDirectoryA = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
   p_tenant_id: ids.tenantA,

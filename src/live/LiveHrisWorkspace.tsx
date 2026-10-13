@@ -8,12 +8,13 @@ import { OrganizationTeams } from './OrganizationTeams';
 import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { MyPerformance } from './MyPerformance';
+import { MyLearning } from './MyLearning';
 import { OrganizationPerformance } from './OrganizationPerformance';
 import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
 import { downloadCsv } from './csv';
 import {
-  Activity, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  Activity, BookOpen, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, Users, X, XCircle,
 } from 'lucide-react';
@@ -34,7 +35,7 @@ type PermissionSet = {
   performance: boolean;
   recruitment: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-leave' | 'my-timesheets';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -2212,6 +2213,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-learning', label: 'My Learning', icon: <BookOpen className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     return items;
@@ -2278,6 +2280,7 @@ export function LiveHrisWorkspace({
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} />}
+          {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
