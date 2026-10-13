@@ -136,6 +136,10 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   const table = page.getByRole('table', { name: 'Tenant payroll register' });
   await table.waitFor({ state: 'visible' });
+  await page.waitForFunction(expected => {
+    const currentTable = document.querySelector('[aria-label="Tenant payroll register"]');
+    return currentTable && currentTable.querySelectorAll('tbody tr[data-payslip]').length === expected;
+  }, 3);
   if (await table.locator('tbody tr[data-payslip]').count() !== 3) throw new Error('Desktop register did not render the three authorized rows.');
   await assertNoOverflow(page, 'Desktop payroll register');
   if (rpcCalls !== 7 || rpcTenants.length !== 7 || rpcTenants.some(id => id !== process.env.HRIS_LOCAL_PAYROLL_TENANT_ID)) {
