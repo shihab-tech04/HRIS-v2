@@ -25,6 +25,11 @@ DROP FUNCTION IF EXISTS public.admin_save_attendance(uuid,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_timesheet_context(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_submit_my_timesheet(uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_my_travel_context(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_save_my_travel_request(uuid,uuid,text,date,date,text,numeric,text) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_submit_my_travel_request(uuid,uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_tenant_travel_requests(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_resolve_travel_request(uuid,uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_tenant_project_workspace(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_projects(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text) CASCADE;
@@ -87,6 +92,8 @@ DROP TABLE IF EXISTS public.employee_skills CASCADE;
 DROP TABLE IF EXISTS public.timesheet_entries CASCADE;
 DROP TABLE IF EXISTS public.timesheets CASCADE;
 DROP TABLE IF EXISTS public.timesheet_activities CASCADE;
+DROP TABLE IF EXISTS public.travel_status_history CASCADE;
+DROP TABLE IF EXISTS public.travel_requests CASCADE;
 DROP TABLE IF EXISTS public.service_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_requests CASCADE;
 DROP TABLE IF EXISTS public.leave_types CASCADE;
@@ -510,6 +517,34 @@ CREATE TABLE public.timesheet_entries (
   hours numeric(5,2) NOT NULL CHECK (hours > 0 AND hours <= 24),
   note text
 );
+CREATE TABLE public.travel_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  destination text CHECK (destination IS NULL OR char_length(destination) <= 300),
+  from_date date,
+  to_date date,
+  purpose text CHECK (purpose IS NULL OR char_length(purpose) <= 2000),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected','cancelled')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  estimated_cost numeric CHECK (estimated_cost IS NULL OR estimated_cost > 0),
+  estimated_currency varchar(3) CHECK (estimated_currency IS NULL OR estimated_currency ~ '^[A-Z]{3}$'),
+  submitted_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  review_note text
+);
+CREATE TABLE public.travel_status_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id),
+  travel_request_id uuid NOT NULL REFERENCES public.travel_requests(id) ON DELETE CASCADE,
+  actor_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  previous_status text,
+  new_status text NOT NULL,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE public.service_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
   employee_id uuid
@@ -829,14 +864,15 @@ GRANT SELECT ON public.employees,public.departments,public.designations,public.l
   public.performance_appraisals,
   public.performance_goals,public.project_performance_reviews,public.service_requests,
   public.shifts,public.teams,public.timesheet_activities,public.timesheets,
-  public.timesheet_entries TO authenticated,anon;
+  public.timesheet_entries,public.travel_requests,public.travel_status_history TO authenticated,anon;
 GRANT ALL ON public.tenants,public.admin_users,public.roles,public.permissions,
   public.role_permissions,public.user_roles,public.tenant_memberships,public.shifts,
   public.departments,public.designations,public.employees,public.holidays,public.leave_types,
   public.leave_requests,public.employee_leave_balances,
   public.attendance_records,public.attendance_corrections,public.admin_audit_logs
   TO service_role;
-GRANT ALL ON public.timesheet_activities,public.timesheets,public.timesheet_entries TO service_role;
+GRANT ALL ON public.timesheet_activities,public.timesheets,public.timesheet_entries,
+  public.travel_requests,public.travel_status_history TO service_role;
 
 INSERT INTO public.tenants(id,slug,code,name,is_active) VALUES
   ('11111111-1111-4111-8111-111111111111','synesis-it','SYN','Synthetic Synesis',true),
@@ -856,6 +892,8 @@ INSERT INTO public.permissions(id,module,action) VALUES
   ('attendance.manage','attendance','manage'),('attendance.view','attendance','view'),
   ('dashboard.view','dashboard','view'),('reports.view','reports','view'),
   ('learning.view','learning','view'),('learning.manage','learning','manage');
+INSERT INTO public.permissions(id,module,action) VALUES
+  ('travel.view','travel','view'),('travel.manage','travel','manage');
 INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_global_manager','leave.manage'),('qa_global_manager','leave.view'),
   ('qa_global_manager','attendance.manage'),('qa_global_manager','attendance.view'),
@@ -896,7 +934,10 @@ INSERT INTO public.role_permissions(role_id,permission_id)
 VALUES ('qa_tenant_recruitment_a','recruitment.view'),
   ('qa_tenant_employee_viewer_a','employees.view'),
   ('qa_tenant_learning_manager_a','learning.view'),
-  ('qa_tenant_learning_manager_a','learning.manage');
+  ('qa_tenant_learning_manager_a','learning.manage'),
+  ('qa_tenant_admin_a','travel.view'),('qa_tenant_admin_a','travel.manage'),
+  ('qa_tenant_manager_b','travel.view'),('qa_tenant_manager_b','travel.manage'),
+  ('qa_tenant_viewer_b','travel.view');
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users
   WHERE email IN ('global-only@hris.test','manager-a@hris.test','manager-b@hris.test');
@@ -991,6 +1032,9 @@ INSERT INTO public.timesheet_activities(id,tenant_id,activity_type,name,code,act
 INSERT INTO public.timesheets(id,tenant_id,employee_id,period_type,period_start,period_end,status) VALUES
   ('77777777-7777-4777-8777-777777777701','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','weekly','2026-10-05','2026-10-11','draft'),
   ('77777777-7777-4777-8777-777777777702','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','weekly','2026-10-05','2026-10-11','draft');
+INSERT INTO public.travel_requests(id,tenant_id,employee_id,destination,from_date,to_date,purpose,status,submitted_at) VALUES
+  ('89898989-8989-4898-8898-989898989801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A client site','2026-11-02','2026-11-04','Synthetic tenant A travel request','submitted','2026-10-12 08:00:00+00'),
+  ('89898989-8989-4898-8898-989898989802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B client site','2026-11-05','2026-11-06','Synthetic tenant B private request','submitted','2026-10-12 08:30:00+00');
 INSERT INTO public.timesheet_entries(timesheet_id,activity_id,work_date,hours,note) VALUES
   ('77777777-7777-4777-8777-777777777701','88888888-8888-4888-8888-888888888901','2026-10-06',4,'Synthetic A entry'),
   ('77777777-7777-4777-8777-777777777702','88888888-8888-4888-8888-888888888902','2026-10-06',5,'Synthetic B entry');

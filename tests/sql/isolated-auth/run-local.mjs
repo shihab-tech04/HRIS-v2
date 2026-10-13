@@ -267,6 +267,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013203000_hris_travel_request_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql'),
@@ -1295,6 +1296,11 @@ FROM (VALUES
   ('public.hris_get_my_timesheet_context(uuid)'),
   ('public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)'),
   ('public.hris_submit_my_timesheet(uuid,uuid)'),
+  ('public.hris_get_my_travel_context(uuid)'),
+  ('public.hris_save_my_travel_request(uuid,uuid,text,date,date,text,numeric,text)'),
+  ('public.hris_submit_my_travel_request(uuid,uuid)'),
+  ('public.hris_get_tenant_travel_requests(uuid)'),
+  ('public.hris_resolve_travel_request(uuid,uuid,text,text)'),
   ('public.hris_get_tenant_project_workspace(uuid)'),
   ('public.hris_get_my_projects(uuid)'),
   ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
@@ -1764,6 +1770,204 @@ record('Anonymous users cannot execute any employee timesheet RPC',
     && functionGrantMatrix['public.hris_get_my_timesheet_context(uuid)'].anon === false
     && functionGrantMatrix['public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)'].anon === false
     && functionGrantMatrix['public.hris_submit_my_timesheet(uuid,uuid)'].anon === false);
+
+const travelIds = {
+  requestA: '89898989-8989-4898-8898-989898989801',
+  requestB: '89898989-8989-4898-8898-989898989802',
+};
+const myTravelA = await employeeA.client.rpc('hris_get_my_travel_context', { p_tenant_id: ids.tenantA });
+const myTravelB = await employeeB.client.rpc('hris_get_my_travel_context', { p_tenant_id: ids.tenantB });
+const myTravelCrossTenant = await employeeA.client.rpc('hris_get_my_travel_context', { p_tenant_id: ids.tenantB });
+const travelNoPermission = await noPermission.client.rpc('hris_get_tenant_travel_requests', { p_tenant_id: ids.tenantA });
+const travelGlobalOnly = await globalOnly.client.rpc('hris_get_tenant_travel_requests', { p_tenant_id: ids.tenantA });
+const travelQueueA = await managerA.client.rpc('hris_get_tenant_travel_requests', { p_tenant_id: ids.tenantA });
+const travelQueueB = await managerB.client.rpc('hris_get_tenant_travel_requests', { p_tenant_id: ids.tenantB });
+const travelQueueViewer = await tenantViewer.client.rpc('hris_get_tenant_travel_requests', { p_tenant_id: ids.tenantB });
+const travelQueueCrossTenant = await managerA.client.rpc('hris_get_tenant_travel_requests', { p_tenant_id: ids.tenantB });
+const travelDirectRead = await employeeA.client.from('travel_requests').select('id,tenant_id');
+record('Employee travel context and manager queues stay tenant-scoped; view-only is separate from manage',
+  !myTravelA.error && myTravelA.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && myTravelA.data.requests.length === 1 && myTravelA.data.requests[0].id === travelIds.requestA
+    && !myTravelB.error && myTravelB.data?.employee_id === '66666666-6666-4666-8666-666666666666'
+    && myTravelB.data.requests.length === 1 && myTravelB.data.requests[0].id === travelIds.requestB
+    && Boolean(myTravelCrossTenant.error?.code === '42501')
+    && !travelQueueA.error && travelQueueA.data.length === 1 && travelQueueA.data[0].id === travelIds.requestA
+    && !travelQueueB.error && travelQueueB.data.length === 1 && travelQueueB.data[0].id === travelIds.requestB
+    && !travelQueueViewer.error && travelQueueViewer.data.length === 1
+    && Boolean(travelQueueCrossTenant.error?.code === '42501')
+    && Boolean(travelNoPermission.error?.code === '42501')
+    && Boolean(travelGlobalOnly.error?.code === '42501')
+    && !travelDirectRead.error && travelDirectRead.data.length === 0,
+  JSON.stringify({ personalA: myTravelA.data?.requests?.map(row => row.id), personalB: myTravelB.data?.requests?.map(row => row.id),
+    managerA: travelQueueA.data?.map(row => row.id), managerB: travelQueueB.data?.map(row => row.id),
+    viewerBCount: travelQueueViewer.data?.length, crossTenantCode: travelQueueCrossTenant.error?.code || null,
+    directReadCount: travelDirectRead.data?.length }));
+
+const travelDraft = await employeeA.client.rpc('hris_save_my_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: null, p_destination: '  Synthetic QA site  ',
+  p_from_date: '2026-12-02', p_to_date: '2026-12-04', p_purpose: '  Local travel workflow acceptance  ',
+  p_estimated_cost: 450, p_estimated_currency: 'bdt',
+});
+const travelDraftRow = typeof travelDraft.data === 'string'
+  ? queryAdmin(`SELECT to_jsonb(r) FROM public.travel_requests r WHERE r.id=${sqlLiteral(travelDraft.data)}::uuid`)
+  : null;
+const travelIncompleteDraft = await employeeA.client.rpc('hris_save_my_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: null, p_destination: null,
+  p_from_date: null, p_to_date: null, p_purpose: null,
+  p_estimated_cost: null, p_estimated_currency: null,
+});
+const travelBadDates = await employeeA.client.rpc('hris_save_my_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: null, p_destination: 'Invalid range',
+  p_from_date: '2026-12-05', p_to_date: '2026-12-04', p_purpose: 'Invalid date order',
+  p_estimated_cost: null, p_estimated_currency: null,
+});
+const travelBadCostPair = await employeeA.client.rpc('hris_save_my_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: null, p_destination: 'Missing currency',
+  p_from_date: null, p_to_date: null, p_purpose: null, p_estimated_cost: 100, p_estimated_currency: null,
+});
+const crossTenantTravelSave = await employeeA.client.rpc('hris_save_my_travel_request', {
+  p_tenant_id: ids.tenantB, p_id: null, p_destination: 'Wrong tenant',
+  p_from_date: null, p_to_date: null, p_purpose: null, p_estimated_cost: null, p_estimated_currency: null,
+});
+const directTravelWrite = await employeeA.client.from('travel_requests').insert({
+  tenant_id: ids.tenantA, employee_id: '55555555-5555-4555-8555-555555555555', status: 'draft',
+});
+const travelIncompleteSubmit = typeof travelIncompleteDraft.data === 'string'
+  ? await employeeA.client.rpc('hris_submit_my_travel_request', { p_tenant_id: ids.tenantA, p_id: travelIncompleteDraft.data })
+  : { error: new Error('No incomplete request was created.') };
+const travelRowsAfterDrafts = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.travel_requests WHERE tenant_id='${ids.tenantA}'::uuid`);
+record('Employee can persist a draft; malformed dates, mismatched optional cost, cross-tenant IDs, direct writes, and incomplete submission are denied',
+  !travelDraft.error && travelDraftRow?.status === 'draft'
+    && travelDraftRow?.destination === 'Synthetic QA site'
+    && travelDraftRow?.purpose === 'Local travel workflow acceptance'
+    && Number(travelDraftRow?.estimated_cost) === 450 && travelDraftRow?.estimated_currency === 'BDT'
+    && !travelIncompleteDraft.error && typeof travelIncompleteDraft.data === 'string'
+    && Boolean(travelBadDates.error?.code === '22023')
+    && Boolean(travelBadCostPair.error?.code === '22023')
+    && Boolean(crossTenantTravelSave.error?.code === '42501')
+    && Boolean(directTravelWrite.error)
+    && Boolean(travelIncompleteSubmit.error?.code === '22023')
+    && travelRowsAfterDrafts.count === 3,
+  JSON.stringify({ draft: travelDraftRow, draftError: travelDraft.error?.message || null,
+    draftDetails: travelDraft.error?.details || null, incompleteDraftError: travelIncompleteDraft.error?.message || null,
+    incompleteDraftId: travelIncompleteDraft.data || null, rows: travelRowsAfterDrafts.count,
+    incompleteSubmitError: travelIncompleteSubmit.error?.message || null,
+    badDate: travelBadDates.error?.code || null,
+    badCost: travelBadCostPair.error?.code || null, crossTenant: crossTenantTravelSave.error?.code || null,
+    directWrite: directTravelWrite.error?.code || null, incompleteSubmit: travelIncompleteSubmit.error?.code || null }));
+
+const travelSubmitted = await employeeA.client.rpc('hris_submit_my_travel_request', { p_tenant_id: ids.tenantA, p_id: travelDraft.data });
+const employeeCannotDecideTravel = await employeeA.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: travelIds.requestA, p_decision: 'approved', p_note: null,
+});
+const viewerCannotDecideTravel = await tenantViewer.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantB, p_id: travelIds.requestB, p_decision: 'approved', p_note: null,
+});
+const noPermissionCannotDecideTravel = await noPermission.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: travelIds.requestA, p_decision: 'approved', p_note: null,
+});
+const crossTenantTravelDecision = await managerA.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: travelIds.requestB, p_decision: 'approved', p_note: null,
+});
+const travelApproveViaManager = await managerB.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantB, p_id: travelIds.requestB, p_decision: 'approved', p_note: 'Tenant B isolated approval',
+});
+const duplicateTravelDecision = await managerB.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantB, p_id: travelIds.requestB, p_decision: 'rejected', p_note: null,
+});
+record('Travel submission is persisted once; employees, viewers, unprivileged and cross-tenant managers cannot decide; tenant manager decisions are audited and unique',
+  !travelSubmitted.error && travelSubmitted.data === travelDraft.data
+    && Boolean(employeeCannotDecideTravel.error?.code === '42501')
+    && Boolean(viewerCannotDecideTravel.error?.code === '42501')
+    && Boolean(noPermissionCannotDecideTravel.error?.code === '42501')
+    && Boolean(crossTenantTravelDecision.error?.code === 'P0002')
+    && !travelApproveViaManager.error && travelApproveViaManager.data?.status === 'approved'
+    && Boolean(duplicateTravelDecision.error?.code === 'P0002')
+    && queryAdmin(`SELECT jsonb_build_object('status',(SELECT status FROM public.travel_requests WHERE id=${sqlLiteral(travelDraft.data)}::uuid),'history',(SELECT count(*)::integer FROM public.travel_status_history WHERE travel_request_id=${sqlLiteral(travelDraft.data)}::uuid),'audit',(SELECT count(*)::integer FROM public.admin_audit_logs WHERE target_id=${sqlLiteral(travelDraft.data)} AND action='travel.submitted'))`).status === 'submitted'
+    && queryAdmin(`SELECT jsonb_build_object('status',(SELECT status FROM public.travel_requests WHERE id='${travelIds.requestB}'::uuid),'history',(SELECT count(*)::integer FROM public.travel_status_history WHERE travel_request_id='${travelIds.requestB}'::uuid),'decision',(SELECT new_status FROM public.travel_status_history WHERE travel_request_id='${travelIds.requestB}'::uuid ORDER BY created_at DESC LIMIT 1))`).status === 'approved',
+  JSON.stringify({ submit: travelSubmitted.error?.code || travelSubmitted.data,
+    submitError: travelSubmitted.error?.message || null, submitDetails: travelSubmitted.error?.details || null,
+    employee: employeeCannotDecideTravel.error?.code,
+    viewer: viewerCannotDecideTravel.error?.code, noPermission: noPermissionCannotDecideTravel.error?.code,
+    crossTenant: crossTenantTravelDecision.error?.code, managerDecision: travelApproveViaManager.data,
+    duplicate: duplicateTravelDecision.error?.code }));
+
+const rejectSeedTravel = await managerA.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: travelIds.requestA, p_decision: 'rejected', p_note: 'Please add the visit objective.',
+});
+const rejectedTravelContext = await employeeA.client.rpc('hris_get_my_travel_context', { p_tenant_id: ids.tenantA });
+const rejectedTravel = rejectedTravelContext.data?.requests?.find(row => row.id === travelIds.requestA);
+const revisedTravel = await employeeA.client.rpc('hris_save_my_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: travelIds.requestA, p_destination: 'QA A client site',
+  p_from_date: '2026-11-02', p_to_date: '2026-11-04', p_purpose: 'Client delivery review',
+  p_estimated_cost: null, p_estimated_currency: null,
+});
+const resubmittedTravel = await employeeA.client.rpc('hris_submit_my_travel_request', { p_tenant_id: ids.tenantA, p_id: travelIds.requestA });
+const finalTravelApproval = await managerA.client.rpc('hris_resolve_travel_request', {
+  p_tenant_id: ids.tenantA, p_id: travelIds.requestA, p_decision: 'approved', p_note: null,
+});
+const finalTravelEmployeeContext = await employeeA.client.rpc('hris_get_my_travel_context', { p_tenant_id: ids.tenantA });
+record('Returned travel requests retain reviewer notes through employee revision and can be resubmitted and resolved',
+  !rejectSeedTravel.error && rejectedTravel?.status === 'rejected'
+    && rejectedTravel.review_note === 'Please add the visit objective.'
+    && rejectedTravel.history.some(row => row.new_status === 'rejected' && row.note === 'Please add the visit objective.')
+    && !revisedTravel.error && revisedTravel.data === travelIds.requestA
+    && !resubmittedTravel.error && resubmittedTravel.data === travelIds.requestA
+    && !finalTravelApproval.error && finalTravelApproval.data?.status === 'approved'
+    && finalTravelEmployeeContext.data?.requests?.find(row => row.id === travelIds.requestA)?.status === 'approved'
+    && auditCount(travelIds.requestA, 'travel.rejected') === 1
+    && auditCount(travelIds.requestA, 'travel.approved') === 1,
+  JSON.stringify({ rejection: rejectSeedTravel.error?.code || rejectSeedTravel.data,
+    note: rejectedTravel?.review_note, revision: revisedTravel.error?.code || revisedTravel.data,
+    resubmit: resubmittedTravel.error?.code || resubmittedTravel.data,
+    finalApproval: finalTravelApproval.error?.code || finalTravelApproval.data }));
+
+const anonTravelContext = attemptAs(null,
+  `SELECT public.hris_get_my_travel_context('${ids.tenantA}'::uuid)`, 'anon');
+record('Anonymous callers cannot execute employee or manager travel RPCs',
+  !anonTravelContext.ok
+    && functionGrantMatrix['public.hris_get_my_travel_context(uuid)'].anon === false
+    && functionGrantMatrix['public.hris_save_my_travel_request(uuid,uuid,text,date,date,text,numeric,text)'].anon === false
+    && functionGrantMatrix['public.hris_submit_my_travel_request(uuid,uuid)'].anon === false
+    && functionGrantMatrix['public.hris_get_tenant_travel_requests(uuid)'].anon === false
+    && functionGrantMatrix['public.hris_resolve_travel_request(uuid,uuid,text,text)'].anon === false);
+
+let travelBrowserOutput = '';
+let travelBrowserError = '';
+try {
+  travelBrowserOutput = execFileSync('node', [path.join(here, 'run-travel-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_TRAVEL_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_TRAVEL_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_TRAVEL_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  travelBrowserError = String(error.stderr || error.message || 'local travel browser run failed').slice(-1800);
+}
+const travelBrowserId = travelBrowserOutput.match(/TRAVEL_ACCEPTANCE_ID=([0-9a-f-]{36})/i)?.[1];
+const browserTravelPersistence = travelBrowserId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id,'employee_id',employee_id,'destination',destination,'purpose',purpose,'status',status,
+  'history_count',(SELECT count(*)::integer FROM public.travel_status_history h WHERE h.travel_request_id=r.id),
+  'history',coalesce((SELECT jsonb_agg(new_status ORDER BY created_at) FROM public.travel_status_history h WHERE h.travel_request_id=r.id),'[]'::jsonb),
+  'decision_audit',(SELECT count(*)::integer FROM public.admin_audit_logs WHERE target_id=r.id::text AND action IN ('travel.rejected','travel.approved')))
+  FROM public.travel_requests r WHERE r.id=${sqlLiteral(travelBrowserId)}::uuid`) : null;
+record('Real browser employee-to-manager-to-employee travel journey persists its final decision and history in isolated Postgres',
+  travelBrowserOutput.includes('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history across mobile and desktop.')
+    && browserTravelPersistence?.tenant_id === ids.tenantA
+    && browserTravelPersistence?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserTravelPersistence?.status === 'approved'
+    && browserTravelPersistence?.history_count === 4
+    && JSON.stringify(browserTravelPersistence?.history) === JSON.stringify(['submitted','rejected','submitted','approved'])
+    && browserTravelPersistence?.decision_audit === 2,
+  travelBrowserError || JSON.stringify(browserTravelPersistence));
 
 psqlSync(`UPDATE public.employees SET employment_status='terminated'
   WHERE id='55555555-5555-4555-8555-555555555555';`);
