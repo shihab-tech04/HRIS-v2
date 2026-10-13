@@ -1747,21 +1747,59 @@ try {
   }).trim();
 } catch (error) {
   leaveEvidenceBrowserError = String(error.stderr || error.message || 'local leave-evidence browser run failed').slice(-1800);
+  leaveEvidenceBrowserOutput = String(error.stdout || '');
+}
+let uiLeaveAcceptance = null;
+const uiLeaveAcceptanceMatch = leaveEvidenceBrowserOutput.match(/^LEAVE_UI_REQUEST_ACCEPTANCE=(.+)$/m);
+if (uiLeaveAcceptanceMatch) {
+  try {
+    uiLeaveAcceptance = JSON.parse(uiLeaveAcceptanceMatch[1]);
+    if (typeof uiLeaveAcceptance.path === 'string'
+        && uiLeaveAcceptance.path.startsWith(`${employeeA.userId}/${ids.tenantA}/`)
+        && !uploadedEvidencePaths.includes(uiLeaveAcceptance.path)) {
+      uploadedEvidencePaths.push(uiLeaveAcceptance.path);
+    }
+  } catch {
+    uiLeaveAcceptance = null;
+  }
 }
 record('Real Auth/Postgres/Storage employee and same-tenant manager browsers retrieve persisted private leave evidence',
-  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave flow passed: employee evidence retrieval, manager approval and rejection with a note, and refreshed decision statuses in employee mobile history.'),
+  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves employee requests and rejects with a note, and refreshed employee history shows the decisions.'),
   leaveEvidenceBrowserError);
 const browserApprovedEvidence = evidenceRequestId ? tableRow('leave_requests', evidenceRequestId) : null;
+const browserUiLeave = uiLeaveAcceptance?.id ? tableRow('leave_requests', uiLeaveAcceptance.id) : null;
 const approvedEvidenceBalance = queryAdmin(`SELECT to_jsonb(b) FROM public.employee_leave_balances b
   WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'
     AND leave_type_id='${ids.leaveTypeEvidence}'::uuid AND balance_year=2026`);
 record('Real manager leave UI approves the persisted employee request and updates its ledger once',
-  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave flow passed: employee evidence retrieval, manager approval and rejection with a note, and refreshed decision statuses in employee mobile history.')
+  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves employee requests and rejects with a note, and refreshed employee history shows the decisions.')
   && browserApprovedEvidence?.status === 'approved'
   && Number(approvedEvidenceBalance.pending_days) === 0
-  && Number(approvedEvidenceBalance.used_days) === 1
+  && Number(approvedEvidenceBalance.used_days) === 2
   && auditCount(evidenceRequestId, 'leave.request.approved') === 1,
   JSON.stringify({ status: browserApprovedEvidence?.status, balance: approvedEvidenceBalance }));
+const employeeHistoryAfterUiLeave = queryAs(employeeA,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
+const foreignHistoryAfterUiLeave = queryAs(employeeB,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
+const employeeUiLeaveHistoryRow = employeeHistoryAfterUiLeave.requests.find(row => row.id === uiLeaveAcceptance?.id);
+record('Real employee UI submission persists its own proof-backed leave row, balance and tenant-private history',
+  Boolean(uiLeaveAcceptance?.id && uiLeaveAcceptance?.path)
+  && browserUiLeave?.status === 'approved'
+  && browserUiLeave?.tenant_id === ids.tenantA
+  && browserUiLeave?.employee_id === '55555555-5555-4555-8555-555555555555'
+  && browserUiLeave?.leave_type_id === ids.leaveTypeEvidence
+  && browserUiLeave?.from_date === '2026-10-20'
+  && browserUiLeave?.attachment_url === uiLeaveAcceptance.path
+  && browserUiLeave?.reason === 'Real employee UI leave evidence request'
+  && Number(browserUiLeave?.requested_days) === 1
+  && employeeUiLeaveHistoryRow?.status === 'approved'
+  && employeeUiLeaveHistoryRow?.attachment_url === uiLeaveAcceptance.path
+  && !JSON.stringify(foreignHistoryAfterUiLeave.requests).includes(uiLeaveAcceptance?.path || 'missing-ui-evidence-path')
+  && Number(approvedEvidenceBalance.pending_days) === 0
+  && Number(approvedEvidenceBalance.used_days) === 2
+  && auditCount(uiLeaveAcceptance?.id, 'leave.request.approved') === 1,
+  JSON.stringify({ requestId: uiLeaveAcceptance?.id, persisted: Boolean(browserUiLeave), ownerHistory: Boolean(employeeUiLeaveHistoryRow), foreignPathExposed: JSON.stringify(foreignHistoryAfterUiLeave.requests).includes(uiLeaveAcceptance?.path || 'missing-ui-evidence-path') }));
 const browserRejectedLeave = leaveRejectionRequestId ? tableRow('leave_requests', leaveRejectionRequestId) : null;
 const postBrowserAnnualBalance = balance(ids.leaveTypeA, 2026);
 const postBrowserEmployeeHistory = queryAs(employeeA,

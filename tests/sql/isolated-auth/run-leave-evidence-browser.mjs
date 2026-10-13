@@ -1,5 +1,5 @@
-// Verify the real employee evidence and manager approval journey against the
-// disposable local Auth, Postgres, RPC, and private Storage stack.
+// Verify the real employee submission/evidence and manager decision journey
+// against the disposable local Auth, Postgres, RPC, and private Storage stack.
 import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -86,14 +86,14 @@ async function assertNoHorizontalOverflow(page, label) {
   if (dimensions.document > dimensions.viewport) throw new Error(`${label} overflowed: ${JSON.stringify(dimensions)}.`);
 }
 
-async function assertDownloadedEvidence(page, download, expectedPrefix) {
+async function assertDownloadedEvidence(page, download, expectedPrefix, expectedContent = 'isolated synthetic evidence') {
   if (!download.suggestedFilename().startsWith(expectedPrefix)) {
     throw new Error(`Unexpected evidence filename: ${download.suggestedFilename()}.`);
   }
   const downloadedPath = await download.path();
   if (!downloadedPath) throw new Error('The downloaded evidence file was not materialized locally.');
   const bytes = await readFile(downloadedPath);
-  if (!bytes.includes(Buffer.from('isolated synthetic evidence'))) {
+  if (!bytes.includes(Buffer.from(expectedContent))) {
     throw new Error('Downloaded evidence did not contain the isolated Storage object bytes.');
   }
 }
@@ -115,6 +115,64 @@ try {
   const ownRow = history.getByRole('row', { name: new RegExp(process.env.HRIS_LOCAL_LEAVE_REQUEST_REASON) });
   await ownRow.waitFor({ state: 'visible' });
   await ownRow.getByRole('button', { name: 'Download evidence' }).waitFor({ state: 'visible' });
+
+  const uiEvidenceReason = 'Real employee UI leave evidence request';
+  await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const requestDialog = employee.getByRole('dialog', { name: 'Request for leave' });
+  await requestDialog.waitFor({ state: 'visible' });
+  await requestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic evidence-required leave' });
+  await requestDialog.locator('#personal-leave-from').fill('2026-10-20');
+  await requestDialog.locator('#personal-leave-to').fill('2026-10-20');
+  await requestDialog.getByLabel('Reason').fill(uiEvidenceReason);
+  await requestDialog.locator('#personal-leave-evidence').setInputFiles({
+    name: 'employee-ui-leave-evidence.pdf', mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nreal employee UI evidence bytes\n'),
+  });
+  const uiEvidenceUpload = employee.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.includes('/storage/v1/object/leave-evidence/'),
+  { timeout: 10000 });
+  const uiLeaveSubmission = employee.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_employee_submit_leave_request'),
+  { timeout: 10000 });
+  await requestDialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  const [uploadedResponse, submittedResponse] = await Promise.all([uiEvidenceUpload, uiLeaveSubmission]);
+  if (!uploadedResponse.ok()) throw new Error(`Employee UI evidence upload returned ${uploadedResponse.status()}.`);
+  if (!submittedResponse.ok()) throw new Error(`Employee UI leave submission returned ${submittedResponse.status()}.`);
+  const uiLeaveRequestValue = await submittedResponse.json();
+  const uiLeaveRequestId = typeof uiLeaveRequestValue === 'string' ? uiLeaveRequestValue : uiLeaveRequestValue?.id;
+  const uiEvidencePath = decodeURIComponent(new URL(uploadedResponse.url()).pathname.split('/storage/v1/object/leave-evidence/')[1] || '');
+  const submittedPayload = submittedResponse.request().postDataJSON();
+  console.log(`LEAVE_UI_REQUEST_ACCEPTANCE=${JSON.stringify({ id: uiLeaveRequestId, path: uiEvidencePath, reason: uiEvidenceReason })}`);
+  if (!uiLeaveRequestId || !uiEvidencePath.startsWith(`${process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_ID}/${process.env.HRIS_LOCAL_LEAVE_TENANT_ID}/`)
+      || submittedPayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      || submittedPayload?.p_payload?.attachment_url !== uiEvidencePath
+      || submittedPayload?.p_payload?.reason !== uiEvidenceReason
+      || submittedPayload?.p_payload?.from_date !== '2026-10-20') {
+    throw new Error('Employee UI submission did not persist the selected tenant, reason, date, and owner-scoped evidence path.');
+  }
+  await employee.getByRole('status').filter({ hasText: 'Leave request submitted.' }).waitFor({ state: 'visible' });
+  const uiHistoryRow = history.getByRole('row', { name: new RegExp(uiEvidenceReason) });
+  await uiHistoryRow.waitFor({ state: 'visible' });
+  await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const reopenedRequestDialog = employee.getByRole('dialog', { name: 'Request for leave' });
+  await reopenedRequestDialog.waitFor({ state: 'visible' });
+  const evidenceInputReset = await reopenedRequestDialog.locator('#personal-leave-evidence')
+    .evaluate(input => input.value === '' && input.files?.length === 0);
+  await reopenedRequestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  if (!evidenceInputReset) throw new Error('The employee evidence input was not reset after the real UI submission.');
+
+  const employeeUiStorageResponse = employee.waitForResponse(response =>
+    response.request().method() === 'GET'
+      && decodeURIComponent(new URL(response.url()).pathname).includes(`/storage/v1/object/leave-evidence/${uiEvidencePath}`),
+  { timeout: 10000 });
+  const employeeUiDownload = employee.waitForEvent('download');
+  await uiHistoryRow.getByRole('button', { name: 'Download evidence' }).click();
+  const [employeeUiResponse, employeeUiFile] = await Promise.all([employeeUiStorageResponse, employeeUiDownload]);
+  if (!employeeUiResponse.ok()) throw new Error(`Employee UI evidence download returned ${employeeUiResponse.status()}.`);
+  await assertDownloadedEvidence(employee, employeeUiFile, `personal-leave-evidence-${uiLeaveRequestId.slice(0, 8)}`, 'real employee UI evidence bytes');
+
   const employeeStorageResponse = employee.waitForResponse(response =>
     response.request().method() === 'GET' && response.url().includes('/storage/v1/object/leave-evidence/'), { timeout: 10000 })
     .catch(async cause => {
@@ -144,10 +202,12 @@ try {
     throw new Error(`Manager leave table did not load. Page: ${pageText.slice(-1800)}. ${cause.message}`);
   });
   const managerRows = await leaveTable.locator('tbody tr').allInnerTexts();
-  const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave/ });
+  const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-19/ });
   await managerRow.waitFor({ state: 'visible', timeout: 5000 }).catch(async cause => {
     throw new Error(`Evidence request missing from manager queue. Rows: ${JSON.stringify(managerRows)}. ${cause.message}`);
   });
+  const uiManagerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-20/ });
+  await uiManagerRow.waitFor({ state: 'visible', timeout: 5000 });
   const managerStorageResponse = manager.waitForResponse(response =>
     response.request().method() === 'GET' && response.url().includes('/storage/v1/object/leave-evidence/'), { timeout: 10000 })
     .catch(async cause => {
@@ -163,6 +223,17 @@ try {
   }
   await assertDownloadedEvidence(manager, managerFile, `leave-evidence-${process.env.HRIS_LOCAL_LEAVE_REQUEST_ID.slice(0, 8)}`);
   await manager.getByRole('status').filter({ hasText: 'Evidence downloaded.' }).waitFor({ state: 'visible' });
+
+  const managerUiStorageResponse = manager.waitForResponse(response =>
+    response.request().method() === 'GET'
+      && decodeURIComponent(new URL(response.url()).pathname).includes(`/storage/v1/object/leave-evidence/${uiEvidencePath}`),
+  { timeout: 10000 });
+  const managerUiDownload = manager.waitForEvent('download');
+  await uiManagerRow.getByRole('button', { name: /Download evidence for Synthetic Employee A/ }).click();
+  const [managerUiResponse, managerUiFile] = await Promise.all([managerUiStorageResponse, managerUiDownload]);
+  if (!managerUiResponse.ok()) throw new Error(`Same-tenant manager UI evidence download returned ${managerUiResponse.status()}.`);
+  await assertDownloadedEvidence(manager, managerUiFile, `leave-evidence-${uiLeaveRequestId.slice(0, 8)}`, 'real employee UI evidence bytes');
+
   const approvalResponse = manager.waitForResponse(response =>
     response.request().method() === 'POST'
       && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
@@ -172,6 +243,16 @@ try {
   if (!resolved.ok()) throw new Error(`Same-tenant manager approval returned ${resolved.status()}.`);
   await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
   await managerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+
+  const uiApprovalResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
+  { timeout: 10000 });
+  await uiManagerRow.getByRole('button', { name: 'Approve', exact: true }).click();
+  const uiApproved = await uiApprovalResponse;
+  if (!uiApproved.ok()) throw new Error(`Same-tenant manager approval of the employee UI request returned ${uiApproved.status()}.`);
+  await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
+  await uiManagerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
 
   const rejectionRow = leaveTable.getByRole('row', {
     name: /Synthetic Employee A.*Synthetic annual leave.*2026-10-22/,
@@ -210,6 +291,11 @@ try {
   if (!(await resolvedRequest.innerText()).toLocaleLowerCase().includes('approved')) {
     throw new Error('The employee did not see the manager approval after refreshing their leave history.');
   }
+  const refreshedUiRequest = refreshedHistory.getByRole('row', { name: new RegExp(uiEvidenceReason) });
+  await refreshedUiRequest.waitFor({ state: 'visible' });
+  if (!(await refreshedUiRequest.innerText()).toLocaleLowerCase().includes('approved')) {
+    throw new Error('The employee did not see the UI-created request approval after refreshing their leave history.');
+  }
   await assertNoHorizontalOverflow(refreshedEmployee, 'Employee refreshed leave history mobile');
   const employeeRejectedRequest = refreshedHistory.getByRole('row', { name: /Synthetic UI rejection acceptance/ });
   await employeeRejectedRequest.waitFor({ state: 'visible' });
@@ -220,7 +306,7 @@ try {
   }
   await refreshedEmployeeContext.close();
 
-  console.log('Real local Auth/Postgres/Storage leave flow passed: employee evidence retrieval, manager approval and rejection with a note, and refreshed decision statuses in employee mobile history.');
+  console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves employee requests and rejects with a note, and refreshed employee history shows the decisions.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
