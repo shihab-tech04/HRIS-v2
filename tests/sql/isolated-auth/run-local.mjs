@@ -1990,6 +1990,84 @@ record('Employee project view exposes only linked employee allocations and denie
     && employeeDirectAllocations.data.length === 3
     && employeeDirectAllocations.data.every(row => ['55555555-5555-4555-8555-555555555555', '55555555-5555-4555-8555-555555555556'].includes(row.employee_id)));
 
+const staggeredEmployeeAllocation = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555557',
+  p_role_on_project: 'Early collaborator', p_allocation_percentage: 10,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const lateCollaboratorAllocation = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555560',
+  p_role_on_project: 'Late collaborator', p_allocation_percentage: 10,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const staggeredTask = await employeeA.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Synthetic staggered overlap task',
+  p_description: 'Only task members with overlapping assignment intervals are eligible reviewers.',
+  p_due_date: null, p_project_allocation_ids: [staggeredEmployeeAllocation.data?.id],
+});
+const addOverlappingMember = await employeeA.client.rpc('hris_assign_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_id: staggeredTask.data?.id,
+  p_project_allocation_id: taskMemberAllocation.data?.id,
+});
+const staggeredWorkspace = await employeeA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const releasedOverlappingMember = staggeredWorkspace.data?.tasks?.find(task => task.id === staggeredTask.data?.id)
+  ?.members?.find(row => row.employee_id === '55555555-5555-4555-8555-555555555556');
+const releaseBeforeLateMember = await employeeA.client.rpc('hris_release_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_assignment_id: releasedOverlappingMember?.id,
+});
+const addNonOverlappingMember = await employeeA.client.rpc('hris_assign_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_id: staggeredTask.data?.id,
+  p_project_allocation_id: lateCollaboratorAllocation.data?.id,
+});
+const staggeredCompletion = await employeeA.client.rpc('hris_complete_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: staggeredTask.data?.id,
+});
+const staggeredReviewPairs = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,
+  'all_expected',COALESCE(bool_and(
+    (reviewer_employee_id='55555555-5555-4555-8555-555555555557'::uuid AND employee_id='55555555-5555-4555-8555-555555555556'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid AND employee_id='55555555-5555-4555-8555-555555555557'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555557'::uuid AND employee_id='55555555-5555-4555-8555-555555555560'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555560'::uuid AND employee_id='55555555-5555-4555-8555-555555555557'::uuid)),false),
+  'nonoverlap_pair_count',count(*) FILTER (WHERE
+    (reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid AND employee_id='55555555-5555-4555-8555-555555555560'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555560'::uuid AND employee_id='55555555-5555-4555-8555-555555555556'::uuid))::integer)
+  FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${staggeredTask.data?.id}'::uuid`);
+const lateCollaboratorInbox = await employeeClock.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
+const reviewAssignedToOverlappingMember = queryAdmin(`SELECT jsonb_build_object('id',id::text)
+  FROM public.project_task_peer_reviews
+  WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${staggeredTask.data?.id}'::uuid
+    AND reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid
+    AND employee_id='55555555-5555-4555-8555-555555555557'::uuid`);
+const nonOverlappingSubmission = await employeeClock.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: reviewAssignedToOverlappingMember.id,
+  p_scores: { quality_of_work: 3, collaboration_teamwork: 3, delivery_reliability: 3, ownership_communication: 3 },
+  p_not_observed: [], p_comments: '',
+});
+record('Peer-review obligations include only collaborators with overlapping task assignments',
+  !staggeredEmployeeAllocation.error && !lateCollaboratorAllocation.error && !staggeredTask.error
+    && !addOverlappingMember.error && !releaseBeforeLateMember.error && !addNonOverlappingMember.error
+    && !staggeredCompletion.error && staggeredCompletion.data?.feedback_pending === 4
+    && staggeredReviewPairs.count === 4 && staggeredReviewPairs.all_expected
+    && staggeredReviewPairs.nonoverlap_pair_count === 0
+    && !lateCollaboratorInbox.error
+    && lateCollaboratorInbox.data.reviews.filter(row => row.task_id === staggeredTask.data?.id).length === 1
+    && lateCollaboratorInbox.data.reviews.some(row => row.task_id === staggeredTask.data?.id
+      && row.reviewer_employee_id === '55555555-5555-4555-8555-555555555560'
+      && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555557')
+    && Boolean(reviewAssignedToOverlappingMember.id)
+    && Boolean(nonOverlappingSubmission.error?.code === '42501'),
+  JSON.stringify({ addOverlappingMember: addOverlappingMember.error?.message,
+    releaseBeforeLateMember: releaseBeforeLateMember.error?.message,
+    addNonOverlappingMember: addNonOverlappingMember.error?.message,
+    completion: staggeredCompletion.error?.message, pairs: staggeredReviewPairs,
+    inboxRows: lateCollaboratorInbox.data?.reviews?.filter(row => row.task_id === staggeredTask.data?.id).length,
+    nonOverlappingSubmissionCode: nonOverlappingSubmission.error?.code }));
+
 const browserTaskTitle = `Local browser integration ${Date.now()}`;
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';

@@ -143,18 +143,18 @@ try {
   await navigateTo(reviewerPage, 'My Projects');
   await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review inbox');
   await reviewerPage.getByRole('heading', { name: 'My project work' }).waitFor({ state: 'visible' });
-  const review = reviewerPage.locator('article').filter({ hasText: 'Review Synthetic Employee A' });
+  const review = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
   await review.waitFor({ state: 'visible' });
-  await reviewerPage.getByLabel('Quality of Work').selectOption('not_observed');
-  await reviewerPage.getByLabel('Collaboration & Teamwork').selectOption('5');
-  await reviewerPage.getByLabel('Delivery & Reliability').selectOption('4');
-  await reviewerPage.getByLabel('Ownership & Communication').selectOption('3');
-  await reviewerPage.getByLabel('Comments (optional)').fill('Local Supabase browser integration review.');
+  await review.getByLabel('Quality of Work').selectOption('not_observed');
+  await review.getByLabel('Collaboration & Teamwork').selectOption('5');
+  await review.getByLabel('Delivery & Reliability').selectOption('4');
+  await review.getByLabel('Ownership & Communication').selectOption('3');
+  await review.getByLabel('Comments (optional)').fill('Local Supabase browser integration review.');
   await review.getByRole('button', { name: 'Submit review' }).click();
   await assertVisibleText(reviewerPage.getByRole('status').filter({ hasText: 'Review for Synthetic Employee A submitted.' }),
     'Review for Synthetic Employee A submitted.');
   await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review submission');
-  await reviewerPage.getByText('No peer reviews are waiting for you.').waitFor({ state: 'visible' });
+  await review.waitFor({ state: 'detached' });
 
   const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await revieweePage.route('**/*', async route => {
