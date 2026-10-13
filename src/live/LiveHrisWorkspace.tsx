@@ -11,6 +11,7 @@ import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { LearningRequests } from './LearningRequests';
 import { LearningProgramAdmin } from './LearningProgramAdmin';
+import { OrganizationHolidayCalendar } from './OrganizationHolidayCalendar';
 import { MyTravelRequests, TravelRequests } from './TravelRequests';
 import { ExpenseClaims } from './ExpenseClaims';
 import { MyServiceRequests } from './MyServiceRequests';
@@ -43,6 +44,7 @@ type PermissionSet = {
   recruitmentManage: boolean;
   referrals: boolean;
   referralsManage: boolean;
+  holidayManage: boolean;
   learningManage: boolean;
   travel: boolean;
   travelView: boolean;
@@ -51,7 +53,7 @@ type PermissionSet = {
   expensesView: boolean;
   expensesManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -91,7 +93,7 @@ const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
   organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
-  referrals: false, referralsManage: false,
+  referrals: false, referralsManage: false, holidayManage: false,
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
@@ -2232,6 +2234,7 @@ export function LiveHrisWorkspace({
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.recruitment) items.push({ id: 'recruitment', label: 'Candidate pipeline', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.referrals) items.push({ id: 'referrals', label: 'Employee referrals', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.holidayManage) items.push({ id: 'holidays', label: 'Holiday calendar', icon: <CalendarDays className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.learningManage) {
       items.push({ id: 'learning-programs', label: 'Learning programs', icon: <BookOpenCheck className="h-5 w-5" />, group: 'HRIS' });
       items.push({ id: 'learning-requests', label: 'Learning requests', icon: <BookOpenCheck className="h-5 w-5" />, group: 'HRIS' });
@@ -2256,7 +2259,7 @@ export function LiveHrisWorkspace({
     setPage(nav[0]?.id || 'dashboard');
   }, [nav, page]);
 
-  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.learningManage || permissions.travel || permissions.expenses ? 'HRIS Administrator' : 'Employee';
+  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const current = nav.find(item => item.id === page);
 
@@ -2310,6 +2313,7 @@ export function LiveHrisWorkspace({
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} />}
           {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
+          {page === 'holidays' && permissions.holidayManage && <OrganizationHolidayCalendar tenantId={tenantId} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} />}
           {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
           {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} />}

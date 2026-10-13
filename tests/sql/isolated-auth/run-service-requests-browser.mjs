@@ -59,6 +59,7 @@ try {
   await employee.getByRole('button', { name: 'Open navigation menu' }).click();
   await nav.getByRole('button', { name: 'My Requests', exact: true }).click();
   await employee.getByRole('heading', { name: 'My Service Requests', exact: true }).waitFor({ state: 'visible' });
+  await employee.getByText('Loading your requests…', { exact: true }).waitFor({ state: 'detached' });
 
   await employee.getByLabel('Reason or details').fill('This entry should be cleared without being sent.');
   const initialCount = await employee.locator('[data-service-request]').count();

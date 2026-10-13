@@ -290,6 +290,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013175151_employee_referral_workflow.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013221600_hris_organization_holiday_calendar.sql'),
 ]) applySql(file);
 const evidenceBucketCheck = await adminAuth.storage.getBucket('leave-evidence');
 const evidenceMimeTypes = [
@@ -3375,6 +3376,92 @@ record('Releasing an allocation preserves the employee status and writes one rel
     && Boolean(releaseRepeat.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.released') === 1,
   JSON.stringify(taskMembershipCascade));
+
+const holidayCalendarA = await managerA.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantA });
+const holidayCalendarB = await managerB.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantB });
+const holidayCrossTenantRead = await managerB.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantA });
+const holidayEmployeeRead = await employeeA.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantA });
+const holidayGlobalOnlyRead = await globalOnly.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantA });
+const holidayCreate = await managerA.client.rpc('hris_save_org_holiday', {
+  p_tenant_id: ids.tenantA, p_holiday_id: null, p_name: 'Isolated Calendar Acceptance Day',
+  p_start_date: '2099-12-20', p_end_date: '2099-12-21', p_holiday_type: 'qa_test',
+  p_description: 'Synthetic calendar RPC persistence check.', p_active: true,
+});
+const holidayCreateId = holidayCreate.data?.id;
+const holidayPersisted = holidayCreateId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id,'name',name,'start_date',start_date,'end_date',end_date,
+  'holiday_type',holiday_type,'description',description,'active',active,
+  'created_at',created_at IS NOT NULL,'updated_at',updated_at IS NOT NULL,
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
+    WHERE target_type='holiday' AND target_id=${sqlLiteral(holidayCreateId)}
+      AND action='holiday.created' AND actor_id=${sqlLiteral(managerA.userId)}::uuid))
+  FROM public.holidays WHERE id=${sqlLiteral(holidayCreateId)}::uuid`) : null;
+const holidayInvalidRange = await managerA.client.rpc('hris_save_org_holiday', {
+  p_tenant_id: ids.tenantA, p_holiday_id: null, p_name: 'Invalid Range',
+  p_start_date: '2099-12-22', p_end_date: '2099-12-21', p_holiday_type: 'qa_test',
+  p_description: null, p_active: true,
+});
+const holidayCrossTenantUpdate = holidayCreateId ? await managerB.client.rpc('hris_save_org_holiday', {
+  p_tenant_id: ids.tenantA, p_holiday_id: holidayCreateId, p_name: 'Cross Tenant Attempt',
+  p_start_date: '2099-12-20', p_end_date: '2099-12-21', p_holiday_type: 'qa_test',
+  p_description: null, p_active: true,
+}) : { error: new Error('Holiday create failed; cross-tenant update was not attempted.') };
+const holidayDirectInsert = await managerA.client.from('holidays').insert({
+  tenant_id: ids.tenantA, name: 'Direct Table Write Attempt',
+  start_date: '2099-12-23', end_date: '2099-12-23', active: true,
+});
+const holidayAnonRead = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantA });
+record('Holiday calendar reads are limited to active tenant holidays.manage membership',
+  !holidayCalendarA.error && !holidayCalendarB.error
+    && holidayCalendarA.data.some(holiday => holiday.name === 'Synthetic QA holiday')
+    && !holidayCalendarA.data.some(holiday => holiday.name === 'Synthetic QA holiday B')
+    && holidayCalendarB.data.some(holiday => holiday.name === 'Synthetic QA holiday B')
+    && !holidayCalendarB.data.some(holiday => holiday.name === 'Synthetic QA holiday')
+    && Boolean(holidayCrossTenantRead.error?.code === '42501')
+    && Boolean(holidayEmployeeRead.error?.code === '42501')
+    && Boolean(holidayGlobalOnlyRead.error?.code === '42501')
+    && Boolean(holidayAnonRead.error),
+  JSON.stringify({ tenantACount: holidayCalendarA.data?.length, tenantBCount: holidayCalendarB.data?.length,
+    crossTenant: holidayCrossTenantRead.error?.code, employee: holidayEmployeeRead.error?.code,
+    globalOnly: holidayGlobalOnlyRead.error?.code, anonymous: holidayAnonRead.error?.code }));
+record('Holiday manager can persist tenant calendar entries with audit history; invalid, cross-tenant, and direct writes are denied',
+  !holidayCreate.error && holidayPersisted?.tenant_id === ids.tenantA
+    && holidayPersisted.name === 'Isolated Calendar Acceptance Day'
+    && holidayPersisted.start_date === '2099-12-20' && holidayPersisted.end_date === '2099-12-21'
+    && holidayPersisted.holiday_type === 'qa_test'
+    && holidayPersisted.description === 'Synthetic calendar RPC persistence check.'
+    && holidayPersisted.active === true && holidayPersisted.created_at === true
+    && holidayPersisted.updated_at === true && holidayPersisted.audit_count === 1
+    && Boolean(holidayInvalidRange.error?.code === '22000')
+    && Boolean(holidayCrossTenantUpdate.error?.code === '42501')
+    && Boolean(holidayDirectInsert.error),
+  JSON.stringify({ createError: holidayCreate.error?.code, persisted: holidayPersisted,
+    invalidRange: holidayInvalidRange.error?.code, crossTenantUpdate: holidayCrossTenantUpdate.error?.code,
+    directInsert: holidayDirectInsert.error?.code }));
+
+let holidayBrowserOutput = '';
+let holidayBrowserError = '';
+try {
+  holidayBrowserOutput = execFileSync('node', [path.join(here, 'run-holiday-calendar-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_HOLIDAY_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_HOLIDAY_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  holidayBrowserError = String(error.stderr || error.message || 'local holiday browser run failed').slice(-1800);
+}
+record('Real local Auth-to-Postgres holiday calendar journey passes validation, cancellation, retry, persistence, and responsive recovery',
+  holidayBrowserOutput.includes('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, create, edit, deactivate/activate, persistence refresh, tenant-scoped RPCs, and 375px/1280px layouts.'),
+  holidayBrowserError);
 
 const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(
   'global_role',EXISTS (SELECT 1 FROM public.user_roles ur

@@ -316,12 +316,17 @@ CREATE TABLE public.employee_shift_assignments (
 );
 
 CREATE TABLE public.holidays (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES public.tenants(id),
   name text NOT NULL,
   start_date date NOT NULL,
   end_date date NOT NULL,
-  active boolean NOT NULL DEFAULT true
+  holiday_type text NOT NULL DEFAULT 'general',
+  description text,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (end_date >= start_date)
 );
 
 CREATE TABLE public.leave_types (

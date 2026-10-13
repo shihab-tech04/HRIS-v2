@@ -19,6 +19,7 @@ type WorkspacePermissions = {
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
   organizationManage: boolean; employees: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
   referrals: boolean; referralsManage: boolean;
+  holidayManage: boolean;
   learningManage: boolean;
   travel: boolean; travelView: boolean; travelManage: boolean;
   expenses: boolean; expensesView: boolean; expensesManage: boolean;
@@ -28,6 +29,7 @@ const noWorkspacePermissions: WorkspacePermissions = {
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
   organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
   referrals: false, referralsManage: false,
+  holidayManage: false,
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
@@ -282,6 +284,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           'employees.view', 'employees.manage',
           'recruitment.view', 'recruitment.manage',
           'referrals.view', 'referrals.manage',
+          'holidays.manage',
           'learning.manage',
           'travel.view', 'travel.manage',
           'expenses.view', 'expenses.manage',
@@ -311,6 +314,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             recruitmentManage: grants.get('recruitment.manage') === true,
             referrals: grants.get('referrals.view') === true || grants.get('referrals.manage') === true,
             referralsManage: grants.get('referrals.manage') === true,
+            holidayManage: grants.get('holidays.manage') === true,
             learningManage: grants.get('learning.manage') === true,
             travel: grants.get('travel.view') === true || grants.get('travel.manage') === true,
             travelView: grants.get('travel.view') === true,
