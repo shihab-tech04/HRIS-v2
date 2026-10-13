@@ -194,6 +194,7 @@ const emails = [
   'employee-clock@hris.test', 'report-viewer-a@hris.test', 'super-admin@hris.test',
   'recruiter-a@hris.test',
   'employee-directory-a@hris.test',
+  'learning-manager-a@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -249,6 +250,7 @@ const reportViewerA = await signIn(emails[9]);
 const superAdmin = await signIn(emails[10]);
 const recruiterOnly = await signIn(emails[11]);
 const employeesViewer = await signIn(emails[12]);
+const learningManagerA = await signIn(emails[13]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -269,6 +271,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013153500_hris_learning_employee_self_service.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013095450_hris_learning_manager_decisions.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -343,7 +346,13 @@ const learningIds = {
   fullSession: '91000000-0000-4000-8000-000000000003',
   tenantBSession: '91000000-0000-4000-8000-000000000004',
   concurrentSession: '91000000-0000-4000-8000-000000000005',
+  approvalCapacityProgram: '90000000-0000-4000-8000-000000000007',
+  approvalCapacitySession: '91000000-0000-4000-8000-000000000006',
   mandatoryEnrollment: '92000000-0000-4000-8000-000000000003',
+  managerApprovalRequest: '92000000-0000-4000-8000-000000000004',
+  managerRejectionRequest: '92000000-0000-4000-8000-000000000005',
+  capacityRequestOne: '92000000-0000-4000-8000-000000000006',
+  capacityRequestTwo: '92000000-0000-4000-8000-000000000007',
 };
 const learningContextA = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
 const learningContextB = await employeeB.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantB });
@@ -476,6 +485,83 @@ record('Employees can cancel only their own non-mandatory open learning and requ
     && Boolean(otherEmployeeCancel.error?.code === '42501')
     && Boolean(mandatoryCancel.error?.code === '42501') && mandatoryLearningRow.status === 'enrolled');
 
+const managerQueueA = await learningManagerA.client.rpc('hris_get_learning_requests', { p_tenant_id: ids.tenantA });
+const managerQueueCrossTenant = await learningManagerA.client.rpc('hris_get_learning_requests', { p_tenant_id: ids.tenantB });
+const ordinaryManagerQueue = await managerA.client.rpc('hris_get_learning_requests', { p_tenant_id: ids.tenantA });
+const tenantBManagerQueue = await managerB.client.rpc('hris_get_learning_requests', { p_tenant_id: ids.tenantB });
+const employeeLearningQueue = await employeeA.client.rpc('hris_get_learning_requests', { p_tenant_id: ids.tenantA });
+const globalOnlyLearningQueue = await globalOnly.client.rpc('hris_get_learning_requests', { p_tenant_id: ids.tenantA });
+const managerQueueDirectA = await learningManagerA.client.from('learning_enrollments')
+  .select('id,tenant_id,status').eq('tenant_id', ids.tenantA);
+const managerQueueDirectB = await learningManagerA.client.from('learning_enrollments')
+  .select('id,tenant_id,status').eq('tenant_id', ids.tenantB);
+record('Learning request queue requires active tenant learning.manage; ordinary managers, employees, global-only callers, and cross-tenant requests are denied',
+  !managerQueueA.error && managerQueueA.data.length === 4
+    && managerQueueA.data.some(row => row.id === learningIds.managerApprovalRequest)
+    && managerQueueA.data.some(row => row.id === learningIds.managerRejectionRequest)
+    && managerQueueA.data.some(row => row.id === learningIds.capacityRequestOne)
+    && managerQueueA.data.some(row => row.id === learningIds.capacityRequestTwo)
+    && Boolean(managerQueueCrossTenant.error?.code === '42501')
+    && Boolean(ordinaryManagerQueue.error?.code === '42501')
+    && Boolean(tenantBManagerQueue.error?.code === '42501')
+    && Boolean(employeeLearningQueue.error?.code === '42501')
+    && Boolean(globalOnlyLearningQueue.error?.code === '42501')
+    && !managerQueueDirectA.error && managerQueueDirectA.data.every(row => row.tenant_id === ids.tenantA)
+    && !managerQueueDirectB.error && managerQueueDirectB.data.length === 0);
+
+const unauthorizedDecision = await managerA.client.rpc('hris_resolve_learning_request', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.managerApprovalRequest,
+  p_decision: 'enrolled', p_resolution_note: null,
+});
+const unauthorizedEmployeeDecision = await employeeA.client.rpc('hris_resolve_learning_request', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.managerApprovalRequest,
+  p_decision: 'enrolled', p_resolution_note: null,
+});
+const approvedRequest = await learningManagerA.client.rpc('hris_resolve_learning_request', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.managerApprovalRequest,
+  p_decision: 'enrolled', p_resolution_note: 'Approved for the November cohort.',
+});
+const duplicateApproval = await learningManagerA.client.rpc('hris_resolve_learning_request', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.managerApprovalRequest,
+  p_decision: 'rejected', p_resolution_note: 'Must not overwrite the first decision.',
+});
+const approvedRequestRow = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id='${learningIds.managerApprovalRequest}'::uuid`);
+const approvedEmployeeContext = await managerA2.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+record('Learning manager can approve once with a persisted employee-visible note; ordinary manager, employee, and duplicate decision are denied',
+  Boolean(unauthorizedDecision.error?.code === '42501')
+    && Boolean(unauthorizedEmployeeDecision.error?.code === '42501')
+    && !approvedRequest.error && approvedRequest.data?.status === 'enrolled'
+    && Boolean(duplicateApproval.error?.code === 'P0002')
+    && approvedRequestRow.status === 'enrolled'
+    && approvedRequestRow.resolution_note === 'Approved for the November cohort.'
+    && approvedEmployeeContext.data?.enrollments.some(row => row.id === learningIds.managerApprovalRequest
+      && row.status === 'enrolled' && row.resolution_note === 'Approved for the November cohort.'));
+
+const rejectedRequest = await learningManagerA.client.rpc('hris_resolve_learning_request', {
+  p_tenant_id: ids.tenantA, p_id: learningIds.managerRejectionRequest,
+  p_decision: 'rejected', p_resolution_note: 'Please choose a later session.',
+});
+const rejectedRequestRow = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id='${learningIds.managerRejectionRequest}'::uuid`);
+record('Learning manager can reject a pending request and preserve the optional decision note',
+  !rejectedRequest.error && rejectedRequest.data?.status === 'rejected'
+    && rejectedRequestRow.status === 'rejected'
+    && rejectedRequestRow.resolution_note === 'Please choose a later session.');
+
+const approvalCapacityRace = await Promise.all([learningIds.capacityRequestOne, learningIds.capacityRequestTwo].map(p_id =>
+  learningManagerA.client.rpc('hris_resolve_learning_request', {
+    p_tenant_id: ids.tenantA, p_id, p_decision: 'enrolled', p_resolution_note: null,
+  })));
+const approvalCapacityRows = queryAdmin(`SELECT jsonb_agg(to_jsonb(e)) FROM public.learning_enrollments e
+  WHERE e.tenant_id='${ids.tenantA}'::uuid AND e.session_id='${learningIds.approvalCapacitySession}'::uuid`);
+const capacityApproved = approvalCapacityRace.filter(result => !result.error).length;
+const capacityDeniedForFull = approvalCapacityRace.filter(result => result.error?.code === '22023').length;
+record('Concurrent learning approvals serialize on session capacity; full-session requests remain pending',
+  capacityApproved === 1 && capacityDeniedForFull === 1
+    && approvalCapacityRows.filter(row => row.status === 'enrolled').length === 1
+    && approvalCapacityRows.filter(row => row.status === 'requested').length === 1,
+  JSON.stringify({ outcomes: approvalCapacityRace.map(result => result.error?.code || result.data?.status),
+    resultingStatuses: approvalCapacityRows.map(row => row.status) }));
+
 let learningBrowserOutput = '';
 let learningBrowserError = '';
 try {
@@ -487,6 +573,7 @@ try {
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_LEARNING_EMAIL: emails[5],
+      HRIS_LOCAL_LEARNING_MANAGER_EMAIL: emails[13],
       HRIS_LOCAL_LEARNING_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',
@@ -496,7 +583,7 @@ try {
   learningBrowserError = String(error.stderr || error.message || 'local learning browser run failed').slice(-1800);
 }
 record('Real local Auth-to-Postgres learning workflow passes enrollment, approval, cancellation, refresh and responsive recovery',
-  learningBrowserOutput.includes('Local Auth-to-Postgres learning enrollment, approval request, cancellation, refresh, and mobile/desktop journey passed.'),
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee request, tenant-scoped manager approval, employee status refresh, cancellation, and mobile/desktop journey passed.'),
   learningBrowserError);
 
 const employeeDirectoryA = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {

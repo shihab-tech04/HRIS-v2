@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
-  'HRIS_LOCAL_LEARNING_EMAIL', 'HRIS_LOCAL_LEARNING_TENANT_ID',
+  'HRIS_LOCAL_LEARNING_EMAIL', 'HRIS_LOCAL_LEARNING_MANAGER_EMAIL', 'HRIS_LOCAL_LEARNING_TENANT_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -34,10 +34,10 @@ async function waitForServer() {
   throw new Error('Timed out waiting for the local HRIS UI server.');
 }
 
-async function signIn(page) {
+async function signIn(page, email = process.env.HRIS_LOCAL_LEARNING_EMAIL) {
   await page.goto(origin);
   await page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible' });
-  await page.getByLabel('Email', { exact: true }).fill(process.env.HRIS_LOCAL_LEARNING_EMAIL);
+  await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
@@ -48,6 +48,22 @@ async function openLearning(page) {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Learning', exact: true }).click();
   await page.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
+}
+
+async function openLearningRequests(page) {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'Learning requests', exact: true }).click();
+  await page.getByRole('heading', { name: 'Learning requests', exact: true }).waitFor({ state: 'visible' });
+}
+
+async function isolateExternalRequests(page) {
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
 }
 
 async function assertNoOverflow(page, label) {
@@ -81,6 +97,11 @@ try {
     }
     const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_employee_(?:enroll|request|cancel)_learning)$/);
     if (rpc && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
+    }
+    const managerRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request)$/);
+    if (managerRpc && request.method() === 'POST') {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
     }
@@ -159,6 +180,52 @@ try {
   await page.getByText('No learning programs match your search.', { exact: true }).waitFor({ state: 'visible' });
   await page.getByLabel('Search learning programs').fill('');
   await page.locator('[data-learning-program="90000000-0000-4000-8000-000000000001"]').waitFor({ state: 'visible' });
+
+  await requestProgram.getByLabel('Choose session for QA A Approval Learning').selectOption('91000000-0000-4000-8000-000000000002');
+  await requestProgram.getByLabel('Reason for QA A Approval Learning').fill('Approval via the learning manager queue.');
+  const finalRequestResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_request_learning'));
+  await requestProgram.getByRole('button', { name: 'Request approval' }).click();
+  const finalRequest = await rpcBody(await finalRequestResponse);
+  await page.locator(`[data-learning-enrollment="${finalRequest.id}"]`).getByText('Requested', { exact: true }).waitFor({ state: 'visible' });
+
+  const managerContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const managerPage = await managerContext.newPage();
+  await isolateExternalRequests(managerPage);
+  managerPage.on('request', request => {
+    const url = new URL(request.url());
+    const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request)$/);
+    if (rpc && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
+    }
+  });
+  await signIn(managerPage, process.env.HRIS_LOCAL_LEARNING_MANAGER_EMAIL);
+  await openLearningRequests(managerPage);
+  const managerRequestCard = managerPage.locator(`[data-learning-request="${finalRequest.id}"]`);
+  await managerRequestCard.getByRole('heading', { name: 'QA A Approval Learning' }).waitFor({ state: 'visible' });
+  await managerRequestCard.getByText('Approval via the learning manager queue.', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Learning manager queue mobile');
+  await managerRequestCard.getByRole('button', { name: 'Approve' }).click();
+  const resolutionResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_resolve_learning_request'));
+  await managerPage.getByRole('alertdialog').getByLabel('Update for the employee').fill('Approved from the manager queue.');
+  await managerPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm approval' }).click();
+  const decision = await rpcBody(await resolutionResponse);
+  if (decision.status !== 'enrolled' || decision.id !== finalRequest.id) throw new Error(`Manager approval returned an unexpected result: ${JSON.stringify(decision)}.`);
+  await managerRequestCard.waitFor({ state: 'detached' });
+  await managerPage.getByText('Synthetic Employee A is enrolled in QA A Approval Learning.', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Learning manager queue after approval mobile');
+  await managerPage.setViewportSize({ width: 1280, height: 900 });
+  await managerPage.getByRole('button', { name: 'Refresh learning requests' }).click();
+  if (await managerPage.locator('[data-learning-request]').count() !== 1) {
+    throw new Error('Manager queue should retain only the separate capacity-blocked request after approval.');
+  }
+  await assertNoOverflow(managerPage, 'Learning manager queue desktop');
+
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await page.locator(`[data-learning-enrollment="${finalRequest.id}"]`).getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
+  await page.locator(`[data-learning-enrollment="${finalRequest.id}"]`).getByText('Update: Approved from the manager queue.', { exact: true }).waitFor({ state: 'visible' });
+  await managerContext.close();
+
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: 'Refresh learning' }).click();
   await page.locator(`[data-learning-enrollment="${request.id}"]`).getByText('Cancelled', { exact: true }).waitFor({ state: 'visible' });
@@ -167,7 +234,7 @@ try {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres learning enrollment, approval request, cancellation, refresh, and mobile/desktop journey passed.');
+  console.log('Local Auth-to-Postgres employee request, tenant-scoped manager approval, employee status refresh, cancellation, and mobile/desktop journey passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

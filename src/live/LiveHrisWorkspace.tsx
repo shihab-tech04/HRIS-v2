@@ -9,12 +9,13 @@ import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
+import { LearningRequests } from './LearningRequests';
 import { OrganizationPerformance } from './OrganizationPerformance';
 import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
 import { downloadCsv } from './csv';
 import {
-  Activity, BookOpen, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  Activity, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, Users, X, XCircle,
 } from 'lucide-react';
@@ -34,8 +35,9 @@ type PermissionSet = {
   employees: boolean;
   performance: boolean;
   recruitment: boolean;
+  learningManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'learning-requests' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -75,6 +77,7 @@ const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
   organizationManage: false, employees: false, performance: false, recruitment: false,
+  learningManage: false,
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -2210,6 +2213,7 @@ export function LiveHrisWorkspace({
     if (permissions.employees) items.push({ id: 'employees', label: 'Employees', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.recruitment) items.push({ id: 'recruitment', label: 'Candidate pipeline', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.learningManage) items.push({ id: 'learning-requests', label: 'Learning requests', icon: <BookOpenCheck className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
@@ -2224,7 +2228,7 @@ export function LiveHrisWorkspace({
     setPage(nav[0]?.id || 'dashboard');
   }, [nav, page]);
 
-  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment ? 'HRIS Administrator' : 'Employee';
+  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.learningManage ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const current = nav.find(item => item.id === page);
 
@@ -2277,6 +2281,7 @@ export function LiveHrisWorkspace({
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} />}
+          {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} />}

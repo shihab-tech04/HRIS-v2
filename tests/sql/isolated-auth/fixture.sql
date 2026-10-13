@@ -45,6 +45,8 @@ DROP FUNCTION IF EXISTS public.hris_get_my_project_tasks(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_project_peer_reviews(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_submit_project_peer_review(uuid,uuid,jsonb,text[],text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_learning_context(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_learning_requests(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_resolve_learning_request(uuid,uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_employee_enroll_learning(uuid,uuid,uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_employee_request_learning(uuid,uuid,uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_employee_cancel_learning(uuid,uuid) CASCADE;
@@ -847,11 +849,13 @@ INSERT INTO public.roles(id,name) VALUES
   ('qa_tenant_viewer_b','Synthetic tenant B viewer'),
   ('qa_tenant_reporter_a','Synthetic tenant A report-only viewer'),
   ('qa_tenant_recruitment_a','Synthetic tenant A recruiter-only viewer'),
-  ('qa_tenant_employee_viewer_a','Synthetic tenant A employee-directory viewer');
+  ('qa_tenant_employee_viewer_a','Synthetic tenant A employee-directory viewer'),
+  ('qa_tenant_learning_manager_a','Synthetic tenant A learning manager');
 INSERT INTO public.permissions(id,module,action) VALUES
   ('leave.manage','leave','manage'),('leave.view','leave','view'),
   ('attendance.manage','attendance','manage'),('attendance.view','attendance','view'),
-  ('dashboard.view','dashboard','view'),('reports.view','reports','view');
+  ('dashboard.view','dashboard','view'),('reports.view','reports','view'),
+  ('learning.view','learning','view'),('learning.manage','learning','manage');
 INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_global_manager','leave.manage'),('qa_global_manager','leave.view'),
   ('qa_global_manager','attendance.manage'),('qa_global_manager','attendance.view'),
@@ -890,7 +894,9 @@ CROSS JOIN (VALUES
 ) perms(permission_id);
 INSERT INTO public.role_permissions(role_id,permission_id)
 VALUES ('qa_tenant_recruitment_a','recruitment.view'),
-  ('qa_tenant_employee_viewer_a','employees.view');
+  ('qa_tenant_employee_viewer_a','employees.view'),
+  ('qa_tenant_learning_manager_a','learning.view'),
+  ('qa_tenant_learning_manager_a','learning.manage');
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users
   WHERE email IN ('global-only@hris.test','manager-a@hris.test','manager-b@hris.test');
@@ -920,6 +926,9 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee_viewer_a','active'
   FROM auth.users WHERE email='employee-directory-a@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_learning_manager_a','active'
+  FROM auth.users WHERE email='learning-manager-a@hris.test';
 
 INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minutes,break_minutes,weekly_off_days,full_day_hours,active) VALUES
   ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','Synthetic Day Shift','QA-DAY','09:00','17:00',10,60,ARRAY[0,6],8,true),
@@ -952,17 +961,23 @@ INSERT INTO public.learning_programs(id,tenant_id,title,description,category,pro
   ('90000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','QA A Full Session','Synthetic full-capacity course','Professional Development','QA Provider','in_person',2,true,'{}',true),
   ('90000000-0000-4000-8000-000000000004','22222222-2222-4222-8222-222222222222','QA B Private Learning','Synthetic tenant B course','Professional Development','QA Provider','online',3,true,'{}',true),
   ('90000000-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','QA A Inactive Learning','Inactive course must stay hidden','Professional Development','QA Provider','online',1,true,'{}',false),
-  ('90000000-0000-4000-8000-000000000006','11111111-1111-4111-8111-111111111111','QA A Concurrent Session','One seat tests safe concurrent enrollment','Professional Development','QA Provider','online',1,true,'{}',true);
+  ('90000000-0000-4000-8000-000000000006','11111111-1111-4111-8111-111111111111','QA A Concurrent Session','One seat tests safe concurrent enrollment','Professional Development','QA Provider','online',1,true,'{}',true),
+  ('90000000-0000-4000-8000-000000000007','11111111-1111-4111-8111-111111111111','QA A Approval Capacity Learning','One seat tests manager approval capacity','Professional Development','QA Provider','online',2,false,'{}',true);
 INSERT INTO public.learning_sessions(id,tenant_id,program_id,trainer_name,start_at,end_at,location,capacity,enrollment_deadline,status) VALUES
   ('91000000-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000001','QA Trainer','2026-11-02 03:00:00+00','2026-11-02 07:00:00+00','Online',10,'2026-10-30 00:00:00+00','scheduled'),
   ('91000000-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000002','QA Trainer','2026-11-04 03:00:00+00','2026-11-04 11:00:00+00','Training Room',20,'2026-11-01 00:00:00+00','scheduled'),
   ('91000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000003','QA Trainer','2026-11-06 03:00:00+00','2026-11-06 05:00:00+00','Training Room',1,'2026-11-03 00:00:00+00','scheduled'),
   ('91000000-0000-4000-8000-000000000004','22222222-2222-4222-8222-222222222222','90000000-0000-4000-8000-000000000004','QA B Trainer','2026-11-08 03:00:00+00','2026-11-08 06:00:00+00','Remote',12,'2026-11-05 00:00:00+00','scheduled'),
-  ('91000000-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000006','QA Trainer','2026-11-10 03:00:00+00','2026-11-10 05:00:00+00','Online',1,'2026-11-07 00:00:00+00','scheduled');
+  ('91000000-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000006','QA Trainer','2026-11-10 03:00:00+00','2026-11-10 05:00:00+00','Online',1,'2026-11-07 00:00:00+00','scheduled'),
+  ('91000000-0000-4000-8000-000000000006','11111111-1111-4111-8111-111111111111','90000000-0000-4000-8000-000000000007','QA Trainer','2026-11-12 03:00:00+00','2026-11-12 05:00:00+00','Online',1,'2026-11-09 00:00:00+00','scheduled');
 INSERT INTO public.learning_enrollments(id,tenant_id,employee_id,program_id,session_id,source,status,mandatory,created_by) VALUES
   ('92000000-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555560','90000000-0000-4000-8000-000000000003','91000000-0000-4000-8000-000000000003','self_enrollment','enrolled',false,NULL),
   ('92000000-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','90000000-0000-4000-8000-000000000004','91000000-0000-4000-8000-000000000004','self_enrollment','enrolled',false,NULL),
-  ('92000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','90000000-0000-4000-8000-000000000001',NULL,'admin_assignment','enrolled',true,NULL);
+  ('92000000-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','90000000-0000-4000-8000-000000000001',NULL,'admin_assignment','enrolled',true,NULL),
+  ('92000000-0000-4000-8000-000000000004','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555556','90000000-0000-4000-8000-000000000002','91000000-0000-4000-8000-000000000002','employee_request','requested',false,NULL),
+  ('92000000-0000-4000-8000-000000000005','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555557','90000000-0000-4000-8000-000000000002',NULL,'employee_request','requested',false,NULL),
+  ('92000000-0000-4000-8000-000000000006','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555556','90000000-0000-4000-8000-000000000007','91000000-0000-4000-8000-000000000006','employee_request','requested',false,NULL),
+  ('92000000-0000-4000-8000-000000000007','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555557','90000000-0000-4000-8000-000000000007','91000000-0000-4000-8000-000000000006','employee_request','requested',false,NULL);
 INSERT INTO public.employee_skills(employee_id,skill_name,proficiency,verified) VALUES
   ('55555555-5555-4555-8555-555555555555','Communication','intermediate',true),
   ('66666666-6666-4666-8666-666666666666','Data Analysis','beginner',false);
