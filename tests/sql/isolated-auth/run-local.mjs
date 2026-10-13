@@ -197,6 +197,7 @@ const emails = [
   'employee-directory-a@hris.test',
   'learning-manager-a@hris.test',
   recoveryEmail,
+  'payroll-viewer-a@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -259,6 +260,7 @@ const superAdmin = await signIn(emails[10]);
 const recruiterOnly = await signIn(emails[11]);
 const employeesViewer = await signIn(emails[12]);
 const learningManagerA = await signIn(emails[13]);
+const payrollViewerA = await signIn(emails[15]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -293,6 +295,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013221600_hris_organization_holiday_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221700_employee_leave_history_private_evidence.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014110000_hris_employee_payslip_history.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014120000_hris_tenant_payroll_register_read.sql'),
 ]) applySql(file);
 // The local PostgREST container predates SQL applied directly by this harness.
 // Refresh its function catalog before testing newly installed RPCs.
@@ -442,6 +445,76 @@ const payslipAcl = queryAdmin(`SELECT jsonb_build_object(
   'anon',has_function_privilege('anon','public.hris_get_my_payslips(uuid)','EXECUTE'),
   'authenticated',has_function_privilege('authenticated','public.hris_get_my_payslips(uuid)','EXECUTE'),
   'rls', (SELECT relrowsecurity FROM pg_class WHERE oid='public.payslips'::regclass))`);
+const payrollRegister = await payrollViewerA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterReleased = await payrollViewerA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: 'released', p_search: 'QA-A-001', p_limit: 25, p_offset: 0,
+});
+const payrollRegisterPage = await payrollViewerA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 2, p_offset: 2,
+});
+const payrollRegisterCrossTenant = await payrollViewerA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantB, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterForeignPeriod = await payrollViewerA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: '99999999-0000-4000-8000-000000000002',
+  p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterInvalidStatus = await payrollViewerA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: 'pending', p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterNoPermission = await noPermission.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterGlobalOnly = await globalOnly.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterEmployee = await employeeA.client.rpc('hris_get_tenant_payroll_register', {
+  p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+});
+const payrollRegisterAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_tenant_payroll_register', {
+    p_tenant_id: ids.tenantA, p_pay_period_id: null, p_status: null, p_search: null, p_limit: 25, p_offset: 0,
+  });
+const payrollRegisterAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_tenant_payroll_register(uuid,uuid,text,text,integer,integer)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_tenant_payroll_register(uuid,uuid,text,text,integer,integer)','EXECUTE'))`);
+const payrollSensitiveKeys = ['bank_name','bank_account_no','tax_identification_no','note'];
+record('Payroll register exposes tenant A rows only to an active payroll.view member using a safe field whitelist',
+  !payrollRegister.error && payrollRegister.data?.tenant_id === ids.tenantA
+    && payrollRegister.data.total_count === 3 && payrollRegister.data.payslips.length === 3
+    && payrollRegister.data.periods.length === 1
+    && payrollRegister.data.periods[0].id === '99999999-0000-4000-8000-000000000001'
+    && !payrollRegister.data.periods.some(row => row.id === '99999999-0000-4000-8000-000000000002')
+    && payrollRegister.data.payslips.some(row => row.employee_number === 'QA-A-001' && row.status === 'released')
+    && payrollRegister.data.payslips.some(row => row.employee_number === 'QA-A-003' && row.status === 'released')
+    && payrollRegister.data.payslips.some(row => row.employee_number === 'QA-A-001' && row.status === 'draft')
+    && payrollRegister.data.payslips.every(row => !payrollSensitiveKeys.some(key => key in row))
+    && !payrollRegister.data.payslips.some(row => row.employee_number === 'QA-B-001'),
+  JSON.stringify({ error: payrollRegister.error?.code || null, periodCount: payrollRegister.data?.periods?.length,
+    total: payrollRegister.data?.total_count, employees: payrollRegister.data?.payslips?.map(row => [row.employee_number,row.status]),
+    sensitiveFields: payrollRegister.data?.payslips?.flatMap(row => payrollSensitiveKeys.filter(key => key in row)) }));
+record('Payroll register filters status/search and paginates without client-side salary arithmetic',
+  !payrollRegisterReleased.error && payrollRegisterReleased.data?.total_count === 1
+    && payrollRegisterReleased.data.payslips.length === 1
+    && payrollRegisterReleased.data.payslips[0].id === '99999999-0000-4000-8000-000000000101'
+    && !payrollRegisterPage.error && payrollRegisterPage.data?.total_count === 3
+    && payrollRegisterPage.data.payslips.length === 1
+    && Boolean(payrollRegisterForeignPeriod.error?.code === '22023')
+    && Boolean(payrollRegisterInvalidStatus.error?.code === '22023'),
+  JSON.stringify({ filtered: payrollRegisterReleased.data?.payslips?.map(row => row.id),
+    total: payrollRegisterReleased.data?.total_count, pageRows: payrollRegisterPage.data?.payslips?.length,
+    foreignPeriod: payrollRegisterForeignPeriod.error?.code, badStatus: payrollRegisterInvalidStatus.error?.code }));
+record('Payroll register denies cross-tenant, unlinked, global-only, and anonymous access and excludes anonymous RPC execute',
+  Boolean(payrollRegisterCrossTenant.error?.code === '42501')
+    && Boolean(payrollRegisterNoPermission.error?.code === '42501')
+    && Boolean(payrollRegisterGlobalOnly.error?.code === '42501')
+    && Boolean(payrollRegisterEmployee.error?.code === '42501')
+    && Boolean(payrollRegisterAnonymous.error)
+    && payrollRegisterAcl.anon === false && payrollRegisterAcl.authenticated === true,
+  JSON.stringify({ codes: [payrollRegisterCrossTenant.error?.code,payrollRegisterNoPermission.error?.code,
+    payrollRegisterGlobalOnly.error?.code,payrollRegisterEmployee.error?.code,payrollRegisterAnonymous.error?.code], acl: payrollRegisterAcl }));
 const employeePayslip = payslipA.data?.payslips?.[0];
 record('Employee payslip history returns only the linked employee’s released rows with recorded amounts and same-tenant period details',
   !payslipA.error && payslipA.data?.tenant_id === ids.tenantA
@@ -882,6 +955,28 @@ record('Employee payslip refresh reads persisted isolated database data without 
     && payslipAfterBrowser.status === 'released'
     && payslipAfterBrowser.period === '99999999-0000-4000-8000-000000000001',
   JSON.stringify(payslipAfterBrowser));
+let payrollRegisterBrowserOutput = '';
+let payrollRegisterBrowserError = '';
+try {
+  payrollRegisterBrowserOutput = execFileSync('node', [path.join(here, 'run-payroll-register-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_PAYROLL_VIEWER_EMAIL: emails[15],
+      HRIS_LOCAL_PAYROLL_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  payrollRegisterBrowserError = String(error.stderr || error.message || 'local payroll register browser run failed').slice(-1800);
+}
+record('Real local Auth-to-Postgres payroll-view journey passes permission gating, outage retry, filters, private-field omission, refresh, and responsive layouts',
+  payrollRegisterBrowserOutput.includes('Local Auth-to-Postgres payroll-view journey passed: permission-gated register, outage retry, persisted employee rows, search/status/period filters, clear/refresh recovery, private-field omission, and 375px mobile/1280px desktop layouts.'),
+  payrollRegisterBrowserError);
 const joinLinkEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
   p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000001',
   p_session_id: '91000000-0000-4000-8000-000000000001',

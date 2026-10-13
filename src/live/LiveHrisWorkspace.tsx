@@ -10,6 +10,7 @@ import { MyProjects } from './MyProjects';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
+import { PayrollRegister } from './PayrollRegister';
 import { LearningRequests } from './LearningRequests';
 import { LearningProgramAdmin } from './LearningProgramAdmin';
 import { OrganizationHolidayCalendar } from './OrganizationHolidayCalendar';
@@ -53,8 +54,10 @@ type PermissionSet = {
   expenses: boolean;
   expensesView: boolean;
   expensesManage: boolean;
+  payroll: boolean;
+  payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -98,6 +101,7 @@ const emptyPermissions: PermissionSet = {
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
+  payroll: false, payrollManage: false,
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -2394,6 +2398,7 @@ export function LiveHrisWorkspace({
     }
     if (permissions.travel) items.push({ id: 'travel', label: 'Travel requests', icon: <MapPin className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.expenses) items.push({ id: 'expenses', label: 'Expense claims', icon: <Receipt className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.payroll) items.push({ id: 'payroll-register', label: 'Payroll register', icon: <Receipt className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
@@ -2413,7 +2418,7 @@ export function LiveHrisWorkspace({
     setPage(nav[0]?.id || 'dashboard');
   }, [nav, page]);
 
-  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses ? 'HRIS Administrator' : 'Employee';
+  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses || permissions.payroll ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const current = nav.find(item => item.id === page);
 
@@ -2472,6 +2477,7 @@ export function LiveHrisWorkspace({
           {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
           {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} />}
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
+          {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} />}

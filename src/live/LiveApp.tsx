@@ -23,6 +23,7 @@ type WorkspacePermissions = {
   learningManage: boolean;
   travel: boolean; travelView: boolean; travelManage: boolean;
   expenses: boolean; expensesView: boolean; expensesManage: boolean;
+  payroll: boolean; payrollManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
@@ -33,6 +34,7 @@ const noWorkspacePermissions: WorkspacePermissions = {
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
+  payroll: false, payrollManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -164,6 +166,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     || workspacePermissions.organization || workspacePermissions.employees || workspacePermissions.performance || workspacePermissions.recruitment
     || workspacePermissions.learningManage
     || workspacePermissions.travel
+    || workspacePermissions.payroll
   );
   const canReadAdminDirectories = tenants.some(t => t.id === tenantId) && (
     isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.organization
@@ -288,6 +291,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           'learning.manage',
           'travel.view', 'travel.manage',
           'expenses.view', 'expenses.manage',
+          'payroll.view', 'payroll.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -322,6 +326,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             expenses: grants.get('expenses.view') === true || grants.get('expenses.manage') === true,
             expensesView: grants.get('expenses.view') === true,
             expensesManage: grants.get('expenses.manage') === true,
+            payroll: grants.get('payroll.view') === true || grants.get('payroll.manage') === true,
+            payrollManage: grants.get('payroll.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
