@@ -618,7 +618,24 @@ CREATE TRIGGER hris_test_expense_claim_status_history
   FOR EACH ROW EXECUTE FUNCTION public.hris_test_expense_claim_status_history();
 CREATE TABLE public.service_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
-  employee_id uuid
+  employee_id uuid NOT NULL,
+  request_type text NOT NULL CHECK (request_type IN (
+    'employment_certificate','noc_letter','salary_certificate','other',
+    'work_from_home','movement','shift_change','shift_swap'
+  )),
+  reason text NOT NULL,
+  request_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN (
+    'pending','in_progress','completed','approved','rejected','cancelled'
+  )),
+  submitted_by uuid,
+  submitted_at timestamptz NOT NULL DEFAULT now(),
+  resolved_by uuid,
+  resolved_at timestamptz,
+  resolution_note text,
+  result_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.admin_audit_logs (
@@ -1164,9 +1181,9 @@ INSERT INTO public.performance_goals(tenant_id,employee_id,title,target_metric) 
 INSERT INTO public.project_performance_reviews(tenant_id,employee_id,project_manager_employee_id) VALUES
   ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','55555555-5555-4555-8555-555555555555'),
   ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','66666666-6666-4666-8666-666666666666');
-INSERT INTO public.service_requests(tenant_id,employee_id) VALUES
-  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555'),
-  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666');
+INSERT INTO public.service_requests(tenant_id,employee_id,request_type,reason) VALUES
+  ('11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','employment_certificate','Synthetic tenant A request'),
+  ('22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','employment_certificate','Synthetic tenant B request');
 INSERT INTO public.holidays(id,tenant_id,name,start_date,end_date,active) VALUES
   ('77777777-7777-4777-8777-777777777778','22222222-2222-4222-8222-222222222222',
     'Synthetic QA holiday B','2026-10-13','2026-10-13',true);

@@ -13,6 +13,7 @@ import { LearningRequests } from './LearningRequests';
 import { LearningProgramAdmin } from './LearningProgramAdmin';
 import { MyTravelRequests, TravelRequests } from './TravelRequests';
 import { ExpenseClaims } from './ExpenseClaims';
+import { MyServiceRequests } from './MyServiceRequests';
 import { OrganizationPerformance } from './OrganizationPerformance';
 import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
@@ -47,7 +48,7 @@ type PermissionSet = {
   expensesView: boolean;
   expensesManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'learning-requests' | 'learning-programs' | 'travel' | 'expenses' | 'my-dashboard' | 'my-projects' | 'my-performance' | 'my-learning' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardSummary = {
   dashboard_date?: string;
@@ -2239,6 +2240,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-travel', label: 'My Travel', icon: <MapPin className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-expenses', label: 'My Expenses', icon: <Receipt className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-service-requests', label: 'My Requests', icon: <ClipboardList className="h-5 w-5" />, group: 'Personal' });
     return items;
   }, [permissions, isEmployee, isSuperAdmin]);
 
@@ -2312,6 +2314,7 @@ export function LiveHrisWorkspace({
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} />}
           {page === 'my-expenses' && isEmployee && <ExpenseClaims tenantId={tenantId} userId={userId} mode="personal" />}
+          {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>

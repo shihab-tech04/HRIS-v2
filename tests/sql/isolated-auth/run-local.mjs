@@ -281,6 +281,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -1334,6 +1335,8 @@ FROM (VALUES
   ('public.hris_submit_my_expense_claim(uuid,uuid)'),
   ('public.hris_reopen_my_expense_claim(uuid,uuid)'),
   ('public.hris_get_tenant_expense_claims(uuid)'),
+  ('public.hris_get_my_service_requests(uuid)'),
+  ('public.hris_submit_my_service_request(uuid,text,text)'),
   ('public.hris_get_tenant_project_workspace(uuid)'),
   ('public.hris_get_my_projects(uuid)'),
   ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
@@ -2174,6 +2177,44 @@ record('Anonymous callers cannot execute employee or manager expense RPCs',
     && functionGrantMatrix['public.hris_reopen_my_expense_claim(uuid,uuid)'].anon === false
     && functionGrantMatrix['public.hris_get_tenant_expense_claims(uuid)'].anon === false);
 
+const serviceRequestSubmit = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantA, p_request_type: 'other', p_reason: 'Need an updated employment document for a bank application.',
+});
+const serviceRequestId = serviceRequestSubmit.data?.id;
+const serviceRequestContext = await employeeA.client.rpc('hris_get_my_service_requests', { p_tenant_id: ids.tenantA });
+const serviceRequestRow = serviceRequestContext.data?.requests?.find(row => row.id === serviceRequestId);
+const serviceRequestWrongTenant = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantB, p_request_type: 'other', p_reason: 'Must not create under another tenant.',
+});
+const serviceRequestUnknownType = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantA, p_request_type: 'unlisted_type', p_reason: 'Must be rejected by the server.',
+});
+const serviceRequestEmptyReason = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantA, p_request_type: 'other', p_reason: '   ',
+});
+const serviceRequestDirectInsert = await employeeA.client.from('service_requests').insert({
+  tenant_id: ids.tenantA, employee_id: '55555555-5555-4555-8555-555555555555',
+  request_type: 'other', reason: 'Direct writes must use the server-side employee RPC.',
+});
+const serviceRequestOtherTenantContext = await employeeB.client.rpc('hris_get_my_service_requests', { p_tenant_id: ids.tenantA });
+const anonServiceRequestSubmit = attemptAs(null,
+  `SELECT public.hris_submit_my_service_request('${ids.tenantA}'::uuid,'other','Anonymous request')`, 'anon');
+record('Employee service requests bind the active employee and tenant, validate the fixed request types, and deny direct or anonymous writes',
+  !serviceRequestSubmit.error && serviceRequestRow?.status === 'pending'
+    && serviceRequestRow?.request_type === 'other'
+    && serviceRequestRow?.reason === 'Need an updated employment document for a bank application.'
+    && Boolean(serviceRequestWrongTenant.error?.code === '42501')
+    && Boolean(serviceRequestUnknownType.error?.code === '22023')
+    && Boolean(serviceRequestEmptyReason.error?.code === '22023')
+    && Boolean(serviceRequestDirectInsert.error)
+    && Boolean(serviceRequestOtherTenantContext.error?.code === '42501')
+    && !anonServiceRequestSubmit.ok
+    && functionGrantMatrix['public.hris_submit_my_service_request(uuid,text,text)'].anon === false,
+  JSON.stringify({ submit: serviceRequestSubmit.error?.message || serviceRequestRow?.status,
+    wrongTenant: serviceRequestWrongTenant.error?.code, invalidType: serviceRequestUnknownType.error?.code,
+    emptyReason: serviceRequestEmptyReason.error?.code, directWrite: serviceRequestDirectInsert.error?.code,
+    otherTenantContext: serviceRequestOtherTenantContext.error?.code }));
+
 let expenseBrowserOutput = '';
 let expenseBrowserError = '';
 try {
@@ -2211,6 +2252,38 @@ record('Real browser employee expense, private receipt, submission history, and 
     && browserExpensePersistence?.history_count === 1
     && JSON.stringify(browserExpensePersistence?.history) === JSON.stringify(['submitted']),
   expenseBrowserError || JSON.stringify(browserExpensePersistence));
+
+let serviceBrowserOutput = '';
+let serviceBrowserError = '';
+try {
+  serviceBrowserOutput = execFileSync('node', [path.join(here, 'run-service-requests-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_SERVICE_EMPLOYEE_EMAIL: emails[5],
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  serviceBrowserError = String(error.stderr || error.message || 'local service-request browser run failed').slice(-1800);
+}
+const serviceBrowserId = serviceBrowserOutput.match(/SERVICE_REQUEST_ACCEPTANCE_ID=([0-9a-f-]{36})/i)?.[1];
+const browserServicePersistence = serviceBrowserId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id,'employee_id',employee_id,'request_type',request_type,'reason',reason,
+  'status',status,'submitted_by',submitted_by IS NOT NULL)
+  FROM public.service_requests WHERE id=${sqlLiteral(serviceBrowserId)}::uuid`) : null;
+record('Real employee browser service-request submission and refreshed history persist at mobile and desktop widths',
+  serviceBrowserOutput.includes('Local employee service-request submission and refreshed status history persisted across mobile and desktop.')
+    && browserServicePersistence?.tenant_id === ids.tenantA
+    && browserServicePersistence?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserServicePersistence?.request_type === 'employment_certificate'
+    && browserServicePersistence?.status === 'pending'
+    && browserServicePersistence?.submitted_by === true,
+  serviceBrowserError || JSON.stringify(browserServicePersistence));
 
 psqlSync(`UPDATE public.employees SET employment_status='terminated'
   WHERE id='55555555-5555-4555-8555-555555555555';`);
