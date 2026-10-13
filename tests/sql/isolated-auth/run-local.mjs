@@ -298,6 +298,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190100_learning_session_join_access.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014120100_employee_skill_self_service.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014133000_harden_public_foundation_tables.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -435,6 +436,67 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const foundationTables = [
+  'employee_shift_assignments', 'roles', 'permissions', 'role_permissions', 'user_roles', 'admin_audit_logs',
+];
+const foundationReads = await Promise.all(foundationTables.map(async table => ({
+  table,
+  result: await employeeA.client.from(table).select('*').limit(1),
+})));
+const anonFoundationReads = await Promise.all([
+  ...foundationTables, 'tenants', 'admin_users', 'tenant_memberships',
+].map(async table => ({
+  table,
+  result: await createClient(services.API_URL, services.ANON_KEY, authOptions).from(table).select('*').limit(1),
+})));
+const memberAFoundations = await Promise.all([
+  managerA.client.from('tenant_memberships').select('tenant_id,role,status'),
+  managerA.client.from('admin_users').select('user_id,active,is_super_admin'),
+  managerA.client.from('tenants').select('id,name').order('name'),
+]);
+const employeeATenants = await employeeA.client.from('tenants').select('id,name').order('name');
+const superAdminTenants = await superAdmin.client.from('tenants').select('id,name').order('name');
+const crossOwnerMembershipRead = await managerA.client.from('tenant_memberships').select('tenant_id,role,status')
+  .eq('user_id', managerB.userId);
+const directMembershipWrite = await managerA.client.from('tenant_memberships').update({ status: 'inactive' })
+  .eq('user_id', managerA.userId).eq('tenant_id', '11111111-1111-4111-8111-111111111111');
+const directAdminWrite = await managerA.client.from('admin_users').update({ is_super_admin: true })
+  .eq('user_id', managerA.userId);
+const directTenantWrite = await managerA.client.from('tenants').update({ name: 'Unauthorized tenant overwrite' })
+  .eq('id', '11111111-1111-4111-8111-111111111111');
+record('Foundation tables deny anonymous access and default-deny direct reads where no LiveApp projection exists',
+  foundationReads.every(({ result }) => Boolean(result.error))
+    && anonFoundationReads.every(({ result }) => Boolean(result.error)),
+  JSON.stringify({ authenticatedDenied: foundationReads.filter(({ result }) => result.error).length,
+    authenticatedTotal: foundationReads.length, anonymousDenied: anonFoundationReads.filter(({ result }) => result.error).length,
+    anonymousTotal: anonFoundationReads.length }));
+record('LiveApp foundation reads are restricted to own membership/admin row and authorized tenant list',
+  !memberAFoundations[0].error && memberAFoundations[0].data.length === 1
+    && memberAFoundations[0].data[0].tenant_id === '11111111-1111-4111-8111-111111111111'
+    && !memberAFoundations[1].error && memberAFoundations[1].data.length === 1
+    && memberAFoundations[1].data[0].user_id === managerA.userId
+    && !memberAFoundations[2].error && memberAFoundations[2].data.map(row => row.id).join() === '11111111-1111-4111-8111-111111111111'
+    && !employeeATenants.error && employeeATenants.data.map(row => row.id).join() === '11111111-1111-4111-8111-111111111111'
+    && !superAdminTenants.error && superAdminTenants.data.length === 2
+    && !crossOwnerMembershipRead.error && crossOwnerMembershipRead.data.length === 0,
+  JSON.stringify({ managerMembershipRows: memberAFoundations[0].data?.length,
+    managerAdminRows: memberAFoundations[1].data?.length,
+    managerTenants: memberAFoundations[2].data?.map(row => row.id),
+    employeeTenants: employeeATenants.data?.map(row => row.id),
+    superAdminTenantCount: superAdminTenants.data?.length,
+    crossOwnerRows: crossOwnerMembershipRead.data?.length }));
+record('Foundation table direct mutations are denied without changing membership, tenant, or admin data',
+  Boolean(directMembershipWrite.error) && Boolean(directAdminWrite.error) && Boolean(directTenantWrite.error)
+    && queryAdmin(`SELECT jsonb_build_object(
+      'membership', (SELECT status FROM public.tenant_memberships WHERE user_id='${managerA.userId}'::uuid AND tenant_id='11111111-1111-4111-8111-111111111111'::uuid),
+      'super_admin', (SELECT is_super_admin FROM public.admin_users WHERE user_id='${managerA.userId}'::uuid),
+      'tenant_name', (SELECT name FROM public.tenants WHERE id='11111111-1111-4111-8111-111111111111'::uuid)
+    )`).membership === 'active'
+    && queryAdmin(`SELECT jsonb_build_object('value',is_super_admin) FROM public.admin_users WHERE user_id='${managerA.userId}'::uuid`).value === false
+    && queryAdmin(`SELECT jsonb_build_object('value',name) FROM public.tenants WHERE id='11111111-1111-4111-8111-111111111111'::uuid`).value === 'Synthetic Synesis',
+  JSON.stringify({ membershipError: directMembershipWrite.error?.code || null,
+    adminError: directAdminWrite.error?.code || null, tenantError: directTenantWrite.error?.code || null }));
 
 const learningIds = {
   directProgram: '90000000-0000-4000-8000-000000000001',
@@ -4114,17 +4176,18 @@ record('Real local Auth-to-Postgres holiday calendar journey passes validation, 
   holidayBrowserOutput.includes('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, persisted employee upcoming-holiday visibility, tenant isolation, refresh, and mobile/desktop layouts.'),
   holidayBrowserError);
 
-const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(
-  'global_role',EXISTS (SELECT 1 FROM public.user_roles ur
+const globalOnlyRole = queryAdmin(`SELECT jsonb_build_object('global_role',EXISTS (
+    SELECT 1 FROM public.user_roles ur
     JOIN public.role_permissions rp ON rp.role_id=ur.role_id
-    WHERE ur.user_id=auth.uid() AND rp.permission_id='leave.manage'),
+    WHERE ur.user_id='${globalOnly.userId}'::uuid AND rp.permission_id='leave.manage'))`);
+const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(
   'legacy_permission',public.has_permission('leave.manage'),
   'tenant_a',public.has_tenant_permission('${ids.tenantA}'::uuid,'leave.manage'),
   'tenant_b',public.has_tenant_permission('${ids.tenantB}'::uuid,'leave.manage'))`);
 const globalOnlyLeaves = queryAs(globalOnly, `SELECT coalesce(jsonb_agg(tenant_id ORDER BY tenant_id),'[]'::jsonb)
   FROM (SELECT DISTINCT tenant_id FROM public.leave_requests) visible`);
 record('Global admin role alone grants no tenant authorization or visibility',
-  globalOnlyAuth.global_role === true && globalOnlyAuth.legacy_permission === false
+  globalOnlyRole.global_role === true && globalOnlyAuth.legacy_permission === false
   && globalOnlyAuth.tenant_a === false
   && globalOnlyAuth.tenant_b === false && globalOnlyLeaves.length === 0);
 
