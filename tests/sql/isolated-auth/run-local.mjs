@@ -192,6 +192,7 @@ const emails = [
   'global-only@hris.test', 'tenant-viewer@hris.test',
   'employee-a@hris.test', 'employee-b@hris.test', 'manager-a2@hris.test',
   'employee-clock@hris.test', 'report-viewer-a@hris.test', 'super-admin@hris.test',
+  'recruiter-a@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -245,6 +246,7 @@ const managerA2 = await signIn(emails[7]);
 const employeeClock = await signIn(emails[8]);
 const reportViewerA = await signIn(emails[9]);
 const superAdmin = await signIn(emails[10]);
+const recruiterOnly = await signIn(emails[11]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -367,6 +369,15 @@ const recruitmentGlobalOnly = await globalOnly.client.rpc('hris_get_recruitment_
 const recruitmentAnon = await createClient(services.API_URL, services.ANON_KEY, authOptions)
   .rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
 const recruitmentDirectTable = await managerA.client.from('job_applications').select('id').eq('tenant_id', ids.tenantA);
+psqlSync(`UPDATE public.tenant_memberships SET status='inactive'
+  WHERE user_id='${recruiterOnly.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+let recruitmentInactiveMembership;
+try {
+  recruitmentInactiveMembership = await recruiterOnly.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
+} finally {
+  psqlSync(`UPDATE public.tenant_memberships SET status='active'
+    WHERE user_id='${recruiterOnly.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+}
 const recruitmentSafePayload = JSON.stringify(recruitmentA.data);
 record('Recruitment pipeline returns paginated tenant-matched names, jobs, stages, and sanitized milestones',
   !recruitmentA.error && recruitmentA.data?.applications?.length === 2
@@ -398,6 +409,8 @@ record('Recruitment pipeline rejects no-permission, global-only and anonymous ca
     && Boolean(recruitmentGlobalOnly.error?.code === '42501')
     && Boolean(recruitmentAnon.error)
     && Boolean(recruitmentDirectTable.error));
+record('Recruitment pipeline immediately denies an inactive membership',
+  Boolean(recruitmentInactiveMembership.error?.code === '42501'));
 let recruitmentBrowserOutput = '';
 let recruitmentBrowserError = '';
 try {
@@ -408,7 +421,7 @@ try {
       HRIS_LOCAL_SUPABASE_URL: services.API_URL,
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
-      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[0],
+      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[11],
       HRIS_LOCAL_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',

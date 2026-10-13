@@ -60,6 +60,14 @@ try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  const directoryReads = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/rest/v1/employees') && url.searchParams.get('select') === 'id,full_name,employee_number,employment_status') {
+      directoryReads.push('employees');
+    }
+    if (url.pathname.endsWith('/rest/v1/departments')) directoryReads.push('departments');
+  });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -67,6 +75,7 @@ try {
     return route.abort();
   });
   await signIn(page);
+  if (directoryReads.length) throw new Error(`Recruitment-only membership attempted unrelated directory reads: ${directoryReads.join(', ')}.`);
   await openRecruitmentPipeline(page);
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
   await page.getByText('Candidate A Two', { exact: true }).waitFor({ state: 'visible' });

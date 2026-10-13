@@ -15,6 +15,7 @@ test('recruitment RPC requires live session, active tenant, and active membershi
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.hris_get_recruitment_pipeline[^;]* FROM PUBLIC,anon/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.hris_get_recruitment_pipeline[^;]* TO authenticated,service_role/);
   assert.match(isolatedRunner, /Recruitment pipeline rejects no-permission, global-only and anonymous callers/);
+  assert.match(isolatedRunner, /Recruitment pipeline immediately denies an inactive membership/);
   assert.match(isolatedRunner, /Recruitment pipeline isolates tenant A and tenant B records/);
 });
 
