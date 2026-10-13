@@ -70,6 +70,14 @@ BEGIN
   IF NOT has_function_privilege('authenticated','public.candidate_get_recruitment_context()','EXECUTE') THEN
     RAISE EXCEPTION 'C1 fail: authenticated cannot execute candidate context RPC';
   END IF;
+  IF has_function_privilege('anon','public.get_my_candidate_profile()','EXECUTE')
+     OR has_function_privilege('anon','public.candidate_update_profile(jsonb)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.get_my_candidate_profile()','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.candidate_update_profile(jsonb)','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.get_my_candidate_profile()','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.candidate_update_profile(jsonb)','EXECUTE') THEN
+    RAISE EXCEPTION 'C1 fail: candidate profile RPC grants changed';
+  END IF;
   RAISE NOTICE 'C1 PASS: candidate context RPC execute grant is authenticated-only';
 END $$;
 
@@ -78,7 +86,9 @@ SET LOCAL ROLE authenticated;
 DO $$
 DECLARE
   v_context jsonb;
+  v_profile jsonb;
   v_inactive_denied boolean := false;
+  v_inactive_update_denied boolean := false;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
   PERFORM set_config('request.jwt.claims','{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","session_id":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}',true);
@@ -108,6 +118,25 @@ BEGIN
   END IF;
   RAISE NOTICE 'C1 PASS: tenant A sees only its profile/data and sanitized review fields';
 
+  v_profile := public.get_my_candidate_profile();
+  IF v_profile->>'user_id' <> 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+     OR v_profile->>'tenant_id' <> '11111111-1111-4111-8111-111111111111' THEN
+    RAISE EXCEPTION 'C1 fail: tenant A profile RPC returned the wrong row: %',v_profile;
+  END IF;
+  v_profile := public.candidate_update_profile(jsonb_build_object(
+    'full_name','Candidate A Updated','headline','A-only headline','skills',jsonb_build_array('sql','react'),
+    'tenant_id','22222222-2222-4222-8222-222222222222','profile_status','inactive','email','forged@example.test'
+  ));
+  IF v_profile->>'full_name' <> 'Candidate A Updated'
+     OR v_profile->>'headline' <> 'A-only headline'
+     OR v_profile->>'tenant_id' <> '11111111-1111-4111-8111-111111111111'
+     OR v_profile->>'profile_status' <> 'active'
+     OR v_profile->>'email' <> 'candidate-a@c1.test'
+     OR NOT (v_profile->'skills' ? 'react') THEN
+    RAISE EXCEPTION 'C1 fail: tenant A profile update crossed tenant or protected fields: %',v_profile;
+  END IF;
+  RAISE NOTICE 'C1 PASS: tenant A reads and updates only its active profile fields';
+
   PERFORM set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',true);
   PERFORM set_config('request.jwt.claims','{"sub":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","session_id":"bbbbbbbb-0000-4000-8000-000000000002","role":"authenticated"}',true);
   v_context := public.candidate_get_recruitment_context();
@@ -130,6 +159,29 @@ BEGIN
   END IF;
   RAISE NOTICE 'C1 PASS: tenant B is not pinned to synesis-it and sees only its own sanitized context';
 
+  v_profile := public.get_my_candidate_profile();
+  IF v_profile->>'user_id' <> 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+     OR v_profile->>'tenant_id' <> '22222222-2222-4222-8222-222222222222' THEN
+    RAISE EXCEPTION 'C1 fail: tenant B profile RPC returned the wrong row: %',v_profile;
+  END IF;
+  v_profile := public.candidate_update_profile(jsonb_build_object(
+    'full_name','Candidate B Updated','headline','B-only headline',
+    'tenant_id','11111111-1111-4111-8111-111111111111'
+  ));
+  IF v_profile->>'full_name' <> 'Candidate B Updated'
+     OR v_profile->>'headline' <> 'B-only headline'
+     OR v_profile->>'tenant_id' <> '22222222-2222-4222-8222-222222222222'
+     OR v_profile->>'email' <> 'candidate-b@c1.test' THEN
+    RAISE EXCEPTION 'C1 fail: tenant B profile update crossed tenant or protected fields: %',v_profile;
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
+  PERFORM set_config('request.jwt.claims','{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","session_id":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}',true);
+  v_profile := public.get_my_candidate_profile();
+  IF v_profile->>'full_name' <> 'Candidate A Updated' OR v_profile->>'headline' <> 'A-only headline' THEN
+    RAISE EXCEPTION 'C1 fail: tenant B profile update changed tenant A data: %',v_profile;
+  END IF;
+  RAISE NOTICE 'C1 PASS: tenant B updates do not mutate tenant A profile';
+
   PERFORM set_config('request.jwt.claim.sub','cccccccc-cccc-4ccc-8ccc-cccccccccccc',true);
   PERFORM set_config('request.jwt.claims','{"sub":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","session_id":"cccccccc-0000-4000-8000-000000000003","role":"authenticated"}',true);
   BEGIN
@@ -140,7 +192,26 @@ BEGIN
   IF NOT v_inactive_denied THEN
     RAISE EXCEPTION 'C1 fail: inactive candidate profile reached the context RPC';
   END IF;
-  RAISE NOTICE 'C1 PASS: inactive candidate profile is denied';
+  IF public.get_my_candidate_profile() IS NOT NULL THEN
+    RAISE EXCEPTION 'C1 fail: inactive candidate profile RPC returned a profile';
+  END IF;
+  BEGIN
+    PERFORM public.candidate_update_profile('{"full_name":"Should Not Save"}'::jsonb);
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    v_inactive_update_denied := true;
+  END;
+  IF NOT v_inactive_update_denied THEN
+    RAISE EXCEPTION 'C1 fail: inactive candidate profile update was not denied';
+  END IF;
+  RAISE NOTICE 'C1 PASS: inactive candidate profile read is empty and update is denied';
 END $$;
+
+RESET ROLE;
+DELETE FROM auth.sessions
+WHERE id IN (
+  'aaaaaaaa-0000-4000-8000-000000000001',
+  'bbbbbbbb-0000-4000-8000-000000000002',
+  'cccccccc-0000-4000-8000-000000000003'
+);
 
 COMMIT;

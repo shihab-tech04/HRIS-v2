@@ -98,6 +98,7 @@ for (const file of [
   path.join(root, 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'),
   path.join(root, 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'),
   path.join(root, 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'),
+  path.join(root, 'supabase/migrations/20261013120355_hris_candidate_profile_rpcs_active_tenant_scope.sql'),
 ]) psql(readFileSync(file, 'utf8'));
 
 const ids = users.map(() => randomUUID());
@@ -209,8 +210,32 @@ try {
   verifyContext(contextA.data, 0);
   verifyContext(contextB.data, 1);
 
+  for (const [index, candidate] of [[0, clients[0]], [1, clients[1]]]) {
+    const user = users[index];
+    const loaded = await candidate.rpc('get_my_candidate_profile', {});
+    assert(!loaded.error && loaded.data?.user_id === user.userId && loaded.data?.tenant_id === user.tenantId, `Tenant ${index === 0 ? 'A' : 'B'} profile read did not follow the authenticated active profile: ${JSON.stringify(loaded.error)}`);
+  }
+  const profileAUpdate = await clients[0].rpc('candidate_update_profile', { p_payload: {
+    full_name: 'Candidate A Updated', headline: 'A-only headline', skills: ['sql','react'],
+    tenant_id: users[1].tenantId, profile_status: 'inactive', email: 'forged@example.test',
+  } });
+  assert(!profileAUpdate.error && profileAUpdate.data?.full_name === 'Candidate A Updated', `Tenant A profile update failed: ${JSON.stringify(profileAUpdate.error)}`);
+  assert(profileAUpdate.data.tenant_id === users[0].tenantId && profileAUpdate.data.profile_status === 'active' && profileAUpdate.data.email === users[0].email, 'Tenant A update changed a protected identity or tenant field.');
+  assert(profileAUpdate.data.headline === 'A-only headline' && profileAUpdate.data.skills.includes('react'), 'Tenant A editable profile fields did not persist.');
+  const profileBUpdate = await clients[1].rpc('candidate_update_profile', { p_payload: {
+    full_name: 'Candidate B Updated', headline: 'B-only headline', tenant_id: users[0].tenantId,
+  } });
+  assert(!profileBUpdate.error && profileBUpdate.data?.full_name === 'Candidate B Updated', `Tenant B profile update failed: ${JSON.stringify(profileBUpdate.error)}`);
+  assert(profileBUpdate.data.tenant_id === users[1].tenantId && profileBUpdate.data.email === users[1].email, 'Tenant B update changed its protected identity or tenant field.');
+  const profileAAfterB = await clients[0].rpc('get_my_candidate_profile', {});
+  assert(!profileAAfterB.error && profileAAfterB.data?.full_name === 'Candidate A Updated' && profileAAfterB.data?.headline === 'A-only headline', 'Tenant B profile update changed Tenant A profile data.');
+
   const inactiveRpc = await clients[2].rpc('candidate_get_recruitment_context', {});
   assert(inactiveRpc.error?.code === '42501', `Inactive candidate reached context RPC: ${JSON.stringify(inactiveRpc.error)}`);
+  const inactiveProfile = await clients[2].rpc('get_my_candidate_profile', {});
+  assert(!inactiveProfile.error && inactiveProfile.data === null, 'Inactive candidate profile RPC returned a profile.');
+  const inactiveUpdate = await clients[2].rpc('candidate_update_profile', { p_payload: { full_name: 'Should Not Save' } });
+  assert(inactiveUpdate.error?.code === '42501', `Inactive candidate profile update was not denied: ${JSON.stringify(inactiveUpdate.error)}`);
   const anonRpc = await client(services.API_URL, services.ANON_KEY).rpc('candidate_get_recruitment_context', {});
   assert(Boolean(anonRpc.error), 'Anonymous caller unexpectedly executed candidate context RPC.');
   const serverRows = await admin.from('job_applications').select('id').in('id', [users[0].appId, users[1].appId]);

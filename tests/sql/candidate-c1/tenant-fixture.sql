@@ -265,3 +265,15 @@ RETURNS jsonb LANGUAGE sql SECURITY DEFINER
 AS $function$ SELECT '{}'::jsonb; $function$;
 REVOKE ALL ON FUNCTION public.candidate_get_recruitment_context() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.candidate_get_recruitment_context() TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.get_my_candidate_profile()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $function$ SELECT NULL::jsonb; $function$;
+REVOKE ALL ON FUNCTION public.get_my_candidate_profile() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_candidate_profile() TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.candidate_update_profile(p_payload jsonb)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER
+AS $function$ SELECT NULL::jsonb; $function$;
+REVOKE ALL ON FUNCTION public.candidate_update_profile(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.candidate_update_profile(jsonb) TO authenticated, service_role;
