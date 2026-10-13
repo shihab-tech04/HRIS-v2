@@ -135,7 +135,7 @@ test('employee updates only their recorded performance goal progress', async ({ 
   await page.getByRole('spinbutton', { name: 'Update Improve release readiness progress' }).fill('72.5');
   await goalCard.getByRole('button', { name: 'Save progress' }).click();
   await expect(goalCard).toContainText('72.5%');
-  await expect(page.getByRole('status')).toContainText('Progress saved');
+  await expect(page.getByRole('status').filter({ hasText: 'Progress saved' })).toContainText('Progress saved');
 
   const patchRequest = goalRequests.find(item => item.method === 'PATCH');
   expect(patchRequest?.tenantFilter).toBe(`eq.${tenantId}`);

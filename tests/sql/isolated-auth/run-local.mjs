@@ -259,6 +259,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
 ]) applySql(file);
@@ -1426,6 +1427,199 @@ record('Employee remains on their organizational team while belonging to multipl
     && Number(employeeATeamAndProjectMembership.allocation_total) === 100,
   JSON.stringify(employeeATeamAndProjectMembership));
 
+const taskMemberAllocation = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555556',
+  p_role_on_project: 'Collaborator', p_allocation_percentage: 25,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const taskAllocationIds = [allocationA60.data?.id, taskMemberAllocation.data?.id];
+const adminTaskCreate = await managerA.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Unauthorized task',
+  p_description: '', p_due_date: null, p_project_allocation_ids: taskAllocationIds,
+});
+const tenantManagerTaskCreate = await managerB.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Foreign task',
+  p_description: '', p_due_date: null, p_project_allocation_ids: taskAllocationIds,
+});
+const superAdminTaskCreate = await superAdmin.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Unappointed task',
+  p_description: '', p_due_date: null, p_project_allocation_ids: taskAllocationIds,
+});
+const projectTaskCreate = await employeeA.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Synthetic peer review task',
+  p_description: 'A task for isolated task and peer review acceptance.',
+  p_due_date: null, p_project_allocation_ids: taskAllocationIds,
+});
+const projectTaskId = projectTaskCreate.data?.id;
+record('Only the assigned Project Manager creates a task with same-project employee allocations',
+  !taskMemberAllocation.error && Boolean(adminTaskCreate.error?.code === '42501')
+    && Boolean(tenantManagerTaskCreate.error?.code === '42501')
+    && Boolean(superAdminTaskCreate.error?.code === '42501')
+    && !projectTaskCreate.error && projectTaskCreate.data?.status === 'open');
+
+const taskWorkspacePM = await employeeA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const taskWorkspaceMember = await managerA2.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const taskWorkspaceAdmin = await managerA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const taskWorkspaceForeign = await employeeB.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const memberTasks = await managerA2.client.rpc('hris_get_my_project_tasks', { p_tenant_id: ids.tenantA });
+const tenantBTasks = await employeeB.client.rpc('hris_get_my_project_tasks', { p_tenant_id: ids.tenantB });
+const directTaskRowsA = await employeeA.client.from('project_tasks').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+const directTaskRowsB = await employeeB.client.from('project_tasks').select('id,tenant_id').eq('tenant_id', ids.tenantA);
+record('Task workspace, employee task list, and task RLS remain project-member and tenant scoped',
+  !taskWorkspacePM.error && taskWorkspacePM.data.can_manage === true && taskWorkspacePM.data.tasks.length === 1
+    && !taskWorkspaceMember.error && taskWorkspaceMember.data.can_manage === false && taskWorkspaceMember.data.tasks.length === 1
+    && Boolean(taskWorkspaceAdmin.error) && Boolean(taskWorkspaceForeign.error)
+    && !memberTasks.error && memberTasks.data.tasks.length === 1 && memberTasks.data.tasks[0].task_id === projectTaskId
+    && !tenantBTasks.error && tenantBTasks.data.tasks.length === 0
+    && !directTaskRowsA.error && directTaskRowsA.data.length === 1
+    && !directTaskRowsB.error && directTaskRowsB.data.length === 0);
+
+const taskAssignments = taskWorkspacePM.data?.tasks?.find(task => task.id === projectTaskId)?.members || [];
+const revieweeTaskAssignment = taskAssignments.find(row => row.employee_id === '55555555-5555-4555-8555-555555555556');
+const taskAssignmentMemberDenied = await managerA2.client.rpc('hris_assign_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId, p_project_allocation_id: allocationA40.data?.id,
+});
+const taskReleaseMemberDenied = await managerA.client.rpc('hris_release_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_assignment_id: revieweeTaskAssignment?.id,
+});
+const taskStartMemberDenied = await managerA2.client.rpc('hris_start_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: projectTaskId,
+});
+const taskRelease = await employeeA.client.rpc('hris_release_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_assignment_id: revieweeTaskAssignment?.id,
+});
+const afterTaskRelease = await employeeA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const releaseCreatedReviews = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,
+  'reviewee',COALESCE(bool_and(employee_id='55555555-5555-4555-8555-555555555556'::uuid),false),
+  'reviewer',COALESCE(bool_and(reviewer_employee_id='55555555-5555-4555-8555-555555555555'::uuid),false))
+  FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${projectTaskId}'::uuid`);
+record('Project Manager release creates overlap-based review obligations without blocking the release',
+  Boolean(taskAssignmentMemberDenied.error?.code === '42501')
+    && Boolean(taskReleaseMemberDenied.error?.code === '42501')
+    && Boolean(taskStartMemberDenied.error?.code === '42501')
+    && !taskRelease.error && !afterTaskRelease.error
+    && afterTaskRelease.data.tasks[0].feedback_pending === 1
+    && releaseCreatedReviews.count === 1 && releaseCreatedReviews.reviewee && releaseCreatedReviews.reviewer);
+
+const taskStart = await employeeA.client.rpc('hris_start_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
+const taskCompleteDenied = await managerA.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
+const taskCompleteBySuperAdmin = await superAdmin.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
+const taskComplete = await employeeA.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
+const completedTaskWorkspace = await employeeA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const duplicateTaskComplete = await employeeA.client.rpc('hris_complete_project_task', { p_tenant_id: ids.tenantA, p_task_id: projectTaskId });
+record('Assigned Project Manager completes operational work while two mandatory reviews remain pending',
+  !taskStart.error && Boolean(taskCompleteDenied.error?.code === '42501')
+    && Boolean(taskCompleteBySuperAdmin.error?.code === '42501') && !taskComplete.error
+    && taskComplete.data?.task?.status === 'completed' && taskComplete.data?.feedback_pending === 2
+    && !completedTaskWorkspace.error && completedTaskWorkspace.data.tasks[0].feedback_pending === 2
+    && Boolean(duplicateTaskComplete.error));
+
+const followupTask = await employeeA.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Synthetic follow-up task',
+  p_description: 'Exercise member addition and release after task creation.',
+  p_due_date: null, p_project_allocation_ids: [allocationA60.data?.id],
+});
+const unauthorizedTaskMemberAdd = await managerA.client.rpc('hris_assign_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_id: followupTask.data?.id,
+  p_project_allocation_id: taskMemberAllocation.data?.id,
+});
+const authorizedTaskMemberAdd = await employeeA.client.rpc('hris_assign_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_id: followupTask.data?.id,
+  p_project_allocation_id: taskMemberAllocation.data?.id,
+});
+const followupWorkspace = await employeeA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const followupMemberAssignment = followupWorkspace.data?.tasks?.find(task => task.id === followupTask.data?.id)
+  ?.members?.find(row => row.employee_id === '55555555-5555-4555-8555-555555555556');
+const followupMemberRelease = await employeeA.client.rpc('hris_release_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_assignment_id: followupMemberAssignment?.id,
+});
+const followupReviewCount = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
+  FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${followupTask.data?.id}'::uuid`);
+record('Assigned Project Manager can add and release task members; each release tracks overlapping reviews separately',
+  !followupTask.error && Boolean(unauthorizedTaskMemberAdd.error?.code === '42501')
+    && !authorizedTaskMemberAdd.error && !followupMemberRelease.error
+    && followupReviewCount.count === 1);
+
+const reviewMemberA = await employeeA.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
+const reviewMemberB = await managerA2.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
+const reviewTenantB = await employeeB.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantB });
+const reviewIdsA = reviewMemberA.data?.reviews || [];
+const reviewIdsB = reviewMemberB.data?.reviews || [];
+const reviewAtoB = reviewIdsA.find(row => row.reviewer_employee_id === '55555555-5555-4555-8555-555555555555'
+  && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555556' && row.task_id === projectTaskId);
+const reviewBtoA = reviewIdsB.find(row => row.reviewer_employee_id === '55555555-5555-4555-8555-555555555556'
+  && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555555');
+const unauthorizedReviewSubmit = await employeeA.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: reviewBtoA?.id,
+  p_scores: { quality_of_work: 3, collaboration_teamwork: 3, delivery_reliability: 3, ownership_communication: 3 },
+  p_not_observed: [], p_comments: '',
+});
+const invalidReviewScore = await managerA2.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: reviewBtoA?.id,
+  p_scores: { quality_of_work: 6, collaboration_teamwork: 3, delivery_reliability: 3, ownership_communication: 3 },
+  p_not_observed: [], p_comments: '',
+});
+const submitReviewB = await managerA2.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: reviewBtoA?.id,
+  p_scores: { quality_of_work: 5, collaboration_teamwork: null, delivery_reliability: 0, ownership_communication: 4 },
+  p_not_observed: ['collaboration_teamwork'], p_comments: 'Synthetic verified peer feedback.',
+});
+const submitReviewA = await employeeA.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: reviewAtoB?.id,
+  p_scores: { quality_of_work: 0, collaboration_teamwork: 4, delivery_reliability: 5, ownership_communication: 3 },
+  p_not_observed: [], p_comments: 'Synthetic reciprocal feedback.',
+});
+const reviewEmployeeHistory = await employeeA.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
+const reviewsFromOtherTenant = await employeeB.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantB });
+const revieweeDirectRead = await employeeA.client.from('project_task_peer_reviews').select('id,status,reviewer_employee_id,employee_id')
+  .eq('tenant_id', ids.tenantA).eq('id', reviewBtoA?.id);
+const ordinaryAdminReviewRead = await managerA.client.from('project_task_peer_reviews').select('id').eq('tenant_id', ids.tenantA);
+const completedWorkspaceAfterReviews = await employeeA.client.rpc('hris_get_project_task_workspace', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+});
+const reviewRowsAfterSubmit = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,'all_submitted',bool_and(status='submitted'),
+  'not_observed_separate',bool_or(collaboration_teamwork_not_observed AND collaboration_teamwork_score IS NULL),
+  'zero_score',bool_or(quality_of_work_score=0),'self_review_count',count(*) FILTER (WHERE reviewer_employee_id=employee_id)::integer)
+  FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${projectTaskId}'::uuid`);
+const closedFeedbackCount = completedWorkspaceAfterReviews.data?.tasks?.find(task => task.id === projectTaskId)?.feedback_pending;
+record('Peer-review authorization, score validation, self-review exclusion, and history visibility',
+  Boolean(reviewAtoB) && Boolean(reviewBtoA)
+    && Boolean(unauthorizedReviewSubmit.error?.code === '42501') && Boolean(invalidReviewScore.error?.code === '22023')
+    && !submitReviewB.error && !submitReviewA.error
+    && !reviewEmployeeHistory.error && reviewEmployeeHistory.data.reviews.some(row => row.id === reviewBtoA?.id && row.status === 'submitted')
+    && !reviewsFromOtherTenant.error && reviewsFromOtherTenant.data.reviews.length === 0
+    && !revieweeDirectRead.error && revieweeDirectRead.data.length === 1
+    && !ordinaryAdminReviewRead.error && ordinaryAdminReviewRead.data.length === 0
+    && !completedWorkspaceAfterReviews.error
+    && reviewRowsAfterSubmit.count === 2 && reviewRowsAfterSubmit.all_submitted
+    && reviewRowsAfterSubmit.not_observed_separate && reviewRowsAfterSubmit.zero_score
+    && reviewRowsAfterSubmit.self_review_count === 0 && closedFeedbackCount === 0,
+  JSON.stringify({
+    reviewAtoB: Boolean(reviewAtoB), reviewBtoA: Boolean(reviewBtoA),
+    unauthorizedCode: unauthorizedReviewSubmit.error?.code, invalidScoreCode: invalidReviewScore.error?.code,
+    submitBError: submitReviewB.error?.message, submitAError: submitReviewA.error?.message,
+    ownHistoryError: reviewEmployeeHistory.error?.message, foreignReviewCount: reviewsFromOtherTenant.data?.reviews?.length,
+    incomingRows: revieweeDirectRead.data?.length, adminReviewRows: ordinaryAdminReviewRead.data?.length,
+    counts: reviewRowsAfterSubmit, feedbackPending: closedFeedbackCount,
+  }));
+
 const ordinaryAdminAssignment = await managerA.client.rpc('hris_assign_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
   p_employee_id: '55555555-5555-4555-8555-555555555555',
@@ -1461,8 +1655,8 @@ record('Employee project view exposes only linked employee allocations and denie
     && !myProjectsB.error && myProjectsB.data.projects.length === 0
     && Boolean(employeeOtherTenant.error)
     && !employeeDirectAllocations.error
-    && employeeDirectAllocations.data.length === 2
-    && employeeDirectAllocations.data.every(row => row.employee_id === employeeA.userId || row.employee_id === '55555555-5555-4555-8555-555555555555'));
+    && employeeDirectAllocations.data.length === 3
+    && employeeDirectAllocations.data.every(row => ['55555555-5555-4555-8555-555555555555', '55555555-5555-4555-8555-555555555556'].includes(row.employee_id)));
 
 const concurrentAssignments = await Promise.all([
   psqlAsync(sessionSql(employeeB, `SELECT public.hris_assign_tenant_project_allocation(
@@ -1511,6 +1705,12 @@ const releasedA60 = await employeeA.client.rpc('hris_release_tenant_project_allo
 const employeeAStatusAfterRelease = queryAdmin(`SELECT jsonb_build_object('status',employment_status)
   FROM public.employees WHERE tenant_id='${ids.tenantA}'::uuid
     AND id='55555555-5555-4555-8555-555555555555'::uuid`).status;
+const taskMembershipCascade = queryAdmin(`SELECT jsonb_build_object(
+  'released',COALESCE(bool_and(released_at IS NOT NULL),false),
+  'review_count',(SELECT count(*)::integer FROM public.project_task_peer_reviews r
+    WHERE r.tenant_id='${ids.tenantA}'::uuid AND r.task_id='${followupTask.data?.id}'::uuid))
+  FROM public.project_task_assignments WHERE tenant_id='${ids.tenantA}'::uuid
+    AND task_id='${followupTask.data?.id}'::uuid AND project_allocation_id='${allocationA60.data?.id}'::uuid`);
 const releaseRepeat = await managerA.client.rpc('hris_release_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
 });
@@ -1518,8 +1718,10 @@ record('Releasing an allocation preserves the employee status and writes one rel
   Boolean(ordinaryAdminRelease.error) && Boolean(ordinaryManagerRelease.error)
     && !releasedA60.error && releasedA60.data?.status === 'released'
     && employeeAStatusAfterRelease === 'on_leave'
+    && taskMembershipCascade.released === true && taskMembershipCascade.review_count === 2
     && Boolean(releaseRepeat.error)
-    && auditCount(allocationA60.data?.id, 'project.allocation.released') === 1);
+    && auditCount(allocationA60.data?.id, 'project.allocation.released') === 1,
+  JSON.stringify(taskMembershipCascade));
 
 const globalOnlyAuth = queryAs(globalOnly, `SELECT jsonb_build_object(
   'global_role',EXISTS (SELECT 1 FROM public.user_roles ur

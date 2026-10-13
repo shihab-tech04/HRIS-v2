@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { BriefcaseBusiness, Plus, RefreshCw, Search, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { ProjectTaskManager } from './ProjectTaskManager';
 
 type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed';
 type AllocationStatus = 'active' | 'upcoming' | 'released';
@@ -250,6 +251,11 @@ export function OrganizationProjects({ tenantId }: { tenantId: string }) {
           {!project.allocations.length ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No employees are assigned to this project.</p> :
             <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th scope="col" className="px-3 py-3">Employee</th><th scope="col" className="px-3 py-3">Project role</th><th scope="col" className="px-3 py-3">Allocation</th><th scope="col" className="px-3 py-3">Assigned</th><th scope="col" className="px-3 py-3">Release</th><th scope="col" className="px-3 py-3">Status</th>{project.can_manage && <th scope="col" className="px-3 py-3">Action</th>}</tr></thead><tbody className="divide-y divide-slate-100">{project.allocations.map(allocation => <tr key={allocation.id}><td className="px-3 py-3"><span className="font-medium text-slate-900">{allocation.employee_name}</span><span className="ml-2 text-xs text-slate-500">{allocation.employee_number}</span></td><td className="px-3 py-3">{allocation.role_on_project}</td><td className="px-3 py-3 tabular-nums">{Number(allocation.allocation_percentage).toLocaleString()}%</td><td className="px-3 py-3">{allocation.assigned_date}</td><td className="px-3 py-3">{allocation.release_date || '—'}</td><td className="px-3 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{allocation.status}</span></td>{project.can_manage && <td className="px-3 py-3">{allocation.status !== 'released' ? <button type="button" disabled={saving} onClick={() => void releaseAllocation(allocation)} className="min-h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium hover:border-rose-400 disabled:opacity-50">Release</button> : <span className="text-xs text-slate-500">Released</span>}</td>}</tr>)}</tbody></table></div>}
         </div>
+        {project.can_manage && <ProjectTaskManager tenantId={tenantId} projectId={project.id}
+          members={project.allocations.map(allocation => ({
+            id: allocation.id, employee_name: allocation.employee_name,
+            employee_number: allocation.employee_number, status: allocation.status,
+          }))} />}
       </article>)}</div>}
   </section>;
 }
