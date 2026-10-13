@@ -3451,6 +3451,12 @@ const lateCollaboratorAllocation = await employeeA.client.rpc('hris_assign_tenan
   p_role_on_project: 'Late collaborator', p_allocation_percentage: 10,
   p_assigned_date: localCurrentDate, p_release_date: null,
 });
+const releaseObserverAllocation = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_employee_id: '55555555-5555-4555-8555-555555555559',
+  p_role_on_project: 'Release overlap observer', p_allocation_percentage: 10,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
 const staggeredTask = await employeeA.client.rpc('hris_create_project_task', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Synthetic staggered overlap task',
   p_description: 'Only task members with overlapping assignment intervals are eligible reviewers.',
@@ -3460,6 +3466,10 @@ const addOverlappingMember = await employeeA.client.rpc('hris_assign_project_tas
   p_tenant_id: ids.tenantA, p_task_id: staggeredTask.data?.id,
   p_project_allocation_id: taskMemberAllocation.data?.id,
 });
+const addSecondOverlappingMember = await employeeA.client.rpc('hris_assign_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_id: staggeredTask.data?.id,
+  p_project_allocation_id: releaseObserverAllocation.data?.id,
+});
 const staggeredWorkspace = await employeeA.client.rpc('hris_get_project_task_workspace', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
 });
@@ -3468,6 +3478,14 @@ const releasedOverlappingMember = staggeredWorkspace.data?.tasks?.find(task => t
 const releaseBeforeLateMember = await employeeA.client.rpc('hris_release_project_task_member', {
   p_tenant_id: ids.tenantA, p_task_assignment_id: releasedOverlappingMember?.id,
 });
+const releaseReviewSnapshot = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,
+  'distinct_reviewers',count(DISTINCT reviewer_employee_id)::integer,
+  'all_review_released_member',COALESCE(bool_and(employee_id='55555555-5555-4555-8555-555555555556'::uuid),false),
+  'all_overlapping_reviewers',COALESCE(bool_and(reviewer_employee_id IN (
+    '55555555-5555-4555-8555-555555555557'::uuid,'55555555-5555-4555-8555-555555555559'::uuid)),false),
+  'self_review_count',count(*) FILTER (WHERE reviewer_employee_id=employee_id)::integer)
+  FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${staggeredTask.data?.id}'::uuid`);
 const addNonOverlappingMember = await employeeA.client.rpc('hris_assign_project_task_member', {
   p_tenant_id: ids.tenantA, p_task_id: staggeredTask.data?.id,
   p_project_allocation_id: lateCollaboratorAllocation.data?.id,
@@ -3480,8 +3498,15 @@ const staggeredReviewPairs = queryAdmin(`SELECT jsonb_build_object(
   'all_expected',COALESCE(bool_and(
     (reviewer_employee_id='55555555-5555-4555-8555-555555555557'::uuid AND employee_id='55555555-5555-4555-8555-555555555556'::uuid)
     OR (reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid AND employee_id='55555555-5555-4555-8555-555555555557'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555559'::uuid AND employee_id='55555555-5555-4555-8555-555555555556'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid AND employee_id='55555555-5555-4555-8555-555555555559'::uuid)
     OR (reviewer_employee_id='55555555-5555-4555-8555-555555555557'::uuid AND employee_id='55555555-5555-4555-8555-555555555560'::uuid)
-    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555560'::uuid AND employee_id='55555555-5555-4555-8555-555555555557'::uuid)),false),
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555560'::uuid AND employee_id='55555555-5555-4555-8555-555555555557'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555559'::uuid AND employee_id='55555555-5555-4555-8555-555555555560'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555560'::uuid AND employee_id='55555555-5555-4555-8555-555555555559'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555557'::uuid AND employee_id='55555555-5555-4555-8555-555555555559'::uuid)
+    OR (reviewer_employee_id='55555555-5555-4555-8555-555555555559'::uuid AND employee_id='55555555-5555-4555-8555-555555555557'::uuid)
+    ),false),
   'nonoverlap_pair_count',count(*) FILTER (WHERE
     (reviewer_employee_id='55555555-5555-4555-8555-555555555556'::uuid AND employee_id='55555555-5555-4555-8555-555555555560'::uuid)
     OR (reviewer_employee_id='55555555-5555-4555-8555-555555555560'::uuid AND employee_id='55555555-5555-4555-8555-555555555556'::uuid))::integer)
@@ -3520,19 +3545,26 @@ const injectedNonOverlappingSubmission = await managerA2.client.rpc('hris_submit
 const injectedReviewState = queryAdmin(`SELECT jsonb_build_object('status',status)
   FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND id='${injectedNonOverlappingReview.id}'::uuid`);
 record('Peer-review obligations include only collaborators with overlapping task assignments',
-  !staggeredEmployeeAllocation.error && !lateCollaboratorAllocation.error && !staggeredTask.error
-    && !addOverlappingMember.error && !releaseBeforeLateMember.error && !addNonOverlappingMember.error
-    && !staggeredCompletion.error && staggeredCompletion.data?.feedback_pending === 4
-    && staggeredReviewPairs.count === 4 && staggeredReviewPairs.all_expected
+  !staggeredEmployeeAllocation.error && !lateCollaboratorAllocation.error && !releaseObserverAllocation.error && !staggeredTask.error
+    && !addOverlappingMember.error && !addSecondOverlappingMember.error && !releaseBeforeLateMember.error
+    && releaseReviewSnapshot.count === 2 && releaseReviewSnapshot.distinct_reviewers === 2
+    && releaseReviewSnapshot.all_review_released_member
+    && releaseReviewSnapshot.all_overlapping_reviewers && releaseReviewSnapshot.self_review_count === 0
+    && !addNonOverlappingMember.error && !staggeredCompletion.error && staggeredCompletion.data?.feedback_pending === 10
+    && staggeredReviewPairs.count === 10 && staggeredReviewPairs.all_expected
     && staggeredReviewPairs.nonoverlap_pair_count === 0
     && !lateCollaboratorInbox.error
-    && lateCollaboratorInbox.data.reviews.filter(row => row.task_id === staggeredTask.data?.id).length === 1
+    && lateCollaboratorInbox.data.reviews.filter(row => row.task_id === staggeredTask.data?.id).length === 2
     && lateCollaboratorInbox.data.reviews.some(row => row.task_id === staggeredTask.data?.id
       && row.reviewer_employee_id === '55555555-5555-4555-8555-555555555560'
       && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555557')
+    && lateCollaboratorInbox.data.reviews.some(row => row.task_id === staggeredTask.data?.id
+      && row.reviewer_employee_id === '55555555-5555-4555-8555-555555555560'
+      && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555559')
     && Boolean(reviewAssignedToOverlappingMember.id)
     && Boolean(nonOverlappingSubmission.error?.code === '42501'),
   JSON.stringify({ addOverlappingMember: addOverlappingMember.error?.message,
+    addSecondOverlappingMember: addSecondOverlappingMember.error?.message, releaseReviewSnapshot,
     releaseBeforeLateMember: releaseBeforeLateMember.error?.message,
     addNonOverlappingMember: addNonOverlappingMember.error?.message,
     completion: staggeredCompletion.error?.message, pairs: staggeredReviewPairs,
@@ -3589,7 +3621,7 @@ const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_o
   FROM public.project_tasks t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.project_id='${projectA.id}'::uuid
     AND t.title=${sqlLiteral(browserTaskTitle)}), 'null'::jsonb)`);
 record('Real browser UI uses isolated Auth/RPC and persists task, overlapping reviews, and Not Observed in local Postgres',
-  browserIntegrationOutput.includes('Mobile 375px browser-to-local-Supabase task, review submission, and performance-history journey passed.')
+  browserIntegrationOutput.includes('Mobile/desktop browser-to-local-Supabase task, review validation, outage recovery, submission, and performance-history journey passed.')
     && browserTaskPersistence?.status === 'completed' && browserTaskPersistence?.pending === 1
     && browserTaskPersistence.review_total === 2 && browserTaskPersistence.review_submitted
     && browserTaskPersistence.not_observed,

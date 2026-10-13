@@ -145,10 +145,26 @@ try {
   await assertVisibleText(manager.getByRole('status').filter({ hasText: 'Task completed.' }), 'Task completed.');
   if ((await task.innerText()).includes('Mark complete')) throw new Error('The UI left the completed task actionable.');
   await assertNoHorizontalOverflow(pmPage, 'Mobile task completion and feedback state');
+  await pmPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(pmPage, 'Desktop task completion and feedback state');
 
   const reviewerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  let inboxOutagePending = true;
+  let inboxOutages = 0;
+  let inboxReadCalls = 0;
   await reviewerPage.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_peer_reviews')
+        && route.request().method() === 'POST') {
+      inboxReadCalls += 1;
+      if (inboxOutagePending) {
+        inboxOutagePending = false;
+        inboxOutages += 1;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic peer-review inbox outage.' }) });
+        return;
+      }
+    }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
     return route.abort();
@@ -157,7 +173,14 @@ try {
   await navigateTo(reviewerPage, 'My Projects');
   await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review inbox');
   await reviewerPage.getByRole('heading', { name: 'My project work' }).waitFor({ state: 'visible' });
+  const inboxRetry = reviewerPage.getByRole('button', { name: 'Retry', exact: true });
+  await inboxRetry.waitFor({ state: 'visible' });
+  if (inboxOutages !== 1 || inboxReadCalls !== 1) throw new Error(`Expected one isolated peer-review inbox outage before recovery; outages=${inboxOutages}, reads=${inboxReadCalls}.`);
+  await inboxRetry.click();
   const review = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await review.waitFor({ state: 'visible' });
+  await review.getByRole('button', { name: 'Submit review' }).click();
+  await assertVisibleText(reviewerPage.getByRole('alert'), 'Choose a score or Not Observed for Quality of Work.');
   await review.waitFor({ state: 'visible' });
   await review.getByLabel('Quality of Work').selectOption('not_observed');
   await review.getByLabel('Collaboration & Teamwork').selectOption('5');
@@ -169,6 +192,9 @@ try {
     'Review for Synthetic Employee A submitted.');
   await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review submission');
   await review.waitFor({ state: 'detached' });
+  await reviewerPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(reviewerPage, 'Desktop peer-review inbox and completion');
+  if (inboxReadCalls < 3) throw new Error(`Expected outage, successful retry, and post-submit reload; inbox reads=${inboxReadCalls}.`);
 
   const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await revieweePage.route('**/*', async route => {
@@ -188,7 +214,7 @@ try {
   await revieweePage.setViewportSize({ width: 375, height: 812 });
   const width = await revieweePage.evaluate(() => document.documentElement.scrollWidth);
   if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
-  console.log('Mobile 375px browser-to-local-Supabase task, review submission, and performance-history journey passed.');
+  console.log('Mobile/desktop browser-to-local-Supabase task, review validation, outage recovery, submission, and performance-history journey passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

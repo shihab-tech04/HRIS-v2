@@ -128,7 +128,14 @@ try {
     if (bodyText.includes(privateValue)) throw new Error(`Payroll register rendered an excluded private source field: ${privateValue}.`);
   }
 
+  const refreshResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_payroll_register')
+      && response.request().method() === 'POST';
+  });
   await page.getByRole('button', { name: 'Refresh payroll register' }).click();
+  const refreshed = await refreshResponse;
+  if (!refreshed.ok()) throw new Error(`Payroll refresh RPC failed with HTTP ${refreshed.status()}.`);
   await page.waitForFunction(() => {
     const button = [...document.querySelectorAll('button')].find(item => item.getAttribute('aria-label') === 'Refresh payroll register');
     return button && !button.disabled;
