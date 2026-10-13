@@ -1,6 +1,6 @@
 # Synesis HRIS 360° — Master Phase Ledger
 
-**Checkpoint:** 2026-10-13 06:39 Asia/Dhaka. **Overall state:** INCOMPLETE; no release phase accepted.
+**Checkpoint:** 2026-10-13 06:51 Asia/Dhaka. **Overall state:** INCOMPLETE; no release phase accepted.
 
 This ledger records evidence available in the current Main and Candidate source checkouts against the user-supplied master implementation directive. “Not verified” means this checkpoint does not establish acceptance; it does not claim the feature is absent. The owner reports the original 1,047-story source is recovered in Project sources, but this task's mount currently contains no source files; no acceptance criteria are invented.
 
@@ -16,7 +16,7 @@ This ledger records evidence available in the current Main and Candidate source 
 | 07 | Onboarding and employee conversion | NOT VERIFIED | No complete candidate-to-employee journey was run. |
 | 08 | Attendance, shift, roster and time management | PARTIAL | In addition to employee clock-in/out, Figma-aligned Attendance Report and tenant-scoped Shift roster journeys, employee timesheets load context, save/edit drafts, submit, record audit events, reject invalid activity/date combinations, default-deny direct reads, display live daily hours with a 24-hour pre-save warning, and recover rejected entries. The manager Attendance Report captures optional correction-rejection notes through the existing tenant RPC and displays saved notes; Cancel/Escape make no decision and Escape restores focus. Current aggregate acceptance: 45/45 contracts, TypeScript/build PASS, full Chromium 41/41, and disposable Auth/RLS 77/77; all five prior tenant-security cases pass. The migration is local-only. Timesheet reviewer authorization remains default-deny pending a verified tenant-scoped project-lead mapping and permission. |
 | 09 | Leave, holiday and absence management | PARTIAL | Employees submit tenant-scoped requests with required private evidence, and managers resolve requests. The Figma-aligned Personal Leave page (`3:39880`) includes balance cards, calendar-year history filters, CSV download, and the existing request flow. The manager queue searches employee/type/date/status, filters returned tenant statuses, approves, and rejects. Rejection notes use the existing tenant RPC, with cancellation/Escape recovery. Current aggregate acceptance: 45/45 contracts, TypeScript/build PASS, full Chromium 41/41, and isolated Auth/RLS 77/77 PASS. The full leave module remains open. |
-| 10 | Projects, teams and resource allocation | PARTIAL | A read-only Teams directory is implemented at `d18563f` and verified by focused 2/2 and full Chromium 41/41. It is active-tenant scoped and uses existing RLS. Current live schema has teams/departments with authenticated SELECT grants only; no projects/project assignments or write grants were found. Allocation and team writes remain unimplemented pending verified schema/permission contracts. |
+| 10 | Projects, teams and resource allocation | PARTIAL | A read-only Teams directory is implemented at `d18563f`; `a2834b6` adds CSV export of the filtered visible rows via the spreadsheet-safe shared helper. Focused browser 2/2 and full Chromium 41/41 pass. It is active-tenant scoped and uses existing RLS. Current live schema has teams/departments with authenticated SELECT grants only; no projects/project assignments or write grants were found. Allocation and team writes remain unimplemented pending verified schema/permission contracts. |
 | 11 | Performance management | NOT VERIFIED | No end-to-end acceptance evidence in this checkpoint. |
 | 12 | Learning, development and career management | NOT VERIFIED | No end-to-end acceptance evidence in this checkpoint. |
 | 13 | Compensation, payroll and benefits | NOT VERIFIED | No calculations or confidentiality acceptance in this checkpoint. |
@@ -37,3 +37,5 @@ This ledger records evidence available in the current Main and Candidate source 
 4. Reconcile the remaining production policies, functions, migration history and Candidate public surface.
 5. Verify Drive folder ownership/write access and round-trip integrity for a final versioned source archive before any GitHub publication.
 6. Publish and deploy only after every required gate passes.
+
+Latest Phase 10 acceptance details: `EXECUTION_CHECKPOINT_20261013_0651.md` and `ACCEPTANCE_EVIDENCE_20261013_0651.md`.

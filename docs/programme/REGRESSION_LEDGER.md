@@ -1,6 +1,8 @@
 # Regression Ledger
 
-**Checkpoint:** 2026-10-13 06:39 Asia/Dhaka.
+**Checkpoint:** 2026-10-13 06:51 Asia/Dhaka.
+
+| Teams directory filtered CSV export | `npm run check`; focused `system-workspace.spec.ts`; full Chromium; latest unchanged-SQL local Auth/RLS | TypeScript/build PASS; **45/45 contracts PASS**; focused **2/2 PASS**; full **41/41 PASS**; Auth/RLS **77/77 PASS**, five prior tenant-security cases pass | Export contains only currently filtered active-tenant rows and neutralizes formula-leading text. One stale source contract was corrected after helper extraction; final check passes. A sandboxed localhost attempt ran zero tests; authorized loopback rerun passed. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261013_0651.md`. |
 
 | Phase 10 Teams directory | `npm run check`; focused `tests/browser/system-workspace.spec.ts`; full Chromium; `node tests/sql/isolated-auth/run-local.mjs` | TypeScript/build PASS; **45/45 contracts PASS**; focused **2/2 PASS**; full **41/41 PASS**; local Auth/RLS **77/77 PASS**, including five prior tenant-security cases | Synthetic browser responses and disposable local two-tenant Auth/RLS. Verifies active/all/inactive, department search, explicit tenant filter, and mobile overflow/scroll behavior. Production schema inspection was read-only; no write flow was added because grants are SELECT-only. Evidence: `docs/programme/ACCEPTANCE_EVIDENCE_20261013_0639.md`. |
 

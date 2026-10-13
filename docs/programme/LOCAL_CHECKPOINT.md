@@ -1,15 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-13 06:39 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-13 06:51 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 10 tenant-scoped Teams directory
+## Current checkpoint — Phase 10 Teams directory and filtered CSV export
 
-- Latest feature commit: `d18563f73007dd3e1746018295d040f2e00d1f3f`; Phase 10's Teams directory is tenant-filtered and read-only, with name/code/department search, status filters and loading/recovery states.
-- Verification: TypeScript/build PASS, **45/45 contracts PASS**, focused browser **2/2 PASS**, full Chromium **41/41 PASS**, local Auth/RLS **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. Current source diff from baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`: **31 unique paths, +8,528/-51**. Browser-generated screenshots were restored.
+- Latest feature commit: `a2834b6550d2f42c56c94c1ace066d99f6b4e6a1`; Phase 10's tenant-filtered Teams directory now exports only visible filtered rows through the shared spreadsheet-safe CSV utility.
+- Verification: TypeScript/build PASS, **45/45 contracts PASS**, focused browser **2/2 PASS**, full Chromium **41/41 PASS**, latest unchanged-SQL local Auth/RLS **77/77 PASS**, prior tenant-security cases **5/5 PASS**, and `git diff --check` PASS. Current source diff from baseline `4ded5f13f1ef2bf17237f347bfac9811283c52dc`: **32 unique paths, +8,550/-51**. Browser-generated screenshots were restored.
 - Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The current Project `sources/` mount is empty; exact-name Project/Drive lookup did not return canonical bytes. Only the local `stories:[]` skeleton is visible (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`; expected canonical SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`). No story text or IDs were inferred.
 - Current live schema has `teams` and `departments` with RLS and authenticated SELECT only; no projects/project-assignments table or write grant. The timesheet reviewer remains default-deny pending verified tenant-scoped project-lead mapping and permission. No hosted writes, paid services, GitHub push or deployment occurred.
 - Drive preservation records were appended to the owner-verified folder; all five versioned checkpoint records and the receipt read back exactly. Receipt file ID: `1fHYfbGHPFvo8aDVNjY_OkCqwfTmLEBiX`.
-- See `EXECUTION_CHECKPOINT_20261013_0639.md`, `ACCEPTANCE_EVIDENCE_20261013_0639.md`, and `MASTER_PHASE_LEDGER_20261013_0639.md`. Complete acceptance, verify the full-source Drive archive, then push and deploy last.
+- See `EXECUTION_CHECKPOINT_20261013_0651.md`, `ACCEPTANCE_EVIDENCE_20261013_0651.md`, and `MASTER_PHASE_LEDGER_20261013_0651.md`. Complete acceptance, verify the full-source Drive archive, then push and deploy last.
 
 ## Previous checkpoint notes
 
