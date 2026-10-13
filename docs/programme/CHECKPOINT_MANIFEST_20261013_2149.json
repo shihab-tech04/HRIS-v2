@@ -1,0 +1,33 @@
+{
+  "checkpoint_time_local": "2026-10-13T21:49:00+06:00",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "source_commit": "27c26db4cb7c8c561d32a1935cfec17df85a194a",
+  "phase": 15,
+  "verification_focus": "Phase 04/19 local Auth recovery integration acceptance",
+  "archive": {
+    "name": "Synesis-HRIS-v2-20261013_2149-27c26db.zip",
+    "drive_file_id": "1zzXVBi2SZpyywyKuX2RsdhmyMSVU0kqC",
+    "mime_type": "application/zip",
+    "bytes": 2691885,
+    "local_sha256": "6e865a23126719f36c9d9e7b2f9947cc083261e6b722711b8ed5b7e2e9d98229",
+    "local_zip_integrity": "PASS",
+    "remote_readback_size_matches": true,
+    "remote_sha256_verified": true
+  },
+  "drive": {
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "folder_name": "HRMIS Preservation 2026-10-11",
+    "owner_email": "shihabshajib01@gmail.com",
+    "connected_user_email": "shihabshajib01@gmail.com",
+    "ownership_verified": true,
+    "upload_permission": "confirmed by folder owner metadata and successful versioned uploads",
+    "archive_parent_readback_matches": true
+  },
+  "records": {
+    "acceptance_evidence_drive_id": "1LGRbzyFUlbpnGixXuo6dTTW7XjAXOhQZ",
+    "execution_checkpoint_drive_id": "1rXOKCus7spzXaxQ0o_O2hLzSYX4rYiqD",
+    "master_phase_ledger_drive_id": "1sPKBWp0aFTUT6BLbqAxPwK_A-Ign3m2Q",
+    "drive_preservation_receipt_id": "1vVYkMmXmnTX-6qOeAPJPwiM17H6hGhLx"
+  },
+  "verification_limit": "Remote archive bytes were read back and SHA-256 matched the local archive; folder owner and archive parent were confirmed through Drive metadata."
+}
