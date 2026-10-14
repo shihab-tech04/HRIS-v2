@@ -30,6 +30,10 @@ test('activation UI is limited to employee managers and the isolated journey pro
   assert.match(runner, /\['recruitment manager', staff\[0\]\.client\]/);
   assert.match(runner, /was allowed to activate an employee/);
   assert.match(runner, /directEmployeeInsert\.error\?\.code === '42501'/);
+  assert.match(runner, /const c1RestrictedTables = \[/);
+  assert.match(runner, /candidate_application_stage_history[\s\S]*onboarding_handoffs/);
+  assert.match(runner, /response\.error\?\.code === '42501'/);
+  assert.match(runner, /c1_direct_denials=\$\{c1DirectDenied\}\/196/);
   assert.match(runner, /status === 'submitted_for_verification'/);
   assert.match(runner, /idempotentActivation\.data\.idempotent === true/);
   assert.match(runner, /Personal Dashboard/);
