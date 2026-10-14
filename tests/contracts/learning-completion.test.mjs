@@ -48,7 +48,7 @@ test('pending and returned learning remain one open employee assignment until ve
   assert.match(runner, /duplicatePendingCompletionEnrollment\.error\?\.code === '23505'/);
   assert.match(runner, /duplicateReturnedCompletionEnrollment\.error\?\.code === '23505'/);
   assert.match(browser, /pendingCatalogCard\.getByText\('Completion pending verification'/);
-  assert.match(browser, /pendingCatalogCard\.getByText\('Completion returned for correction'/);
+  assert.match(browser, /pendingCatalogCard\.getByText\('সমাপ্তি সংশোধনের জন্য ফেরত দেওয়া হয়েছে'/);
 });
 
 test('completion evidence is program-configurable, server-enforced, private, bounded, and tenant-authorized', () => {
@@ -100,7 +100,9 @@ test('employee and manager pages provide complete completion and correction jour
   assert.match(programAdminUi, /p_completion_evidence_required: programDraft\.completionEvidenceRequired/);
   assert.match(programAdminUi, /completion_evidence_required/);
   assert.match(browser, /Learning completion review/);
-  assert.match(browser, /Returned for correction/);
+  assert.match(browser, /সংশোধনের জন্য ফেরত দিন/);
+  assert.match(browser, /যাচাইয়ের জন্য আবার জমা দিন/);
+  assert.match(browser, /সমাপ্তি পর্যালোচনার ইতিহাস/);
   assert.match(browser, /Verified learning completion/);
   assert.match(browser, /Supporting evidence \(required\)/);
   assert.match(browser, /width: 375/);

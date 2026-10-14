@@ -499,24 +499,26 @@ try {
   await completionEmployeeCard.getByText('Pending Verification', { exact: true }).waitFor({ state: 'visible' });
   const pendingCatalogCard = page.locator(`[data-learning-program="${process.env.HRIS_LOCAL_LEARNING_COMPLETION_PROGRAM_ID}"]`);
   await pendingCatalogCard.getByText('Completion pending verification', { exact: true }).waitFor({ state: 'visible' });
-  if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval/ }).count()) {
+  if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval|এখনই নিবন্ধন করুন|অনুমোদনের অনুরোধ করুন/ }).count()) {
     throw new Error('A pending completion must remain one open assignment instead of offering a duplicate enrollment.');
   }
   await assertNoOverflow(page, 'Learning completion submission mobile');
 
   await managerPage.setViewportSize({ width: 375, height: 812 });
   await openLearningCompletionQueue(managerPage);
+  await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await managerPage.getByRole('heading', { name: 'শেখার সমাপ্তি পর্যালোচনা', exact: true }).waitFor({ state: 'visible' });
   const completionQueueCard = managerPage.locator(`[data-learning-completion="${completionEnrollmentId}"]`);
   await completionQueueCard.getByText('Synthetic Employee A', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Learning completion queue mobile');
-  await completionQueueCard.getByRole('button', { name: 'Return for correction', exact: true }).click();
+  await completionQueueCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন', exact: true }).click();
   const returnDialog = managerPage.getByRole('alertdialog');
-  if (await returnDialog.getByRole('button', { name: 'Confirm return', exact: true }).isEnabled()) {
+  if (await returnDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true }).isEnabled()) {
     throw new Error('A return-for-correction decision must require a reason.');
   }
-  await returnDialog.getByLabel('Reason for correction').fill('Please attach supporting evidence for this assignment.');
+  await returnDialog.getByLabel('সংশোধনের কারণ').fill('Please attach supporting evidence for this assignment.');
   const returnResponse = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_resolve_learning_completion') && response.status() === 200);
-  await returnDialog.getByRole('button', { name: 'Confirm return', exact: true }).click();
+  await returnDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true }).click();
   const returnedCompletion = await rpcBody(await returnResponse);
   if (returnedCompletion.status !== 'returned_for_correction') throw new Error('Manager correction decision did not persist.');
   await completionQueueCard.waitFor({ state: 'detached' });
@@ -525,49 +527,57 @@ try {
   const returnedContextRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_completion_data') && response.status() === 200);
   await page.getByRole('button', { name: 'Refresh learning' }).click();
   await returnedContextRefresh;
-  await completionEmployeeCard.getByText('Returned for correction', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await page.getByRole('heading', { name: 'আমার শেখা', exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('সংশোধনের জন্য ফেরত', { exact: true }).first().waitFor({ state: 'visible' });
   await completionEmployeeCard.getByRole('status').getByText('Please attach supporting evidence for this assignment.', { exact: true }).waitFor({ state: 'visible' });
-  await pendingCatalogCard.getByText('Completion returned for correction', { exact: true }).waitFor({ state: 'visible' });
-  if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval/ }).count()) {
+  await pendingCatalogCard.getByText('সমাপ্তি সংশোধনের জন্য ফেরত দেওয়া হয়েছে', { exact: true }).waitFor({ state: 'visible' });
+  if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval|এখনই নিবন্ধন করুন|অনুমোদনের অনুরোধ করুন/ }).count()) {
     throw new Error('A returned completion must remain one open assignment until it is corrected and verified.');
   }
-  await completionEmployeeCard.getByLabel('Supporting evidence (required)').setInputFiles({
+  await completionEmployeeCard.getByLabel('সহায়ক প্রমাণপত্র (আবশ্যক)').setInputFiles({
     name: 'completion-proof.pdf', mimeType: 'application/pdf',
     buffer: Buffer.from('%PDF-1.4\nSynthetic completion evidence\n'),
   });
   const resubmitResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 200);
-  await completionEmployeeCard.getByRole('button', { name: 'Resubmit for verification', exact: true }).click();
+  await completionEmployeeCard.getByRole('button', { name: 'যাচাইয়ের জন্য আবার জমা দিন', exact: true }).click();
   const resubmittedCompletion = await rpcBody(await resubmitResponse);
   if (resubmittedCompletion.status !== 'pending_verification') throw new Error('Corrected learning completion did not return to verification.');
-  await completionEmployeeCard.getByText('Pending Verification', { exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('যাচাইয়ের অপেক্ষায়', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Learning completion resubmitted mobile');
 
   await managerPage.setViewportSize({ width: 1280, height: 900 });
   const completionQueueRefresh = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_learning_completion_queue') && response.status() === 200);
-  await managerPage.getByRole('button', { name: 'Refresh completion queue' }).click();
+  await managerPage.getByRole('button', { name: 'সমাপ্তির পর্যালোচনা তালিকা রিফ্রেশ করুন' }).click();
   await completionQueueRefresh;
   await completionQueueCard.getByText('completion-proof.pdf', { exact: true }).waitFor({ state: 'visible' });
-  await completionQueueCard.getByRole('button', { name: 'View evidence', exact: true }).click();
-  await completionQueueCard.getByRole('link', { name: 'Open evidence', exact: true }).waitFor({ state: 'visible' });
+  await completionQueueCard.getByRole('button', { name: 'প্রমাণ দেখুন', exact: true }).click();
+  await completionQueueCard.getByRole('link', { name: 'প্রমাণ খুলুন', exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Learning completion queue desktop');
-  await completionQueueCard.getByRole('button', { name: 'Verify', exact: true }).click();
+  await completionQueueCard.getByRole('button', { name: 'যাচাই করুন', exact: true }).click();
   const verifyDialog = managerPage.getByRole('alertdialog');
-  await verifyDialog.getByLabel('Verification note').fill('Evidence reviewed.');
+  await verifyDialog.getByLabel('যাচাইয়ের নোট').fill('Evidence reviewed.');
   const verifyResponse = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_resolve_learning_completion') && response.status() === 200);
-  await verifyDialog.getByRole('button', { name: 'Confirm verification', exact: true }).click();
+  await verifyDialog.getByRole('button', { name: 'যাচাই নিশ্চিত করুন', exact: true }).click();
   const verifiedCompletion = await rpcBody(await verifyResponse);
   if (verifiedCompletion.status !== 'completed' || !verifiedCompletion.verified_by) throw new Error('Verified completion did not persist its reviewer.');
   await completionQueueCard.waitFor({ state: 'detached' });
 
   const verifiedContextRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_completion_data') && response.status() === 200);
-  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await page.getByRole('button', { name: 'শেখার তথ্য রিফ্রেশ করুন' }).click();
   await verifiedContextRefresh;
-  await completionEmployeeCard.getByText('Completed', { exact: true }).waitFor({ state: 'visible' });
-  await completionEmployeeCard.getByText('Supporting evidence: completion-proof.pdf', { exact: true }).first().waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('সম্পন্ন', { exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('সহায়ক প্রমাণ: completion-proof.pdf', { exact: true }).first().waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText(/যাচাইকারী/).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('সমাপ্তি পর্যালোচনার ইতিহাস', { exact: true }).click();
+  await completionEmployeeCard.getByText(/যাচাই করা হয়েছে/).waitFor({ state: 'visible' });
   await page.locator(`[data-verified-learning="${completionEnrollmentId}"]`).waitFor({ state: 'visible' });
-  await page.locator('[data-learning-notification]').filter({ hasText: 'QA A Direct Learning completion was verified.' }).first().waitFor({ state: 'visible' });
+  await page.locator('[data-learning-notification]').filter({ hasText: /QA A Direct Learning সম্পন্ন হওয়া যাচাই করা হয়েছে/ }).first().waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Verified learning completion mobile in Bengali');
   await page.setViewportSize({ width: 1280, height: 900 });
-  await assertNoOverflow(page, 'Verified learning completion desktop');
+  await assertNoOverflow(page, 'Verified learning completion desktop in Bengali');
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
   await managerContext.close();
 
   await page.setViewportSize({ width: 1280, height: 900 });
