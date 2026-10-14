@@ -328,6 +328,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014133000_harden_public_foundation_tables.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160000_hris_learning_completion_verification.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160001_hris_learning_completion_evidence_requirement.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014160002_hris_system_notifications_inbox.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -2219,6 +2220,7 @@ FROM (VALUES
   ('public.hris_submit_my_service_request(uuid,text,text)'),
   ('public.hris_get_tenant_project_workspace(uuid)'),
   ('public.hris_get_my_projects(uuid)'),
+  ('public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'),
   ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
   ('public.hris_assign_tenant_project_allocation(uuid,uuid,uuid,text,numeric,date,date)'),
   ('public.hris_release_tenant_project_allocation(uuid,uuid)'),
@@ -3953,6 +3955,66 @@ const releaseNotificationsB = await managerA2.client.rpc('hris_get_my_project_no
 const releaseNotificationsTenantB = await employeeB.client.rpc('hris_get_my_project_notifications', {
   p_tenant_id: ids.tenantB, p_limit: 50, p_before_created_at: null, p_before_id: null,
 });
+const unifiedLearningNotifications = await employeeA.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 1,
+  p_before_created_at: null, p_before_source: null, p_before_id: null,
+});
+const unifiedLearningNotificationsPageTwo = await employeeA.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 1,
+  p_before_created_at: unifiedLearningNotifications.data?.notifications?.[0]?.created_at || null,
+  p_before_source: unifiedLearningNotifications.data?.notifications?.[0]?.source || null,
+  p_before_id: unifiedLearningNotifications.data?.notifications?.[0]?.id || null,
+});
+const unifiedProjectNotifications = await employeeA.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 50,
+  p_before_created_at: null, p_before_source: null, p_before_id: null,
+});
+const unifiedTenantBNotifications = await employeeB.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantB, p_limit: 50,
+  p_before_created_at: null, p_before_source: null, p_before_id: null,
+});
+const unifiedCrossTenantNotifications = await employeeA.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantB, p_limit: 50,
+  p_before_created_at: null, p_before_source: null, p_before_id: null,
+});
+const unifiedGlobalNotifications = await globalOnly.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 50,
+  p_before_created_at: null, p_before_source: null, p_before_id: null,
+});
+const unifiedAnonymousNotifications = attemptAs(null,
+  `SELECT public.hris_get_my_notifications('${ids.tenantA}'::uuid)`, 'anon');
+const unifiedLearningRows = unifiedLearningNotifications.data?.notifications || [];
+const unifiedProjectRows = unifiedProjectNotifications.data?.notifications || [];
+const unifiedProjectReviewRow = unifiedProjectRows.find(row => row.source === 'project_review' && row.task_id === projectTaskId);
+const unifiedLearningRowCount = unifiedProjectRows.filter(row => row.source === 'learning_completion').length;
+record('Unified notification feed merges project and learning events with keyset paging, tenant isolation, and source-specific unread semantics',
+  !unifiedLearningNotifications.error && unifiedLearningRows.length === 1
+    && unifiedLearningNotifications.data.has_more === true
+    && unifiedLearningRows[0].source === 'project_review'
+    && unifiedLearningRows[0].task_id === projectTaskId
+    && !unifiedLearningNotificationsPageTwo.error && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
+    && unifiedLearningNotificationsPageTwo.data.notifications[0].source === 'learning_completion'
+    && unifiedLearningNotificationsPageTwo.data.notifications[0].id !== unifiedLearningRows[0].id
+    && !unifiedProjectNotifications.error && unifiedProjectNotifications.data.unread_project_reviews === 1
+    && unifiedProjectRows.length >= 2 && unifiedLearningRowCount >= 1
+    && unifiedProjectReviewRow?.review_status === 'pending'
+    && !unifiedTenantBNotifications.error && unifiedTenantBNotifications.data.notifications.length === 0
+    && Boolean(unifiedCrossTenantNotifications.error?.code === '42501')
+    && Boolean(unifiedGlobalNotifications.error?.code === '42501') && !unifiedAnonymousNotifications.ok
+    && functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon === false,
+  JSON.stringify({ orderedSources: [unifiedLearningRows[0]?.source,
+    unifiedLearningNotificationsPageTwo.data?.notifications?.[0]?.source],
+    sourceCounts: { total: unifiedProjectRows.length, learning: unifiedLearningRowCount,
+      projectReview: unifiedProjectRows.filter(row => row.source === 'project_review').length },
+    taskReviewStatus: unifiedProjectReviewRow?.review_status,
+    learningError: unifiedLearningNotifications.error?.code,
+    pageTwoError: unifiedLearningNotificationsPageTwo.error?.code,
+    pageTwoHasMore: unifiedLearningNotificationsPageTwo.data?.has_more,
+    functionAcl: functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'],
+    projectUnread: unifiedProjectNotifications.data?.unread_project_reviews,
+    tenantB: unifiedTenantBNotifications.data?.notifications?.length,
+    crossTenant: unifiedCrossTenantNotifications.error?.code,
+    globalOnly: unifiedGlobalNotifications.error?.code, anonymousDenied: !unifiedAnonymousNotifications.ok }));
 const releaseNotificationsDirectA = await employeeA.client.from('hris_in_app_notifications').select('id,tenant_id')
   .eq('tenant_id', ids.tenantA);
 const releaseNotificationsDirectForeign = await employeeB.client.from('hris_in_app_notifications').select('id')
@@ -4379,8 +4441,8 @@ const browserTaskPersistence = queryAdmin(`SELECT COALESCE((SELECT jsonb_build_o
       AND r.quality_of_work_not_observed AND r.quality_of_work_score IS NULL))
   FROM public.project_tasks t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.project_id='${projectA.id}'::uuid
     AND t.title=${sqlLiteral(`${browserTaskTitle} updated`)}), 'null'::jsonb)`);
-record('Real browser UI edits task details with retry, then completes work and persists reviews in local Postgres',
-  browserIntegrationOutput.includes('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, review validation/submission, and performance-history journey passed.')
+record('Real browser UI edits task details with retry, completes work, and uses the unified project/learning notification inbox',
+  browserIntegrationOutput.includes('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, peer-review inbox, Learning Completion notifications, EN/BN handoff, and performance-history journey passed.')
     && browserTaskPersistence?.title === `${browserTaskTitle} updated`
     && browserTaskPersistence?.description === 'Updated details persisted after retry.'
     && browserTaskPersistence?.due_date === '2098-08-20' && browserTaskPersistence?.updated_at_after_created === true

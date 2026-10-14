@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const migration = readFileSync(new URL('../../supabase/migrations/20261013100001_hris_project_tasks_and_peer_reviews.sql', import.meta.url), 'utf8');
 const eligibilityMigration = readFileSync(new URL('../../supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql', import.meta.url), 'utf8');
 const notificationMigration = readFileSync(new URL('../../supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql', import.meta.url), 'utf8');
+const unifiedInboxMigration = readFileSync(new URL('../../supabase/migrations/20261014160002_hris_system_notifications_inbox.sql', import.meta.url), 'utf8');
 const taskEditMigration = readFileSync(new URL('../../supabase/migrations/20261013224251_hris_project_task_edit_workflow.sql', import.meta.url), 'utf8');
 const taskPortfolioMigration = readFileSync(new URL('../../supabase/migrations/20261013225608_hris_project_manager_task_portfolio.sql', import.meta.url), 'utf8');
 const managerUi = readFileSync(new URL('../../src/live/ProjectTaskManager.tsx', import.meta.url), 'utf8');
@@ -102,6 +103,21 @@ test('eligible peer reviews create tenant-scoped in-app notifications and the is
   const browser = readFileSync(new URL('../sql/isolated-auth/run-project-browser.mjs', import.meta.url), 'utf8');
   assert.match(browser, /getByRole\('button', \{ name: 'Open review' \}\)/);
   assert.match(browser, /Review for Synthetic Employee A completed/);
+});
+
+test('unified inbox keeps database keyset order while merging tenant-scoped learning and project events', () => {
+  assert.match(unifiedInboxMigration, /CREATE OR REPLACE FUNCTION public\.hris_get_my_notifications/);
+  assert.match(unifiedInboxMigration, /FROM public\.learning_completion_notifications/);
+  assert.match(unifiedInboxMigration, /FROM public\.hris_in_app_notifications/);
+  assert.match(unifiedInboxMigration, /\(n\.created_at,n\.source,n\.id\) < \(p_before_created_at,p_before_source,p_before_id\)/);
+  assert.match(unifiedInboxMigration, /ORDER BY n\.created_at DESC,n\.source DESC,n\.id DESC/);
+  assert.match(unifiedInboxMigration, /'unread_project_reviews',coalesce\(v_unread_project_reviews,0\)/);
+  assert.match(unifiedInboxMigration, /REVOKE ALL ON FUNCTION public\.hris_get_my_notifications[^;]+FROM PUBLIC,anon/);
+  assert.match(unifiedInboxMigration, /GRANT EXECUTE ON FUNCTION public\.hris_get_my_notifications[^;]+TO authenticated,service_role/);
+  assert.match(notificationUi, /function uniqueNotifications\(rows: Notification\[\]\)/);
+  assert.match(notificationUi, /return rows\.filter\(row =>/);
+  assert.doesNotMatch(notificationUi, /\.sort\(/, 'the browser must preserve server ordering and timestamp precision');
+  assert.match(notificationUi, /last\.source/);
 });
 
 test('unfinished task edits persist through a tenant-scoped assigned-Project-Manager RPC', () => {

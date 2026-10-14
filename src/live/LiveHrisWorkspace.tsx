@@ -2717,7 +2717,8 @@ export function LiveHrisWorkspace({
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
-          {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale} onOpenProjects={() => navigate('my-projects')} />}
+          {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
+            onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}

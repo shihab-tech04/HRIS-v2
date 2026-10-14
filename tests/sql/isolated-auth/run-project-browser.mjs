@@ -224,7 +224,7 @@ try {
   await reviewerPage.route('**/*', async route => {
     const url = new URL(route.request().url());
     if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
-        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_notifications')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_notifications')
         && route.request().method() === 'POST') {
       notificationReads += 1;
       if (notificationOutagePending) {
@@ -259,7 +259,7 @@ try {
   await notificationRetry.click();
   const reviewNotification = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
   await reviewNotification.waitFor({ state: 'visible' });
-  const unreadBadge = reviewerPage.getByText(/^\d+ unread$/);
+  const unreadBadge = reviewerPage.getByText(/^\d+ unread project review alerts$/);
   const unreadBeforeSubmit = Number((await unreadBadge.innerText()).split(' ')[0]);
   await assertVisibleText(reviewNotification, 'Peer review for Synthetic Employee A');
   await reviewNotification.getByRole('button', { name: 'Open review' }).click();
@@ -297,6 +297,27 @@ try {
   await assertNoHorizontalOverflow(reviewerPage, 'Desktop peer-review notifications and completion');
   if (inboxReadCalls < 3) throw new Error(`Expected outage, successful retry, and post-submit reload; inbox reads=${inboxReadCalls}.`);
 
+  const learnerNotificationsPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  await learnerNotificationsPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(learnerNotificationsPage, process.env.HRIS_LOCAL_REVIEWEE_EMAIL);
+  await navigateTo(learnerNotificationsPage, 'Notifications');
+  const learningUpdate = learnerNotificationsPage.locator('[data-notification-source="learning_completion"]')
+    .filter({ hasText: 'QA A Direct Learning' }).first();
+  await assertVisibleText(learningUpdate, 'Learning completion verified');
+  await learnerNotificationsPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await learningUpdate.getByRole('heading', { name: 'শেখার সমাপ্তি যাচাই হয়েছে', exact: true }).waitFor({ state: 'visible' });
+  await learnerNotificationsPage.getByRole('button', { name: 'Switch language to English' }).click();
+  await learningUpdate.getByRole('button', { name: 'Open learning', exact: true }).click();
+  await learnerNotificationsPage.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(learnerNotificationsPage, 'Mobile learning notification handoff');
+  await learnerNotificationsPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(learnerNotificationsPage, 'Desktop learning notification handoff');
+
   const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await revieweePage.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -325,7 +346,7 @@ try {
   if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
   await revieweePage.getByRole('button', { name: 'Switch language to English' }).click();
   if (await revieweePage.evaluate(() => document.documentElement.lang) !== 'en') throw new Error('Switching back to English did not update the document language.');
-  console.log('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, review validation/submission, and performance-history journey passed.');
+  console.log('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, peer-review inbox, Learning Completion notifications, EN/BN handoff, and performance-history journey passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
