@@ -57,7 +57,10 @@ function validate(contract) {
     assert.ok(x.id && x.path && x.op && x.reason && x.approvalReference, 'Incomplete check');
     assert.ok(!ids.has(x.id), 'Duplicate check ID: ' + x.id); ids.add(x.id);
     assert.ok(['release','always'].includes(x.enforcement));
-    if (x.op !== 'json_field_equals') assert.equal(typeof x.text, 'string');
+    if (x.op === 'contains' || x.op === 'not_contains') assert.equal(typeof x.text, 'string');
+    else if (x.op === 'json_field_equals') assert.equal(typeof x.field, 'string');
+    else if (x.op === 'json_story_coverage') assert.ok(Number.isInteger(x.value) && x.value > 0);
+    else throw Error('Unsupported contract operation: ' + x.op);
   }
   for (const x of contract.requiredEvidence) {
     assert.ok(x.id && x.description && x.reference && x.status, 'Incomplete evidence');
