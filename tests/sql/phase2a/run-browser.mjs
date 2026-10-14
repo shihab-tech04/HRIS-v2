@@ -58,16 +58,16 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
   async function openAdministratorControls(card) {
     const details = card.locator('details').filter({ hasText: 'Manage tenant administrator' });
     if (!(await details.evaluate(element => element.open))) await details.locator('summary').click();
-    await details.getByLabel('Administrator Auth user ID').waitFor({ state: 'visible' });
+    await details.getByLabel('Administrator email address').waitFor({ state: 'visible' });
   }
-  async function createTenant(page, code, slug, name, adminId) {
+  async function createTenant(page, code, slug, name, adminEmail) {
     await page.getByRole('button', { name: 'Create tenant', exact: true }).click();
     await page.getByLabel('Tenant code').fill(code);
     await page.getByLabel('URL key').fill(slug);
     await page.getByLabel('Organization name').fill(name);
     await page.getByLabel('IANA time zone').fill('Asia/Dhaka');
     await page.getByLabel('Default language').selectOption('bn');
-    await page.getByLabel('First administrator Auth user ID').fill(adminId);
+    await page.getByLabel('First administrator email').fill(adminEmail);
   }
 
   try {
@@ -102,11 +102,11 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await desktop.getByLabel('Organization name').fill(name);
     await desktop.getByLabel('IANA time zone').fill('Asia/Dhaka');
     await desktop.getByLabel('Default language').selectOption('bn');
-    await desktop.getByLabel('First administrator Auth user ID').fill('not-a-user-id');
-    await desktop.getByRole('button', { name: 'Create inactive tenant', exact: true }).click();
-    await desktop.getByRole('alert').filter({ hasText: 'Enter a valid existing Auth user ID' }).waitFor({ state: 'visible' });
-    await check('Invalid administrator UUID is rejected in the form without sending a write');
-    await desktop.getByLabel('First administrator Auth user ID').fill(firstAdmin.id);
+    const firstAdminEmail = desktop.getByLabel('First administrator email');
+    await firstAdminEmail.fill('not-an-email');
+    assert.equal(await firstAdminEmail.evaluate(input => input.checkValidity()), false);
+    await check('Invalid administrator email is rejected by the form before sending a write');
+    await firstAdminEmail.fill(firstAdmin.email);
     await desktop.getByRole('button', { name: 'Create inactive tenant', exact: true }).click();
     await desktop.getByRole('status').filter({ hasText: 'Tenant created and left inactive' }).waitFor({ state: 'visible', timeout: 15000 });
     let tenantCard = await cardFor(desktop, name);
@@ -143,7 +143,7 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await check('Metadata update survives refresh and database read-back without activating the tenant');
 
     await openAdministratorControls(tenantCard);
-    await tenantCard.getByLabel('Administrator Auth user ID').fill(secondAdmin.id);
+    await tenantCard.getByLabel('Administrator email address').fill(secondAdmin.email);
     await tenantCard.getByRole('button', { name: 'Assign administrator', exact: true }).click();
     await desktop.getByRole('status').filter({ hasText: 'Administrator assignment saved.' }).waitFor({ state: 'visible', timeout: 15000 });
     tenantCard = await cardFor(desktop, `${name} Updated`);
@@ -155,8 +155,8 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await check('Administrator assignment is persisted and the displayed active count refreshes');
 
     await openAdministratorControls(tenantCard);
-    await tenantCard.getByLabel('Administrator Auth user ID').fill(secondAdmin.id);
-    await tenantCard.getByRole('button', { name: 'Revoke by Auth user ID', exact: true }).click();
+    await tenantCard.getByLabel('Administrator email address').fill(secondAdmin.email);
+    await tenantCard.getByRole('button', { name: 'Revoke by email', exact: true }).click();
     await desktop.getByRole('alertdialog', { name: 'Revoke tenant administrator?' }).waitFor({ state: 'visible' });
     await desktop.getByRole('button', { name: 'Cancel', exact: true }).click();
     await desktop.getByRole('alertdialog', { name: 'Revoke tenant administrator?' }).waitFor({ state: 'hidden' });
@@ -165,7 +165,7 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     assert.ifError(stillAssigned.error);
     assert.equal(stillAssigned.data.status, 'active');
     await check('Cancel preserves the administrator assignment and closes the confirmation');
-    await tenantCard.getByRole('button', { name: 'Revoke by Auth user ID', exact: true }).click();
+    await tenantCard.getByRole('button', { name: 'Revoke by email', exact: true }).click();
     await desktop.getByRole('alertdialog', { name: 'Revoke tenant administrator?' }).waitFor({ state: 'visible' });
     await desktop.getByRole('button', { name: 'Confirm revocation', exact: true }).click();
     await desktop.getByRole('status').filter({ hasText: 'Administrator access revoked.' }).waitFor({ state: 'visible', timeout: 15000 });
@@ -210,7 +210,7 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     const mobileCode = `P2A_MB_${stamp.slice(-8)}`;
     const mobileSlug = `p2a-mobile-${stamp.slice(-10)}`;
     const mobileName = `Phase2A Mobile ${stamp.slice(-6)}`;
-    await createTenant(mobile, mobileCode, mobileSlug, mobileName, firstAdmin.id);
+    await createTenant(mobile, mobileCode, mobileSlug, mobileName, firstAdmin.email);
     await assertNoHorizontalOverflow(mobile, 'Mobile tenant form');
     await mobile.getByRole('button', { name: 'Create inactive tenant', exact: true }).click();
     await mobile.getByRole('status').filter({ hasText: 'Tenant created and left inactive' }).waitFor({ state: 'visible', timeout: 15000 });

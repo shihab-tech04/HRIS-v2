@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 const sql=readFileSync('supabase/staging/phase2a/tenant_provisioning.staging.sql','utf8');
+const emailSql=readFileSync('supabase/staging/phase2b/platform_tenant_admin_email.staging.sql','utf8');
 const client=readFileSync('src/live/platformTenantApi.ts','utf8');
+const workspace=readFileSync('src/live/PlatformTenantWorkspace.tsx','utf8');
 test('Phase 2A SQL is staged and new tenants start inactive',()=>{
  assert.match(sql,/PHASE 2A STAGING CONTRACT ONLY/);
  assert.match(sql,/VALUES\(v_code,v_slug,v_name,p_timezone,p_default_locale,FALSE\)/);
@@ -27,6 +29,27 @@ test('Staging-only client is not mounted in production',()=>{
  assert.match(client,/requireStagingFeature\(\)/);
  assert.match(client,/supabase\.rpc\('platform_hris_is_super_admin'\)/);
  assert.match(client,/throw error/);
+});
+
+test('Phase 2B resolves exact confirmed account emails only through Super Admin RPCs',()=>{
+ assert.match(emailSql,/PHASE 2B STAGING CONTRACT ONLY/);
+ assert.match(emailSql,/public\.platform_hris_is_super_admin\(\)/);
+ assert.match(emailSql,/lower\(u\.email\) = v_email[\s\S]*?u\.email_confirmed_at IS NOT NULL/);
+ assert.match(emailSql,/platform_hris_provision_tenant\([\s\S]*?v_admin_user_id/);
+ assert.match(emailSql,/platform_hris_set_tenant_admin\(p_tenant_id, v_admin_user_id, p_enabled\)/);
+ for(const fn of ['platform_hris_provision_tenant_by_email','platform_hris_set_tenant_admin_by_email']){
+  assert.match(emailSql,new RegExp('REVOKE ALL ON FUNCTION public\\.'+fn+'\\('));
+  assert.match(emailSql,new RegExp('GRANT EXECUTE ON FUNCTION public\\.'+fn+'\\(.* TO authenticated'));
+ }
+ assert.doesNotMatch(emailSql,/GRANT\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE)\s+ON\s+(?:TABLE\s+)?auth\.users/i);
+ assert.doesNotMatch(emailSql,/INSERT INTO auth\.users|UPDATE auth\.users|DELETE FROM auth\.users/i);
+ assert.match(client,/supabase\.rpc\('platform_hris_provision_tenant_by_email'/);
+ assert.match(client,/supabase\.rpc\('platform_hris_set_tenant_admin_by_email'/);
+ assert.match(workspace,/type="email" autoComplete="email" label=\{tx\('First administrator email'\)\}/);
+ assert.match(workspace,/provisionPlatformTenantByEmail\(/);
+ assert.match(workspace,/setPlatformTenantAdministratorByEmail\(/);
+ assert.match(workspace,/does not expose an account directory or send invitations/);
+ assert.doesNotMatch(workspace,/Auth user ID|user UUID/);
 });
 
 test('Adding an admin never silently overwrites a recruiter membership',()=>{

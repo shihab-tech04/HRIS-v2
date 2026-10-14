@@ -5,8 +5,8 @@ import {
   isPlatformSuperAdmin,
   listPlatformTenants,
   platformTenantFeatureAvailable,
-  provisionPlatformTenant,
-  setPlatformTenantAdministrator,
+  provisionPlatformTenantByEmail,
+  setPlatformTenantAdministratorByEmail,
   updatePlatformTenantMetadata,
 } from './platformTenantApi';
 import type { PlatformTenant } from './platformTenantApi';
@@ -18,15 +18,15 @@ type TenantForm = {
   name: string;
   timezone: string;
   defaultLocale: 'en' | 'bn';
-  existingAdminUserId: string;
+  existingAdminEmail: string;
 };
 
 const emptyTenantForm = (): TenantForm => ({
-  code: '', slug: '', name: '', timezone: 'Asia/Dhaka', defaultLocale: 'en', existingAdminUserId: '',
+  code: '', slug: '', name: '', timezone: 'Asia/Dhaka', defaultLocale: 'en', existingAdminEmail: '',
 });
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function errorMessage(cause: unknown): string {
+function errorMessage(cause: unknown, tx: (text: string) => string): string {
   const message = cause && typeof cause === 'object' && 'message' in cause
     ? String((cause as { message: unknown }).message)
     : cause instanceof Error ? cause.message : '';
@@ -36,16 +36,18 @@ function errorMessage(cause: unknown): string {
   if (/not authorized|42501/i.test(message)) {
     return 'This account no longer has platform Super Admin access. Refresh the page or sign in again.';
   }
+  if (/valid administrator email address/i.test(message)) return tx('Enter a valid email address.');
+  if (/confirmed Auth account was not found/i.test(message)) return tx('A confirmed Auth account with this email was not found.');
   return message || 'The request could not be completed. Check the fields and try again.';
 }
 
-function Field({ id, label, value, onChange, required = true, type = 'text', pattern, maxLength, minLength, placeholder }: {
+function Field({ id, label, value, onChange, required = true, type = 'text', pattern, maxLength, minLength, placeholder, autoComplete }: {
   id: string; label: string; value: string; onChange: (value: string) => void; required?: boolean;
-  type?: string; pattern?: string; maxLength?: number; minLength?: number; placeholder?: string;
+  type?: string; pattern?: string; maxLength?: number; minLength?: number; placeholder?: string; autoComplete?: string;
 }) {
   return <label className="block min-w-0 text-sm font-medium text-slate-700" htmlFor={id}>
     {label}<input id={id} type={type} required={required} value={value} pattern={pattern} maxLength={maxLength} minLength={minLength}
-      placeholder={placeholder} onChange={event => onChange(event.target.value)}
+      placeholder={placeholder} autoComplete={autoComplete} onChange={event => onChange(event.target.value)}
       className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 focus:outline-2 focus:outline-[#08558B]" />
   </label>;
 }
@@ -65,8 +67,8 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
   const [editName, setEditName] = useState('');
   const [editTimezone, setEditTimezone] = useState('');
   const [editLocale, setEditLocale] = useState<'en' | 'bn'>('en');
-  const [adminUserIds, setAdminUserIds] = useState<Record<string, string>>({});
-  const [confirmRevoke, setConfirmRevoke] = useState<{ tenantId: string; userId: string } | null>(null);
+  const [adminEmails, setAdminEmails] = useState<Record<string, string>>({});
+  const [confirmRevoke, setConfirmRevoke] = useState<{ tenantId: string; email: string } | null>(null);
 
   async function loadTenants(showLoading = true): Promise<boolean> {
     if (showLoading) setLoading(true);
@@ -82,7 +84,7 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       setTenants(await listPlatformTenants());
       return true;
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(errorMessage(cause, tx));
       return false;
     } finally {
       if (showLoading) setLoading(false);
@@ -101,7 +103,7 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       const refreshed = await loadTenants(false);
       setNotice(refreshed ? success : `${success} ${tx('Refresh the tenant list to confirm the latest state.')}`);
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(errorMessage(cause, tx));
     } finally {
       setBusy('');
     }
@@ -109,18 +111,18 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
 
   async function createTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!uuidPattern.test(createForm.existingAdminUserId.trim())) {
-      setError(tx('Enter a valid existing Auth user ID for the first administrator.'));
+    if (!emailPattern.test(createForm.existingAdminEmail.trim())) {
+      setError(tx('Enter the email of an existing confirmed Auth account for the first administrator.'));
       return;
     }
     await runAction('create', tx('Tenant created and left inactive pending security certification.'), async () => {
-      await provisionPlatformTenant({
+      await provisionPlatformTenantByEmail({
         ...createForm,
         code: createForm.code.trim().toUpperCase(),
         slug: createForm.slug.trim().toLowerCase(),
         name: createForm.name.trim(),
         timezone: createForm.timezone.trim(),
-        existingAdminUserId: createForm.existingAdminUserId.trim(),
+        existingAdminEmail: createForm.existingAdminEmail.trim(),
       });
       setCreateForm(emptyTenantForm());
       setCreateOpen(false);
@@ -137,33 +139,33 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
 
   async function assignAdministrator(event: FormEvent<HTMLFormElement>, tenant: PlatformTenant) {
     event.preventDefault();
-    const userId = (adminUserIds[tenant.id] || '').trim();
-    if (!uuidPattern.test(userId)) {
-      setError(tx('Enter a valid existing Auth user ID.'));
+    const email = (adminEmails[tenant.id] || '').trim();
+    if (!emailPattern.test(email)) {
+      setError(tx('Enter the email of an existing confirmed Auth account.'));
       return;
     }
     await runAction(`admin:${tenant.id}`, tx('Administrator assignment saved.'), async () => {
-      await setPlatformTenantAdministrator(tenant.id, userId, true);
-      setAdminUserIds(values => ({ ...values, [tenant.id]: '' }));
+      await setPlatformTenantAdministratorByEmail(tenant.id, email, true);
+      setAdminEmails(values => ({ ...values, [tenant.id]: '' }));
     });
   }
 
   function requestAdministratorRevocation(tenantId: string) {
-    const userId = (adminUserIds[tenantId] || '').trim();
-    if (!uuidPattern.test(userId)) {
-      setError(tx('Enter a valid existing Auth user ID.'));
+    const email = (adminEmails[tenantId] || '').trim();
+    if (!emailPattern.test(email)) {
+      setError(tx('Enter the email of an existing confirmed Auth account.'));
       return;
     }
     setError('');
-    setConfirmRevoke({ tenantId, userId });
+    setConfirmRevoke({ tenantId, email });
   }
 
   async function revokeAdministrator() {
     if (!confirmRevoke) return;
     const target = confirmRevoke;
     await runAction(`revoke:${target.tenantId}`, tx('Administrator access revoked.'), async () => {
-      await setPlatformTenantAdministrator(target.tenantId, target.userId, false);
-      setAdminUserIds(values => ({ ...values, [target.tenantId]: '' }));
+      await setPlatformTenantAdministratorByEmail(target.tenantId, target.email, false);
+      setAdminEmails(values => ({ ...values, [target.tenantId]: '' }));
       setConfirmRevoke(null);
     });
   }
@@ -210,9 +212,9 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
               <Field id="platform-tenant-name" label={tx('Organization name')} value={createForm.name} maxLength={180} minLength={2} placeholder="Acme Bangladesh" onChange={name => setCreateForm(form => ({ ...form, name }))} />
               <Field id="platform-tenant-timezone" label={tx('IANA time zone')} value={createForm.timezone} placeholder="Asia/Dhaka" onChange={timezone => setCreateForm(form => ({ ...form, timezone }))} />
               <label className="block text-sm font-medium text-slate-700" htmlFor="platform-tenant-locale">{tx('Default language')}<select id="platform-tenant-locale" value={createForm.defaultLocale} onChange={event => setCreateForm(form => ({ ...form, defaultLocale: event.target.value as 'en' | 'bn' }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal"><option value="en">English</option><option value="bn">বাংলা</option></select></label>
-              <Field id="platform-first-admin-id" label={tx('First administrator Auth user ID')} value={createForm.existingAdminUserId} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onChange={existingAdminUserId => setCreateForm(form => ({ ...form, existingAdminUserId }))} />
+              <Field id="platform-first-admin-email" type="email" autoComplete="email" label={tx('First administrator email')} value={createForm.existingAdminEmail} maxLength={320} placeholder="admin@example.com" onChange={existingAdminEmail => setCreateForm(form => ({ ...form, existingAdminEmail }))} />
             </div>
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">{tx('Identity lookup and invitations are not part of the approved contract. Enter the UUID of an existing, confirmed account; this screen does not search Auth users.')}</p>
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">{tx('Enter the exact email address of an existing, confirmed Auth account. Only a Super Admin can resolve it; this form does not expose an account directory or send invitations.')}</p>
             <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => { setCreateOpen(false); setCreateForm(emptyTenantForm()); setError(''); }} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium disabled:opacity-50">{tx('Cancel')}</button><button type="submit" disabled={Boolean(busy)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />{busy === 'create' ? tx('Creating…') : tx('Create inactive tenant')}</button></div>
           </form>}
 
@@ -234,9 +236,9 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
               </form> : <button type="button" onClick={() => { setEditingId(tenant.id); setEditName(tenant.name); setEditTimezone(tenant.timezone); setEditLocale(tenant.default_locale === 'bn' ? 'bn' : 'en'); }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium hover:border-[#08558B]"><Pencil className="h-4 w-4" />{tx('Edit details')}</button>}
 
               <details className="mt-3 rounded-lg border border-slate-200"><summary className="min-h-11 cursor-pointer px-3 py-2 text-sm font-medium text-[#085587]">{tx('Manage tenant administrator')}</summary><form onSubmit={event => void assignAdministrator(event, tenant)} className="space-y-3 border-t border-slate-200 p-3">
-                <p className="text-xs text-slate-600">{tx('Use an existing, confirmed Auth user UUID. No account directory is exposed.')}</p>
-                <Field id={`tenant-admin-user-${tenant.id}`} label={tx('Administrator Auth user ID')} value={adminUserIds[tenant.id] || ''} onChange={value => setAdminUserIds(values => ({ ...values, [tenant.id]: value }))} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-                <div className="flex flex-wrap gap-2"><button type="submit" disabled={Boolean(busy)} className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50">{busy === `admin:${tenant.id}` ? tx('Saving…') : tx('Assign administrator')}</button><button type="button" disabled={Boolean(busy)} onClick={() => requestAdministratorRevocation(tenant.id)} className="min-h-10 rounded-lg border border-rose-300 px-3 text-sm font-medium text-rose-800 disabled:opacity-50">{busy === `revoke:${tenant.id}` ? tx('Revoking…') : tx('Revoke by Auth user ID')}</button></div>
+                <p className="text-xs text-slate-600">{tx('Use the exact email of an existing, confirmed Auth account. No account directory or invitation is exposed.')}</p>
+                <Field id={`tenant-admin-email-${tenant.id}`} type="email" autoComplete="email" label={tx('Administrator email address')} value={adminEmails[tenant.id] || ''} maxLength={320} onChange={value => setAdminEmails(values => ({ ...values, [tenant.id]: value }))} placeholder="admin@example.com" />
+                <div className="flex flex-wrap gap-2"><button type="submit" disabled={Boolean(busy)} className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50">{busy === `admin:${tenant.id}` ? tx('Saving…') : tx('Assign administrator')}</button><button type="button" disabled={Boolean(busy)} onClick={() => requestAdministratorRevocation(tenant.id)} className="min-h-10 rounded-lg border border-rose-300 px-3 text-sm font-medium text-rose-800 disabled:opacity-50">{busy === `revoke:${tenant.id}` ? tx('Revoking…') : tx('Revoke by email')}</button></div>
               </form></details>
             </article>)}</div>}
         </section>
@@ -245,7 +247,7 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
 
     {confirmRevoke && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setConfirmRevoke(null); }}>
       <section role="alertdialog" aria-modal="true" aria-labelledby="revoke-admin-title" aria-describedby="revoke-admin-description" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-        <h2 id="revoke-admin-title" className="text-lg font-semibold text-slate-900">{tx('Revoke tenant administrator?')}</h2><p id="revoke-admin-description" className="mt-2 break-all text-sm text-slate-600">{tx('This removes active administrator access for')} {confirmRevoke.userId}. {tx('The last active tenant administrator cannot be removed.')}</p>
+        <h2 id="revoke-admin-title" className="text-lg font-semibold text-slate-900">{tx('Revoke tenant administrator?')}</h2><p id="revoke-admin-description" className="mt-2 break-all text-sm text-slate-600">{tx('This removes active administrator access for')} {confirmRevoke.email}. {tx('The last active tenant administrator cannot be removed.')}</p>
         <div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setConfirmRevoke(null)} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm">{tx('Cancel')}</button><button type="button" onClick={() => void revokeAdministrator()} disabled={Boolean(busy)} className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy.startsWith('revoke:') ? tx('Revoking…') : tx('Confirm revocation')}</button></div>
       </section>
     </div>}

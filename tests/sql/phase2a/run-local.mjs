@@ -1,4 +1,4 @@
-// Real local Supabase Auth + PostgreSQL acceptance for the Phase 2A staging RPCs.
+// Real local Supabase Auth + PostgreSQL acceptance for the Phase 2A/2B staging RPCs.
 // This runner refuses non-disposable projects and only cleans users it creates.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -76,6 +76,7 @@ const users = [
   { key: 'recruiter', email: `phase2a-recruiter-${stamp}@hris.test`, confirmed: true },
   { key: 'unconfirmed', email: `phase2a-unconfirmed-${stamp}@hris.test`, confirmed: false },
 ];
+const secondAdmin = { key: 'secondAdmin', email: `phase2b-second-admin-${stamp}@hris.test`, confirmed: true };
 const createdUsers = [];
 const signedIn = [];
 let fixtureApplied = false;
@@ -112,12 +113,12 @@ async function cleanup() {
   for (const { client } of signedIn) await client.auth.signOut().catch(() => {});
   if (createdUsers.length && fixtureApplied) {
     const ids = createdUsers.map(id => `'${id}'::uuid`).join(',');
-    const testTenantRows = psql("SELECT id FROM public.tenants WHERE code LIKE 'P2A%';").trim();
+    const testTenantRows = psql("SELECT id FROM public.tenants WHERE code LIKE 'P2A%' OR code LIKE 'P2B%';").trim();
     const tenantIds = testTenantRows ? testTenantRows.split(/\r?\n/) : [];
     const tenantIdSql = tenantIds.map(id => `'${id}'::uuid`).join(',');
     psql(`DELETE FROM public.tenant_memberships WHERE user_id IN (${ids})${tenantIdSql ? ` OR tenant_id IN (${tenantIdSql})` : ''};`);
     psql(`DELETE FROM public.admin_audit_logs WHERE actor_id IN (${ids}) OR target_id IN (
-      SELECT id::text FROM public.tenants WHERE code LIKE 'P2A%'
+      SELECT id::text FROM public.tenants WHERE code LIKE 'P2A%' OR code LIKE 'P2B%'
     );`);
     psql(`DELETE FROM public.admin_users WHERE user_id IN (${ids});`);
     if (tenantIdSql) psql(`DELETE FROM public.tenants WHERE id IN (${tenantIdSql});`);
@@ -145,6 +146,7 @@ try {
   `);
   psql(readFileSync(path.join(root, 'supabase/staging/phase2a/first_admin_guard.staging.sql'), 'utf8'));
   psql(readFileSync(path.join(root, 'supabase/staging/phase2a/tenant_provisioning.staging.sql'), 'utf8'));
+  psql(readFileSync(path.join(root, 'supabase/staging/phase2b/platform_tenant_admin_email.staging.sql'), 'utf8'));
   psql("NOTIFY pgrst, 'reload schema';");
 
   const superAdmin = await signIn(users[0]);
@@ -152,6 +154,7 @@ try {
   const firstAdmin = await signIn(users[2]);
   const recruiter = await signIn(users[3]);
   const unconfirmed = users[4];
+  await createUser(secondAdmin);
 
   const superCheck = await superAdmin.client.rpc('platform_hris_is_super_admin');
   const ordinaryCheck = await ordinary.client.rpc('platform_hris_is_super_admin');
@@ -167,6 +170,11 @@ try {
     p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_user_id: firstAdmin.id,
   });
   requireError(ordinaryProvision, '42501', 'Ordinary authenticated tenant provisioning is denied');
+  const ordinaryProvisionByEmail = await ordinary.client.rpc('platform_hris_provision_tenant_by_email', {
+    p_code: 'P2B_UNAUTH', p_slug: 'p2b-unauthorized', p_name: 'Unauthorized',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_email: secondAdmin.email,
+  });
+  requireError(ordinaryProvisionByEmail, '42501', 'Ordinary authenticated email-based tenant provisioning is denied');
   const directTenantRead = await ordinary.client.from('tenants').select('id');
   check(!directTenantRead.error && directTenantRead.data.length === 0,
     'Direct tenant reads are filtered by RLS for ordinary authenticated users');
@@ -201,6 +209,45 @@ try {
     'Existing confirmed account receives the initial tenant-admin membership');
   const provisionAudit = await admin.from('admin_audit_logs').select('actor_id,action,target_id').eq('target_id', tenantId).eq('action', 'PLATFORM_TENANT_PROVISIONED').single();
   check(!provisionAudit.error && provisionAudit.data.actor_id === superAdmin.id, 'Provisioning audit records the actual super-admin actor');
+
+  const provisionedByEmail = await superAdmin.client.rpc('platform_hris_provision_tenant_by_email', {
+    p_code: ' p2b_one ', p_slug: 'P2B-One', p_name: ' P2B Email Tenant ',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'bn', p_admin_email: secondAdmin.email.toUpperCase(),
+  });
+  check(!provisionedByEmail.error && typeof provisionedByEmail.data === 'string',
+    'Super Admin provisions a tenant by case-normalized confirmed email');
+  const emailTenantId = provisionedByEmail.data;
+  const emailTenant = await admin.from('tenants').select('code,slug,name,is_active,default_locale')
+    .eq('id', emailTenantId).single();
+  check(!emailTenant.error && emailTenant.data.code === 'P2B_ONE' && emailTenant.data.slug === 'p2b-one'
+    && emailTenant.data.name === 'P2B Email Tenant' && emailTenant.data.is_active === false
+    && emailTenant.data.default_locale === 'bn', 'Email-created tenant persists normalized fields and remains inactive');
+  const emailMembership = await admin.from('tenant_memberships').select('role,status')
+    .eq('tenant_id', emailTenantId).eq('user_id', secondAdmin.id).single();
+  check(!emailMembership.error && emailMembership.data.role === 'hr_admin' && emailMembership.data.status === 'active',
+    'Confirmed email resolves to the expected initial hr_admin membership');
+  const emailProvisionAudit = await admin.from('admin_audit_logs').select('actor_id,action')
+    .eq('target_id', emailTenantId).eq('action', 'PLATFORM_TENANT_PROVISIONED').single();
+  check(!emailProvisionAudit.error && emailProvisionAudit.data.actor_id === superAdmin.id,
+    'Email-based provisioning preserves authenticated actor audit history');
+  const malformedEmailProvision = await superAdmin.client.rpc('platform_hris_provision_tenant_by_email', {
+    p_code: 'P2B_BAD', p_slug: 'p2b-malformed-email', p_name: 'Malformed Email',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_email: 'not-an-email',
+  });
+  requireError(malformedEmailProvision, '22023', 'Malformed administrator email is rejected by the backend');
+  const unconfirmedEmailProvision = await superAdmin.client.rpc('platform_hris_provision_tenant_by_email', {
+    p_code: 'P2B_UNCONFIRMED', p_slug: 'p2b-unconfirmed-email', p_name: 'Unconfirmed Email',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_email: unconfirmed.email,
+  });
+  requireError(unconfirmedEmailProvision, '22023', 'Unconfirmed Auth email cannot provision a tenant');
+  const missingEmailProvision = await superAdmin.client.rpc('platform_hris_provision_tenant_by_email', {
+    p_code: 'P2B_MISSING', p_slug: 'p2b-missing-email', p_name: 'Missing Email',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_email: `missing-${stamp}@hris.test`,
+  });
+  requireError(missingEmailProvision, '22023', 'Unknown Auth email cannot provision a tenant');
+  const rejectedEmailRows = await admin.from('tenants').select('id').in('code', ['P2B_BAD', 'P2B_UNCONFIRMED', 'P2B_MISSING']);
+  check(!rejectedEmailRows.error && rejectedEmailRows.data.length === 0,
+    'Rejected email-based provisioning leaves no partial tenant records');
 
   const duplicateCode = await superAdmin.client.rpc('platform_hris_provision_tenant', {
     p_code: 'P2A_ONE', p_slug: 'p2a-duplicate-code', p_name: 'Duplicate Code',
@@ -250,6 +297,10 @@ try {
     p_tenant_id: tenantId, p_user_id: recruiter.id, p_enabled: true,
   });
   requireError(convertRecruiter, '23514', 'Administrator assignment cannot overwrite a recruiter membership');
+  const convertRecruiterByEmail = await superAdmin.client.rpc('platform_hris_set_tenant_admin_by_email', {
+    p_tenant_id: tenantId, p_admin_email: recruiter.email, p_enabled: true,
+  });
+  requireError(convertRecruiterByEmail, '23514', 'Email-based administrator assignment cannot overwrite a recruiter membership');
   const recruiterReadback = await admin.from('tenant_memberships').select('role,status').eq('tenant_id', tenantId).eq('user_id', recruiter.id).single();
   check(!recruiterReadback.error && recruiterReadback.data.role === 'hr_recruiter' && recruiterReadback.data.status === 'active',
     'Denied admin assignment preserves the existing recruiter role');
@@ -258,31 +309,49 @@ try {
     p_tenant_id: tenantId, p_user_id: firstAdmin.id, p_enabled: true,
   });
   requireError(ordinaryAdminAssign, '42501', 'Ordinary authenticated user cannot assign tenant administrators');
+  const ordinaryAdminAssignByEmail = await ordinary.client.rpc('platform_hris_set_tenant_admin_by_email', {
+    p_tenant_id: tenantId, p_admin_email: secondAdmin.email, p_enabled: true,
+  });
+  requireError(ordinaryAdminAssignByEmail, '42501', 'Ordinary authenticated user cannot assign tenant administrators by email');
   const addConfirmedAdmin = await superAdmin.client.rpc('platform_hris_set_tenant_admin', {
     p_tenant_id: tenantId, p_user_id: unconfirmed.id, p_enabled: true,
   });
   requireError(addConfirmedAdmin, '22023', 'Unconfirmed Auth account cannot become a tenant administrator');
-  const secondAdminUser = await admin.auth.admin.createUser({
-    email: `phase2a-second-admin-${stamp}@hris.test`, password, email_confirm: true,
-  });
-  if (secondAdminUser.error || !secondAdminUser.data.user) throw secondAdminUser.error || new Error('Second administrator fixture creation failed.');
-  const secondAdminId = secondAdminUser.data.user.id;
-  createdUsers.push(secondAdminId);
   const secondAdminEnabled = await superAdmin.client.rpc('platform_hris_set_tenant_admin', {
-    p_tenant_id: tenantId, p_user_id: secondAdminId, p_enabled: true,
+    p_tenant_id: tenantId, p_user_id: secondAdmin.id, p_enabled: true,
   });
   check(!secondAdminEnabled.error, 'Super-admin can add a second confirmed tenant administrator');
   const secondAdminDisabled = await superAdmin.client.rpc('platform_hris_set_tenant_admin', {
-    p_tenant_id: tenantId, p_user_id: secondAdminId, p_enabled: false,
+    p_tenant_id: tenantId, p_user_id: secondAdmin.id, p_enabled: false,
   });
   check(!secondAdminDisabled.error, 'Super-admin can revoke an additional tenant administrator');
+  const secondAdminEnabledByEmail = await superAdmin.client.rpc('platform_hris_set_tenant_admin_by_email', {
+    p_tenant_id: tenantId, p_admin_email: secondAdmin.email.toUpperCase(), p_enabled: true,
+  });
+  check(!secondAdminEnabledByEmail.error, 'Super-admin can assign a confirmed administrator by normalized email');
+  const emailAssignmentReadback = await admin.from('tenant_memberships').select('role,status')
+    .eq('tenant_id', tenantId).eq('user_id', secondAdmin.id).single();
+  check(!emailAssignmentReadback.error && emailAssignmentReadback.data.role === 'hr_admin'
+    && emailAssignmentReadback.data.status === 'active', 'Email assignment persists the expected active admin role');
+  const secondAdminDisabledByEmail = await superAdmin.client.rpc('platform_hris_set_tenant_admin_by_email', {
+    p_tenant_id: tenantId, p_admin_email: secondAdmin.email, p_enabled: false,
+  });
+  check(!secondAdminDisabledByEmail.error, 'Super-admin can revoke an additional administrator by email');
+  const emailRevocationReadback = await admin.from('tenant_memberships').select('role,status')
+    .eq('tenant_id', tenantId).eq('user_id', secondAdmin.id).single();
+  check(!emailRevocationReadback.error && emailRevocationReadback.data.role === 'hr_admin'
+    && emailRevocationReadback.data.status === 'inactive', 'Email revocation persists without changing the membership role');
+  const removeLastAdminByEmail = await superAdmin.client.rpc('platform_hris_set_tenant_admin_by_email', {
+    p_tenant_id: tenantId, p_admin_email: firstAdmin.email, p_enabled: false,
+  });
+  requireError(removeLastAdminByEmail, '23514', 'Email revocation cannot remove the last active tenant administrator');
   const removeLastAdmin = await superAdmin.client.rpc('platform_hris_set_tenant_admin', {
     p_tenant_id: tenantId, p_user_id: firstAdmin.id, p_enabled: false,
   });
   requireError(removeLastAdmin, '23514', 'The last active tenant administrator cannot be revoked');
   const adminAudit = await admin.from('admin_audit_logs').select('action,actor_id').eq('target_id', tenantId)
     .in('action', ['PLATFORM_TENANT_ADMIN_ASSIGNED','PLATFORM_TENANT_ADMIN_REVOKED']);
-  check(!adminAudit.error && adminAudit.data.length === 2 && adminAudit.data.every(row => row.actor_id === superAdmin.id),
+  check(!adminAudit.error && adminAudit.data.length === 4 && adminAudit.data.every(row => row.actor_id === superAdmin.id),
     'Administrator assignment and revocation are audited with the authenticated actor');
 
   const staleToken = superAdmin.session.access_token;
@@ -303,12 +372,12 @@ try {
     superAdmin: users[0],
     ordinary: users[1],
     firstAdmin: users[2],
-    secondAdmin: { id: secondAdminId },
+    secondAdmin,
     admin,
     check: label => check(true, `Browser: ${label}`),
   });
 
-  process.stdout.write(`PHASE2A_LOCAL_AUTH_RLS PASS=${checks} FAIL=0\n`);
+  process.stdout.write(`PHASE2A_2B_LOCAL_AUTH_RLS PASS=${checks} FAIL=0\n`);
 } catch (error) {
   console.error('PHASE2A_LOCAL_AUTH_RLS ERROR:', error instanceof Error ? error.stack : error);
   throw error;
