@@ -13,6 +13,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const mainRoot = path.resolve(here, '../../..');
 const workdir = process.env.HRIS_SUPABASE_TEST_WORKDIR || '/private/tmp/synesis-local-hris-test';
 const dockerContext = process.env.HRIS_DOCKER_CONTEXT || 'colima-hris-scratch';
+const expectedApiPort = process.env.HRIS_SUPABASE_API_PORT || '55421';
+const expectedDatabasePort = process.env.HRIS_SUPABASE_DB_PORT || '55422';
 const cliEnv = {
   ...process.env,
   SUPABASE_HOME: process.env.SUPABASE_HOME || '/private/tmp/synesis-supabase-home',
@@ -42,9 +44,9 @@ if (!services.API_URL || !services.ANON_KEY || !services.SERVICE_ROLE_KEY) {
 }
 const apiUrl = new URL(services.API_URL);
 const databaseUrl = new URL(services.DB_URL);
-if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== '55421'
-    || databaseUrl.hostname !== '127.0.0.1' || databaseUrl.port !== '55422') {
-  throw new Error('Refusing to test: this harness requires the isolated Supabase ports 55421/55422.');
+if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== expectedApiPort
+    || databaseUrl.hostname !== '127.0.0.1' || databaseUrl.port !== expectedDatabasePort) {
+  throw new Error(`Refusing to test: expected isolated Supabase ports ${expectedApiPort}/${expectedDatabasePort}.`);
 }
 if (execFileSync('docker', ['--context', dockerContext, 'context', 'show'], {
   env: cliEnv, encoding: 'utf8',
@@ -3643,12 +3645,44 @@ const followupMemberAssignment = followupWorkspace.data?.tasks?.find(task => tas
 const followupMemberRelease = await employeeA.client.rpc('hris_release_project_task_member', {
   p_tenant_id: ids.tenantA, p_task_assignment_id: followupMemberAssignment?.id,
 });
+const followupManagerAssignment = followupWorkspace.data?.tasks?.find(task => task.id === followupTask.data?.id)
+  ?.members?.find(row => row.employee_id === '55555555-5555-4555-8555-555555555555');
+const followupManagerRelease = await employeeA.client.rpc('hris_release_project_task_member', {
+  p_tenant_id: ids.tenantA, p_task_assignment_id: followupManagerAssignment?.id,
+});
+const followupReviewerInbox = await employeeA.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
+const releasedReviewerObligation = (followupReviewerInbox.data?.reviews || []).find(row =>
+  row.task_id === followupTask.data?.id
+  && row.reviewer_employee_id === '55555555-5555-4555-8555-555555555555'
+  && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555556');
+const releasedReviewerSubmission = await employeeA.client.rpc('hris_submit_project_peer_review', {
+  p_tenant_id: ids.tenantA, p_review_id: releasedReviewerObligation?.id,
+  p_scores: { quality_of_work: 4, collaboration_teamwork: 4, delivery_reliability: 3, ownership_communication: 5 },
+  p_not_observed: [], p_comments: 'Synthetic review submitted after reviewer release.',
+});
+const followupCompletion = await employeeA.client.rpc('hris_complete_project_task', {
+  p_tenant_id: ids.tenantA, p_task_id: followupTask.data?.id,
+});
+const followupReviewState = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,
+  'submitted',count(*) FILTER (WHERE r.status='submitted')::integer,
+  'reviewer_released',COALESCE(bool_or(r.status='submitted' AND reviewer.released_at IS NOT NULL),false),
+  'reviewee_released',COALESCE(bool_or(r.status='submitted' AND reviewee.released_at IS NOT NULL),false))
+  FROM public.project_task_peer_reviews r
+  JOIN public.project_task_assignments reviewer ON reviewer.tenant_id=r.tenant_id AND reviewer.id=r.reviewer_task_assignment_id
+  JOIN public.project_task_assignments reviewee ON reviewee.tenant_id=r.tenant_id AND reviewee.id=r.reviewee_task_assignment_id
+  WHERE r.tenant_id='${ids.tenantA}'::uuid AND r.task_id='${followupTask.data?.id}'::uuid`);
 const followupReviewCount = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
   FROM public.project_task_peer_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${followupTask.data?.id}'::uuid`);
-record('Assigned Project Manager can add and release task members; each release tracks overlapping reviews separately',
+record('Released reviewers can submit their eligible task review and task completion stays non-blocking',
   !followupTask.error && Boolean(unauthorizedTaskMemberAdd.error?.code === '42501')
     && !authorizedTaskMemberAdd.error && !followupMemberRelease.error
-    && followupReviewCount.count === 1);
+    && !followupManagerRelease.error && !followupReviewerInbox.error
+    && Boolean(releasedReviewerObligation?.id) && !releasedReviewerSubmission.error
+    && !followupCompletion.error && followupCompletion.data?.task?.status === 'completed'
+    && followupCompletion.data?.feedback_pending === 1
+    && followupReviewCount.count === 2 && followupReviewState.count === 2
+    && followupReviewState.submitted === 1 && followupReviewState.reviewer_released && followupReviewState.reviewee_released);
 
 const reviewMemberA = await employeeA.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
 const reviewMemberB = await managerA2.client.rpc('hris_get_my_project_peer_reviews', { p_tenant_id: ids.tenantA });
@@ -3658,7 +3692,7 @@ const reviewIdsB = reviewMemberB.data?.reviews || [];
 const reviewAtoB = reviewIdsA.find(row => row.reviewer_employee_id === '55555555-5555-4555-8555-555555555555'
   && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555556' && row.task_id === projectTaskId);
 const reviewBtoA = reviewIdsB.find(row => row.reviewer_employee_id === '55555555-5555-4555-8555-555555555556'
-  && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555555');
+  && row.reviewee_employee_id === '55555555-5555-4555-8555-555555555555' && row.task_id === projectTaskId);
 const unauthorizedReviewSubmit = await employeeA.client.rpc('hris_submit_project_peer_review', {
   p_tenant_id: ids.tenantA, p_review_id: reviewBtoA?.id,
   p_scores: { quality_of_work: 3, collaboration_teamwork: 3, delivery_reliability: 3, ownership_communication: 3 },

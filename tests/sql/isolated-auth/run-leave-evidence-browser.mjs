@@ -15,8 +15,9 @@ const required = [
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
 const apiUrl = new URL(process.env.HRIS_LOCAL_SUPABASE_URL);
-if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== '55421') {
-  throw new Error('Refusing the leave-evidence browser journey: only the isolated local Supabase API is permitted.');
+const expectedApiPort = process.env.HRIS_SUPABASE_API_PORT || '55421';
+if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== expectedApiPort) {
+  throw new Error(`Refusing the leave-evidence browser journey: expected isolated local Supabase API port ${expectedApiPort}.`);
 }
 const evidenceParts = process.env.HRIS_LOCAL_LEAVE_EVIDENCE_PATH.split('/');
 if (evidenceParts.length !== 3

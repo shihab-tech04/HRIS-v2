@@ -66,6 +66,26 @@ test('the submission RPC revalidates task state and overlapping assignment eligi
   assert.match(submission, /Pending eligible peer review assigned to this employee was not found/);
 });
 
+test('a released reviewer can submit their overlap-based obligation before completion without blocking the task', () => {
+  const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /releasedReviewerObligation/);
+  assert.match(runner, /p_review_id: releasedReviewerObligation\?\.id/);
+  assert.match(runner, /followupReviewState\.reviewer_released/);
+  assert.match(runner, /followupCompletion\.data\?\.feedback_pending === 1/);
+  assert.match(runner, /Released reviewers can submit their eligible task review and task completion stays non-blocking/);
+  assert.match(runner, /reviewee_employee_id === '55555555-5555-4555-8555-555555555555' && row\.task_id === projectTaskId/);
+});
+
+test('the disposable Auth/RLS runner accepts explicit loopback ports while retaining safe defaults', () => {
+  const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /HRIS_SUPABASE_API_PORT \|\| '55421'/);
+  assert.match(runner, /HRIS_SUPABASE_DB_PORT \|\| '55422'/);
+  assert.match(runner, /apiUrl\.hostname !== '127\.0\.0\.1'/);
+  assert.match(runner, /databaseUrl\.hostname !== '127\.0\.0\.1'/);
+  assert.match(runner, /apiUrl\.port !== expectedApiPort/);
+  assert.match(runner, /databaseUrl\.port !== expectedDatabasePort/);
+});
+
 test('eligible peer reviews create tenant-scoped in-app notifications and the isolated runner applies that migration', () => {
   assert.match(notificationMigration, /CREATE TABLE public\.hris_in_app_notifications/);
   assert.match(notificationMigration, /ALTER TABLE public\.hris_in_app_notifications ENABLE ROW LEVEL SECURITY/);

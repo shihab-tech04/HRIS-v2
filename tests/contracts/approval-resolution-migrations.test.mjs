@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 const leaveSql = readFileSync(new URL('../../supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql', import.meta.url), 'utf8');
 const attendanceSql = readFileSync(new URL('../../supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql', import.meta.url), 'utf8');
 const productionMigrationNames = readdirSync(new URL('../../supabase/migrations/', import.meta.url));
+const leaveEvidenceBrowser = readFileSync(new URL('../sql/isolated-auth/run-leave-evidence-browser.mjs', import.meta.url), 'utf8');
 
 test('approval fixes remain staged outside the production migration directory', () => {
   assert.ok(!productionMigrationNames.some(name => /approval_tenant_guard|approval_tenant_and_partial_fields/.test(name)));
@@ -37,4 +38,10 @@ test('staged replacements retain explicit search paths and do not change execute
     assert.doesNotMatch(sql, /^\s*(GRANT|REVOKE)\b/im);
     assert.match(sql, /admin_audit_logs/);
   }
+});
+
+test('isolated leave evidence browser accepts configured loopback ports and rejects other hosts', () => {
+  assert.match(leaveEvidenceBrowser, /HRIS_SUPABASE_API_PORT \|\| '55421'/);
+  assert.match(leaveEvidenceBrowser, /apiUrl\.hostname !== '127\.0\.0\.1'/);
+  assert.match(leaveEvidenceBrowser, /apiUrl\.port !== expectedApiPort/);
 });
