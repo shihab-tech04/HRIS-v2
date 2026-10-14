@@ -2720,7 +2720,7 @@ export function LiveHrisWorkspace({
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} locale={locale} />}
           {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} locale={locale} />}
           {page === 'learning-completions' && permissions.learningManage && <LearningCompletionQueue tenantId={tenantId} locale={locale} />}
-          {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} />}
+          {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} locale={locale} />}
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
@@ -2733,7 +2733,7 @@ export function LiveHrisWorkspace({
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
-          {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} />}
+          {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} locale={locale} />}
           {page === 'my-expenses' && isEmployee && <ExpenseClaims tenantId={tenantId} userId={userId} mode="personal" />}
           {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} locale={locale} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">

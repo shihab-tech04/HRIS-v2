@@ -187,16 +187,20 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
         }
         return next;
       });
-      const linksResult = await supabase.rpc('hris_get_my_learning_join_links', { p_tenant_id: requestedTenant });
-      if (!current()) return;
-      if (linksResult.error) {
-        setJoinError(tx('Online session links could not be loaded. Refresh to try again.'));
-      } else if (!linksResult.data || typeof linksResult.data !== 'object' || Array.isArray(linksResult.data)) {
-        setJoinError(tx('Online session links returned an invalid response. Refresh to try again.'));
-      } else {
-        const safeLinks = Object.fromEntries(Object.entries(linksResult.data as Record<string, unknown>)
-          .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(safeMeetingUrl(entry[1]))));
-        setJoinLinks(safeLinks);
+      try {
+        const linksResult = await supabase.rpc('hris_get_my_learning_join_links', { p_tenant_id: requestedTenant });
+        if (!current()) return;
+        if (linksResult.error) {
+          setJoinError(tx('Online session links could not be loaded. Refresh to try again.'));
+        } else if (!linksResult.data || typeof linksResult.data !== 'object' || Array.isArray(linksResult.data)) {
+          setJoinError(tx('Online session links returned an invalid response. Refresh to try again.'));
+        } else {
+          const safeLinks = Object.fromEntries(Object.entries(linksResult.data as Record<string, unknown>)
+            .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(safeMeetingUrl(entry[1]))));
+          setJoinLinks(safeLinks);
+        }
+      } catch {
+        if (current()) setJoinError(tx('Online session links could not be loaded. Refresh to try again.'));
       }
     } catch (cause) {
       if (current()) setError(cause instanceof Error ? tx(cause.message) : tx('Unable to load your learning workspace.'));

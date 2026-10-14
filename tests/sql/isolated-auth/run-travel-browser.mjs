@@ -58,6 +58,12 @@ async function navigateTo(page, label) {
   await nav.getByRole('button', { name: label, exact: true }).click();
 }
 
+async function switchLanguage(page, locale) {
+  await page.getByRole('button', {
+    name: locale === 'bn' ? 'Switch language to Bengali' : 'Switch language to English',
+  }).click();
+}
+
 async function rpcUuid(response) {
   const value = await response.json();
   if (!response.ok || typeof value !== 'string') throw new Error(`Travel RPC did not persist an ID: ${JSON.stringify(value)}.`);
@@ -82,34 +88,65 @@ try {
   });
   await isolateExternalRequests(employeePage);
   await signIn(employeePage, process.env.HRIS_LOCAL_TRAVEL_EMPLOYEE_EMAIL);
+  let personalContextReads = 0;
+  await employeePage.route('**/rest/v1/rpc/hris_get_my_travel_context', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    personalContextReads += 1;
+    if (personalContextReads === 1) {
+      return route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        headers: {
+          'access-control-allow-origin': origin,
+          'access-control-allow-credentials': 'true',
+          'access-control-allow-headers': 'apikey, authorization, content-type, x-client-info, prefer',
+          'access-control-allow-methods': 'POST, OPTIONS',
+        },
+        body: JSON.stringify({ message: 'Temporary test outage' }),
+      });
+    }
+    return route.continue();
+  });
+  const outageResponse = employeePage.waitForResponse(response =>
+    response.url().includes('/rest/v1/rpc/hris_get_my_travel_context') && response.status() === 503);
   await navigateTo(employeePage, 'My Travel');
   await employeePage.getByRole('heading', { name: 'My Travel Requests' }).waitFor({ state: 'visible' });
-  await employeePage.getByRole('button', { name: 'New travel request', exact: true }).waitFor({ state: 'visible' });
+  await outageResponse;
+  const loadError = employeePage.getByRole('alert');
+  await loadError.waitFor({ state: 'visible' });
+  if (!(await loadError.innerText()).trim()) throw new Error('The failed travel load must present a readable recovery message.');
+  if (personalContextReads !== 1) throw new Error(`Expected the first travel context read to fail, got ${personalContextReads} reads.`);
+  await employeePage.getByRole('button', { name: 'Retry', exact: true }).click();
+  await employeePage.getByRole('alert').waitFor({ state: 'detached' });
+  if (personalContextReads !== 2) throw new Error(`Expected one failed and one successful history read, got ${personalContextReads}.`);
+  await employeePage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await employeePage.getByRole('heading', { name: 'আমার ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  await employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
 
-  await employeePage.getByRole('button', { name: 'New travel request', exact: true }).click();
-  await employeePage.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true }).click();
+  await employeePage.getByRole('button', { name: 'বাতিল', exact: true }).click();
   await employeePage.getByRole('dialog').waitFor({ state: 'detached' });
-  await employeePage.getByRole('button', { name: 'New travel request', exact: true }).click();
+  await employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true }).click();
   const destination = `Local QA visit ${Date.now()}`;
-  await employeePage.getByLabel('Destination').fill(destination);
-  await employeePage.getByLabel('Departure date').fill('2026-12-10');
-  await employeePage.getByLabel('Return date').fill('2026-12-12');
-  await employeePage.getByLabel('Purpose').fill('Complete the isolated employee and manager travel journey.');
-  await employeePage.getByLabel('Estimated cost').fill('825');
-  await employeePage.getByLabel('Currency').fill('BDT');
+  await employeePage.getByLabel('গন্তব্য').fill(destination);
+  await employeePage.getByLabel('যাত্রার তারিখ').fill('2026-12-10');
+  await employeePage.getByLabel('ফেরার তারিখ').fill('2026-12-12');
+  await employeePage.getByLabel('উদ্দেশ্য').fill('Complete the isolated employee and manager travel journey.');
+  await employeePage.getByLabel('আনুমানিক খরচ').fill('825');
+  await employeePage.getByLabel('মুদ্রা').fill('BDT');
   const draftResponse = employeePage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_my_travel_request'));
-  await employeePage.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await employeePage.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
   const requestId = await rpcUuid(await draftResponse);
   const employeeCard = employeePage.locator(`[data-travel-request="${requestId}"]`);
   await employeeCard.waitFor({ state: 'visible' });
-  await employeeCard.getByText('Draft', { exact: true }).waitFor({ state: 'visible' });
-  await employeeCard.getByText('825 BDT', { exact: false }).waitFor({ state: 'visible' });
+  await employeeCard.getByText('খসড়া', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByText(/৮২৫ BDT/).waitFor({ state: 'visible' });
   await assertNoOverflow(employeePage, 'Travel draft mobile');
 
   const submitResponse = employeePage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_submit_my_travel_request'));
-  await employeeCard.getByRole('button', { name: 'Submit for review' }).click();
+  await employeeCard.getByRole('button', { name: 'পর্যালোচনার জন্য জমা দিন' }).click();
   if (await rpcUuid(await submitResponse) !== requestId) throw new Error('Submitted travel request ID changed.');
-  await employeeCard.getByText('Submitted', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByText('জমা দেওয়া হয়েছে', { exact: true }).waitFor({ state: 'visible' });
 
   const managerPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const managerRpcTrace = [];
@@ -124,22 +161,27 @@ try {
   managerPage.on('pageerror', error => managerRpcTrace.push(`pageerror ${error.message}`));
   await isolateExternalRequests(managerPage);
   await signIn(managerPage, process.env.HRIS_LOCAL_TRAVEL_MANAGER_EMAIL);
+  const managerQueueLoad = managerPage.waitForResponse(response =>
+    response.url().includes('/rest/v1/rpc/hris_get_tenant_travel_requests') && response.status() === 200);
   await navigateTo(managerPage, 'Travel requests');
   await managerPage.getByRole('heading', { name: 'Travel requests', exact: true }).waitFor({ state: 'visible' });
+  await managerQueueLoad;
   const managerCard = managerPage.locator(`[data-travel-queue-request="${requestId}"]`);
   await managerCard.waitFor({ state: 'visible' });
   await managerCard.getByRole('heading', { name: destination }).waitFor({ state: 'visible' });
-  await managerCard.getByRole('button', { name: 'Return for changes' }).click();
-  await managerPage.getByRole('alertdialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await managerPage.getByRole('heading', { name: 'ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন' }).click();
+  await managerPage.getByRole('alertdialog').getByRole('button', { name: 'বাতিল', exact: true }).click();
   await managerCard.waitFor({ state: 'visible' });
-  await managerCard.getByRole('button', { name: 'Return for changes' }).click();
-  await managerPage.getByRole('alertdialog').getByLabel('Note').fill('Please clarify the visit objective.');
+  await managerCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন' }).click();
+  await managerPage.getByRole('alertdialog').getByLabel('নোট').fill('Please clarify the visit objective.');
   const rejectResponsePromise = managerPage.waitForResponse(
     response => response.url().includes('/rest/v1/rpc/hris_resolve_travel_request'), { timeout: 10000 },
   );
   let rejectResponse;
   try {
-    await managerPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm return' }).click();
+    await managerPage.getByRole('alertdialog').getByRole('button', { name: 'ফেরত নিশ্চিত করুন' }).click();
     rejectResponse = await rejectResponsePromise;
   } catch (cause) {
     await rejectResponsePromise.catch(() => {});
@@ -152,22 +194,23 @@ try {
   await managerCard.waitFor({ state: 'detached' });
   await assertNoOverflow(managerPage, 'Travel manager queue desktop');
 
-  await employeePage.getByRole('button', { name: 'Refresh my travel requests' }).click();
-  await employeeCard.getByText('Returned for changes', { exact: true }).waitFor({ state: 'visible' });
-  await employeeCard.getByText('Reviewer note: Please clarify the visit objective.', { exact: true }).waitFor({ state: 'visible' });
-  await employeeCard.getByRole('button', { name: 'Revise request' }).click();
-  await employeePage.getByLabel('Purpose').fill('Clarified objective: review the delivery work with the client team.');
+  await employeePage.getByRole('button', { name: 'আমার ভ্রমণ অনুরোধ রিফ্রেশ করুন' }).click();
+  await employeeCard.getByText('সংশোধনের জন্য ফেরত', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByText('পর্যালোচকের নোট: Please clarify the visit objective.', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByRole('button', { name: 'অনুরোধ সংশোধন করুন' }).click();
+  await employeePage.getByLabel('উদ্দেশ্য').fill('Clarified objective: review the delivery work with the client team.');
   const reviseResponse = employeePage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_my_travel_request'));
-  await employeePage.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await employeePage.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
   if (await rpcUuid(await reviseResponse) !== requestId) throw new Error('Revised travel request did not retain its ID.');
-  await employeeCard.getByText('Draft', { exact: true }).waitFor({ state: 'visible' });
-  await employeeCard.getByText('Reviewer note: Please clarify the visit objective.', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByText('খসড়া', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByText('পর্যালোচকের নোট: Please clarify the visit objective.', { exact: true }).waitFor({ state: 'visible' });
   const resubmitResponse = employeePage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_submit_my_travel_request'));
-  await employeeCard.getByRole('button', { name: 'Submit for review' }).click();
+  await employeeCard.getByRole('button', { name: 'পর্যালোচনার জন্য জমা দিন' }).click();
   await rpcUuid(await resubmitResponse);
-  await employeeCard.getByText('Submitted', { exact: true }).waitFor({ state: 'visible' });
+  await employeeCard.getByText('জমা দেওয়া হয়েছে', { exact: true }).waitFor({ state: 'visible' });
 
   await managerPage.setViewportSize({ width: 375, height: 812 });
+  await managerPage.getByRole('button', { name: 'Switch language to English' }).click();
   await managerPage.getByRole('button', { name: 'Refresh travel requests' }).click();
   await managerCard.waitFor({ state: 'visible' });
   await managerCard.getByRole('button', { name: 'Approve', exact: true }).click();
@@ -188,6 +231,7 @@ try {
   await assertNoOverflow(managerPage, 'Travel manager queue mobile');
 
   await employeePage.setViewportSize({ width: 1280, height: 900 });
+  await employeePage.getByRole('button', { name: 'Switch language to English' }).click();
   await employeePage.getByRole('button', { name: 'Refresh my travel requests' }).click();
   await employeeCard.getByText('Approved', { exact: true }).waitFor({ state: 'visible' });
   await employeeCard.getByText('Clarified objective: review the delivery work with the client team.', { exact: false }).waitFor({ state: 'visible' });
@@ -197,7 +241,7 @@ try {
   await assertNoOverflow(employeePage, 'Travel history desktop');
   if (directTravelEndpoints.length) throw new Error(`Travel UI bypassed tenant-scoped RPCs: ${directTravelEndpoints.join(', ')}.`);
   console.log(`TRAVEL_ACCEPTANCE_ID=${requestId}`);
-  console.log('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history across mobile and desktop.');
+  console.log('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history in EN/BN across mobile and desktop; failed history read recovered on retry.');
 } finally {
   if (browser) await browser.close();
   server.kill('SIGTERM');

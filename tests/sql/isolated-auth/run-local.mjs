@@ -856,6 +856,23 @@ record('Employees can enroll in an enabled program and duplicates are rejected b
     && directLearningRow?.source === 'self_enrollment'
     && Boolean(duplicateLearningEnrollment.error?.code === '23505'));
 
+const learningJoinLinksA = await employeeA.client.rpc('hris_get_my_learning_join_links', { p_tenant_id: ids.tenantA });
+const learningJoinLinksForeignTenant = await employeeB.client.rpc('hris_get_my_learning_join_links', { p_tenant_id: ids.tenantA });
+const anonymousLearningJoinLinks = attemptAs(null,
+  `SELECT public.hris_get_my_learning_join_links('${ids.tenantA}'::uuid)`, 'anon');
+const learningJoinLinkAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_learning_join_links(uuid)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_learning_join_links(uuid)','EXECUTE'))`);
+record('Only an enrolled employee receives their tenant-bound scheduled session join URL',
+  !directLearningEnrollment.error && typeof learningJoinLinksA.data?.[directLearningEnrollment.data.id] === 'string'
+    && learningJoinLinksA.data[directLearningEnrollment.data.id] === 'https://meet.example.test/qa-learning'
+    && !learningJoinLinksForeignTenant.error && Object.keys(learningJoinLinksForeignTenant.data || {}).length === 0
+    && !anonymousLearningJoinLinks.ok && learningJoinLinkAcl.anon === false
+    && learningJoinLinkAcl.authenticated === true,
+  JSON.stringify({ enrollment: directLearningEnrollment.error?.code || directLearningEnrollment.data?.status,
+    linksA: learningJoinLinksA.data, foreignTenant: learningJoinLinksForeignTenant.data,
+    anonymous: anonymousLearningJoinLinks.ok ? 'unexpectedly accepted' : 'denied', acl: learningJoinLinkAcl }));
+
 const approvalRequest = await employeeA.client.rpc('hris_employee_request_learning', {
   p_tenant_id: ids.tenantA, p_program_id: learningIds.approvalProgram,
   p_session_id: learningIds.approvalSession, p_reason: '  Build leadership skills  ',
@@ -1415,26 +1432,6 @@ try {
 record('Real local Auth-to-Postgres payroll-view journey passes permission gating, outage retry, filters, private-field omission, refresh, and responsive layouts',
   payrollRegisterBrowserOutput.includes('Local Auth-to-Postgres payroll-view journey passed: permission-gated register, outage retry, persisted employee rows, search/status/period filters, clear/refresh recovery, private-field omission, and 375px mobile/1280px desktop layouts.'),
   payrollRegisterBrowserError);
-const joinLinkEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
-  p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000001',
-  p_session_id: '91000000-0000-4000-8000-000000000001',
-});
-const learningJoinLinksA = await employeeA.client.rpc('hris_get_my_learning_join_links', { p_tenant_id: ids.tenantA });
-const learningJoinLinksForeignTenant = await employeeB.client.rpc('hris_get_my_learning_join_links', { p_tenant_id: ids.tenantA });
-const anonymousLearningJoinLinks = attemptAs(null,
-  `SELECT public.hris_get_my_learning_join_links('${ids.tenantA}'::uuid)`, 'anon');
-const learningJoinLinkAcl = queryAdmin(`SELECT jsonb_build_object(
-  'anon',has_function_privilege('anon','public.hris_get_my_learning_join_links(uuid)','EXECUTE'),
-  'authenticated',has_function_privilege('authenticated','public.hris_get_my_learning_join_links(uuid)','EXECUTE'))`);
-record('Only an enrolled employee receives their tenant-bound scheduled session join URL',
-  !joinLinkEnrollment.error && typeof learningJoinLinksA.data?.[joinLinkEnrollment.data.id] === 'string'
-    && learningJoinLinksA.data[joinLinkEnrollment.data.id] === 'https://meet.example.test/qa-learning'
-    && !learningJoinLinksForeignTenant.error && Object.keys(learningJoinLinksForeignTenant.data || {}).length === 0
-    && !anonymousLearningJoinLinks.ok && learningJoinLinkAcl.anon === false
-    && learningJoinLinkAcl.authenticated === true,
-  JSON.stringify({ enrollment: joinLinkEnrollment.error?.code || joinLinkEnrollment.data?.status,
-    linksA: learningJoinLinksA.data, foreignTenant: learningJoinLinksForeignTenant.data,
-    anonymous: anonymousLearningJoinLinks.ok ? 'unexpectedly accepted' : 'denied', acl: learningJoinLinkAcl }));
 const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   'program_count',count(DISTINCT p.id)::integer,
   'active',COALESCE(bool_or(p.active),false),
@@ -3043,7 +3040,7 @@ const browserTravelPersistence = travelBrowserId ? queryAdmin(`SELECT jsonb_buil
   'decision_audit',(SELECT count(*)::integer FROM public.admin_audit_logs WHERE target_id=r.id::text AND action IN ('travel.rejected','travel.approved')))
   FROM public.travel_requests r WHERE r.id=${sqlLiteral(travelBrowserId)}::uuid`) : null;
 record('Real browser employee-to-manager-to-employee travel journey persists its final decision and history in isolated Postgres',
-  travelBrowserOutput.includes('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history across mobile and desktop.')
+  travelBrowserOutput.includes('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history in EN/BN across mobile and desktop; failed history read recovered on retry.')
     && browserTravelPersistence?.tenant_id === ids.tenantA
     && browserTravelPersistence?.employee_id === '55555555-5555-4555-8555-555555555555'
     && browserTravelPersistence?.status === 'approved'

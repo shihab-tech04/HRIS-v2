@@ -161,7 +161,17 @@ try {
       && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_join_links')
       && route.request().method() === 'POST' && blockNextJoinLinks) {
       blockNextJoinLinks = false;
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary meeting-link outage.' }) });
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        headers: {
+          'access-control-allow-origin': origin,
+          'access-control-allow-credentials': 'true',
+          'access-control-allow-headers': 'apikey, authorization, content-type, x-client-info, prefer',
+          'access-control-allow-methods': 'POST, OPTIONS',
+        },
+        body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary meeting-link outage.' }),
+      });
       return;
     }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -236,15 +246,19 @@ try {
   await page.keyboard.press('Escape');
   await page.getByRole('alertdialog').waitFor({ state: 'hidden' });
   const skillDeleteResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_delete_my_skill') && response.status() === 200);
+  const deleteRefreshContext = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
+  const deleteRefreshJoinLinks = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_join_links') && response.status() === 200);
   await removeSkillButton.click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Remove skill', exact: true }).click();
   await skillDeleteResponse;
+  await Promise.all([deleteRefreshContext, deleteRefreshJoinLinks]);
   await page.getByText('Skill removed from your profile.', { exact: true }).waitFor({ state: 'visible' });
   await skillCard.waitFor({ state: 'detached' });
   await page.setViewportSize({ width: 1280, height: 900 });
   const desktopSkillRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
+  const desktopSkillJoinRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_join_links') && response.status() === 200);
   await page.getByRole('button', { name: 'Refresh learning' }).click();
-  await desktopSkillRefresh;
+  await Promise.all([desktopSkillRefresh, desktopSkillJoinRefresh]);
   if (await page.locator(`[data-learning-skill="${savedSkill.id}"]`).count()) throw new Error('Removed skill reappeared after a server-backed refresh.');
   await assertNoOverflow(page, 'Skill profile persistence desktop');
   await page.setViewportSize({ width: 375, height: 812 });
@@ -252,12 +266,15 @@ try {
   await directProgram.getByLabel('Choose session for QA A Direct Learning').selectOption('91000000-0000-4000-8000-000000000001');
   const enrollmentResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_enroll_learning'));
   blockNextJoinLinks = true;
+  const failedJoinLinkRead = page.waitForResponse(response =>
+    response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_join_links') && response.status() === 503);
   await directProgram.getByRole('button', { name: 'Enroll now' }).click();
   const enrollment = await rpcBody(await enrollmentResponse);
   const enrollmentCard = page.locator(`[data-learning-enrollment="${enrollment.id}"]`);
   await enrollmentCard.getByText('QA A Direct Learning', { exact: true }).waitFor({ state: 'visible' });
   await enrollmentCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
   const joinLink = enrollmentCard.getByRole('link', { name: 'Join online session' });
+  await failedJoinLinkRead;
   await page.getByText('Online session links could not be loaded. Refresh to try again.', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await joinLink.waitFor({ state: 'visible' });

@@ -52,6 +52,8 @@ const bengali: Record<string, string> = {
   'My Learning': 'আমার শেখা',
   'My Requests': 'আমার অনুরোধ',
   'Self service': 'স্ব-সেবা',
+  'Travel requests': 'ভ্রমণ অনুরোধ',
+  'My Travel': 'আমার ভ্রমণ',
   'Task portfolio': 'কাজের তালিকা',
   'My Projects & Allocations': 'আমার প্রকল্প ও বরাদ্দ',
   'Project reporting is separate from your organizational manager and employment status.': 'প্রকল্পের প্রতিবেদন আপনার সাংগঠনিক ব্যবস্থাপক ও চাকরির অবস্থা থেকে আলাদা।',

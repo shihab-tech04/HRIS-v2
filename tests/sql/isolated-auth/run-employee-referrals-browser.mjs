@@ -39,10 +39,24 @@ async function signIn(page, email) {
   await page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible' });
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
+  const authResponsePromise = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/auth/v1/token') && url.searchParams.get('grant_type') === 'password';
+  }, { timeout: 15000 });
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  const readyNavigation = page.getByRole('navigation', { name: 'HRIS modules' })
-    .or(page.getByRole('button', { name: 'Open navigation menu' }));
-  await readyNavigation.first().waitFor({ state: 'visible' });
+  const authResponse = await authResponsePromise;
+  if (!authResponse.ok()) throw new Error(`Local Auth sign-in returned HTTP ${authResponse.status()} for the synthetic browser user.`);
+  try {
+    if (await page.evaluate(() => window.innerWidth) < 1024) {
+      await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible', timeout: 15000 });
+    } else {
+      await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible', timeout: 15000 });
+    }
+  } catch {
+    const alerts = await page.locator('[role="alert"]').allInnerTexts().catch(() => []);
+    const bodyText = await page.locator('body').innerText().catch(() => 'unavailable');
+    throw new Error(`Local Auth accepted the synthetic user but the HRIS shell did not become ready; alerts=${JSON.stringify(alerts)}; page=${bodyText.slice(0, 900)}`);
+  }
 }
 
 async function openReferrals(page, label) {
