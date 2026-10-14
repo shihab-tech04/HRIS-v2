@@ -9,6 +9,9 @@ const projects = readFileSync(new URL('../../src/live/OrganizationProjects.tsx',
 const myProjects = readFileSync(new URL('../../src/live/MyProjects.tsx', import.meta.url), 'utf8');
 const projectPermissionMigration = readFileSync(new URL('../../supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql', import.meta.url), 'utf8');
 const projectDataMigration = readFileSync(new URL('../../supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql', import.meta.url), 'utf8');
+const dashboardTeamReportMigration = readFileSync(new URL('../../supabase/migrations/20261014030722_hris_dashboard_team_report.sql', import.meta.url), 'utf8');
+const dashboardTeamReportBrowser = readFileSync(new URL('../sql/isolated-auth/run-dashboard-team-report-browser.mjs', import.meta.url), 'utf8');
+const isolatedRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 
 test('authenticated Synesis admins enter the RPC-backed workspace instead of the generic table browser', () => {
   assert.match(app, /import \{ LiveHrisWorkspace \} from '\.\/LiveHrisWorkspace'/);
@@ -112,7 +115,7 @@ test('only Super Admin can create and appoint a Project Manager; only the assign
 });
 
 test('live HRIS pages use tenant-checked RPC responses and omit the global candidate count', () => {
-  for (const rpc of ['hris_get_tenant_dashboard_summary', 'hris_get_tenant_attendance_data', 'hris_get_tenant_leave_data']) {
+  for (const rpc of ['hris_get_tenant_dashboard_summary', 'hris_get_tenant_dashboard_team_report', 'hris_get_tenant_attendance_data', 'hris_get_tenant_leave_data']) {
     assert.ok(workspace.includes(`supabase.rpc('${rpc}'`), `missing RPC: ${rpc}`);
   }
   assert.doesNotMatch(workspace, /candidate_accounts/);
@@ -130,6 +133,29 @@ test('manager dashboard follows the Figma attendance summary and keeps its contr
   assert.match(workspace, /attendance-trend-area/);
   assert.match(workspace, /Pending attendance corrections/);
   assert.match(workspace, /Pending leave requests/);
+});
+
+test('manager dashboard team report is permission-gated, tenant-scoped, searchable and exportable', () => {
+  assert.match(workspace, /function LiveDashboard\(\{ tenantId, onOpen, canReport \}/);
+  assert.match(workspace, /canReport && <section aria-labelledby="dashboard-team-report-heading"/);
+  assert.match(workspace, /Search team report/);
+  assert.match(workspace, /min-w-\[790px\]/);
+  assert.match(workspace, /downloadCsv\(`managerial-dashboard-team-report-/);
+  for (const label of ['Team Report', 'Team Name', 'Present Member', 'Absent Member', 'Total Member', 'Work from office', 'Work from Home', 'Client meeting']) {
+    assert.ok(workspace.includes(label), `missing team report label: ${label}`);
+  }
+  assert.match(dashboardTeamReportMigration, /has_tenant_permission\(p_tenant_id, 'dashboard\.view'\)/);
+  assert.match(dashboardTeamReportMigration, /has_tenant_permission\(p_tenant_id, 'reports\.view'\)/);
+  assert.match(dashboardTeamReportMigration, /LEFT JOIN public\.teams t\s+ON t\.id = e\.team_id AND t\.tenant_id = e\.tenant_id/);
+  assert.match(dashboardTeamReportMigration, /LEFT JOIN public\.attendance_records a\s+ON a\.tenant_id = e\.tenant_id/);
+  assert.match(dashboardTeamReportMigration, /REVOKE ALL ON FUNCTION public\.hris_get_tenant_dashboard_team_report\(uuid\) FROM PUBLIC, anon/);
+  assert.doesNotMatch(dashboardTeamReportMigration, /'employee_name'|'employee_id'/);
+  assert.match(isolatedRunner, /run-dashboard-team-report-browser\.mjs/);
+  assert.match(dashboardTeamReportBrowser, /injected Team Report outage/);
+  assert.match(dashboardTeamReportBrowser, /hris_get_tenant_dashboard_team_report/);
+  assert.match(dashboardTeamReportBrowser, /setViewportSize\(\{ width: 1280, height: 900 \}\)/);
+  assert.match(dashboardTeamReportBrowser, /createReadStream/);
+  assert.match(dashboardTeamReportBrowser, /directTableReads.length/);
 });
 
 test('leave decisions remain permission-gated and call the scoped approval RPC', () => {

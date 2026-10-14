@@ -281,6 +281,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012183000_hris_attendance_report_team_name.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014030722_hris_dashboard_team_report.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013073243_hris_tenant_employee_directory.sql'),
@@ -3197,6 +3198,11 @@ const attendanceDetailsReportOnly = attemptAs(reportViewerA, `SELECT public.hris
   '${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,false)`);
 const attendanceReportB = queryAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
   '${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,true)`);
+const dashboardTeamReportA = queryAs(managerA, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid)`);
+const dashboardTeamReportB = queryAs(managerB, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantB}'::uuid)`);
+const dashboardTeamReportOnly = attemptAs(reportViewerA, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid)`);
+const dashboardTeamReportNoPermission = attemptAs(noPermission, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid)`);
+const dashboardTeamReportCrossTenant = attemptAs(managerB, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid)`);
 const reportEmployeeA = attendanceReportA.find(row => row.employee_number === 'QA-A-001');
 const reportEmployeeB = attendanceReportB.find(row => row.employee_number === 'QA-B-001');
 const reportCrossTenantTeam = attendanceReportA.find(row => row.employee_number === 'QA-A-002');
@@ -3208,6 +3214,30 @@ record('Attendance report resolves same-tenant teams and suppresses cross-tenant
     mismatchedTenantReference: reportCrossTenantTeam?.team_name }));
 record('reports.view-only membership can read the aggregate report but not attendance details',
   attendanceReportOnlyA.some(row => row.team_name === 'QA A Team') && !attendanceDetailsReportOnly.ok);
+const dashboardTeamA = dashboardTeamReportA.teams.find(row => row.team_name === 'QA A Team');
+const dashboardTeamAUnassigned = dashboardTeamReportA.teams.find(row => row.team_name === 'Unassigned');
+record('Manager dashboard team report aggregates tenant A counts and groups cross-tenant team references as Unassigned',
+  dashboardTeamReportA.dashboard_date === localCurrentDate
+  && Number(dashboardTeamA?.total_members) === 5
+  && Number(dashboardTeamA?.present_members) === 3
+  && Number(dashboardTeamA?.absent_members) === 0
+  && Number(dashboardTeamA?.work_from_home) === 2
+  && Number(dashboardTeamA?.client_meeting) === 1
+  && Number(dashboardTeamAUnassigned?.total_members) === 1
+  && Number(dashboardTeamAUnassigned?.absent_members) === 1
+  && dashboardTeamReportA.teams.every(row => row.team_name !== 'QA B Team'),
+  JSON.stringify({ tenantA: dashboardTeamReportA.teams }));
+const dashboardTeamB = dashboardTeamReportB.teams.find(row => row.team_name === 'QA B Team');
+record('Manager dashboard team report is tenant-scoped and cross-tenant RPC access is denied',
+  dashboardTeamReportB.dashboard_date === localCurrentDate
+  && dashboardTeamReportB.teams.length === 1
+  && Number(dashboardTeamB?.total_members) === 1
+  && Number(dashboardTeamB?.present_members) === 1
+  && Number(dashboardTeamB?.work_from_office) === 1
+  && !dashboardTeamReportCrossTenant.ok);
+record('Team report requires both dashboard and report permissions and returns aggregate-only rows',
+  !dashboardTeamReportOnly.ok && !dashboardTeamReportNoPermission.ok
+  && dashboardTeamReportA.teams.every(row => !('employee_name' in row) && !('employee_id' in row)));
 const leaveDataB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data('${ids.tenantB}'::uuid,NULL,NULL)`);
 record('Tenant B dashboard, attendance and leave RPCs return tenant B data only',
   Number(dashboardB.employees) === 1
@@ -4111,6 +4141,29 @@ try {
 record('Fresh local recovery email verifies the Auth callback, password update, sign-out, and new-password sign-in',
   passwordRecoveryOutput.includes('Fresh local Mailpit recovery email completed the mobile password reset and desktop sign-in journey.'),
   passwordRecoveryError);
+
+let dashboardTeamReportBrowserOutput = '';
+let dashboardTeamReportBrowserError = '';
+try {
+  dashboardTeamReportBrowserOutput = execFileSync('node', [path.join(here, 'run-dashboard-team-report-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_DASHBOARD_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_DASHBOARD_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  dashboardTeamReportBrowserError = String(error.stderr || error.message || 'local dashboard Team Report browser run failed').slice(-1800);
+}
+record('Real manager browser journey reads and exports the tenant-scoped dashboard Team Report with mobile and desktop recovery',
+  dashboardTeamReportBrowserOutput.includes('Local Auth-to-Postgres Team Report journey passed: injected outage retry, tenant-bound aggregate rows, search, CSV export, refresh recovery, and 375px mobile/1280px desktop layouts.'),
+  dashboardTeamReportBrowserError);
 
 const concurrentAssignments = await Promise.all([
   psqlAsync(sessionSql(employeeB, `SELECT public.hris_assign_tenant_project_allocation(
