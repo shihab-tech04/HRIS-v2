@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
 import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
 import { CandidateAssessmentAssignment, CandidateAssessmentQueue } from './CandidateAssessments';
+import type { Locale } from './project-locale';
 
 type Milestone = { stage: string; created_at: string };
 type Application = {
@@ -369,7 +370,7 @@ function ApplicationStageForm({ tenantId, application, onUpdated }: {
   </details>;
 }
 
-export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, canManageOffers = false, canManageApplicationStages = false }: { tenantId: string; canManagePreboarding?: boolean; canManageOffers?: boolean; canManageApplicationStages?: boolean }) {
+export function RecruitmentPipeline({ tenantId, locale = 'en', canActivateEmployees = false, canManagePreboarding = false, canManageOffers = false, canManageApplicationStages = false }: { tenantId: string; locale?: Locale; canActivateEmployees?: boolean; canManagePreboarding?: boolean; canManageOffers?: boolean; canManageApplicationStages?: boolean }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [applications, setApplications] = useState<Application[]>([]);
@@ -570,6 +571,6 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, ca
       setRevision(value => value + 1);
     }} />}
     {canManageOffers && <CandidateAssessmentQueue tenantId={tenantId} revision={assessmentRevision} />}
-    {canManagePreboarding && <CandidatePreboardingQueue tenantId={tenantId} />}
+    {canManagePreboarding && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} canActivate={canActivateEmployees} />}
   </section>;
 }

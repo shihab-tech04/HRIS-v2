@@ -22,6 +22,7 @@ import { MyServiceRequests } from './MyServiceRequests';
 import { OrganizationPerformance } from './OrganizationPerformance';
 import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
+import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
 import { EmployeeReferrals } from './EmployeeReferrals';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
@@ -44,6 +45,7 @@ type PermissionSet = {
   organization: boolean;
   organizationManage: boolean;
   employees: boolean;
+  employeesManage: boolean;
   performance: boolean;
   recruitment: boolean;
   recruitmentManage: boolean;
@@ -60,7 +62,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -109,7 +111,7 @@ type LeaveData = {
 const emptyPermissions: PermissionSet = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
+  organizationManage: false, employees: false, employeesManage: false, performance: false, recruitment: false, recruitmentManage: false,
   referrals: false, referralsManage: false, holidayManage: false,
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
@@ -2612,6 +2614,7 @@ export function LiveHrisWorkspace({
     }
     else if (isEmployee) items.push({ id: 'projects', label: 'Project Workspace', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
     if (permissions.employees) items.push({ id: 'employees', label: 'Employees', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.employeesManage) items.push({ id: 'onboarding', label: 'Onboarding', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.recruitment) items.push({ id: 'recruitment', label: 'Candidate pipeline', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.referrals) items.push({ id: 'referrals', label: 'Employee referrals', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
@@ -2649,7 +2652,7 @@ export function LiveHrisWorkspace({
     setPage(nav[0]?.id || 'dashboard');
   }, [nav, page]);
 
-  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses || permissions.payroll ? 'HRIS Administrator' : 'Employee';
+  const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.employeesManage || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses || permissions.payroll ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const current = localizedNav.find(item => item.id === page);
 
@@ -2705,8 +2708,9 @@ export function LiveHrisWorkspace({
           {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <OrganizationProjects tenantId={tenantId} locale={locale} />}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} />}
+          {page === 'onboarding' && permissions.employeesManage && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} canActivate />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
-          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} canManageApplicationStages={permissions.recruitmentManage} />}
+          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} locale={locale} canActivateEmployees={permissions.employeesManage} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} canManageApplicationStages={permissions.recruitmentManage} />}
           {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
           {page === 'holidays' && permissions.holidayManage && <OrganizationHolidayCalendar tenantId={tenantId} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} locale={locale} />}

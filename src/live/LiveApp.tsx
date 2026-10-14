@@ -17,7 +17,7 @@ type View = 'employee' | 'preview' | 'system';
 type WorkspacePermissions = {
   dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
   attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
-  organizationManage: boolean; employees: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
+  organizationManage: boolean; employees: boolean; employeesManage: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
   referrals: boolean; referralsManage: boolean;
   holidayManage: boolean;
   learningManage: boolean;
@@ -28,7 +28,7 @@ type WorkspacePermissions = {
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
   attendanceReport: false, leave: false, leaveManage: false, organization: false,
-  organizationManage: false, employees: false, performance: false, recruitment: false, recruitmentManage: false,
+  organizationManage: false, employees: false, employeesManage: false, performance: false, recruitment: false, recruitmentManage: false,
   referrals: false, referralsManage: false,
   holidayManage: false,
   learningManage: false,
@@ -313,6 +313,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             organization: grants.get('organization.view') === true || grants.get('organization.manage') === true,
             organizationManage: grants.get('organization.manage') === true,
             employees: grants.get('employees.view') === true || grants.get('employees.manage') === true,
+            employeesManage: grants.get('employees.manage') === true,
             performance: grants.get('performance.view') === true || grants.get('performance.manage') === true,
             recruitment: grants.get('recruitment.view') === true || grants.get('recruitment.manage') === true,
             recruitmentManage: grants.get('recruitment.manage') === true,

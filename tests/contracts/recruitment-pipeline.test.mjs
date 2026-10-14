@@ -42,6 +42,6 @@ test('recruitment UI uses the tenant RPC with search, stage filter, pagination, 
   assert.match(app, /'recruitment\.view', 'recruitment\.manage'/);
   assert.match(app, /recruitment: grants\.get\('recruitment\.view'\) === true \|\| grants\.get\('recruitment\.manage'\) === true/);
   assert.match(workspace, /id: 'recruitment', label: 'Candidate pipeline'/);
-  assert.match(workspace, /<RecruitmentPipeline tenantId=\{tenantId\} canManagePreboarding=\{permissions\.recruitmentManage\} canManageOffers=\{permissions\.recruitmentManage\} canManageApplicationStages=\{permissions\.recruitmentManage\} \/>/);
+  assert.match(workspace, /<RecruitmentPipeline tenantId=\{tenantId\} locale=\{locale\} canActivateEmployees=\{permissions\.employeesManage\} canManagePreboarding=\{permissions\.recruitmentManage\} canManageOffers=\{permissions\.recruitmentManage\} canManageApplicationStages=\{permissions\.recruitmentManage\} \/>/);
   assert.match(app, /recruitmentManage: grants\.get\('recruitment\.manage'\) === true/);
 });
