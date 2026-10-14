@@ -303,7 +303,13 @@ try {
   await managerDetails.getByText('QA A home address', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Employee contact details on mobile');
   await managerDetails.getByRole('button', { name: 'Edit contact details' }).click();
-  await managerDetails.getByLabel('Home address').fill('Unsaved address that should be discarded');
+  const contactEditor = managerDetails.locator('form');
+  await contactEditor.waitFor({ state: 'visible', timeout: 5000 });
+  const editorLabels = await contactEditor.locator('label').allTextContents();
+  if (!editorLabels.some(label => label.includes('Home address'))) {
+    throw new Error(`Contact editor labels do not include Home address: ${JSON.stringify(editorLabels)}.`);
+  }
+  await contactEditor.getByLabel('Home address', { exact: true }).fill('Unsaved address that should be discarded');
   managerPage.once('dialog', dialog => dialog.accept());
   await managerDetails.getByRole('button', { name: 'Cancel', exact: true }).click();
   await managerDetails.getByText('QA A home address', { exact: true }).waitFor({ state: 'visible' });
@@ -312,6 +318,11 @@ try {
   await managerDetails.getByRole('button', { name: 'Save contact details' }).click();
   await managerDetails.getByRole('alert').getByText('Enter a valid official email and a valid personal email when provided.', { exact: true }).waitFor({ state: 'visible' });
   if (managerContactWriteCalls !== 0) throw new Error('Invalid contact email reached the update RPC.');
+  const exactHomeAddressCount = await managerDetails.getByLabel('Home address', { exact: true }).count();
+  if (exactHomeAddressCount !== 1) {
+    const formLabels = await managerDetails.locator('form label').allTextContents();
+    throw new Error(`Home address accessibility label changed after validation: ${JSON.stringify({ exactHomeAddressCount, formLabels })}.`);
+  }
 
   const editedContact = {
     official_email: 'employee-a-updated@hris.test', personal_email: 'employee-a-new@hris.test',
@@ -326,7 +337,17 @@ try {
     'Emergency contact name': editedContact.emergency_contact_name,
     'Emergency contact phone': editedContact.emergency_contact_phone,
     'Emergency contact relationship': editedContact.emergency_contact_relation,
-  })) await managerDetails.getByLabel(label, { exact: true }).fill(value);
+  })) {
+    const field = managerDetails.getByLabel(label, { exact: true });
+    try {
+      await field.waitFor({ state: 'visible', timeout: 5000 });
+      if (!(await field.isEnabled())) throw new Error('field is disabled');
+      await field.fill(value);
+    } catch (error) {
+      const formLabels = await managerDetails.locator('form label').allTextContents();
+      throw new Error(`Contact field ${JSON.stringify(label)} was not ready for editing: ${String(error?.message || error).split('\n', 1)[0]}; formLabels=${JSON.stringify(formLabels)}.`);
+    }
+  }
   await managerDetails.getByRole('button', { name: 'Save contact details' }).click();
   await managerDetails.getByRole('button', { name: 'Saving contact details…' }).waitFor({ state: 'visible' });
   await managerDetails.getByRole('alert').getByText('Contact update failed. Check your employee-management access and retry.', { exact: true }).waitFor({ state: 'visible' });

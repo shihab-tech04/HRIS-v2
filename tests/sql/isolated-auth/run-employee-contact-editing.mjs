@@ -225,7 +225,8 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
       && !managerBRead.error && managerBRead.data?.official_email === 'employee-b@hris.test'
       && readDeniedCodes.every(code => code === '42501')
       && crossTenantRead.error?.code === '42501' && Boolean(anonymousRead.error),
-    JSON.stringify({ manager: managerRead.error?.code || 'allowed', managerB: managerBRead.error?.code || 'allowed',
+    JSON.stringify({ manager: managerRead.error?.code || managerRead.data?.official_email || 'allowed',
+      managerB: managerBRead.error?.code || managerBRead.data?.official_email || 'allowed',
       denied: readDeniedCodes, crossTenant: crossTenantRead.error?.code, anonymousDenied: Boolean(anonymousRead.error) }));
 
   const updatePayload = {
@@ -345,8 +346,8 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
   } catch (error) {
-    browserError = String(error?.stderr || error?.message || 'Browser journey failed.')
-      .trim().split('\n').slice(-5).join(' ').slice(0, 600);
+    const detail = String(error?.stderr || error?.message || 'Browser journey failed.').trim();
+    browserError = `${detail.slice(0, 500)} … ${detail.slice(-350)}`.slice(0, 900);
   }
   const afterBrowser = jsonQuery(`SELECT jsonb_build_object('official_email',official_email,'phone',phone,
     'address',address,'team_id',team_id,'department_id',department_id,'designation_id',designation_id,
