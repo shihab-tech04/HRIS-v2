@@ -14,7 +14,7 @@ const managerBrowser = readFileSync(new URL('../browser/manager-performance.spec
 
 test('personal performance page is mounted only for linked employees', () => {
   assert.match(app, /id: 'my-performance', label: 'My Performance'/);
-  assert.match(app, /page === 'my-performance' && isEmployee && <MyPerformance tenantId=\{tenantId\} userId=\{userId\} \/>/);
+  assert.match(app, /page === 'my-performance' && isEmployee && <MyPerformance tenantId=\{tenantId\} userId=\{userId\} locale=\{locale\} \/>/);
 });
 
 test('employee performance reads are tenant-filtered and use explicit columns', () => {

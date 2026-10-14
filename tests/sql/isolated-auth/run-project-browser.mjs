@@ -138,7 +138,7 @@ try {
   const task = manager.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
   await assertVisibleText(task, 'Synthetic Employee A');
   await task.getByRole('button', { name: 'Edit task' }).click();
-  const taskEdit = task.getByRole('form', { name: `Edit ${process.env.HRIS_LOCAL_TASK_TITLE}` });
+  const taskEdit = task.getByRole('form', { name: `Edit task ${process.env.HRIS_LOCAL_TASK_TITLE}` });
   const revisedTaskTitle = `${process.env.HRIS_LOCAL_TASK_TITLE} updated`;
   await taskEdit.getByLabel('Task title *').fill(revisedTaskTitle);
   await taskEdit.getByLabel('Due date').fill('2098-08-20');
@@ -157,7 +157,7 @@ try {
   await assertNoHorizontalOverflow(pmPage, 'Mobile task member assignment');
   await assertVisibleText(task, 'Synthetic Absent Employee A');
   await task.getByRole('button', { name: 'Start task' }).click();
-  await assertVisibleText(task, 'in progress');
+  await assertVisibleText(task, 'In progress');
 
   await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).click();
   const releaseDialog = pmPage.getByRole('alertdialog');
@@ -174,13 +174,23 @@ try {
   await pmPage.keyboard.press('Escape');
   await completionDialog.waitFor({ state: 'detached' });
   await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);
-  await assertVisibleText(task, 'in progress');
+  await assertVisibleText(task, 'In progress');
   await task.getByRole('button', { name: 'Mark complete' }).click();
   await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm completion' }).click();
   await assertVisibleText(task, 'Feedback Pending · 2 required reviews');
   await assertVisibleText(manager.getByRole('status').filter({ hasText: 'Task completed.' }), 'Task completed.');
   if ((await task.innerText()).includes('Mark complete')) throw new Error('The UI left the completed task actionable.');
   await assertNoHorizontalOverflow(pmPage, 'Mobile task completion and feedback state');
+  await pmPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const managerBn = project.getByRole('region', { name: 'প্রকল্পের কাজ ব্যবস্থাপনা' });
+  await managerBn.getByRole('heading', { name: 'প্রকল্পের কাজ', exact: true }).waitFor({ state: 'visible' });
+  const taskBn = managerBn.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await assertVisibleText(taskBn, 'মতামত অপেক্ষমাণ · 2 টি প্রয়োজনীয় পর্যালোচনা');
+  if (await pmPage.evaluate(() => document.documentElement.lang) !== 'bn') throw new Error('Bengali selection did not set the document language.');
+  if (await pmPage.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') throw new Error('Bengali locale did not persist.');
+  await assertNoHorizontalOverflow(pmPage, 'Mobile Bengali task and feedback state');
+  await pmPage.getByRole('button', { name: 'Switch language to English' }).click();
+  await assertVisibleText(manager.getByRole('heading', { name: 'Project tasks', exact: true }), 'Project tasks');
   await pmPage.setViewportSize({ width: 1280, height: 900 });
   await assertNoHorizontalOverflow(pmPage, 'Desktop task completion and feedback state');
 
@@ -302,9 +312,19 @@ try {
   await assertVisibleText(history, 'Not Observed');
   await assertVisibleText(history, '5/5');
 
+  await revieweePage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const historyBn = revieweePage.getByRole('region', { name: 'প্রকল্পের সহকর্মী পর্যালোচনার ইতিহাস' });
+  await assertVisibleText(historyBn, 'কাজের মান');
+  await assertVisibleText(historyBn, 'পর্যবেক্ষণ করা হয়নি');
+  await assertVisibleText(historyBn, 'মতামত দিয়েছেন Synthetic Absent Employee A');
+  if (await revieweePage.evaluate(() => document.documentElement.lang) !== 'bn') throw new Error('Review-history screen did not declare Bengali as the document language.');
+  if (await revieweePage.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') throw new Error('Review-history Bengali locale did not persist.');
+
   await revieweePage.setViewportSize({ width: 375, height: 812 });
   const width = await revieweePage.evaluate(() => document.documentElement.scrollWidth);
   if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
+  await revieweePage.getByRole('button', { name: 'Switch language to English' }).click();
+  if (await revieweePage.evaluate(() => document.documentElement.lang) !== 'en') throw new Error('Switching back to English did not update the document language.');
   console.log('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, review validation/submission, and performance-history journey passed.');
 } finally {
   if (browser) await browser.close();

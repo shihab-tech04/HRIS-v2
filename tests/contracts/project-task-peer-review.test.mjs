@@ -11,8 +11,10 @@ const managerUi = readFileSync(new URL('../../src/live/ProjectTaskManager.tsx', 
 const portfolioUi = readFileSync(new URL('../../src/live/ProjectTaskPortfolio.tsx', import.meta.url), 'utf8');
 const employeeUi = readFileSync(new URL('../../src/live/MyProjectWork.tsx', import.meta.url), 'utf8');
 const performanceUi = readFileSync(new URL('../../src/live/MyPerformance.tsx', import.meta.url), 'utf8');
+const notificationUi = readFileSync(new URL('../../src/live/ProjectNotifications.tsx', import.meta.url), 'utf8');
 const organizationProjects = readFileSync(new URL('../../src/live/OrganizationProjects.tsx', import.meta.url), 'utf8');
 const myProjects = readFileSync(new URL('../../src/live/MyProjects.tsx', import.meta.url), 'utf8');
+const localeUi = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 
 test('project task and peer-review tables use tenant and assignment composite keys with RLS', () => {
   for (const table of ['project_tasks', 'project_task_assignments', 'project_task_peer_reviews']) {
@@ -136,11 +138,29 @@ test('manager and employee screens complete task, release, review, and performan
   assert.match(managerUi, /Edit task/);
   assert.match(managerUi, /Task details saved\./);
   assert.match(organizationProjects, /project\.can_manage && <ProjectTaskManager/);
-  assert.match(myProjects, /<MyProjectWork tenantId=\{tenantId\} \/>/);
+  assert.match(myProjects, /<MyProjectWork tenantId=\{tenantId\} locale=\{locale\} \/>/);
   assert.match(employeeUi, /hris_get_my_project_tasks/);
   assert.match(employeeUi, /hris_get_my_project_peer_reviews/);
   assert.match(employeeUi, /Not Observed/);
   assert.match(employeeUi, /Submit review/);
-  assert.match(performanceUi, /ProjectPeerReviewHistory tenantId=\{tenantId\} employeeId=\{ownEmployeeId\}/);
+  assert.match(performanceUi, /ProjectPeerReviewHistory tenantId=\{tenantId\} employeeId=\{ownEmployeeId\} locale=\{locale\}/);
   assert.match(performanceUi, /do not alter annual appraisal scores/);
+});
+
+test('project, task, peer-review, notification, and performance-history journey follows the persisted EN/BN locale', () => {
+  assert.match(localeUi, /export type Locale = 'en' \| 'bn'/);
+  assert.match(localeUi, /'Quality of Work': 'কাজের মান'/);
+  assert.match(localeUi, /'Not Observed': 'পর্যবেক্ষণ করা হয়নি'/);
+  assert.match(localeUi, /'Feedback Pending': 'মতামত অপেক্ষমাণ'/);
+  assert.match(employeeUi, /projectText\(locale, english\)/);
+  assert.match(managerUi, /projectText\(locale, english\)/);
+  assert.match(portfolioUi, /projectText\(locale, english\)/);
+  assert.match(organizationProjects, /ProjectTaskManager tenantId=\{tenantId\} projectId=\{project\.id\} locale=\{locale\}/);
+  const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /localStorage\.setItem\('synesis-hris-locale', locale\)/);
+  assert.match(workspace, /document\.documentElement\.lang = locale/);
+  const pageSources = [workspace, organizationProjects, myProjects, employeeUi, notificationUi, performanceUi, managerUi, portfolioUi];
+  const translatedKeys = new Set([...localeUi.matchAll(/^\s*'([^']+)'\s*:/gm)].map(([, key]) => key));
+  const uncovered = [...new Set(pageSources.flatMap(source => [...source.matchAll(/tx\('([^']+)'\)/g)].map(([, key]) => key)))].filter(key => !translatedKeys.has(key));
+  assert.deepEqual(uncovered, [], 'all literal project-task-review UI labels must have a Bengali translation');
 });

@@ -56,9 +56,12 @@ test('organization team directory is permission-gated and queries tenant-filtere
 
 test('project workspace and employee allocations use tenant-bound audited RPCs', () => {
   assert.match(app, /organizationManage: grants\.get\('organization\.manage'\) === true/);
-  assert.match(workspace, /page === 'projects' && \(permissions\.organization \|\| isSuperAdmin \|\| isEmployee\) && <OrganizationProjects tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /page === 'projects' && \(permissions\.organization \|\| isSuperAdmin \|\| isEmployee\) && <OrganizationProjects tenantId=\{tenantId\} locale=\{locale\} \/>/);
   assert.match(workspace, /else if \(isEmployee\) items\.push\(\{ id: 'projects', label: 'Project Workspace'/);
-  assert.match(workspace, /page === 'my-projects' && isEmployee && <MyProjects tenantId=\{tenantId\}/);
+  assert.match(workspace, /page === 'my-projects' && isEmployee && <MyProjects tenantId=\{tenantId\} locale=\{locale\}/);
+  assert.match(workspace, /synesis-hris-locale/);
+  assert.match(workspace, /Switch language to Bengali/);
+  assert.match(workspace, /document\.documentElement\.lang = locale/);
   for (const rpc of ['hris_get_tenant_project_workspace', 'hris_create_tenant_project', 'hris_assign_tenant_project_allocation', 'hris_release_tenant_project_allocation']) {
     assert.ok(projects.includes(`supabase.rpc('${rpc}'`), `missing project RPC: ${rpc}`);
   }
@@ -70,7 +73,7 @@ test('project workspace and employee allocations use tenant-bound audited RPCs',
   assert.match(projects, /window\.confirm\(`Release \$\{allocation\.employee_name\} from this project\?/);
   assert.match(projects, /employment status will not change/);
   assert.match(myProjects, /hris_get_my_projects/);
-  assert.match(myProjects, /My Projects &amp; Allocations/);
+  assert.match(myProjects, /tx\('My Projects & Allocations'\)/);
   assert.match(myProjects, /does not change your employment record/);
   assert.doesNotMatch(projects, /\.from\('projects'\)\.(?:insert|update|delete)/);
 });

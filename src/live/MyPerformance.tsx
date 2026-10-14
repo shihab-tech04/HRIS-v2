@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, Search, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { projectText, type Locale } from './project-locale';
 
 type Goal = {
   id: string;
@@ -46,7 +47,8 @@ type ProjectPeerReview = {
   comments: string;
 };
 
-function ProjectPeerReviewHistory({ tenantId, employeeId }: { tenantId: string; employeeId: string }) {
+function ProjectPeerReviewHistory({ tenantId, employeeId, locale }: { tenantId: string; employeeId: string; locale: Locale }) {
+  const tx = (english: string) => projectText(locale, english);
   const [reviews, setReviews] = useState<ProjectPeerReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -72,15 +74,15 @@ function ProjectPeerReviewHistory({ tenantId, employeeId }: { tenantId: string; 
   }, [tenantId, employeeId, revision]);
   const score = (value: number | null, notObserved: boolean) => notObserved ? 'Not Observed' : value === null ? '—' : `${value}/5`;
   return <section aria-labelledby="project-peer-history-heading" className="space-y-3">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="project-peer-history-heading" className="text-lg font-semibold text-[#1E1B39]">Project peer-review history</h3><p className="mt-1 text-sm text-slate-600">Task-linked feedback with the reviewer identified. These records do not alter annual appraisal scores.</p></div><button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">Refresh</button></div>
-    {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}<button type="button" onClick={() => setRevision(value => value + 1)} className="ml-2 min-h-9 font-semibold underline">Retry</button></div>}
-    {loading ? <p role="status" className="rounded-lg border border-[#DEE0E3] bg-white p-4 text-sm text-slate-600">Loading task-linked feedback…</p> : reviews.length === 0 ? <p role="status" className="rounded-lg border border-dashed border-[#B9DCE2] bg-white p-4 text-sm text-slate-600">No submitted project peer reviews are linked to your performance history yet.</p> :
-      <div className="grid min-w-0 gap-3 xl:grid-cols-2">{reviews.map(review => <article key={review.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm"><p className="text-xs font-medium text-[#615E83]">{review.project_name} · {review.task_title}</p><h4 className="mt-1 font-semibold text-[#1E1B39]">Feedback from {review.reviewer_name}</h4><dl className="mt-3 grid gap-2 sm:grid-cols-2">{[
-        ['Quality of Work', score(review.quality_of_work_score, review.quality_of_work_not_observed)],
-        ['Collaboration & Teamwork', score(review.collaboration_teamwork_score, review.collaboration_teamwork_not_observed)],
-        ['Delivery & Reliability', score(review.delivery_reliability_score, review.delivery_reliability_not_observed)],
-        ['Ownership & Communication', score(review.ownership_communication_score, review.ownership_communication_not_observed)],
-      ].map(([label, value]) => <div key={label} className="rounded-md bg-slate-50 p-2"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{value}</dd></div>)}</dl>{review.comments && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{review.comments}</p>}</article>)}</div>}
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="project-peer-history-heading" className="text-lg font-semibold text-[#1E1B39]">{tx('Project peer-review history')}</h3><p className="mt-1 text-sm text-slate-600">{tx('Task-linked feedback with the reviewer identified. These records do not alter annual appraisal scores.')}</p></div><button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">{tx('Refresh')}</button></div>
+    {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}<button type="button" onClick={() => setRevision(value => value + 1)} className="ml-2 min-h-9 font-semibold underline">{tx('Retry')}</button></div>}
+    {loading ? <p role="status" className="rounded-lg border border-[#DEE0E3] bg-white p-4 text-sm text-slate-600">{tx('Loading task-linked feedback…')}</p> : reviews.length === 0 ? <p role="status" className="rounded-lg border border-dashed border-[#B9DCE2] bg-white p-4 text-sm text-slate-600">{tx('No submitted project peer reviews are linked to your performance history yet.')}</p> :
+      <div className="grid min-w-0 gap-3 xl:grid-cols-2">{reviews.map(review => <article key={review.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm"><p className="text-xs font-medium text-[#615E83]">{review.project_name} · {review.task_title}</p><h4 className="mt-1 font-semibold text-[#1E1B39]">{tx('Feedback from')} {review.reviewer_name}</h4><dl className="mt-3 grid gap-2 sm:grid-cols-2">{[
+        [tx('Quality of Work'), score(review.quality_of_work_score, review.quality_of_work_not_observed)],
+        [tx('Collaboration & Teamwork'), score(review.collaboration_teamwork_score, review.collaboration_teamwork_not_observed)],
+        [tx('Delivery & Reliability'), score(review.delivery_reliability_score, review.delivery_reliability_not_observed)],
+        [tx('Ownership & Communication'), score(review.ownership_communication_score, review.ownership_communication_not_observed)],
+      ].map(([label, value]) => <div key={label} className="rounded-md bg-slate-50 p-2"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{value === 'Not Observed' ? tx('Not Observed') : value}</dd></div>)}</dl>{review.comments && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{review.comments}</p>}</article>)}</div>}
   </section>;
 }
 
@@ -234,7 +236,7 @@ function AppraisalCard({
   </article>;
 }
 
-export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: string }) {
+export function MyPerformance({ tenantId, userId, locale }: { tenantId: string; userId: string; locale: Locale }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -438,7 +440,7 @@ export function MyPerformance({ tenantId, userId }: { tenantId: string; userId: 
           </div>}
     </section>
 
-    <ProjectPeerReviewHistory tenantId={tenantId} employeeId={ownEmployeeId} />
+    <ProjectPeerReviewHistory tenantId={tenantId} employeeId={ownEmployeeId} locale={locale} />
 
     <section aria-label="Performance goal filters" className="grid gap-3 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
       <label className="relative block">

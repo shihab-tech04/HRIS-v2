@@ -23,6 +23,7 @@ import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
 import { EmployeeReferrals } from './EmployeeReferrals';
 import { downloadCsv } from './csv';
+import { projectText, type Locale } from './project-locale';
 import {
   Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
@@ -2455,6 +2456,14 @@ export function LiveHrisWorkspace({
   isEmployee: boolean;
   permissions?: PermissionSet;
 }) {
+  const [locale, setLocale] = useState<Locale>(() => {
+    try { return localStorage.getItem('synesis-hris-locale') === 'bn' ? 'bn' : 'en'; }
+    catch { return 'en'; }
+  });
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    try { localStorage.setItem('synesis-hris-locale', locale); } catch { /* locale still works for this session */ }
+  }, [locale]);
   const [page, setPage] = useState<PageId>(() => {
     if (isSuperAdmin && !permissions.dashboard && !permissions.attendance && !permissions.leave
         && !permissions.organization && !permissions.employees && !permissions.performance) return 'projects';
@@ -2507,6 +2516,11 @@ export function LiveHrisWorkspace({
     return items;
   }, [permissions, isEmployee, isSuperAdmin]);
 
+  const localizedNav = useMemo(() => nav.map(item => ({
+    ...item,
+    label: projectText(locale, item.label),
+  })), [nav, locale]);
+
   useEffect(() => {
     if (nav.some(item => item.id === page)) return;
     setPage(nav[0]?.id || 'dashboard');
@@ -2514,11 +2528,11 @@ export function LiveHrisWorkspace({
 
   const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses || permissions.payroll ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
-  const current = nav.find(item => item.id === page);
+  const current = localizedNav.find(item => item.id === page);
 
   const navigation = <nav aria-label="HRIS modules" className="space-y-1">
     {(['HRIS', 'Personal'] as const).map(group => {
-      const items = nav.filter(item => item.group === group);
+      const items = localizedNav.filter(item => item.group === group);
       return items.length ? <div key={group} className="space-y-1">
         <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{group === 'HRIS' ? 'Workforce' : 'Self service'}</p>
         {items.map(item => <button key={item.id} type="button" title={item.label} onClick={() => navigate(item.id)} aria-current={page === item.id ? 'page' : undefined}
@@ -2543,6 +2557,11 @@ export function LiveHrisWorkspace({
         {tenants.length > 1 && <div><label className="sr-only" htmlFor="workspace-tenant">Organization</label><select id="workspace-tenant" value={tenantId} onChange={event => onTenantChange(event.target.value)} className="min-h-11 max-w-[210px] rounded-lg border border-slate-300 bg-white px-2 text-sm">
           {tenants.map(tenant => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
         </select></div>}
+        <button type="button" onClick={() => setLocale(currentLocale => currentLocale === 'en' ? 'bn' : 'en')}
+          aria-label={locale === 'en' ? 'Switch language to Bengali' : 'Switch language to English'}
+          aria-pressed={locale === 'bn'} className="inline-flex min-h-11 min-w-12 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold hover:bg-slate-50">
+          {locale === 'en' ? 'EN' : 'বাংলা'}
+        </button>
         <span className="hidden max-w-56 truncate text-xs text-slate-500 md:block" title={userEmail}>{userEmail}</span>
         <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#DCEFF4] text-sm font-semibold text-[#085587]">{userEmail.slice(0, 1).toUpperCase()}</span>
         <span className="hidden rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 sm:inline-flex items-center gap-1"><ShieldCheck className="h-4 w-4" />{roleLabel}</span>
@@ -2560,7 +2579,7 @@ export function LiveHrisWorkspace({
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
-          {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <OrganizationProjects tenantId={tenantId} />}
+          {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <OrganizationProjects tenantId={tenantId} locale={locale} />}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
@@ -2573,9 +2592,9 @@ export function LiveHrisWorkspace({
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
-          {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} />}
-          {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} onOpenProjects={() => navigate('my-projects')} />}
-          {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} />}
+          {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
+          {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale} onOpenProjects={() => navigate('my-projects')} />}
+          {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}

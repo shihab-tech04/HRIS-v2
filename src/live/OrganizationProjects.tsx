@@ -4,6 +4,7 @@ import { BriefcaseBusiness, Plus, RefreshCw, Search, Users, X } from 'lucide-rea
 import { supabase } from '../lib/supabase';
 import { ProjectTaskManager } from './ProjectTaskManager';
 import { ProjectTaskPortfolio } from './ProjectTaskPortfolio';
+import { projectText, type Locale } from './project-locale';
 
 type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed';
 type AllocationStatus = 'active' | 'upcoming' | 'released';
@@ -45,7 +46,7 @@ const statusLabels: Record<ProjectStatus, string> = {
   planning: 'Planning', active: 'Active', on_hold: 'On hold', completed: 'Completed',
 };
 
-export function OrganizationProjects({ tenantId }: { tenantId: string }) {
+export function OrganizationProjects({ tenantId, locale }: { tenantId: string; locale: Locale }) {
   const [workspace, setWorkspace] = useState<Workspace>({ projects: [], employees: [], can_create: false });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -206,7 +207,7 @@ export function OrganizationProjects({ tenantId }: { tenantId: string }) {
         {workspace.projects.some(project => project.can_manage) && <button type="button" onClick={() => {
           setShowTaskPortfolio(current => !current); setError(''); setNotice('');
         }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium hover:border-[#085587] focus-visible:outline-2 focus-visible:outline-[#085587]">
-          {showTaskPortfolio ? 'Back to projects' : 'Task portfolio'}
+          {showTaskPortfolio ? 'Back to projects' : projectText(locale, 'Task portfolio')}
         </button>}
         {workspace.can_create && <button type="button" onClick={() => { setShowCreate(open => !open); setError(''); }}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white hover:bg-[#074770] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587]">
@@ -225,7 +226,7 @@ export function OrganizationProjects({ tenantId }: { tenantId: string }) {
       <p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">Retry</button>
     </div>}
 
-    {showTaskPortfolio ? <ProjectTaskPortfolio tenantId={tenantId} onOpenProject={projectId => {
+    {showTaskPortfolio ? <ProjectTaskPortfolio tenantId={tenantId} locale={locale} onOpenProject={projectId => {
       setReturnProjectId(projectId); setShowTaskPortfolio(false); setSearch(''); setStatusFilter('all');
     }} /> : <>
 
@@ -276,7 +277,7 @@ export function OrganizationProjects({ tenantId }: { tenantId: string }) {
           {!project.allocations.length ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No employees are assigned to this project.</p> :
             <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th scope="col" className="px-3 py-3">Employee</th><th scope="col" className="px-3 py-3">Project role</th><th scope="col" className="px-3 py-3">Allocation</th><th scope="col" className="px-3 py-3">Assigned</th><th scope="col" className="px-3 py-3">Release</th><th scope="col" className="px-3 py-3">Status</th>{project.can_manage && <th scope="col" className="px-3 py-3">Action</th>}</tr></thead><tbody className="divide-y divide-slate-100">{project.allocations.map(allocation => <tr key={allocation.id}><td className="px-3 py-3"><span className="font-medium text-slate-900">{allocation.employee_name}</span><span className="ml-2 text-xs text-slate-500">{allocation.employee_number}</span></td><td className="px-3 py-3">{allocation.role_on_project}</td><td className="px-3 py-3 tabular-nums">{Number(allocation.allocation_percentage).toLocaleString()}%</td><td className="px-3 py-3">{allocation.assigned_date}</td><td className="px-3 py-3">{allocation.release_date || '—'}</td><td className="px-3 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{allocation.status}</span></td>{project.can_manage && <td className="px-3 py-3">{allocation.status !== 'released' ? <button type="button" disabled={saving} onClick={() => void releaseAllocation(allocation)} className="min-h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium hover:border-rose-400 disabled:opacity-50">Release</button> : <span className="text-xs text-slate-500">Released</span>}</td>}</tr>)}</tbody></table></div>}
         </div>
-        {project.can_manage && <ProjectTaskManager tenantId={tenantId} projectId={project.id}
+        {project.can_manage && <ProjectTaskManager tenantId={tenantId} projectId={project.id} locale={locale}
           members={project.allocations.map(allocation => ({
             id: allocation.id, employee_name: allocation.employee_name,
             employee_number: allocation.employee_number, status: allocation.status,

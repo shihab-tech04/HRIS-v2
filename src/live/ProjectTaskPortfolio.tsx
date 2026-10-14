@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ClipboardList, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { projectText, type Locale } from './project-locale';
 
 type PortfolioTask = {
   task_id: string;
@@ -36,10 +37,12 @@ function errorMessage(cause: unknown) {
   return 'Unable to load the task portfolio.';
 }
 
-export function ProjectTaskPortfolio({ tenantId, onOpenProject }: {
+export function ProjectTaskPortfolio({ tenantId, locale, onOpenProject }: {
   tenantId: string;
+  locale: Locale;
   onOpenProject: (projectId: string) => void;
 }) {
+  const tx = (english: string) => projectText(locale, english);
   const [portfolio, setPortfolio] = useState<Portfolio>({
     projects: [], counts: { tasks: 0, open: 0, in_progress: 0, completed: 0, feedback_pending: 0 },
   });
@@ -96,20 +99,20 @@ export function ProjectTaskPortfolio({ tenantId, onOpenProject }: {
   return <div className="space-y-4" aria-labelledby="project-task-portfolio-heading">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h3 id="project-task-portfolio-heading" className="text-xl font-semibold text-[#08263D]">Task portfolio</h3>
-        <p className="mt-1 text-sm text-slate-600">Tasks across projects you manage. Reviews stay separately tracked as Feedback Pending.</p>
+        <h3 id="project-task-portfolio-heading" className="text-xl font-semibold text-[#08263D]">{tx('Task portfolio')}</h3>
+        <p className="mt-1 text-sm text-slate-600">{tx('Tasks across projects you manage. Reviews stay separately tracked as Feedback Pending.')}</p>
       </div>
       <button type="button" onClick={() => setRevision(value => value + 1)} disabled={loading}
         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50">
-        <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
+        <RefreshCw className="h-4 w-4" aria-hidden="true" /> {tx('Refresh')}
       </button>
     </div>
 
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Task portfolio totals">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label={tx('Task portfolio totals')}>
       {[
-        ['Tasks', portfolio.counts.tasks], ['Open', portfolio.counts.open],
-        ['In progress', portfolio.counts.in_progress], ['Completed', portfolio.counts.completed],
-        ['Reviews pending', portfolio.counts.feedback_pending],
+        [tx('Tasks'), portfolio.counts.tasks], [tx('Open'), portfolio.counts.open],
+        [tx('In progress'), portfolio.counts.in_progress], [tx('Completed'), portfolio.counts.completed],
+        [tx('Reviews pending'), portfolio.counts.feedback_pending],
       ].map(([label, count]) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="text-xs font-medium text-slate-500">{label}</p>
         <p className="mt-2 text-2xl font-semibold tabular-nums text-[#08263D]">{Number(count).toLocaleString()}</p>
@@ -118,29 +121,29 @@ export function ProjectTaskPortfolio({ tenantId, onOpenProject }: {
 
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="min-w-[220px] flex-1">
-        <label htmlFor="project-task-portfolio-search" className="mb-1 block text-xs font-medium text-slate-600">Search tasks</label>
+        <label htmlFor="project-task-portfolio-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search tasks')}</label>
         <div className="relative"><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
           <input id="project-task-portfolio-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
-            placeholder="Task, project, or member" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" />
+            placeholder={tx('Task, project, or member')} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" />
         </div>
       </div>
       <div className="w-full sm:w-56">
-        <label htmlFor="project-task-portfolio-status" className="mb-1 block text-xs font-medium text-slate-600">Task status</label>
+        <label htmlFor="project-task-portfolio-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Task status')}</label>
         <select id="project-task-portfolio-status" value={status} onChange={event => setStatus(event.target.value as StatusFilter)}
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-          <option value="all">All tasks</option><option value="open">Open</option><option value="in_progress">In progress</option>
-          <option value="completed">Completed</option><option value="feedback_pending">Feedback pending</option>
+          <option value="all">{tx('All tasks')}</option><option value="open">{tx('Open')}</option><option value="in_progress">{tx('In progress')}</option>
+          <option value="completed">{tx('Completed')}</option><option value="feedback_pending">{tx('Feedback pending')}</option>
         </select>
       </div>
       <p className="text-xs text-slate-500" aria-live="polite">{visibleProjects.reduce((sum, project) => sum + project.tasks.length, 0).toLocaleString()} shown</p>
     </div>
 
     {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
-      <p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">Retry</button>
+      <p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">{tx('Retry')}</button>
     </div>}
-    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading your task portfolio…</p>
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{tx('Loading your task portfolio…')}</p>
       : visibleProjects.length === 0 ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-        {portfolio.counts.tasks ? 'No tasks match these filters.' : 'You have no tasks across your managed projects yet.'}
+        {portfolio.counts.tasks ? tx('No tasks match these filters.') : tx('You have no tasks across your managed projects yet.')}
       </p> : <div className="space-y-4">{visibleProjects.map(project => <section key={project.project_id} aria-label={`${project.project_code} ${project.project_name}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4">
           <div className="flex min-w-0 items-start gap-3"><ClipboardList className="mt-1 h-5 w-5 shrink-0 text-[#08558B]" aria-hidden="true" />
@@ -149,19 +152,19 @@ export function ProjectTaskPortfolio({ tenantId, onOpenProject }: {
             </div>
           </div>
           <button type="button" onClick={() => onOpenProject(project.project_id)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium hover:border-[#085587] focus-visible:outline-2 focus-visible:outline-[#085587]">
-            Open project tasks <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+            {tx('Open project tasks')} <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         <ul className="divide-y divide-slate-100">{project.tasks.map(task => <li key={task.task_id} className="p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0"><h5 className="break-words font-medium text-slate-900">{task.title}</h5>
               {task.description && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">{task.description}</p>}
-              <p className="mt-2 text-xs text-slate-500">Members: {task.members.length ? task.members.map(member => member.employee_name).join(', ') : 'None assigned'}</p>
+              <p className="mt-2 text-xs text-slate-500">{tx('Members:')} {task.members.length ? task.members.map(member => member.employee_name).join(', ') : tx('None assigned')}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">{taskStatusLabels[task.status]}</span>
-              {task.due_date && <span className="text-xs text-slate-500">Due {task.due_date}</span>}
-              {task.feedback_pending > 0 && <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900">Feedback Pending · {task.feedback_pending} reviews</span>}
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">{tx(taskStatusLabels[task.status])}</span>
+              {task.due_date && <span className="text-xs text-slate-500">{tx('Due')} {task.due_date}</span>}
+              {task.feedback_pending > 0 && <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900">{tx('Feedback Pending')} · {task.feedback_pending} {tx('reviews')}</span>}
             </div>
           </div>
         </li>)}</ul>

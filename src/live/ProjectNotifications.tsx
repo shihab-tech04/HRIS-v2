@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Bell, CheckCircle2, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { projectText, type Locale } from './project-locale';
 
 type Notification = {
   id: string;
@@ -24,10 +25,12 @@ function message(error: unknown): string {
   return 'Unable to load your notifications.';
 }
 
-export function ProjectNotifications({ tenantId, onOpenProjects }: {
+export function ProjectNotifications({ tenantId, locale, onOpenProjects }: {
   tenantId: string;
+  locale: Locale;
   onOpenProjects: () => void;
 }) {
+  const tx = (english: string) => projectText(locale, english);
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [cursor, setCursor] = useState<Cursor | null>(null);
@@ -96,17 +99,17 @@ export function ProjectNotifications({ tenantId, onOpenProjects }: {
   return <section aria-labelledby="project-notifications-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 id="project-notifications-heading" className="text-2xl font-medium text-[#49454F]">Notifications</h2>
-        <p className="mt-1 text-sm text-slate-500">Project review alerts are tied to your task assignments. Completing a review clears its alert.</p>
+        <h2 id="project-notifications-heading" className="text-2xl font-medium text-[#49454F]">{tx('Notifications')}</h2>
+        <p className="mt-1 text-sm text-slate-500">{tx('Project review alerts are tied to your task assignments. Completing a review clears its alert.')}</p>
       </div>
       <div className="flex items-center gap-2">
-        <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900">{unreadCount.toLocaleString()} unread</span>
-        <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true"/>Refresh</button>
+        <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900">{unreadCount.toLocaleString()} {tx('unread')}</span>
+        <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true"/>{tx('Refresh')}</button>
       </div>
     </div>
     {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p>{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">Retry</button></div>}
-    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading notifications…</p> : items.length === 0 ?
-      <div role="status" className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center"><Bell className="mx-auto h-6 w-6 text-slate-400" aria-hidden="true"/><p className="mt-2 text-sm text-slate-600">You have no project review notifications.</p></div> :
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{tx('Loading notifications…')}</p> : items.length === 0 ?
+      <div role="status" className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center"><Bell className="mx-auto h-6 w-6 text-slate-400" aria-hidden="true"/><p className="mt-2 text-sm text-slate-600">{tx('You have no project review notifications.')}</p></div> :
       <div className="space-y-3">{items.map(item => {
         const pending = item.review_status === 'pending';
         return <article key={item.id} className={`rounded-xl border p-4 shadow-sm sm:p-5 ${pending ? 'border-amber-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
@@ -117,15 +120,15 @@ export function ProjectNotifications({ tenantId, onOpenProjects }: {
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-medium text-slate-500">{item.project_name} · {item.task_title}</p>
-                <h3 className="mt-1 break-words font-semibold text-slate-900">{pending ? `Peer review for ${item.reviewee_name}` : `Review for ${item.reviewee_name} completed`}</h3>
-                <p className="mt-1 text-sm text-slate-600">{pending ? 'A task collaborator is waiting for your review.' : 'Your submitted review is recorded in the task history.'}</p>
+                <h3 className="mt-1 break-words font-semibold text-slate-900">{pending ? (locale === 'bn' ? `${item.reviewee_name}-এর জন্য সহকর্মী পর্যালোচনা` : `Peer review for ${item.reviewee_name}`) : (locale === 'bn' ? `${item.reviewee_name}-এর পর্যালোচনা সম্পন্ন` : `Review for ${item.reviewee_name} completed`)}</h3>
+                <p className="mt-1 text-sm text-slate-600">{tx(pending ? 'A task collaborator is waiting for your review.' : 'Your submitted review is recorded in the task history.')}</p>
                 <time className="mt-2 block text-xs text-slate-500" dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time>
               </div>
             </div>
-            {pending && <button type="button" onClick={onOpenProjects} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">Open review <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
+            {pending && <button type="button" onClick={onOpenProjects} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open review')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
           </div>
         </article>;
       })}</div>}
-    {!loading && hasMore && <div className="flex justify-center"><button type="button" onClick={() => void loadOlder()} disabled={loadingMore} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium disabled:opacity-50">{loadingMore ? 'Loading…' : 'Load older notifications'}</button></div>}
+    {!loading && hasMore && <div className="flex justify-center"><button type="button" onClick={() => void loadOlder()} disabled={loadingMore} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium disabled:opacity-50">{loadingMore ? tx('Loading…') : tx('Load older notifications')}</button></div>}
   </section>;
 }

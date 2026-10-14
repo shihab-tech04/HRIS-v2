@@ -333,7 +333,7 @@ test('assigned Project Manager creates, starts, releases, and completes a task w
   await task.getByRole('button', { name: 'Add member', exact: true }).click();
   await expect(task).toContainText('Collaborator Employee');
   await task.getByRole('button', { name: 'Start task' }).click();
-  await expect(task).toContainText('in progress');
+  await expect(task).toContainText('In progress');
 
   await task.getByRole('button', { name: 'Release Collaborator Employee from Prepare release checklist' }).click();
   const releaseConfirmation = page.getByRole('alertdialog');
