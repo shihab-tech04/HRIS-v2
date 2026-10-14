@@ -10,6 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: UX/UI v8 product integrity change gate (diagnostic, not acceptance)
+        run: |
+          node scripts/product-integrity-gate.mjs --mode=self-test
+          node scripts/product-integrity-gate.mjs --mode=pr
+          node scripts/product-integrity-gate.mjs --mode=audit
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
