@@ -24,6 +24,8 @@ import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
 import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
 import { EmployeeReferrals } from './EmployeeReferrals';
+import { PlatformTenantWorkspace } from './PlatformTenantWorkspace';
+import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
@@ -62,7 +64,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -2589,6 +2591,7 @@ export function LiveHrisWorkspace({
     try { localStorage.setItem('synesis-hris-locale', locale); } catch { /* locale still works for this session */ }
   }, [locale]);
   const [page, setPage] = useState<PageId>(() => {
+    if (isSuperAdmin && platformTenantFeatureAvailable) return 'platform-tenants';
     if (isSuperAdmin && !permissions.dashboard && !permissions.attendance && !permissions.leave
         && !permissions.organization && !permissions.employees && !permissions.performance) return 'projects';
     if (permissions.dashboard) return 'dashboard';
@@ -2613,6 +2616,7 @@ export function LiveHrisWorkspace({
       if (permissions.organization) items.push({ id: 'teams', label: 'Teams', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     }
     else if (isEmployee) items.push({ id: 'projects', label: 'Project Workspace', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
+    if (isSuperAdmin && platformTenantFeatureAvailable) items.push({ id: 'platform-tenants', label: 'Platform tenants', icon: <Building2 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.employees) items.push({ id: 'employees', label: 'Employees', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.employeesManage) items.push({ id: 'onboarding', label: 'Onboarding', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
@@ -2719,6 +2723,7 @@ export function LiveHrisWorkspace({
           {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} />}
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
+          {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}

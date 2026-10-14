@@ -5,6 +5,7 @@ import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-re
 import { supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveHrisWorkspace } from './LiveHrisWorkspace';
+import { platformTenantFeatureAvailable } from './platformTenantApi';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
@@ -445,6 +446,21 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       isSuperAdmin={opensAdminWorkspace && isSuperAdmin}
       isEmployee={employeeTenantIds.includes(tenantId)}
       permissions={opensAdminWorkspace ? workspacePermissions : noWorkspacePermissions}
+    />;
+  }
+
+  if (platformTenantFeatureAvailable && isSuperAdmin) {
+    return <LiveHrisWorkspace
+      userId={user.id}
+      userEmail={user.email || 'HRIS user'}
+      tenantId=""
+      tenantName="Platform administration"
+      tenants={[]}
+      onTenantChange={() => {}}
+      onSignOut={() => { void signOut(); }}
+      isSuperAdmin
+      isEmployee={false}
+      permissions={noWorkspacePermissions}
     />;
   }
 
