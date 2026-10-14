@@ -113,6 +113,22 @@ try {
   await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click();
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
   await (await employeeInCurrentLayout(page, 'Synthetic Employee B')).waitFor({ state: 'detached' });
+  const mobileDetailTrigger = page.getByRole('button', { name: 'View details for Synthetic Employee A' });
+  await mobileDetailTrigger.click();
+  const mobileDetails = page.getByRole('dialog', { name: 'Synthetic Employee A' });
+  await mobileDetails.waitFor({ state: 'visible' });
+  for (const field of ['Employee record', 'QA-A-001', 'QA A department', 'QA A designation', 'QA A Team', 'Active']) {
+    if (!(await mobileDetails.getByText(field, { exact: false }).count())) throw new Error(`Employee details did not show the authorized field: ${field}.`);
+  }
+  await assertNoOverflow(page, 'Employee detail sheet mobile');
+  await page.keyboard.press('Escape');
+  await mobileDetails.waitFor({ state: 'detached' });
+  if (!(await mobileDetailTrigger.evaluate(element => document.activeElement === element))) {
+    throw new Error('Closing employee details with Escape did not return focus to the opening action.');
+  }
+  await mobileDetailTrigger.click();
+  await page.getByRole('button', { name: 'Close employee record' }).click();
+  await mobileDetails.waitFor({ state: 'detached' });
   for (const marker of ['employee-a@hris.test', 'official_email', 'joining_date', 'gender']) {
     if (await page.getByText(marker, { exact: false }).count()) throw new Error(`Sensitive employee data was rendered: ${marker}.`);
   }
@@ -146,6 +162,13 @@ try {
   await page.getByRole('button', { name: 'Refresh employee directory' }).click();
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Employee directory desktop');
+  const desktopDetailTrigger = page.getByRole('button', { name: 'View details for Synthetic Employee A' });
+  await desktopDetailTrigger.click();
+  const desktopDetails = page.getByRole('dialog', { name: 'Synthetic Employee A' });
+  await desktopDetails.waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee details desktop');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await desktopDetails.waitFor({ state: 'detached' });
   const downloadWait = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export current page' }).click();
   const download = await downloadWait;
@@ -158,11 +181,32 @@ try {
     throw new Error('Employee directory export did not contain only the currently authorized filtered page.');
   }
 
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await page.getByRole('heading', { name: 'কর্মচারী ডিরেক্টরি', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'বিস্তারিত দেখুন: Synthetic Employee A' }).click();
+  const bengaliDetails = page.getByRole('dialog', { name: 'Synthetic Employee A' });
+  await bengaliDetails.waitFor({ state: 'visible' });
+  await bengaliDetails.getByText('কর্মচারীর রেকর্ড', { exact: true }).waitFor({ state: 'visible' });
+  await bengaliDetails.getByText('কর্মচারী নম্বর', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'কর্মচারীর রেকর্ড বন্ধ করুন' }).click();
+  await bengaliDetails.waitFor({ state: 'detached' });
+  const bengaliDownloadWait = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'বর্তমান পৃষ্ঠা রপ্তানি করুন' }).click();
+  const bengaliDownload = await bengaliDownloadWait;
+  const bengaliDownloadStream = await bengaliDownload.createReadStream();
+  const bengaliChunks = [];
+  for await (const chunk of bengaliDownloadStream) bengaliChunks.push(chunk);
+  const bengaliExport = Buffer.concat(bengaliChunks).toString('utf8');
+  if (!bengaliExport.includes('কর্মচারী নম্বর')) throw new Error('Employee directory CSV headers did not follow the Bengali locale.');
+  if (await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
+    throw new Error('Employee directory Bengali locale did not persist.');
+  }
+
   const requestTenants = rpcPayloads.filter(value => value && typeof value.p_tenant_id === 'string').map(value => value.p_tenant_id);
   if (requestTenants.some(id => id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID)) {
     throw new Error(`Employee directory requested a different tenant: ${requestTenants.join(', ')}.`);
   }
-  console.log('Local Auth-to-Postgres employee directory journey passed at 375px mobile and 1280px desktop.');
+  console.log('Local Auth-to-Postgres employee directory journey passed with permission-limited details, keyboard recovery, refresh recovery, EN/BN parity, and 375px mobile/1280px desktop layouts.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

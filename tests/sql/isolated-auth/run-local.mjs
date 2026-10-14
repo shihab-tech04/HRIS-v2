@@ -1294,7 +1294,7 @@ try {
   employeeDirectoryBrowserError = String(error.stderr || error.message || 'local employee-directory browser run failed').slice(-1400);
 }
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
-  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory journey passed at 375px mobile and 1280px desktop.'),
+  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory journey passed with permission-limited details, keyboard recovery, refresh recovery, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
 
 const recruitmentIds = {

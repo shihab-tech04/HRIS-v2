@@ -6,6 +6,7 @@ const migration = readFileSync(new URL('../../supabase/migrations/20261013073243
 const page = readFileSync(new URL('../../src/live/OrganizationEmployeeDirectory.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
+const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const isolatedRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 
 test('employee directory RPC requires an active tenant and membership-scoped employee permission', () => {
@@ -42,13 +43,34 @@ test('employee directory UI uses the secured RPC and supports error recovery, fi
   assert.match(page, /Export current page/);
   assert.match(page, /md:hidden/);
   assert.match(page, /md:block/);
+  assert.match(workspace, /<OrganizationEmployeeDirectory tenantId=\{tenantId\} locale=\{locale\} \/>/);
   assert.match(app, /'employees\.view', 'employees\.manage'/);
   assert.match(app, /employees: grants\.get\('employees\.view'\) === true \|\| grants\.get\('employees\.manage'\) === true/);
   assert.match(workspace, /id: 'employees', label: 'Employees'/);
-  assert.match(workspace, /<OrganizationEmployeeDirectory tenantId=\{tenantId\} \/>/);
 });
 
 test('isolated integration runner executes a local Auth-to-Postgres mobile and desktop directory journey', () => {
   assert.match(isolatedRunner, /run-employee-directory-browser\.mjs/);
   assert.match(isolatedRunner, /Real local Auth-to-Postgres employee directory journey/);
+});
+
+test('read-only employee detail sheet reuses only permission-limited directory fields with keyboard and refresh recovery', () => {
+  assert.match(page, /selectedEmployee/);
+  assert.match(page, /role="dialog" aria-modal="true" aria-labelledby="employee-record-heading"/);
+  assert.match(page, /Escape/);
+  assert.match(page, /event\.key !== 'Tab'/);
+  assert.match(page, /detailReturnFocusRef\.current\.focus\(\)/);
+  assert.match(page, /setSelectedEmployee\(null\)/);
+  assert.match(page, /setSelectedEmployee\(null\);[\s\S]*?setLoading\(true\)/);
+  assert.match(page, /View details/);
+  assert.match(page, /Employee record/);
+  assert.doesNotMatch(page, /official_email|joining_date|gender|salary|user_id|Save changes|Delete employee/);
+  const translations = new Set([...locale.matchAll(/^\s*'([^']+)'\s*:/gm)].map(([, key]) => key));
+  const missing = [...page.matchAll(/tx\('([^']+)'\)/g)].map(([, key]) => key).filter(key => !translations.has(key));
+  assert.deepEqual(missing, [], 'employee directory strings must have Bengali translations');
+  assert.match(locale, /'Employee record': 'কর্মচারীর রেকর্ড'/);
+  const browser = readFileSync(new URL('../sql/isolated-auth/run-employee-directory-browser.mjs', import.meta.url), 'utf8');
+  assert.match(browser, /getByRole\('dialog'/);
+  assert.match(browser, /keyboard\.press\('Escape'\)/);
+  assert.match(browser, /Switch language to Bengali/);
 });
