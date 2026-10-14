@@ -38,6 +38,31 @@ export async function createTrackedAuthUser({
   throw lastError || new Error('Unable to create the synthetic Auth fixture.');
 }
 
+/** Retry only transient Auth gateway/server errors; a real session is still required. */
+export async function signInTrackedAuthUser({
+  signIn,
+  wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  maxAttempts = 3,
+}) {
+  let lastError;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const result = await signIn();
+      if (!result.error && result.data?.session && result.data?.user) return result.data;
+      lastError = result.error || new Error('Auth returned no session for the synthetic fixture.');
+    } catch (error) {
+      lastError = error;
+    }
+
+    const status = Number(lastError?.status);
+    if (![502, 503, 504].includes(status) || attempt + 1 >= maxAttempts) break;
+    await wait(1000 * (attempt + 1));
+  }
+
+  throw lastError || new Error('Unable to sign in the synthetic Auth fixture.');
+}
+
 /** Retry bounded Auth teardown when a timeout leaves the delete outcome unclear. */
 export async function deleteTrackedAuthUser({
   userId,

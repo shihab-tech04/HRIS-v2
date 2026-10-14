@@ -8,14 +8,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import { createTrackedAuthUser, deleteTrackedAuthUser } from './auth-user-fixture.mjs';
+import { createTrackedAuthUser, deleteTrackedAuthUser, signInTrackedAuthUser } from './auth-user-fixture.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const mainRoot = path.resolve(here, '../../..');
-const workdir = process.env.HRIS_SUPABASE_TEST_WORKDIR || '/private/tmp/synesis-local-hris-test';
+const workdir = path.resolve(process.env.HRIS_SUPABASE_TEST_WORKDIR || '/private/tmp/synesis-local-hris-test');
 const dockerContext = process.env.HRIS_DOCKER_CONTEXT || 'colima-hris-scratch';
 const expectedApiPort = process.env.HRIS_SUPABASE_API_PORT || '55421';
 const expectedDatabasePort = process.env.HRIS_SUPABASE_DB_PORT || '55422';
+if (!workdir.startsWith('/private/tmp/')) {
+  throw new Error('Refusing to test: the disposable Supabase workdir must remain under /private/tmp.');
+}
 const cliEnv = {
   ...process.env,
   SUPABASE_HOME: process.env.SUPABASE_HOME || '/private/tmp/synesis-supabase-home',
@@ -219,6 +222,13 @@ if (existing.data.users.length !== 0 || authRowsBeforeFixture !== 0) {
   throw new Error('Refusing to test: the isolated Auth service and database must both start with zero users.');
 }
 
+// This harness reapplies test migrations directly, so restore the isolated database baseline first.
+// The path, local ports, Docker context, and empty-Auth preflight above keep this reset disposable.
+cli(['db', 'reset', '--local', '--no-seed', '--yes']);
+if (Number(psqlSync('SELECT count(*) FROM auth.users;').trim()) !== 0) {
+  throw new Error('Refusing to test: the isolated Auth database was not empty after its local reset.');
+}
+
 const discovery = await fetch(new URL('/auth/v1/.well-known/openid-configuration', services.API_URL));
 if (!discovery.ok) throw new Error('Refusing to test: local Auth discovery endpoint is unavailable.');
 const issuer = (await discovery.json()).issuer;
@@ -262,9 +272,10 @@ try {
 
   async function signIn(email) {
     const client = createClient(services.API_URL, services.ANON_KEY, authOptions);
-    const result = await client.auth.signInWithPassword({ email, password });
-    if (result.error || !result.data.session) throw result.error || new Error('Local Auth did not create a session.');
-    return { client, userId: result.data.user.id, accessToken: result.data.session.access_token };
+    const result = await signInTrackedAuthUser({
+      signIn: () => client.auth.signInWithPassword({ email, password }),
+    });
+    return { client, userId: result.user.id, accessToken: result.session.access_token };
   }
 
 const managerA = await signIn(emails[0]);
@@ -1114,7 +1125,7 @@ record('Verified learning records its reviewer/date and employee history with no
     && completionVerifiedRow.status === 'completed'
     && completionVerifiedRow.completed_at === completionVerifiedRow.completion_verified_at
     && completionVerifiedRow.completion_verified_by === learningManagerA.userId
-    && completionVerifiedRow.certificate_url === null
+    && completionVerifiedRow.certificate_url === completionReturned.certificate_url
     && completionVerifiedContext.data.enrollments.some(row => row.id === completionEnrollmentId
       && row.status === 'completed' && row.completion_history.length === 4)
     && completionVerifiedContext.data.notifications.filter(row => row.enrollment_id === completionEnrollmentId).length === 2
@@ -4707,9 +4718,28 @@ if (failed.length) process.exitCode = 1;
     if (deletedBucket.error) throw deletedBucket.error;
   }
   const learningEvidenceStorage = adminAuth.storage.from('learning-completion-evidence');
-  if (learningEvidenceBucketSafeToClean && uploadedLearningEvidencePaths.length) {
-    const removed = await learningEvidenceStorage.remove(uploadedLearningEvidencePaths);
-    if (removed.error) throw removed.error;
+  if (learningEvidenceBucketSafeToClean) {
+    const learningEvidencePaths = new Set(uploadedLearningEvidencePaths);
+    async function collectLearningEvidenceObjects(prefix = '') {
+      let offset = 0;
+      while (true) {
+        const listed = await learningEvidenceStorage.list(prefix, { limit: 100, offset });
+        if (listed.error) throw listed.error;
+        const items = listed.data || [];
+        for (const item of items) {
+          const objectPath = prefix ? `${prefix}/${item.name}` : item.name;
+          if (item.id) learningEvidencePaths.add(objectPath);
+          else await collectLearningEvidenceObjects(objectPath);
+        }
+        if (items.length < 100) break;
+        offset += items.length;
+      }
+    }
+    await collectLearningEvidenceObjects();
+    if (learningEvidencePaths.size) {
+      const removed = await learningEvidenceStorage.remove([...learningEvidencePaths]);
+      if (removed.error) throw removed.error;
+    }
   }
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');

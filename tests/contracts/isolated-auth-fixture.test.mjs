@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createTrackedAuthUser,
   deleteTrackedAuthUser,
+  signInTrackedAuthUser,
 } from '../sql/isolated-auth/auth-user-fixture.mjs';
 
 test('tracks the ID returned by a successful Auth fixture creation', async () => {
@@ -78,6 +79,64 @@ test('stops after bounded failures without tracking an unknown user', async () =
   assert.equal(lookups, 3);
   assert.equal(waits, 2);
   assert.deepEqual(tracked, []);
+});
+
+test('recovers a real Auth session after a transient gateway timeout', async () => {
+  const waits = [];
+  let attempts = 0;
+  const session = { access_token: 'local-token' };
+  const user = { id: 'fixture-user' };
+  const result = await signInTrackedAuthUser({
+    signIn: async () => {
+      attempts += 1;
+      return attempts === 1
+        ? { data: { session: null, user: null }, error: Object.assign(new Error('timeout'), { status: 504 }) }
+        : { data: { session, user }, error: null };
+    },
+    wait: async (milliseconds) => waits.push(milliseconds),
+  });
+
+  assert.equal(result.session, session);
+  assert.equal(result.user, user);
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [1000]);
+});
+
+test('does not retry permanent Auth errors or accept a response without a real session', async () => {
+  let attempts = 0;
+  let waits = 0;
+
+  await assert.rejects(signInTrackedAuthUser({
+    signIn: async () => {
+      attempts += 1;
+      return { data: { session: null, user: null }, error: Object.assign(new Error('invalid credentials'), { status: 400 }) };
+    },
+    wait: async () => { waits += 1; },
+  }), /invalid credentials/);
+  assert.equal(attempts, 1);
+  assert.equal(waits, 0);
+
+  await assert.rejects(signInTrackedAuthUser({
+    signIn: async () => ({ data: { session: null, user: null }, error: null }),
+    wait: async () => { waits += 1; },
+  }), /no session/);
+  assert.equal(waits, 0);
+});
+
+test('bounds repeated transient Auth sign-in failures', async () => {
+  let attempts = 0;
+  const waits = [];
+
+  await assert.rejects(signInTrackedAuthUser({
+    signIn: async () => {
+      attempts += 1;
+      throw Object.assign(new Error('upstream timeout'), { status: 503 });
+    },
+    wait: async (milliseconds) => waits.push(milliseconds),
+  }), /upstream timeout/);
+
+  assert.equal(attempts, 3);
+  assert.deepEqual(waits, [1000, 2000]);
 });
 
 test('accepts a committed delete after the local Auth response times out', async () => {

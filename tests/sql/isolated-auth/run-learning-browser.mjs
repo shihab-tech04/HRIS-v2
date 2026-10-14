@@ -485,7 +485,7 @@ try {
   const failedCompletionSubmit = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 503);
   await completionSubmitButton.click();
   await failedCompletionSubmit;
-  await completionEmployeeCard.getByRole('alert').waitFor({ state: 'visible' });
+  await page.getByRole('alert').waitFor({ state: 'visible' });
   await completionEmployeeCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
   const completionSubmitResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 200);
   await completionSubmitButton.click();
