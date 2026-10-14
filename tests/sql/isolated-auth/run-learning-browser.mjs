@@ -377,6 +377,7 @@ try {
   await managerPage.getByLabel('Provider', { exact: true }).fill('Local QA Provider');
   await managerPage.getByLabel('Delivery mode', { exact: true }).selectOption('hybrid');
   await managerPage.getByLabel('Employees may enroll directly').check();
+  await managerPage.getByLabel('Require evidence before completion can be verified').check();
   await managerPage.getByLabel('Target skills (comma-separated)').fill('Learning Administration, Facilitation');
   const programResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_learning_program'));
   await managerPage.getByRole('button', { name: 'Create program', exact: true }).click();
@@ -384,6 +385,7 @@ try {
   const managerProgramCard = managerPage.locator(`[data-admin-learning-program="${createdProgram.id}"]`);
   await managerProgramCard.waitFor({ state: 'visible' });
   await managerProgramCard.getByText(programTitle, { exact: true }).waitFor({ state: 'visible' });
+  await managerProgramCard.getByText('Completion evidence required', { exact: true }).waitFor({ state: 'visible' });
   await managerProgramCard.getByRole('button', { name: `Schedule session for ${programTitle}` }).click();
   await managerProgramCard.getByLabel('Trainer').fill('Synthetic Learning Trainer');
   await managerProgramCard.getByLabel('Location').fill('QA Learning Room');
@@ -418,6 +420,9 @@ try {
 
   await managerPage.setViewportSize({ width: 1280, height: 900 });
   await managerProgramCard.getByRole('button', { name: `Edit program ${programTitle}` }).click();
+  if (!(await managerPage.getByLabel('Require evidence before completion can be verified').isChecked())) {
+    throw new Error('The saved program evidence requirement was not restored in the edit form.');
+  }
   await managerPage.getByLabel('Description', { exact: true }).fill('Published and updated through the tenant manager workspace.');
   const updateProgramResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_learning_program'));
   await managerPage.getByRole('button', { name: 'Save program', exact: true }).click();
@@ -432,6 +437,7 @@ try {
   const employeeProgramCard = page.locator(`[data-learning-program="${createdProgram.id}"]`);
   await employeeProgramCard.getByText('Published and updated through the tenant manager workspace.', { exact: true }).waitFor({ state: 'visible' });
   await page.getByLabel(`Choose session for ${programTitle}`).selectOption(createdSession.id);
+  await employeeProgramCard.getByText('Completion evidence required', { exact: true }).waitFor({ state: 'visible' });
   const newEnrollmentResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_enroll_learning'));
   await employeeProgramCard.getByRole('button', { name: 'Enroll now', exact: true }).click();
   const newEnrollment = await rpcBody(await newEnrollmentResponse);
@@ -466,13 +472,23 @@ try {
   const completionEnrollmentId = process.env.HRIS_LOCAL_LEARNING_COMPLETION_ENROLLMENT_ID;
   const completionEmployeeCard = page.locator(`[data-learning-enrollment="${completionEnrollmentId}"]`);
   await completionEmployeeCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
+  const completionSubmitButton = completionEmployeeCard.getByRole('button', { name: 'Mark completed', exact: true });
+  const completionEvidenceInput = completionEmployeeCard.getByLabel('Supporting evidence (required)');
+  if (!(await completionEvidenceInput.evaluate(input => input.required)) || await completionSubmitButton.isEnabled()) {
+    throw new Error('Required learning evidence must be exposed as required and prevent submission until a file is selected.');
+  }
+  await completionEvidenceInput.setInputFiles({
+    name: 'initial-completion-proof.pdf', mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nSynthetic initial completion evidence\n'),
+  });
+  if (!(await completionSubmitButton.isEnabled())) throw new Error('Selecting required evidence did not enable submission.');
   const failedCompletionSubmit = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 503);
-  await completionEmployeeCard.getByRole('button', { name: 'Mark completed', exact: true }).click();
+  await completionSubmitButton.click();
   await failedCompletionSubmit;
   await completionEmployeeCard.getByRole('alert').waitFor({ state: 'visible' });
   await completionEmployeeCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
   const completionSubmitResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 200);
-  await completionEmployeeCard.getByRole('button', { name: 'Mark completed', exact: true }).click();
+  await completionSubmitButton.click();
   const submittedCompletion = await rpcBody(await completionSubmitResponse);
   if (submittedCompletion.status !== 'pending_verification') throw new Error('Learning completion did not enter Pending Verification.');
   await completionEmployeeCard.getByText('Pending Verification', { exact: true }).waitFor({ state: 'visible' });
@@ -510,7 +526,7 @@ try {
   if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval/ }).count()) {
     throw new Error('A returned completion must remain one open assignment until it is corrected and verified.');
   }
-  await completionEmployeeCard.getByLabel('Supporting evidence (optional)').setInputFiles({
+  await completionEmployeeCard.getByLabel('Supporting evidence (required)').setInputFiles({
     name: 'completion-proof.pdf', mimeType: 'application/pdf',
     buffer: Buffer.from('%PDF-1.4\nSynthetic completion evidence\n'),
   });

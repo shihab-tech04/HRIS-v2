@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013174500_hris_learning_program_management.sql', import.meta.url), 'utf8');
+const evidenceMigration = readFileSync(new URL('../../supabase/migrations/20261014160001_hris_learning_completion_evidence_requirement.sql', import.meta.url), 'utf8');
 const rosterMigration = readFileSync(new URL('../../supabase/migrations/20261013190000_hris_learning_session_roster.sql', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../../src/live/LearningProgramAdmin.tsx', import.meta.url), 'utf8');
@@ -35,6 +36,21 @@ test('learning management reuses tenant navigation and supplies program and sche
   assert.match(ui, /Retry/);
   assert.match(ui, /No learning programs have been created/);
   assert.doesNotMatch(ui, /\.from\(['"]learning_(?:programs|sessions|enrollments)['"]\)/);
+});
+
+test('learning.manage can configure a default-off evidence requirement and employee completion enforces it', () => {
+  assert.match(evidenceMigration, /completion_evidence_required boolean NOT NULL DEFAULT false/);
+  assert.match(evidenceMigration, /p_completion_evidence_required boolean/);
+  assert.match(evidenceMigration, /has_tenant_permission\(p_tenant_id,'learning\.manage'\)/);
+  assert.match(evidenceMigration, /NEW\.status='pending_verification'[\s\S]*?NEW\.completion_evidence_path IS NULL/);
+  assert.match(evidenceMigration, /'completion_evidence_required',p\.completion_evidence_required/);
+  assert.match(ui, /Require evidence before completion can be verified/);
+  assert.match(ui, /p_completion_evidence_required: programDraft\.completionEvidenceRequired/);
+  assert.match(runner, /ordinaryEvidenceRequirementChange\.error\?\.code === '42501'/);
+  assert.match(runner, /employeeEvidenceRequirementChange\.error\?\.code === '42501'/);
+  assert.match(runner, /globalOnlyEvidenceRequirementChange\.error\?\.code === '42501'/);
+  assert.match(browser, /Require evidence before completion can be verified/);
+  assert.match(browser, /Completion evidence required/);
 });
 
 test('isolated Auth browser journey covers manager publishing, employee catalog visibility, and enrollment', () => {

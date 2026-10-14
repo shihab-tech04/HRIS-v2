@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+import { createTrackedAuthUser, deleteTrackedAuthUser } from './auth-user-fixture.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const mainRoot = path.resolve(here, '../../..');
@@ -240,9 +241,16 @@ let learningEvidenceBucketSafeToClean = false;
 const password = randomBytes(24).toString('base64url');
 try {
   for (const email of emails) {
-    const created = await adminAuth.auth.admin.createUser({ email, password, email_confirm: true });
-    if (created.error) throw created.error;
-    createdUserIds.push(created.data.user.id);
+    await createTrackedAuthUser({
+      email,
+      createUser: () => adminAuth.auth.admin.createUser({ email, password, email_confirm: true }),
+      findUserId: async (targetEmail) => psqlSync(
+        `SELECT id FROM auth.users WHERE lower(email)=lower(${sqlLiteral(targetEmail)}) LIMIT 1;`,
+      ).trim() || null,
+      trackUserId: (userId) => {
+        if (!createdUserIds.includes(userId)) createdUserIds.push(userId);
+      },
+    });
   }
   const createdIds = createdUserIds.map(sqlLiteral).join(',');
   const matchedAuthRows = Number(psqlSync(
@@ -308,6 +316,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014120100_employee_skill_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014133000_harden_public_foundation_tables.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160000_hris_learning_completion_verification.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014160001_hris_learning_completion_evidence_requirement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -929,8 +938,64 @@ record('Learning request queue requires active tenant learning.manage; ordinary 
 const completionEnrollmentId = learningIds.mandatoryEnrollment;
 const skillCountBeforeLearningVerify = Number(queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
   FROM public.employee_skills WHERE employee_id='55555555-5555-4555-8555-555555555555'::uuid`).count);
+const completionEvidenceProgramSave = await learningManagerA.client.rpc('hris_save_learning_program', {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.directProgram, p_title: 'QA A Direct Learning',
+  p_description: 'Synthetic self-enrollment course', p_category: 'Professional Development',
+  p_provider: 'QA Provider', p_delivery_mode: 'online', p_duration_hours: 4,
+  p_self_enrollment: true, p_target_skills: ['Communication', 'Planning'], p_active: true,
+  p_completion_evidence_required: true,
+});
+const requiredCompletionProgram = queryAdmin(`SELECT jsonb_build_object(
+  'required',completion_evidence_required,'tenant_id',tenant_id)
+  FROM public.learning_programs WHERE id='${learningIds.directProgram}'::uuid`);
+const missingRequiredCompletionEvidence = await employeeA.client.rpc('hris_employee_submit_learning_completion', {
+  p_tenant_id: ids.tenantA, p_enrollment_id: completionEnrollmentId,
+});
+const requiredEnrollmentAfterMissingEvidence = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id='${completionEnrollmentId}'::uuid`);
+
+const optionalCompletionEnrollmentId = '92000000-0000-4000-8000-000000000009';
+psqlSync(`INSERT INTO public.learning_enrollments(
+  id,tenant_id,employee_id,program_id,source,status,mandatory,created_by
+) VALUES (
+  '${optionalCompletionEnrollmentId}','${ids.tenantA}','55555555-5555-4555-8555-555555555555',
+  '${learningIds.approvalProgram}','admin_assignment','enrolled',true,NULL
+);`);
+const optionalCompletionSubmit = await employeeA.client.rpc('hris_employee_submit_learning_completion', {
+  p_tenant_id: ids.tenantA, p_enrollment_id: optionalCompletionEnrollmentId,
+});
+const optionalCompletionVerify = await learningManagerA.client.rpc('hris_resolve_learning_completion', {
+  p_tenant_id: ids.tenantA, p_enrollment_id: optionalCompletionEnrollmentId,
+  p_decision: 'verified', p_reason: null,
+});
+const optionalCompletionProgram = queryAdmin(`SELECT jsonb_build_object(
+  'required',completion_evidence_required) FROM public.learning_programs WHERE id='${learningIds.approvalProgram}'::uuid`);
+const optionalCompletionRow = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id='${optionalCompletionEnrollmentId}'::uuid`);
+record('Learning evidence requirement defaults off but is enforced when a learning manager enables it',
+  !completionEvidenceProgramSave.error && requiredCompletionProgram.required === true
+    && requiredCompletionProgram.tenant_id === ids.tenantA
+    && Boolean(missingRequiredCompletionEvidence.error?.code === '22023')
+    && requiredEnrollmentAfterMissingEvidence.status === 'enrolled'
+    && optionalCompletionProgram.required === false
+    && !optionalCompletionSubmit.error && optionalCompletionSubmit.data?.status === 'pending_verification'
+    && !optionalCompletionVerify.error && optionalCompletionVerify.data?.status === 'completed'
+    && optionalCompletionRow.status === 'completed' && optionalCompletionRow.completion_evidence_path === null,
+  JSON.stringify({ configuredRequired: requiredCompletionProgram.required,
+    missingEvidence: missingRequiredCompletionEvidence.error?.code,
+    missingEvidencePreservedEnrollment: requiredEnrollmentAfterMissingEvidence.status,
+    defaultOptional: optionalCompletionProgram.required,
+    optionalSubmission: optionalCompletionSubmit.error?.code || optionalCompletionSubmit.data?.status,
+    optionalVerified: optionalCompletionRow.status }));
+
+const initialCompletionEvidencePath = `${employeeA.userId}/${ids.tenantA}/${completionEnrollmentId}/${randomUUID()}`;
+const initialCompletionEvidenceUpload = await employeeA.client.storage.from('learning-completion-evidence').upload(
+  initialCompletionEvidencePath, new Blob(['%PDF-1.4\nSynthetic required completion evidence\n'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (initialCompletionEvidenceUpload.error) throw initialCompletionEvidenceUpload.error;
+uploadedLearningEvidencePaths.push(initialCompletionEvidencePath);
 const completionSubmit = await employeeA.client.rpc('hris_employee_submit_learning_completion', {
   p_tenant_id: ids.tenantA, p_enrollment_id: completionEnrollmentId,
+  p_evidence_path: initialCompletionEvidencePath, p_evidence_name: 'initial-completion-proof.pdf',
 });
 const completionPending = queryAdmin(`SELECT to_jsonb(e) FROM public.learning_enrollments e WHERE id='${completionEnrollmentId}'::uuid`);
 const duplicatePendingCompletionEnrollment = await employeeA.client.rpc('hris_employee_enroll_learning', {
@@ -947,14 +1012,14 @@ const completionEmployeeQueue = await employeeA.client.rpc('hris_get_learning_co
 const completionCrossTenantQueue = await learningManagerA.client.rpc('hris_get_learning_completion_queue', { p_tenant_id: ids.tenantB });
 const completionGlobalOnlyQueue = await globalOnly.client.rpc('hris_get_learning_completion_queue', { p_tenant_id: ids.tenantA });
 const completionDirectEvents = await employeeA.client.from('learning_completion_events').select('id');
-record('Learning completion submission and personal history are employee-owned and tenant-isolated; evidence stays optional without a configured requirement',
+record('Learning completion submission and personal history are employee-owned, tenant-isolated, and carry the configured evidence requirement',
   !completionSubmit.error && completionSubmit.data?.status === 'pending_verification'
     && completionPending.status === 'pending_verification' && completionPending.completed_at === null
-    && completionPending.completion_verified_at === null && completionPending.completion_evidence_path === null
+    && completionPending.completion_verified_at === null && completionPending.completion_evidence_path === initialCompletionEvidencePath
     && Boolean(duplicatePendingCompletionEnrollment.error?.code === '23505')
     && Boolean(completionCrossTenant.error?.code === '42501')
     && !completionPersonalPending.error && completionPersonalPending.data.enrollments.some(row => row.id === completionEnrollmentId
-      && row.status === 'pending_verification' && row.completion_history.length === 1)
+      && row.status === 'pending_verification' && row.completion_evidence_required === true && row.completion_history.length === 1)
     && Boolean(completionPersonalCrossTenant.error?.code === '42501') && Boolean(completionDirectEvents.error),
   JSON.stringify({ submit: completionSubmit.error?.code || completionSubmit.data?.status,
     duplicateWhilePending: duplicatePendingCompletionEnrollment.error?.code,
@@ -1183,6 +1248,19 @@ const globalOnlyLearningProgramCreate = await globalOnly.client.rpc('hris_save_l
   p_description: '', p_category: '', p_provider: '', p_delivery_mode: 'online',
   p_duration_hours: null, p_self_enrollment: true, p_target_skills: [], p_active: true,
 });
+const restrictedProgramFields = {
+  p_tenant_id: ids.tenantA, p_program_id: learningIds.directProgram, p_title: 'QA A Direct Learning',
+  p_description: 'Synthetic self-enrollment course', p_category: 'Professional Development',
+  p_provider: 'QA Provider', p_delivery_mode: 'online', p_duration_hours: 4,
+  p_self_enrollment: true, p_target_skills: ['Communication', 'Planning'], p_active: true,
+  p_completion_evidence_required: false,
+};
+const ordinaryEvidenceRequirementChange = await managerA.client.rpc('hris_save_learning_program', restrictedProgramFields);
+const employeeEvidenceRequirementChange = await employeeA.client.rpc('hris_save_learning_program', restrictedProgramFields);
+const globalOnlyEvidenceRequirementChange = await globalOnly.client.rpc('hris_save_learning_program', restrictedProgramFields);
+const crossTenantEvidenceRequirementChange = await learningManagerA.client.rpc('hris_save_learning_program', {
+  ...restrictedProgramFields, p_program_id: learningIds.tenantBProgram,
+});
 const crossTenantLearningProgramUpdate = await learningManagerA.client.rpc('hris_save_learning_program', {
   p_tenant_id: ids.tenantA, p_program_id: '90000000-0000-4000-8000-000000000004',
   p_title: 'Cross-tenant program rewrite', p_description: '', p_category: '', p_provider: '',
@@ -1208,10 +1286,15 @@ record('Learning program administration is tenant-scoped and enforces direct-wri
   !learningAdminCatalogA.error && learningAdminCatalogA.data.length >= 5
     && learningAdminCatalogTenantBound.tenant_a_count === learningAdminCatalogA.data.length
     && learningAdminCatalogTenantBound.foreign_tenant_count === 0
+    && learningAdminCatalogA.data.some(row => row.id === learningIds.directProgram && row.completion_evidence_required === true)
     && Boolean(learningAdminCatalogCrossTenant.error?.code === '42501')
     && Boolean(ordinaryLearningProgramCreate.error?.code === '42501')
     && Boolean(employeeLearningProgramCreate.error?.code === '42501')
     && Boolean(globalOnlyLearningProgramCreate.error?.code === '42501')
+    && Boolean(ordinaryEvidenceRequirementChange.error?.code === '42501')
+    && Boolean(employeeEvidenceRequirementChange.error?.code === '42501')
+    && Boolean(globalOnlyEvidenceRequirementChange.error?.code === '42501')
+    && Boolean(crossTenantEvidenceRequirementChange.error?.code === 'P0002')
     && Boolean(crossTenantLearningProgramUpdate.error?.code === 'P0002')
     && Boolean(crossTenantLearningSessionCreate.error?.code === '22023')
     && Boolean(invalidLearningSessionCreate.error?.code === '22023')
@@ -1220,6 +1303,9 @@ record('Learning program administration is tenant-scoped and enforces direct-wri
   JSON.stringify({ catalogCount: learningAdminCatalogA.data?.length, catalogTenantBound: learningAdminCatalogTenantBound,
     crossCatalogCode: learningAdminCatalogCrossTenant.error?.code,
     ordinaryManagerCode: ordinaryLearningProgramCreate.error?.code,
+    ordinaryEvidenceSetting: ordinaryEvidenceRequirementChange.error?.code,
+    employeeEvidenceSetting: employeeEvidenceRequirementChange.error?.code,
+    crossTenantEvidenceSetting: crossTenantEvidenceRequirementChange.error?.code,
     employeeCode: employeeLearningProgramCreate.error?.code,
     globalOnlyCode: globalOnlyLearningProgramCreate.error?.code,
     crossProgramCode: crossTenantLearningProgramUpdate.error?.code,
@@ -4630,7 +4716,12 @@ if (failed.length) process.exitCode = 1;
     if (deletedBucket.error) throw deletedBucket.error;
   }
   for (const userId of createdUserIds) {
-    const deleted = await adminAuth.auth.admin.deleteUser(userId);
-    if (deleted.error) throw deleted.error;
+    await deleteTrackedAuthUser({
+      userId,
+      deleteUser: () => adminAuth.auth.admin.deleteUser(userId),
+      userStillExists: async (targetId) => psqlSync(
+        `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id=${sqlLiteral(targetId)}::uuid);`,
+      ).trim() === 't',
+    });
   }
 }

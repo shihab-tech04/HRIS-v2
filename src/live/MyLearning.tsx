@@ -26,6 +26,7 @@ type LearningProgram = {
   delivery_mode: string;
   duration_hours: number | null;
   self_enrollment: boolean;
+  completion_evidence_required: boolean;
   target_skills: string[];
   sessions: LearningSession[];
 };
@@ -47,6 +48,7 @@ type Enrollment = {
   resolution_note: string | null;
   completed_at: string | null;
   certificate_url: string | null;
+  completion_evidence_required?: boolean;
   created_at: string;
   completion_submitted_at?: string | null;
   completion_evidence_name?: string | null;
@@ -267,6 +269,10 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
     if (completionSavingId) return;
     const requestedTenant = tenantId;
     const file = completionEvidence[enrollment.id] || null;
+    if (enrollment.completion_evidence_required && !file) {
+      setCompletionError(tx('Attach the required completion evidence before submitting.'));
+      return;
+    }
     let uploadedPath: string | null = null;
     setCompletionSavingId(enrollment.id);
     setCompletionError('');
@@ -489,6 +495,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
             const key = `${program.id}:${sessionId || 'none'}`;
             return <article key={program.id} data-learning-program={program.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium text-[#615E83]">{program.category || tx('Learning program')}{program.provider ? ` · ${program.provider}` : ''}</p><h4 className="mt-1 break-words text-lg font-semibold text-[#1E1B39]">{program.title}</h4></div><span className="shrink-0 rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#08558B]">{tx(program.delivery_mode.replaceAll('_', ' '))}</span></div>
+              {program.completion_evidence_required && <p className="mt-2 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900">{tx('Completion evidence required')}</p>}
               {program.description && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-600">{program.description}</p>}
               <dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">{tx("Duration")}</dt><dd className="mt-1 font-medium text-slate-800">{program.duration_hours === null ? tx('Not specified') : `${program.duration_hours} ${tx('hours')}`}</dd></div><div><dt className="text-xs text-slate-500">{tx("Scheduled sessions")}</dt><dd className="mt-1 font-medium text-slate-800">{program.sessions.length}</dd></div></dl>
               {program.target_skills.length > 0 && <div className="mt-3"><p className="text-xs font-medium text-slate-500">{tx("Target skills")}</p><p className="mt-1 break-words text-sm text-slate-700">{program.target_skills.join(' · ')}</p></div>}
@@ -511,6 +518,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
         : enrollments.length === 0 ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx("Your learning activity will appear here after you enroll or request a program.")}</p>
         : <div className="grid min-w-0 gap-3 lg:grid-cols-2">{enrollments.map(enrollment => {
           const certificateUrl = safeMeetingUrl(enrollment.certificate_url || undefined);
+          const evidenceRequired = enrollment.completion_evidence_required === true;
           return <article key={enrollment.id} data-learning-enrollment={enrollment.id} data-learning-status={enrollment.status} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-slate-500">{enrollment.mandatory ? tx('Assigned learning') : statusName(enrollment.source, tx)}</p><h4 className="mt-1 break-words font-semibold text-slate-900">{enrollment.program_title}</h4></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{statusName(enrollment.status, tx)}</span></div>
               {enrollment.session_start_at && <p className="mt-2 text-sm text-slate-600">{dateTime(enrollment.session_start_at, locale, tx)}{enrollment.session_location ? ` · ${enrollment.session_location}` : ''}</p>}
               {enrollment.status === 'enrolled' && safeMeetingUrl(joinLinks[enrollment.id]) && <a href={safeMeetingUrl(joinLinks[enrollment.id])!} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#B9DCE2] bg-[#F8FCFC] px-3 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">{tx("Join online session")}<ExternalLink className="h-4 w-4" aria-hidden="true" /></a>}
@@ -525,9 +533,9 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
               {enrollment.completion_history && enrollment.completion_history.length > 0 && <details className="mt-3 rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-medium text-slate-700">{tx('Completion review history')}</summary><ol className="mt-2 space-y-2">{enrollment.completion_history.map((event, index) => <li key={`${event.event_type}-${event.created_at}-${index}`} className="border-l-2 border-[#B9DCE2] pl-3 text-xs text-slate-600"><p className="font-medium">{tx(event.event_type === 'returned_for_correction' ? 'Returned for correction' : event.event_type === 'verified' ? 'Verified' : event.event_type === 'resubmitted' ? 'Resubmitted' : 'Submitted for verification')} · {dateTime(event.created_at, locale, tx)}</p>{event.reason && <p className="mt-1 whitespace-pre-wrap break-words">{event.reason}</p>}{event.evidence_name && <p className="mt-1 break-all">{tx('Supporting evidence:')} {event.evidence_name}</p>}</li>)}</ol></details>}
               {certificateUrl && <a href={certificateUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center text-sm font-medium text-[#08558B] underline">{tx("View certificate")}</a>}
               {(enrollment.status === 'enrolled' || enrollment.status === 'returned_for_correction') && <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
-                <label className="block text-xs font-medium text-slate-700">{tx('Supporting evidence (optional)')}<input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={Boolean(completionSavingId)} onChange={event => { setCompletionError(''); setCompletionEvidence(current => ({ ...current, [enrollment.id]: event.target.files?.[0] || null })); }} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs file:mr-3 file:min-h-8 file:rounded-md file:border-0 file:bg-[#EFF7F8] file:px-3 file:text-xs file:font-medium file:text-[#08558B]" /></label>
-                <p className="text-xs text-slate-500">{completionEvidence[enrollment.id]?.name || tx('No evidence selected. Evidence is optional until your organization configures a requirement.')}</p>
-                <button type="button" disabled={Boolean(completionSavingId) || loading} onClick={() => void submitCompletion(enrollment)} className="min-h-11 w-full rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white hover:bg-[#06466F] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{completionSavingId === enrollment.id ? tx('Submitting…') : tx(enrollment.status === 'returned_for_correction' ? 'Resubmit for verification' : 'Mark completed')}</button>
+                <label className="block text-xs font-medium text-slate-700">{tx(evidenceRequired ? 'Supporting evidence (required)' : 'Supporting evidence (optional)')}<input type="file" required={evidenceRequired} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={Boolean(completionSavingId)} onChange={event => { setCompletionError(''); setCompletionEvidence(current => ({ ...current, [enrollment.id]: event.target.files?.[0] || null })); }} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs file:mr-3 file:min-h-8 file:rounded-md file:border-0 file:bg-[#EFF7F8] file:px-3 file:text-xs file:font-medium file:text-[#08558B]" /></label>
+                <p className="text-xs text-slate-500">{completionEvidence[enrollment.id]?.name || tx(evidenceRequired ? 'Select a PDF, PNG, or JPEG evidence file to submit.' : 'No evidence selected. You can attach evidence if it is available.')}</p>
+                <button type="button" disabled={Boolean(completionSavingId) || loading || (evidenceRequired && !completionEvidence[enrollment.id])} onClick={() => void submitCompletion(enrollment)} className="min-h-11 w-full rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white hover:bg-[#06466F] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{completionSavingId === enrollment.id ? tx('Submitting…') : tx(enrollment.status === 'returned_for_correction' ? 'Resubmit for verification' : 'Mark completed')}</button>
               </div>}
               {isOpen(enrollment) && enrollment.mandatory && <p className="mt-3 text-xs text-slate-500">{tx("This enrollment was assigned and cannot be cancelled here.")}</p>}
               {isOpen(enrollment) && !enrollment.mandatory && <button type="button" disabled={Boolean(savingKey)} onClick={() => setCancelTarget(enrollment)} className="mt-3 min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 disabled:opacity-50">{tx("Cancel enrollment")}</button>}

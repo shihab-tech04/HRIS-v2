@@ -26,6 +26,7 @@ type Program = {
   delivery_mode: string;
   duration_hours: number | null;
   self_enrollment: boolean;
+  completion_evidence_required: boolean;
   target_skills: string[];
   active: boolean;
   enrollment_count: number;
@@ -51,6 +52,7 @@ type ProgramDraft = {
   deliveryMode: string;
   durationHours: string;
   selfEnrollment: boolean;
+  completionEvidenceRequired: boolean;
   targetSkills: string;
   active: boolean;
 };
@@ -68,7 +70,7 @@ type SessionDraft = {
 
 const emptyProgram = (): ProgramDraft => ({
   title: '', description: '', category: '', provider: '', deliveryMode: 'in_person',
-  durationHours: '', selfEnrollment: false, targetSkills: '', active: true,
+  durationHours: '', selfEnrollment: false, completionEvidenceRequired: false, targetSkills: '', active: true,
 });
 const emptySession = (programId: string): SessionDraft => ({
   programId, sessionId: null, trainerName: '', startAt: '', endAt: '',
@@ -214,7 +216,8 @@ export function LearningProgramAdmin({ tenantId, locale }: { tenantId: string; l
       title: program.title, description: program.description || '', category: program.category || '',
       provider: program.provider || '', deliveryMode: program.delivery_mode,
       durationHours: program.duration_hours === null ? '' : String(program.duration_hours),
-      selfEnrollment: program.self_enrollment, targetSkills: program.target_skills.join(', '), active: program.active,
+      selfEnrollment: program.self_enrollment, completionEvidenceRequired: program.completion_evidence_required,
+      targetSkills: program.target_skills.join(', '), active: program.active,
     });
     setSessionDraft(null);
     document.getElementById('learning-program-title')?.focus();
@@ -240,6 +243,7 @@ export function LearningProgramAdmin({ tenantId, locale }: { tenantId: string; l
         p_self_enrollment: programDraft.selfEnrollment,
         p_target_skills: skills,
         p_active: programDraft.active,
+        p_completion_evidence_required: programDraft.completionEvidenceRequired,
       });
       if (result.error) throw result.error;
       setMessage(tx(editingProgramId ? 'Learning program updated.' : 'Learning program created.'));
@@ -334,6 +338,7 @@ export function LearningProgramAdmin({ tenantId, locale }: { tenantId: string; l
         <label className={labelClass}>{tx('Target skills')} <span className="font-normal">({tx('comma-separated')})</span><input maxLength={2000} value={programDraft.targetSkills} onChange={event => setProgramDraft(value => ({ ...value, targetSkills: event.target.value }))} className={fieldClass}/></label>
         <label className={`${labelClass} sm:col-span-2`}>{tx("Description")}<textarea rows={3} maxLength={4000} value={programDraft.description} onChange={event => setProgramDraft(value => ({ ...value, description: event.target.value }))} className={`${fieldClass} resize-y`}/></label>
         <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={programDraft.selfEnrollment} onChange={event => setProgramDraft(value => ({ ...value, selfEnrollment: event.target.checked }))} className="h-4 w-4 accent-[#08558B]"/>{tx("Employees may enroll directly")}</label>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={programDraft.completionEvidenceRequired} onChange={event => setProgramDraft(value => ({ ...value, completionEvidenceRequired: event.target.checked }))} className="h-4 w-4 accent-[#08558B]"/>{tx("Require evidence before completion can be verified")}</label>
         <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={programDraft.active} onChange={event => setProgramDraft(value => ({ ...value, active: event.target.checked }))} className="h-4 w-4 accent-[#08558B]"/>{tx("Show this program in the employee catalog")}</label>
       </div>
       <p className="mt-2 text-xs text-slate-500">{tx("If direct enrollment is off, employees submit a request for manager review. Inactive programs stay in the manager list but are hidden from the employee catalog.")}</p>
@@ -345,6 +350,7 @@ export function LearningProgramAdmin({ tenantId, locale }: { tenantId: string; l
         : <div className="grid min-w-0 gap-3 xl:grid-cols-2">{programs.map(program => <article key={program.id} data-admin-learning-program={program.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium text-[#615E83]">{program.category || tx('Learning program')}{program.provider ? ` · ${program.provider}` : ''}</p><h3 className="mt-1 break-words text-lg font-semibold text-[#1E1B39]">{program.title}</h3></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${program.active ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{tx(program.active ? 'Active' : 'Inactive')}</span></div>
           <p className="mt-2 text-sm text-slate-600">{tx(program.self_enrollment ? 'Direct enrollment' : 'Manager approval required')} · {program.enrollment_count} {tx('open enrollments')}</p>
+          {program.completion_evidence_required && <p className="mt-2 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900">{tx('Completion evidence required')}</p>}
           {program.description && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">{program.description}</p>}
           <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => editProgram(program)} aria-label={tx('Edit program {program}', { program: program.title })} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium"><Pencil className="h-4 w-4" aria-hidden="true"/>{tx("Edit program")}</button><button type="button" disabled={saving || !program.active} onClick={() => editSession(program)} aria-label={tx('Schedule session for {program}', { program: program.title })} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#08558B] px-3 text-sm font-medium text-white disabled:opacity-50"><Plus className="h-4 w-4" aria-hidden="true"/>{tx("Schedule session")}</button></div>
           {program.sessions.length === 0 ? <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx("No sessions scheduled.")}</p> : <ul className="mt-4 divide-y divide-slate-100">{program.sessions.map(session => {
