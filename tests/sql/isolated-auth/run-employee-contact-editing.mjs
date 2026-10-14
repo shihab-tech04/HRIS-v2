@@ -129,6 +129,7 @@ const emails = [
 const password = randomBytes(24).toString('base64url');
 const createdUserIds = [];
 const results = [];
+let fixtureReady = false;
 function record(name, passed, detail = '') {
   results.push({ name, passed: Boolean(passed) });
   console.log(`${passed ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
@@ -177,7 +178,15 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
 UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='employee-b@hris.test')
   WHERE id='66666666-6666-4666-8666-666666666666'::uuid;`);
   }
+  fixtureReady = true;
   psql("NOTIFY pgrst, 'reload schema';");
+  psql(`UPDATE public.employees SET official_email='employee-a@hris.test',personal_email='personal-a@hris.test',
+    phone='+880 1700 000001',official_phone='+880 2 5550001',address='QA A home address',
+    mailing_address='QA A mailing address',emergency_contact_name='QA A emergency contact',
+    emergency_contact_phone='+880 1700 000101',emergency_contact_relation='Parent'
+    WHERE id='55555555-5555-4555-8555-555555555555'::uuid;
+    DELETE FROM public.admin_audit_logs WHERE target_id='55555555-5555-4555-8555-555555555555'
+      AND action='employee.contact_details_updated';`);
   await new Promise(resolve => setTimeout(resolve, 500));
 
   async function signIn(email) {
@@ -189,6 +198,7 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
   }
   const managerA = await signIn('manager-a@hris.test');
   const managerB = await signIn('manager-b@hris.test');
+  const directoryViewer = await signIn('employee-directory-a@hris.test');
   const anonymous = createClient(services.API_URL, services.ANON_KEY, authOptions);
   const tenantA = '11111111-1111-4111-8111-111111111111';
   const tenantB = '22222222-2222-4222-8222-222222222222';
@@ -315,22 +325,29 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
     JSON.stringify({ membership: inactiveMembership.error?.code, tenantRead: inactiveTenantRead.error?.code,
       tenantWrite: inactiveTenantWrite.error?.code }));
 
-  const browserOutput = execFileSync('node', [path.join(here, 'run-employee-directory-browser.mjs')], {
-    cwd: repo,
-    env: {
-      ...process.env,
-      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
-      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
-      HRIS_LOCAL_TEST_PASSWORD: password,
-      HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL: 'manager-a@hris.test',
-      HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL: 'manager-a@hris.test',
-      HRIS_LOCAL_EMPLOYEE_DIRECTORY_VIEWER_SESSION: JSON.stringify(managerA.session),
-      HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_SESSION: JSON.stringify(managerA.session),
-      HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID: tenantA,
-    },
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  let browserOutput = '';
+  let browserError = '';
+  try {
+    browserOutput = execFileSync('node', [path.join(here, 'run-employee-directory-browser.mjs')], {
+      cwd: repo,
+      env: {
+        ...process.env,
+        HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+        HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+        HRIS_LOCAL_TEST_PASSWORD: password,
+        HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL: 'employee-directory-a@hris.test',
+        HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL: 'manager-a@hris.test',
+        HRIS_LOCAL_EMPLOYEE_DIRECTORY_VIEWER_SESSION: JSON.stringify(directoryViewer.session),
+        HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_SESSION: JSON.stringify(managerA.session),
+        HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID: tenantA,
+      },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (error) {
+    browserError = String(error?.stderr || error?.message || 'Browser journey failed.')
+      .trim().split('\n').slice(-5).join(' ').slice(0, 600);
+  }
   const afterBrowser = jsonQuery(`SELECT jsonb_build_object('official_email',official_email,'phone',phone,
     'address',address,'team_id',team_id,'department_id',department_id,'designation_id',designation_id,
     'joining_date',joining_date,'employment_status',employment_status)
@@ -342,21 +359,51 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
       && afterBrowser.team_id === 'dddddddd-0000-4000-8000-000000000001'
       && afterBrowser.department_id === 'eeeeeeee-0000-4000-8000-000000000001'
       && afterBrowser.designation_id === 'ffffffff-0000-4000-8000-000000000001'
-      && afterBrowser.joining_date === '2026-01-01' && afterBrowser.employment_status === 'active',
-    browserOutput.split('\n').at(-1));
+      && afterBrowser.joining_date === '2026-01-01' && afterBrowser.employment_status === 'active'
+      && !browserError,
+    browserError || browserOutput.split('\n').at(-1));
+} catch (error) {
+  record('Focused Phase 05 acceptance setup and backend execution completes', false,
+    `${error?.name || 'Error'}: ${String(error?.message || error).split('\n')[0].slice(0, 240)}`);
 } finally {
-  for (const userId of createdUserIds) {
-    await deleteTrackedAuthUser({
-      userId,
-      deleteUser: () => admin.auth.admin.deleteUser(userId),
-      userStillExists: async id => psql(`SELECT EXISTS(SELECT 1 FROM auth.users WHERE id=${sqlLiteral(id)}::uuid);`) === 't',
-    });
+  if (fixtureReady) {
+    try {
+      psql(`UPDATE public.employees SET official_email='employee-a@hris.test',personal_email='personal-a@hris.test',
+        phone='+880 1700 000001',official_phone='+880 2 5550001',address='QA A home address',
+        mailing_address='QA A mailing address',emergency_contact_name='QA A emergency contact',
+        emergency_contact_phone='+880 1700 000101',emergency_contact_relation='Parent'
+        WHERE id='55555555-5555-4555-8555-555555555555'::uuid;
+        DELETE FROM public.admin_audit_logs WHERE target_id='55555555-5555-4555-8555-555555555555'
+          AND action='employee.contact_details_updated';`);
+    } catch (error) {
+      record('Synthetic contact fixture and audit history reset', false,
+        `${error?.name || 'Error'}: ${String(error?.message || error).split('\n')[0].slice(0, 240)}`);
+    }
   }
+  const cleanupFailures = [];
+  for (const userId of createdUserIds) {
+    try {
+      await deleteTrackedAuthUser({
+        userId,
+        deleteUser: () => admin.auth.admin.deleteUser(userId),
+        userStillExists: async id => psql(`SELECT EXISTS(SELECT 1 FROM auth.users WHERE id=${sqlLiteral(id)}::uuid);`) === 't',
+      });
+    } catch (error) {
+      cleanupFailures.push(`${error?.status || error?.code || error?.name || 'error'}`);
+    }
+  }
+  record('Tracked synthetic Auth identities are deleted', cleanupFailures.length === 0,
+    cleanupFailures.length ? `${cleanupFailures.length} of ${createdUserIds.length} deletions failed` : `deleted=${createdUserIds.length}`);
 }
 
-const remainingUsers = Number(psql('SELECT count(*) FROM auth.users;'));
-record('All synthetic Auth identities are removed from the disposable test project', remainingUsers === 0,
-  `remaining=${remainingUsers}`);
+try {
+  const remainingUsers = Number(psql('SELECT count(*) FROM auth.users;'));
+  record('All synthetic Auth identities are removed from the disposable test project', remainingUsers === 0,
+    `remaining=${remainingUsers}`);
+} catch (error) {
+  record('All synthetic Auth identities are removed from the disposable test project', false,
+    `cleanup verification unavailable: ${error?.name || 'Error'}`);
+}
 const failed = results.filter(result => !result.passed);
 console.log(`\nPhase 05 isolated acceptance: ${results.length - failed.length}/${results.length} passed; ${failed.length} failed.`);
 if (failed.length) process.exitCode = 1;
