@@ -10,6 +10,7 @@
 - Phase 10/11 Main task and peer-review functionality remains preserved at the prior checkpoint. No production changes, paid services, GitHub push, or deployment.
 - Canonical story count: **0/1,047 mapped and accepted; 1,047 pending** exact source bytes and story-level evidence.
 - Details: `EXECUTION_CHECKPOINT_20261014_0822.md`; evidence: `ACCEPTANCE_EVIDENCE_20261014_0822.md`; current ledger: `MASTER_PHASE_LEDGER.md`.
+- Versioned Drive archive and records were uploaded and read back; see `DRIVE_PRESERVATION_RECEIPT_20261014_0822.md`.
 - Next: continue the next complete product journey from the phase ledger, preserving the Phase 10/11 and Candidate regressions.
 
 ## Current checkpoint — persisted Candidate application history
