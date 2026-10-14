@@ -26,7 +26,7 @@ The approved release/completion eligibility rule is enforced in the existing ten
 ## Test results
 
 - `node --test tests/contracts/employee-directory.test.mjs tests/contracts/project-task-peer-review.test.mjs`: **14 passed, 0 failed**.
-- `node tests/sql/isolated-auth/run-local.mjs`: **206 passed, 0 failed** against a new disposable local Supabase project on ports 58420–58429. This includes real Auth, Postgres, RLS, tenant isolation, project/review security, and the updated directory browser journey. The previously populated local Auth services were left untouched.
+- `node tests/sql/isolated-auth/run-local.mjs`: **206 passed, 0 failed**. Correction: the 06:38 invocation did not set `HRIS_SUPABASE_TEST_WORKDIR`; it used the runner default `/private/tmp/synesis-local-hris-test` on ports 55421/55422, not the newly named disposable stack. Do not use that run as proof of the fresh-stack requirement. The complete fresh-stack result is recorded in `ACCEPTANCE_EVIDENCE_20261014_0650.md`. Previously populated local Auth services were left untouched.
 - `npm run check`: TypeScript PASS; **117/117 contract tests PASS**; Vite production build PASS. Existing bundle-size advisory remains.
 - `npm run test:e2e`: **50/50 Chromium tests PASS**. The first attempt was blocked by sandbox loopback binding (`EPERM`); the same suite passed after granting local-only preview-server access.
 - Generated screenshots from the regression runner were restored; no unrelated screenshot evidence changed.
