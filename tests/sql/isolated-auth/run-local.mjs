@@ -314,6 +314,8 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013221500_hris_candidate_interview_journey.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014153343_hris_candidate_interview_panel_debrief.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013203000_hris_travel_request_workflow.sql'),
@@ -1597,7 +1599,7 @@ UPDATE public.jobs SET status='published',is_published=true,is_active=true
   WHERE id IN ('${recruitmentIds.jobA1}'::uuid,'${recruitmentIds.jobA2}'::uuid,'${recruitmentIds.jobB}'::uuid);
 INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,phone,years_experience,skills,cv_url,cover_letter,stage,status_note,applied_at,application_data) VALUES
   ('${recruitmentIds.applicationA1}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA1}'::uuid,'${assessmentCandidateA.userId}'::uuid,'Candidate A One','private-email-a@candidate.test','private-phone-a',5,ARRAY['sql'],'private-cv-url-a','private-cover-letter-a','submitted','private-status-note-a','2026-10-12T09:00:00Z','{"answer":"private-screening-answer-a"}'),
-  ('${recruitmentIds.applicationA2}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA2}'::uuid,'55555555-5555-4555-8555-555555555582'::uuid,'Candidate A Two','private-email-a2@candidate.test','private-phone-a2',3,ARRAY['design'],'private-cv-url-a2','private-cover-letter-a2','interview_scheduled','private-status-note-a2','2026-10-12T10:00:00Z','{"answer":"private-screening-answer-a2"}'),
+  ('${recruitmentIds.applicationA2}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA2}'::uuid,'${assessmentCandidateA.userId}'::uuid,'Candidate A Two','private-email-a2@candidate.test','private-phone-a2',3,ARRAY['design'],'private-cv-url-a2','private-cover-letter-a2','interview_scheduled','private-status-note-a2','2026-10-12T10:00:00Z','{"answer":"private-screening-answer-a2"}'),
   ('${recruitmentIds.applicationB}'::uuid,'${ids.tenantB}'::uuid,'${recruitmentIds.jobB}'::uuid,'66666666-6666-4666-8666-666666666681'::uuid,'Candidate B Only','private-email-b@candidate.test','private-phone-b',2,ARRAY['ops'],'private-cv-url-b','private-cover-letter-b','submitted','private-status-note-b','2026-10-12T11:00:00Z','{"answer":"private-screening-answer-b"}');
 INSERT INTO public.candidate_profiles(user_id,tenant_id,profile_status) VALUES
   ('${assessmentCandidateA.userId}'::uuid,'${ids.tenantA}'::uuid,'active'),
@@ -1667,9 +1669,63 @@ record('Recruitment pipeline rejects no-permission, global-only and anonymous ca
 record('Recruitment pipeline immediately denies an inactive membership',
   Boolean(recruitmentInactiveMembership.error?.code === '42501'));
 
+const interviewTime = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 19);
+const interviewSchedule = await recruitmentManagerA.client.rpc('hris_schedule_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA2,
+  p_round_name: 'Design Interview', p_format: 'Video Call', p_scheduled_at: interviewTime,
+  p_duration_minutes: 45, p_location_or_link: 'https://meet.example.test/hris-interview',
+  p_panel_members: ['Design Lead', 'People Partner'], p_instructions: 'Join from a quiet location.',
+});
+const interviewId = interviewSchedule.data?.interview_id;
+const unauthorizedInterviewSchedule = await recruiterOnly.client.rpc('hris_schedule_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA2,
+  p_round_name: 'Unauthorized', p_format: 'Phone Call', p_scheduled_at: interviewTime, p_duration_minutes: 30,
+});
+const crossTenantInterviewSchedule = await recruitmentManagerA.client.rpc('hris_schedule_candidate_interview', {
+  p_tenant_id: ids.tenantB, p_application_id: recruitmentIds.applicationA2,
+  p_round_name: 'Cross-tenant', p_format: 'Phone Call', p_scheduled_at: interviewTime, p_duration_minutes: 30,
+});
+const candidateBInterviewResponse = await assessmentCandidateB.client.rpc('candidate_respond_interview', {
+  p_interview_id: interviewId, p_response: 'confirmed',
+});
+const candidateAInterviewResponse = await assessmentCandidateA.client.rpc('candidate_respond_interview', {
+  p_interview_id: interviewId, p_response: 'confirmed',
+});
+const interviewResponsesBeforeNotes = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', {
+  p_tenant_id: ids.tenantA,
+});
+const interviewResponseBeforeNotes = interviewResponsesBeforeNotes.data?.find(row => row.id === interviewId);
+record('Recruiter schedules an interview, candidate owner confirms it, and other tenant identities are denied',
+  !interviewSchedule.error && Boolean(interviewId)
+    && Boolean(unauthorizedInterviewSchedule.error?.code === '42501')
+    && Boolean(crossTenantInterviewSchedule.error?.code === '42501')
+    && Boolean(candidateBInterviewResponse.error?.code === 'P0002')
+    && !candidateAInterviewResponse.error && candidateAInterviewResponse.data?.response === 'confirmed'
+    && !interviewResponsesBeforeNotes.error && interviewResponseBeforeNotes?.candidate_response === 'confirmed'
+    && interviewResponseBeforeNotes.panel_notes === null);
+
+const viewOnlyInterviewResponses = await recruiterOnly.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
+const crossTenantInterviewResponses = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantB });
+const candidateInterviewResponses = await assessmentCandidateA.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
+const candidateInterviewNoteWrite = await assessmentCandidateA.client.rpc('hris_save_candidate_interview_panel_notes', {
+  p_tenant_id: ids.tenantA, p_interview_id: interviewId, p_panel_notes: 'Candidate cannot write private notes.',
+});
+const oversizedPanelNotes = await recruitmentManagerA.client.rpc('hris_save_candidate_interview_panel_notes', {
+  p_tenant_id: ids.tenantA, p_interview_id: interviewId, p_panel_notes: 'x'.repeat(4001),
+});
+const directInterviewNotes = await recruitmentManagerA.client.from('interviews').select('panel_notes').eq('id', interviewId);
+record('Private interview notes require active same-tenant recruitment management and server-side validation',
+  Boolean(viewOnlyInterviewResponses.error?.code === '42501')
+    && Boolean(crossTenantInterviewResponses.error?.code === '42501')
+    && Boolean(candidateInterviewResponses.error?.code === '42501')
+    && Boolean(candidateInterviewNoteWrite.error?.code === '42501')
+    && Boolean(oversizedPanelNotes.error?.code === '22023')
+    && Boolean(directInterviewNotes.error));
+
 const assessmentDeadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const assessmentTitle = 'QA Assessment Review A';
 const assessmentPrivateNote = 'Internal review note from isolated browser acceptance.';
+const interviewPanelNote = 'Panel debrief: clear examples and follow-up items from the isolated interview.';
 const assessmentAssignment = await recruitmentManagerA.client.rpc('hris_assign_candidate_assessment', {
   p_tenant_id: ids.tenantA,
   p_application_id: recruitmentIds.applicationA1,
@@ -1736,6 +1792,9 @@ try {
       HRIS_LOCAL_RECRUITMENT_EMAIL: emails[16],
       HRIS_LOCAL_ASSESSMENT_TITLE: assessmentTitle,
       HRIS_LOCAL_ASSESSMENT_REVIEW_NOTE: assessmentPrivateNote,
+      HRIS_LOCAL_INTERVIEW_ID: interviewId,
+      HRIS_LOCAL_INTERVIEW_PANEL_NOTES: interviewPanelNote,
+      HRIS_LOCAL_APPLICATION_A2_ID: recruitmentIds.applicationA2,
       HRIS_LOCAL_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',
@@ -1750,6 +1809,18 @@ record('Real 375px/1280px browser reads the tenant-scoped recruitment pipeline f
 record('Candidate assessment manager UI assigns work and saves a private note across EN/BN, cancel/retry, refresh, and mobile/desktop',
   recruitmentBrowserOutput.includes('Candidate assessment assignment and internal review note persisted after refresh; EN/BN, cancel, mobile, and desktop passed.'),
   recruitmentBrowserError);
+const interviewAfterBrowser = queryAdmin(`SELECT jsonb_build_object('panel_notes',panel_notes,'candidate_response',candidate_response)
+  FROM public.interviews WHERE id=${sqlLiteral(interviewId)}::uuid`);
+const managerInterviewRowsAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
+const managerInterviewAfterBrowser = managerInterviewRowsAfterBrowser.data?.find(row => row.id === interviewId);
+const candidateDirectInterviewRead = await assessmentCandidateA.client.from('interviews').select('panel_notes').eq('id', interviewId);
+record('Recruitment manager debrief saves through the tenant RPC, survives refresh, and stays hidden from candidate table reads',
+  recruitmentBrowserOutput.includes('Interview scheduling and private panel debrief persist through Auth/Postgres; failure retry, cancel, EN/BN, refresh, and 375px/1280px passed.')
+    && interviewAfterBrowser.panel_notes === interviewPanelNote
+    && interviewAfterBrowser.candidate_response === 'confirmed'
+    && !managerInterviewRowsAfterBrowser.error && managerInterviewAfterBrowser?.panel_notes === interviewPanelNote
+    && Boolean(candidateDirectInterviewRead.error),
+  recruitmentBrowserError || (candidateDirectInterviewRead.error?.message ?? ''));
 const assessmentAfterBrowser = queryAdmin(`SELECT jsonb_build_object('status',status,'note',review_note,'reviewer',reviewed_by,'reviewed_at',reviewed_at)
   FROM public.candidate_assessments WHERE id=${sqlLiteral(assessmentId)}::uuid`);
 const assessmentManagerReadAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
@@ -1822,9 +1893,10 @@ record('Recruiter stage transitions persist one sanitized history event per acce
     && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
     && !transitionHistoryA1.error && transitionHistoryA1.data.filter(row => row.stage === 'under_review' || row.stage === 'screening').length === 2
     && transitionHistoryA1.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
-    && !transitionHistoryA2.error && transitionHistoryA2.data.length === 1
-    && transitionHistoryA2.data[0].stage === 'rejected'
-    && transitionHistoryA2.data[0].actor_user_id === recruitmentManagerA.userId
+    && !transitionHistoryA2.error && transitionHistoryA2.data.length === 2
+    && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 1
+    && transitionHistoryA2.data.filter(row => row.stage === 'rejected').length === 1
+    && transitionHistoryA2.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
     && repeatedStage.data?.changed === false
     && candidateA1Milestones.some(row => row.stage === 'under_review')
     && candidateA1Milestones.some(row => row.stage === 'screening')

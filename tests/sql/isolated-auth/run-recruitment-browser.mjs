@@ -6,6 +6,8 @@ const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
   'HRIS_LOCAL_RECRUITMENT_EMAIL', 'HRIS_LOCAL_TENANT_ID',
   'HRIS_LOCAL_ASSESSMENT_TITLE', 'HRIS_LOCAL_ASSESSMENT_REVIEW_NOTE',
+  'HRIS_LOCAL_INTERVIEW_ID', 'HRIS_LOCAL_INTERVIEW_PANEL_NOTES',
+  'HRIS_LOCAL_APPLICATION_A2_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -62,6 +64,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
   const directoryReads = [];
+  let failNextPanelNotesSave = true;
   page.on('request', request => {
     const url = new URL(request.url());
     if (url.pathname.endsWith('/rest/v1/employees') && url.searchParams.get('select') === 'id,full_name,employee_number,employment_status') {
@@ -71,6 +74,10 @@ try {
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_save_candidate_interview_panel_notes') && failNextPanelNotesSave) {
+      failNextPanelNotesSave = false;
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic one-time save failure.' }) });
+    }
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
     return route.abort();
@@ -78,8 +85,9 @@ try {
   await signIn(page);
   if (directoryReads.length) throw new Error(`Recruitment-only membership attempted unrelated directory reads: ${directoryReads.join(', ')}.`);
   await openRecruitmentPipeline(page);
+  const applicationA2 = page.locator(`[data-application-id="${process.env.HRIS_LOCAL_APPLICATION_A2_ID}"]`);
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
-  await page.getByText('Candidate A Two', { exact: true }).waitFor({ state: 'visible' });
+  await applicationA2.waitFor({ state: 'visible' });
   if (await page.getByText('Candidate B Only', { exact: true }).count()) throw new Error('Tenant B candidate appeared in tenant A queue.');
   for (const marker of ['private-email-a@candidate.test', 'private-phone-a', 'private-cv-url-a', 'private-cover-letter-a', 'private-reviewer-note-a']) {
     if (await page.getByText(marker, { exact: false }).count()) throw new Error(`Private application content was rendered: ${marker}.`);
@@ -92,13 +100,13 @@ try {
   const searchResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_recruitment_pipeline'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await searchResponse;
-  await page.getByText('Candidate A Two', { exact: true }).waitFor({ state: 'detached' });
+  await applicationA2.waitFor({ state: 'detached' });
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
-  if (await page.getByText('Candidate A Two', { exact: true }).count()) throw new Error('Recruitment search did not filter the current application set.');
+  if (await applicationA2.count()) throw new Error('Recruitment search did not filter the current application set.');
   const stageResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_recruitment_pipeline'));
   await page.getByLabel('Filter candidate applications by stage').selectOption('submitted');
   await stageResponse;
-  await page.getByText('Candidate A Two', { exact: true }).waitFor({ state: 'detached' });
+  await applicationA2.waitFor({ state: 'detached' });
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Recruitment filtered mobile');
 
@@ -112,7 +120,7 @@ try {
   const resetResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_recruitment_pipeline'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await resetResponse;
-  await page.getByText('Candidate A Two', { exact: true }).waitFor({ state: 'visible' });
+  await applicationA2.waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 375, height: 812 });
   const firstApplication = page.getByText('Candidate A One', { exact: true }).locator('xpath=ancestor::li');
   await firstApplication.getByText('Update application progress', { exact: true }).click();
@@ -130,7 +138,7 @@ try {
   await firstApplication.getByText('View candidate-visible milestones', { exact: true }).click();
   await firstApplication.getByText('Screening', { exact: true }).last().waitFor({ state: 'visible' });
 
-  const secondApplication = page.getByText('Candidate A Two', { exact: true }).locator('xpath=ancestor::li');
+  const secondApplication = applicationA2;
   await secondApplication.getByText('Update application progress', { exact: true }).click();
   await secondApplication.getByLabel('Next application stage for Candidate A Two').selectOption('rejected');
   await secondApplication.getByRole('button', { name: 'Save stage', exact: true }).click();
@@ -153,7 +161,7 @@ try {
   await refreshedFirstApplication.getByText('Screening', { exact: true }).first().waitFor({ state: 'visible' });
   await refreshedFirstApplication.getByText('View candidate-visible milestones', { exact: true }).click();
   await refreshedFirstApplication.getByText('Screening', { exact: true }).last().waitFor({ state: 'visible' });
-  const refreshedSecondApplication = page.getByText('Candidate A Two', { exact: true }).locator('xpath=ancestor::li');
+  const refreshedSecondApplication = applicationA2;
   await refreshedSecondApplication.getByText('Rejected', { exact: true }).first().waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Recruitment stage update mobile refresh');
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -161,6 +169,46 @@ try {
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Recruitment stage update desktop');
   await page.setViewportSize({ width: 375, height: 812 });
+  const interviewSection = page.getByRole('region', { name: 'Interview responses' });
+  const interviewCard = interviewSection.locator(`[data-interview-id="${process.env.HRIS_LOCAL_INTERVIEW_ID}"]`);
+  await interviewCard.waitFor({ state: 'visible' });
+  await interviewCard.getByText('Candidate accepted', { exact: true }).waitFor({ state: 'visible' });
+  await interviewCard.getByRole('button', { name: 'Add panel notes', exact: true }).click();
+  let panelNotesInput = interviewCard.getByLabel('Panel notes — Candidate A Two', { exact: true });
+  await panelNotesInput.fill('Cancelled panel draft must not persist.');
+  await interviewCard.getByRole('button', { name: 'Cancel', exact: true }).click();
+  if (await panelNotesInput.count()) throw new Error('Cancel left the internal interview note form open.');
+  let interviewRefresh = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_candidate_interview_responses'));
+  await interviewSection.getByRole('button', { name: 'Refresh interview responses', exact: true }).click();
+  await interviewRefresh;
+  await interviewCard.getByText('No internal panel notes have been recorded.', { exact: true }).waitFor({ state: 'visible' });
+  await interviewCard.getByRole('button', { name: 'Add panel notes', exact: true }).click();
+  panelNotesInput = interviewCard.getByLabel('Panel notes — Candidate A Two', { exact: true });
+  await panelNotesInput.fill(process.env.HRIS_LOCAL_INTERVIEW_PANEL_NOTES);
+  let panelNotesResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_candidate_interview_panel_notes'));
+  await interviewCard.getByRole('button', { name: 'Save panel notes', exact: true }).click();
+  const transientNotesResponse = await panelNotesResponse;
+  if (transientNotesResponse.status() !== 500) throw new Error(`Expected an injected one-time notes failure, received ${transientNotesResponse.status()}.`);
+  await interviewCard.getByRole('alert').waitFor({ state: 'visible' });
+  if (await panelNotesInput.inputValue() !== process.env.HRIS_LOCAL_INTERVIEW_PANEL_NOTES) throw new Error('Failed save did not preserve the panel note draft.');
+  panelNotesResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_save_candidate_interview_panel_notes'));
+  await interviewCard.getByRole('button', { name: 'Save panel notes', exact: true }).click();
+  const savedPanelNotesResponse = await panelNotesResponse;
+  if (!savedPanelNotesResponse.ok()) throw new Error(`Panel notes RPC failed with HTTP ${savedPanelNotesResponse.status()}.`);
+  await interviewCard.getByText(process.env.HRIS_LOCAL_INTERVIEW_PANEL_NOTES, { exact: true }).waitFor({ state: 'visible' });
+  interviewRefresh = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_candidate_interview_responses'));
+  await interviewSection.getByRole('button', { name: 'Refresh interview responses', exact: true }).click();
+  await interviewRefresh;
+  await interviewCard.getByText(process.env.HRIS_LOCAL_INTERVIEW_PANEL_NOTES, { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await interviewCard.getByText('প্যানেলের অভ্যন্তরীণ নোট', { exact: true }).waitFor({ state: 'visible' });
+  await interviewCard.getByRole('button', { name: 'প্যানেল নোট সম্পাদনা করুন', exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Bengali interview debrief mobile');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Bengali interview debrief desktop');
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.setViewportSize({ width: 375, height: 812 });
+
   const assessmentCard = page.getByText(process.env.HRIS_LOCAL_ASSESSMENT_TITLE, { exact: true }).locator('xpath=ancestor::li');
   await assessmentCard.getByRole('button', { name: 'Review submission', exact: true }).click();
   const reviewNoteInput = page.getByLabel('Internal review note', { exact: false });
@@ -201,6 +249,7 @@ try {
   await page.getByText('QA Assessment UI Assignment', { exact: true }).waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Candidate assessment assignment Bengali desktop');
+  console.log('Interview scheduling and private panel debrief persist through Auth/Postgres; failure retry, cancel, EN/BN, refresh, and 375px/1280px passed.');
   console.log('Candidate assessment assignment and internal review note persisted after refresh; EN/BN, cancel, mobile, and desktop passed.');
   console.log('Local Auth-to-Postgres recruitment stage workflow passed at 375px and 1280px; mobile+desktop refresh recovery passed.');
 } finally {

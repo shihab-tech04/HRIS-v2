@@ -48,6 +48,26 @@ CREATE TABLE public.candidate_profiles (
   profile_status text NOT NULL DEFAULT 'active'
 );
 
+CREATE TABLE public.interviews (
+  id uuid PRIMARY KEY,
+  application_id uuid NOT NULL,
+  scheduled_at timestamptz NOT NULL,
+  interview_type text NOT NULL,
+  location_or_link text,
+  panel_notes text,
+  status text NOT NULL,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  candidate_response text NOT NULL DEFAULT 'invited',
+  candidate_response_note text,
+  candidate_proposed_times text,
+  candidate_responded_at timestamptz,
+  duration_minutes integer NOT NULL DEFAULT 30,
+  timezone text NOT NULL DEFAULT 'Asia/Dhaka',
+  instructions text,
+  panel_members text[] NOT NULL DEFAULT '{}'
+);
+
 CREATE TABLE public.candidate_assessments (
   id uuid PRIMARY KEY,
   application_id uuid NOT NULL,
@@ -75,9 +95,11 @@ ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_application_stage_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_assessments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interviews ENABLE ROW LEVEL SECURITY;
 REVOKE ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history,
+  public.interviews,
   public.candidate_profiles,public.candidate_assessments
   FROM PUBLIC,anon,authenticated;
 GRANT ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history
   TO service_role;
-GRANT ALL PRIVILEGES ON TABLE public.candidate_profiles,public.candidate_assessments TO service_role;
+GRANT ALL PRIVILEGES ON TABLE public.interviews,public.candidate_profiles,public.candidate_assessments TO service_role;

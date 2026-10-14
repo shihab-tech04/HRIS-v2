@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
 import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
 import { CandidateAssessmentAssignment, CandidateAssessmentQueue } from './CandidateAssessments';
+import { candidateInterviewText } from './candidate-interview-locale';
 import type { Locale } from './project-locale';
 
 type Milestone = { stage: string; created_at: string };
@@ -216,18 +217,68 @@ type InterviewResponse = {
   candidate_response_note: string | null;
   candidate_proposed_times: string | null;
   timezone: string | null;
+  panel_notes: string | null;
 };
 
-function CandidateInterviewResponses({ tenantId, revision, onRescheduled }: {
+function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled }: {
   tenantId: string;
   revision: number;
+  locale: Locale;
   onRescheduled: (applicationId: string) => void;
 }) {
+  const tx = (text: string) => candidateInterviewText(locale, text);
+  const currentLocale = useRef(locale);
+  currentLocale.current = locale;
   const [rows, setRows] = useState<InterviewResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [expanded, setExpanded] = useState('');
+  const [editingNotes, setEditingNotes] = useState('');
+  const [panelNotesDraft, setPanelNotesDraft] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const [savedNotesFor, setSavedNotesFor] = useState('');
+
+  function startEditingNotes(row: InterviewResponse) {
+    setNotesError('');
+    setSavedNotesFor('');
+    setPanelNotesDraft(row.panel_notes || '');
+    setEditingNotes(row.id);
+  }
+
+  function cancelEditingNotes() {
+    if (savingNotes) return;
+    setEditingNotes('');
+    setPanelNotesDraft('');
+    setNotesError('');
+  }
+
+  async function savePanelNotes(event: FormEvent<HTMLFormElement>, row: InterviewResponse) {
+    event.preventDefault();
+    if (editingNotes !== row.id || savingNotes) return;
+    setSavingNotes(true);
+    setNotesError('');
+    try {
+      const result = await supabase.rpc('hris_save_candidate_interview_panel_notes', {
+        p_tenant_id: tenantId,
+        p_interview_id: row.id,
+        p_panel_notes: panelNotesDraft,
+      });
+      if (result.error) throw result.error;
+      if (result.data?.success !== true || result.data?.interview_id !== row.id) throw new Error('Interview note response was invalid.');
+      const savedNotes = typeof result.data.panel_notes === 'string' ? result.data.panel_notes : null;
+      setRows(current => current.map(item => item.id === row.id ? { ...item, panel_notes: savedNotes } : item));
+      setEditingNotes('');
+      setPanelNotesDraft('');
+      setSavedNotesFor(row.id);
+    } catch {
+      setNotesError(candidateInterviewText(currentLocale.current, 'Panel notes could not be saved. Your text is kept here; retry or refresh the interview responses.'));
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
   useEffect(() => {
     let current = true;
     setRows([]); setLoading(true); setError('');
@@ -238,7 +289,7 @@ function CandidateInterviewResponses({ tenantId, revision, onRescheduled }: {
         if (!Array.isArray(result.data)) throw new Error('Interview response service returned an invalid response.');
         if (current) setRows(result.data as InterviewResponse[]);
       } catch {
-        if (current) { setRows([]); setError('Interview responses could not be loaded. Check recruitment management access and retry.'); }
+        if (current) { setRows([]); setError(candidateInterviewText(currentLocale.current, 'Interview responses could not be loaded. Check recruitment management access and retry.')); }
       } finally { if (current) setLoading(false); }
     })();
     return () => { current = false; };
@@ -249,16 +300,33 @@ function CandidateInterviewResponses({ tenantId, revision, onRescheduled }: {
     declined: 'Candidate declined', reschedule_requested: 'Reschedule requested',
   };
   return <section aria-labelledby="interview-responses-heading" className="space-y-3">
-    <div><h3 id="interview-responses-heading" className="text-xl font-semibold text-[#1E1B39]">Interview responses</h3>
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 id="interview-responses-heading" className="text-xl font-semibold text-[#1E1B39]">Interview responses</h3>
       <p className="mt-1 text-sm text-slate-600">Candidate replies and rescheduling availability for this organization.</p></div>
-    {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{error} <button type="button" onClick={() => setRetry(value => value + 1)} className="font-semibold underline">Retry</button></div>}
-    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">Loading interview responses…</p>
-      : rows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">No interview invitations have been scheduled.</p>
-      : <ul className="space-y-3">{rows.map(row => <li key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} aria-label={tx('Refresh interview responses')} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="mr-2 inline h-4 w-4" aria-hidden="true" />{tx('Refresh')}</button></div>
+    {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{error} <button type="button" onClick={() => setRetry(value => value + 1)} className="font-semibold underline">{tx('Retry')}</button></div>}
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('Loading interview responses…')}</p>
+      : rows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('No interview invitations have been scheduled.')}</p>
+      : <ul className="space-y-3">{rows.map(row => <li key={row.id} data-interview-id={row.id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-900">{row.candidate_name}</h4><p className="break-all text-sm text-slate-600">{row.candidate_email}</p><p className="mt-1 text-sm text-slate-700">{row.job_title} · {row.round_name.split(' — ')[0]}</p><p className="mt-1 text-xs text-slate-500">{dateTime(row.scheduled_at, row.timezone || undefined)} · {row.duration_minutes} minutes{row.timezone ? ` · ${row.timezone}` : ''}</p></div>
           <span className="w-fit rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{responseLabel[row.candidate_response] || 'Response recorded'}</span></div>
         {row.candidate_response_note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><strong>Candidate note:</strong> {row.candidate_response_note}</p>}
         {row.candidate_proposed_times && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>Proposed availability:</strong> {row.candidate_proposed_times}</p>}
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2"><div><h5 className="text-sm font-semibold text-slate-900">{tx('Internal panel notes')}</h5><p className="mt-1 text-xs text-slate-600">{tx('Only authorized recruitment staff can view these notes.')}</p></div>
+            {editingNotes !== row.id && <button type="button" onClick={() => startEditingNotes(row)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-[#085587]">{tx(row.panel_notes ? 'Edit panel notes' : 'Add panel notes')}</button>}</div>
+          {savedNotesFor === row.id && <p role="status" className="mt-2 text-sm text-emerald-800">{tx('Panel notes saved.')}</p>}
+          {row.panel_notes && editingNotes !== row.id ? <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-white p-3 text-sm text-slate-700">{row.panel_notes}</p>
+            : !row.panel_notes && editingNotes !== row.id ? <p className="mt-3 text-sm text-slate-600">{tx('No internal panel notes have been recorded.')}</p> : null}
+          {editingNotes === row.id && <form onSubmit={event => void savePanelNotes(event, row)} className="mt-3 space-y-3">
+            <label className="block text-xs font-medium text-slate-700">{tx('Panel notes')}
+              <textarea aria-label={`${tx('Panel notes')} — ${row.candidate_name}`} maxLength={4000} rows={4} value={panelNotesDraft} onChange={event => setPanelNotesDraft(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+            </label>
+            <p className="text-xs text-slate-500">{tx('Leave blank and save to clear the existing notes.')}</p>
+            {notesError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{notesError}</p>}
+            <div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={savingNotes} onClick={cancelEditingNotes} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">{tx('Cancel')}</button>
+              <button type="submit" disabled={savingNotes} className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-semibold text-white disabled:opacity-50">{savingNotes ? tx('Saving notes…') : tx('Save panel notes')}</button></div>
+          </form>}
+        </div>
         {row.candidate_response === 'reschedule_requested' && <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2" open={expanded === row.id} onToggle={event => setExpanded((event.currentTarget as HTMLDetailsElement).open ? row.id : '')}>
           <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">Offer another time</summary>
           <InterviewScheduleForm key={`${tenantId}-${row.application_id}-${revision}`} compact tenantId={tenantId} applicationId={row.application_id} onScheduled={() => onRescheduled(row.application_id)} />
@@ -505,7 +573,7 @@ export function RecruitmentPipeline({ tenantId, locale = 'en', canManagePreboard
           <p className="font-medium text-slate-800">{totalCount ? 'No applications on this page' : 'No applications found'}</p>
           <p className="mt-1 text-sm text-slate-600">Try another search or stage, or refresh to check for new applications.</p>
         </div> : <ul className="divide-y divide-slate-100">
-          {applications.map(application => <li key={application.application_id} className="p-4 sm:p-5">
+          {applications.map(application => <li key={application.application_id} data-application-id={application.application_id} className="p-4 sm:p-5">
             <article className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="break-words font-semibold text-slate-900">{application.candidate_name}</p>
@@ -565,7 +633,7 @@ export function RecruitmentPipeline({ tenantId, locale = 'en', canManagePreboard
             className="min-h-10 rounded-md border border-slate-300 px-3 text-sm disabled:opacity-50">Next</button>
         </footer>
       </div>}
-    {canManageOffers && <CandidateInterviewResponses tenantId={tenantId} revision={revision} onRescheduled={applicationId => {
+    {canManageOffers && <CandidateInterviewResponses tenantId={tenantId} revision={revision} locale={locale} onRescheduled={applicationId => {
       setRecentlyScheduledApplicationIds(current => new Set(current).add(applicationId));
       setApplications(current => current.map(value => value.application_id === applicationId ? { ...value, stage: 'interview_scheduled' } : value));
       setRevision(value => value + 1);
