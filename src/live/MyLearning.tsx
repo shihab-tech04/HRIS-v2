@@ -48,7 +48,16 @@ type Enrollment = {
   completed_at: string | null;
   certificate_url: string | null;
   created_at: string;
+  completion_submitted_at?: string | null;
+  completion_evidence_name?: string | null;
+  completion_verified_at?: string | null;
+  completion_verified_by?: string | null;
+  completion_verified_by_name?: string | null;
+  completion_return_reason?: string | null;
+  completion_history?: CompletionHistoryEvent[];
 };
+type CompletionHistoryEvent = { event_type: string; reason: string | null; evidence_name: string | null; created_at: string };
+type CompletionNotification = { id: string; kind: string; enrollment_id: string; program_title: string; created_at: string };
 type LearningSkill = { id: string; skill_name: string; proficiency: string | null; verified: boolean };
 type LearningJoinLinks = Record<string, string>;
 type LearningContext = {
@@ -77,6 +86,11 @@ function isOpen(enrollment: Enrollment): boolean {
   return enrollment.status === 'requested' || enrollment.status === 'enrolled';
 }
 
+function isCurrentAssignment(enrollment: Enrollment): boolean {
+  return isOpen(enrollment) || enrollment.status === 'pending_verification'
+    || enrollment.status === 'returned_for_correction';
+}
+
 function safeMeetingUrl(value: string | undefined): string | null {
   if (!value) return null;
   try {
@@ -91,6 +105,10 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
   const tx = (english: string, values: Record<string, string | number> = {}) => learningText(locale, english, values);
   const [programs, setPrograms] = useState<LearningProgram[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [completionNotifications, setCompletionNotifications] = useState<CompletionNotification[]>([]);
+  const [completionEvidence, setCompletionEvidence] = useState<Record<string, File | null>>({});
+  const [completionSavingId, setCompletionSavingId] = useState('');
+  const [completionError, setCompletionError] = useState('');
   const [skills, setSkills] = useState<LearningSkill[]>([]);
   const [joinLinks, setJoinLinks] = useState<LearningJoinLinks>({});
   const [joinError, setJoinError] = useState('');
@@ -140,7 +158,23 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
         throw new Error(tx('Learning data returned an invalid response.'));
       }
       setPrograms(data.programs);
-      setEnrollments(data.enrollments);
+      const completionResult = await supabase.rpc('hris_get_my_learning_completion_data', { p_tenant_id: requestedTenant });
+      if (!current()) return;
+      if (completionResult.error) throw completionResult.error;
+      const completionData = completionResult.data as {
+        tenant_id?: string;
+        employee_id?: string;
+        enrollments?: Array<Partial<Enrollment> & { id: string }>;
+        notifications?: CompletionNotification[];
+      } | null;
+      if (!completionData || completionData.tenant_id !== requestedTenant
+          || !Array.isArray(completionData.enrollments) || !Array.isArray(completionData.notifications)) {
+        throw new Error(tx('Learning completion data returned an invalid response.'));
+      }
+      const completionById = new Map(completionData.enrollments.map(row => [row.id, row]));
+      setEnrollments(data.enrollments.map(enrollment => ({ ...enrollment, ...completionById.get(enrollment.id) })));
+      setCompletionNotifications(completionData.notifications);
+      setCompletionEvidence({});
       setSkills(data.skills);
       setSessionSelection(currentSelection => {
         const next = { ...currentSelection };
@@ -172,6 +206,10 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
   useEffect(() => {
     setPrograms([]);
     setEnrollments([]);
+    setCompletionNotifications([]);
+    setCompletionEvidence({});
+    setCompletionSavingId('');
+    setCompletionError('');
     setSkills([]);
     setJoinLinks({});
     setJoinError('');
@@ -202,6 +240,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
   }, [programs, search, category]);
   const pendingCount = enrollments.filter(enrollment => enrollment.status === 'requested').length;
   const activeCount = enrollments.filter(enrollment => enrollment.status === 'enrolled').length;
+  const verifiedLearning = enrollments.filter(enrollment => enrollment.status === 'completed' && Boolean(enrollment.completion_verified_at));
 
   async function performAction(key: string, action: () => PromiseLike<{ error: { message: string; code?: string } | null }>, success: string) {
     setSavingKey(key);
@@ -221,6 +260,65 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
     } finally {
       setSavingKey('');
       setCancelTarget(null);
+    }
+  }
+
+  async function submitCompletion(enrollment: Enrollment) {
+    if (completionSavingId) return;
+    const requestedTenant = tenantId;
+    const file = completionEvidence[enrollment.id] || null;
+    let uploadedPath: string | null = null;
+    setCompletionSavingId(enrollment.id);
+    setCompletionError('');
+    setActionError('');
+    setMessage('');
+    try {
+      let evidenceName: string | null = null;
+      if (file) {
+        const extension = file.name.split('.').at(-1)?.toLowerCase() || '';
+        const mimeByExtension: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+        const expectedMime = mimeByExtension[extension];
+        if (!expectedMime || (file.type && file.type !== expectedMime && file.type !== 'application/octet-stream')
+            || file.size < 1 || file.size > 5 * 1024 * 1024) {
+          throw new Error(tx('Choose a PDF, PNG, or JPEG evidence file up to 5 MB.'));
+        }
+        const userResult = await supabase.auth.getUser();
+        if (userResult.error || !userResult.data.user) throw userResult.error || new Error(tx('Sign in again before submitting learning completion.'));
+        const safeName = file.name.normalize('NFKC').replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^\.+/, '').slice(0, 180) || `evidence.${extension}`;
+        evidenceName = safeName;
+        uploadedPath = `${userResult.data.user.id}/${requestedTenant}/${enrollment.id}/${crypto.randomUUID()}`;
+        const upload = await supabase.storage.from('learning-completion-evidence').upload(uploadedPath, file, {
+          contentType: expectedMime, upsert: false,
+        });
+        if (upload.error) throw upload.error;
+      }
+      const result = await supabase.rpc('hris_employee_submit_learning_completion', {
+        p_tenant_id: requestedTenant,
+        p_enrollment_id: enrollment.id,
+        p_evidence_path: uploadedPath,
+        p_evidence_name: evidenceName,
+      });
+      if (result.error) throw result.error;
+      if (!result.data || result.data.id !== enrollment.id || result.data.status !== 'pending_verification') {
+        throw new Error(tx('Your completion submission could not be verified. Refresh learning before retrying.'));
+      }
+      if (activeTenantId.current !== requestedTenant) return;
+      setCompletionEvidence(current => ({ ...current, [enrollment.id]: null }));
+      setMessage(tx('Your completion was submitted for manager verification.'));
+      setRevision(value => value + 1);
+    } catch (cause) {
+      if (uploadedPath) {
+        // The delete policy refuses removal if an uncertain request already attached this object.
+        try { await supabase.storage.from('learning-completion-evidence').remove([uploadedPath]); } catch { /* Keep the submission recovery state even if cleanup is unavailable. */ }
+      }
+      if (activeTenantId.current === requestedTenant) {
+        const code = (cause as { code?: string })?.code;
+        setCompletionError(code === '42501'
+          ? tx('Only your active or returned learning assignments can be submitted for verification.')
+          : cause instanceof Error ? tx(cause.message) : tx('Unable to submit your learning completion. Try again.'));
+      }
+    } finally {
+      if (activeTenantId.current === requestedTenant) setCompletionSavingId('');
     }
   }
 
@@ -306,7 +404,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
   function existingOpen(program: LearningProgram): Enrollment | undefined {
     const sessionId = selectedSession(program);
     return enrollments.find(enrollment => enrollment.program_id === program.id
-      && enrollment.session_id === sessionId && isOpen(enrollment));
+      && enrollment.session_id === sessionId && isCurrentAssignment(enrollment));
   }
 
   return <section aria-labelledby="my-learning-heading" className="min-w-0 space-y-4">
@@ -319,8 +417,18 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
 
     {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">{tx("Retry")}</button></div>}
     {actionError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{actionError}</div>}
+    {completionError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{completionError}</div>}
     {joinError && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p role="status">{joinError}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-9 rounded-lg border border-amber-300 bg-white px-3 font-medium">{tx("Refresh")}</button></div>}
     {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
+    {completionNotifications.length > 0 && <section aria-labelledby="learning-updates-heading" className="rounded-xl border border-[#B9DCE2] bg-[#F8FCFC] p-4">
+      <h3 id="learning-updates-heading" className="font-semibold text-[#1E1B39]">{tx('Learning updates')}</h3>
+      <ul className="mt-2 space-y-2">{completionNotifications.slice(0, 5).map(notification => <li key={notification.id} data-learning-notification={notification.id} className="text-sm text-slate-700">
+        {notification.kind === 'verified'
+          ? tx('{program} completion was verified.', { program: notification.program_title })
+          : tx('{program} completion was returned for correction.', { program: notification.program_title })}
+        <span className="ml-2 text-xs text-slate-500">{dateTime(notification.created_at, locale, tx)}</span>
+      </li>)}</ul>
+    </section>}
 
     <div className="grid gap-3 sm:grid-cols-3">
       <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-medium text-slate-500">{tx("Available programs")}</p><p className="mt-2 text-2xl font-semibold tabular-nums text-[#08263D]">{programs.length}</p></article>
@@ -343,6 +451,15 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
             <div className="min-w-0"><p className="break-words text-sm font-medium text-slate-900">{skill.skill_name}</p>{skill.proficiency && <p className="mt-0.5 break-words text-xs text-slate-600">{skill.proficiency} · {tx('Self-reported')}</p>}{skill.verified && <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{tx("Organization verified")}</p>}</div>
             {!skill.verified && <div className="flex shrink-0 gap-2"><button type="button" disabled={Boolean(savingKey)} onClick={() => { setSkillError(''); setEditingSkillId(skill.id); setSkillName(skill.skill_name); setSkillProficiency(skill.proficiency || ''); document.getElementById('learning-skill-name')?.focus(); }} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium disabled:opacity-50">{tx("Edit")}</button><button type="button" disabled={Boolean(savingKey)} aria-label={tx('Remove {skill}', { skill: skill.skill_name })} onClick={event => { deleteSkillTriggerRef.current = event.currentTarget; setSkillError(''); setSkillDeleteTarget(skill); }} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-rose-800 disabled:opacity-50">{tx("Remove")}</button></div>}
           </li>)}</ul>}
+      <div className="mt-4 border-t border-slate-100 pt-4">
+        <h4 className="text-sm font-semibold text-[#1E1B39]">{tx('Verified learning')}</h4>
+        {loading ? <p role="status" className="mt-2 text-sm text-slate-600">{tx('Loading verified learning…')}</p>
+          : verifiedLearning.length === 0 ? <p role="status" className="mt-2 text-sm text-slate-500">{tx('Verified course completions will appear here.')}</p>
+            : <ul className="mt-2 grid gap-2 sm:grid-cols-2">{verifiedLearning.map(enrollment => <li key={enrollment.id} data-verified-learning={enrollment.id} className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3">
+              <p className="break-words text-sm font-medium text-slate-900">{enrollment.program_title}</p>
+              <p className="mt-1 text-xs text-slate-600">{tx('Verified {date}', { date: dateTime(enrollment.completion_verified_at || null, locale, tx) })}</p>
+            </li>)}</ul>}
+      </div>
       <form onSubmit={saveSkill} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <label className="block text-xs font-medium text-slate-600">{tx("Skill name")}<input id="learning-skill-name" required maxLength={120} value={skillName} onChange={event => setSkillName(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" placeholder={tx("For example, data analysis")} /></label>
         <label className="block text-xs font-medium text-slate-600">{tx("Proficiency (optional)")}<input maxLength={80} value={skillProficiency} onChange={event => setSkillProficiency(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" placeholder={tx("Use your own wording")} /></label>
@@ -377,7 +494,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
               {program.target_skills.length > 0 && <div className="mt-3"><p className="text-xs font-medium text-slate-500">{tx("Target skills")}</p><p className="mt-1 break-words text-sm text-slate-700">{program.target_skills.join(' · ')}</p></div>}
               {program.sessions.length > 0 && <label className="mt-4 block text-xs font-medium text-slate-600">{tx("Choose a scheduled session")}<select aria-label={tx('Choose session for {program}', { program: program.title })} value={sessionId || ''} onChange={event => setSessionSelection(current => ({ ...current, [program.id]: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"><option value="">{tx("No session selected")}</option>{program.sessions.map(session => <option key={session.id} value={session.id}>{dateTime(session.start_at, locale, tx)} · {session.location || tx('Location to be confirmed')}{session.available_seats !== null ? ` · ${tx('{count} seats left', { count: session.available_seats })}` : ''}</option>)}</select></label>}
               {selected && <div className="mt-3 flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" aria-hidden="true" /><span>{dateTime(selected.start_at, locale, tx)}{selected.end_at ? ` – ${dateTime(selected.end_at, locale, tx)}` : ''}{selected.trainer_name ? ` · ${tx('Trainer:')} ${selected.trainer_name}` : ''}{selected.location ? ` · ${selected.location}` : ''}</span></div>}
-              <div className="mt-4 border-t border-slate-100 pt-4">{currentOpen ? <p className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700"><Clock3 className="h-4 w-4 text-[#08558B]" aria-hidden="true" />{tx(currentOpen.status === 'requested' ? 'Approval request pending' : 'You are enrolled')}{selected ? ` · ${dateTime(selected.start_at, locale, tx)}` : ''}</p>
+              <div className="mt-4 border-t border-slate-100 pt-4">{currentOpen ? <p className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700"><Clock3 className="h-4 w-4 text-[#08558B]" aria-hidden="true" />{tx(currentOpen.status === 'requested' ? 'Approval request pending' : currentOpen.status === 'pending_verification' ? 'Completion pending verification' : currentOpen.status === 'returned_for_correction' ? 'Completion returned for correction' : 'You are enrolled')}{selected ? ` · ${dateTime(selected.start_at, locale, tx)}` : ''}</p>
                 : <div className="flex flex-col gap-2 sm:flex-row sm:items-end">{!program.self_enrollment && <label className="block min-w-0 flex-1 text-xs font-medium text-slate-600">{tx('Reason for request')} <span className="font-normal">{tx("(optional)")}</span><textarea aria-label={tx('Reason for {program}', { program: program.title })} value={reasons[program.id] || ''} maxLength={1000} rows={2} onChange={event => setReasons(current => ({ ...current, [program.id]: event.target.value }))} className="mt-1 min-h-20 w-full resize-y rounded-lg border border-slate-300 bg-white p-3 text-sm" placeholder={tx("Share what you hope to learn.")} /></label>}
                   <button type="button" disabled={Boolean(savingKey) || Boolean(full)} onClick={() => void performAction(key, () => program.self_enrollment
                     ? supabase.rpc('hris_employee_enroll_learning', { p_tenant_id: tenantId, p_program_id: program.id, p_session_id: sessionId })
@@ -394,13 +511,24 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
         : enrollments.length === 0 ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx("Your learning activity will appear here after you enroll or request a program.")}</p>
         : <div className="grid min-w-0 gap-3 lg:grid-cols-2">{enrollments.map(enrollment => {
           const certificateUrl = safeMeetingUrl(enrollment.certificate_url || undefined);
-          return <article key={enrollment.id} data-learning-enrollment={enrollment.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-slate-500">{enrollment.mandatory ? tx('Assigned learning') : statusName(enrollment.source, tx)}</p><h4 className="mt-1 break-words font-semibold text-slate-900">{enrollment.program_title}</h4></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{statusName(enrollment.status, tx)}</span></div>
+          return <article key={enrollment.id} data-learning-enrollment={enrollment.id} data-learning-status={enrollment.status} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-slate-500">{enrollment.mandatory ? tx('Assigned learning') : statusName(enrollment.source, tx)}</p><h4 className="mt-1 break-words font-semibold text-slate-900">{enrollment.program_title}</h4></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{statusName(enrollment.status, tx)}</span></div>
               {enrollment.session_start_at && <p className="mt-2 text-sm text-slate-600">{dateTime(enrollment.session_start_at, locale, tx)}{enrollment.session_location ? ` · ${enrollment.session_location}` : ''}</p>}
               {enrollment.status === 'enrolled' && safeMeetingUrl(joinLinks[enrollment.id]) && <a href={safeMeetingUrl(joinLinks[enrollment.id])!} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#B9DCE2] bg-[#F8FCFC] px-3 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">{tx("Join online session")}<ExternalLink className="h-4 w-4" aria-hidden="true" /></a>}
               {enrollment.due_date && <p className="mt-2 text-sm text-slate-600">{tx('Due')} {new Date(`${enrollment.due_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')}</p>}
               {enrollment.recommendation_reason && <p className="mt-2 break-words text-sm text-slate-600">{tx('Request note:')} {enrollment.recommendation_reason}</p>}
               {enrollment.resolution_note && <p className="mt-2 break-words text-sm text-slate-600">{tx('Update:')} {enrollment.resolution_note}</p>}
+              {enrollment.completion_submitted_at && <p className="mt-2 text-sm text-slate-600">{tx('Submitted for verification {date}', { date: dateTime(enrollment.completion_submitted_at, locale, tx) })}</p>}
+              {enrollment.completion_evidence_name && <p className="mt-2 break-all text-xs text-slate-500">{tx('Supporting evidence:')} {enrollment.completion_evidence_name}</p>}
+              {enrollment.completion_return_reason && <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">{tx('Returned for correction')}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-amber-900">{enrollment.completion_return_reason}</p></div>}
+              {enrollment.status === 'pending_verification' && <p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{tx('Your completion is pending manager verification. You can continue other work.')}</p>}
+              {enrollment.status === 'completed' && enrollment.completion_verified_at && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Verified {date}', { date: dateTime(enrollment.completion_verified_at, locale, tx) })}{enrollment.completion_verified_by_name ? ` · ${tx('Verified by')} ${enrollment.completion_verified_by_name}` : enrollment.completion_verified_by ? ` · ${tx('Verified by')} ${enrollment.completion_verified_by}` : ''}</p>}
+              {enrollment.completion_history && enrollment.completion_history.length > 0 && <details className="mt-3 rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-medium text-slate-700">{tx('Completion review history')}</summary><ol className="mt-2 space-y-2">{enrollment.completion_history.map((event, index) => <li key={`${event.event_type}-${event.created_at}-${index}`} className="border-l-2 border-[#B9DCE2] pl-3 text-xs text-slate-600"><p className="font-medium">{tx(event.event_type === 'returned_for_correction' ? 'Returned for correction' : event.event_type === 'verified' ? 'Verified' : event.event_type === 'resubmitted' ? 'Resubmitted' : 'Submitted for verification')} · {dateTime(event.created_at, locale, tx)}</p>{event.reason && <p className="mt-1 whitespace-pre-wrap break-words">{event.reason}</p>}{event.evidence_name && <p className="mt-1 break-all">{tx('Supporting evidence:')} {event.evidence_name}</p>}</li>)}</ol></details>}
               {certificateUrl && <a href={certificateUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center text-sm font-medium text-[#08558B] underline">{tx("View certificate")}</a>}
+              {(enrollment.status === 'enrolled' || enrollment.status === 'returned_for_correction') && <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                <label className="block text-xs font-medium text-slate-700">{tx('Supporting evidence (optional)')}<input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={Boolean(completionSavingId)} onChange={event => { setCompletionError(''); setCompletionEvidence(current => ({ ...current, [enrollment.id]: event.target.files?.[0] || null })); }} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs file:mr-3 file:min-h-8 file:rounded-md file:border-0 file:bg-[#EFF7F8] file:px-3 file:text-xs file:font-medium file:text-[#08558B]" /></label>
+                <p className="text-xs text-slate-500">{completionEvidence[enrollment.id]?.name || tx('No evidence selected. Evidence is optional until your organization configures a requirement.')}</p>
+                <button type="button" disabled={Boolean(completionSavingId) || loading} onClick={() => void submitCompletion(enrollment)} className="min-h-11 w-full rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white hover:bg-[#06466F] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{completionSavingId === enrollment.id ? tx('Submitting…') : tx(enrollment.status === 'returned_for_correction' ? 'Resubmit for verification' : 'Mark completed')}</button>
+              </div>}
               {isOpen(enrollment) && enrollment.mandatory && <p className="mt-3 text-xs text-slate-500">{tx("This enrollment was assigned and cannot be cancelled here.")}</p>}
               {isOpen(enrollment) && !enrollment.mandatory && <button type="button" disabled={Boolean(savingKey)} onClick={() => setCancelTarget(enrollment)} className="mt-3 min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 disabled:opacity-50">{tx("Cancel enrollment")}</button>}
             </article>;

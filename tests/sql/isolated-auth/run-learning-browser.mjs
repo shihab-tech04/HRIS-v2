@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
   'HRIS_LOCAL_LEARNING_EMAIL', 'HRIS_LOCAL_LEARNING_MANAGER_EMAIL', 'HRIS_LOCAL_LEARNING_TENANT_ID',
+  'HRIS_LOCAL_LEARNING_COMPLETION_ENROLLMENT_ID', 'HRIS_LOCAL_LEARNING_COMPLETION_PROGRAM_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -64,6 +65,13 @@ async function openLearningPrograms(page) {
   await page.getByRole('heading', { name: 'Learning programs', exact: true }).waitFor({ state: 'visible' });
 }
 
+async function openLearningCompletionQueue(page) {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'Learning completion review', exact: true }).click();
+  await page.getByRole('heading', { name: 'Learning completion review', exact: true }).waitFor({ state: 'visible' });
+}
+
 async function isolateExternalRequests(page) {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -92,6 +100,7 @@ try {
   let blockInitialContext = true;
   let blockNextJoinLinks = false;
   let blockNextSkillSave = true;
+  let blockNextCompletionSubmit = true;
   const rpcTenants = [];
   const directLearningTableReads = [];
   page.on('request', request => {
@@ -120,6 +129,11 @@ try {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
     }
+    const completionRpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_my_learning_completion_data|hris_get_learning_completion_queue|hris_employee_submit_learning_completion|hris_resolve_learning_completion)$/);
+    if (completionRpc && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
+    }
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -128,6 +142,13 @@ try {
       && route.request().method() === 'POST' && blockNextSkillSave) {
       blockNextSkillSave = false;
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary skill profile outage.' }) });
+      return;
+    }
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+      && url.pathname.endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion')
+      && route.request().method() === 'POST' && blockNextCompletionSubmit) {
+      blockNextCompletionSubmit = false;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary completion submission outage.' }) });
       return;
     }
     if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
@@ -305,7 +326,7 @@ try {
   });
   managerPage.on('request', request => {
     const url = new URL(request.url());
-    const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request)$/);
+    const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_get_learning_requests|hris_resolve_learning_request|hris_get_learning_completion_queue|hris_resolve_learning_completion)$/);
     if (rpc && request.method() === 'POST') {
       const body = request.postDataJSON();
       if (body?.p_tenant_id) rpcTenants.push(body.p_tenant_id);
@@ -441,6 +462,91 @@ try {
   await desktopRosterResponse;
   await enrolledRoster.getByText('Synthetic Employee A', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Enrolled employee roster desktop');
+
+  const completionEnrollmentId = process.env.HRIS_LOCAL_LEARNING_COMPLETION_ENROLLMENT_ID;
+  const completionEmployeeCard = page.locator(`[data-learning-enrollment="${completionEnrollmentId}"]`);
+  await completionEmployeeCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
+  const failedCompletionSubmit = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 503);
+  await completionEmployeeCard.getByRole('button', { name: 'Mark completed', exact: true }).click();
+  await failedCompletionSubmit;
+  await completionEmployeeCard.getByRole('alert').waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
+  const completionSubmitResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 200);
+  await completionEmployeeCard.getByRole('button', { name: 'Mark completed', exact: true }).click();
+  const submittedCompletion = await rpcBody(await completionSubmitResponse);
+  if (submittedCompletion.status !== 'pending_verification') throw new Error('Learning completion did not enter Pending Verification.');
+  await completionEmployeeCard.getByText('Pending Verification', { exact: true }).waitFor({ state: 'visible' });
+  const pendingCatalogCard = page.locator(`[data-learning-program="${process.env.HRIS_LOCAL_LEARNING_COMPLETION_PROGRAM_ID}"]`);
+  await pendingCatalogCard.getByText('Completion pending verification', { exact: true }).waitFor({ state: 'visible' });
+  if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval/ }).count()) {
+    throw new Error('A pending completion must remain one open assignment instead of offering a duplicate enrollment.');
+  }
+  await assertNoOverflow(page, 'Learning completion submission mobile');
+
+  await managerPage.setViewportSize({ width: 375, height: 812 });
+  await openLearningCompletionQueue(managerPage);
+  const completionQueueCard = managerPage.locator(`[data-learning-completion="${completionEnrollmentId}"]`);
+  await completionQueueCard.getByText('Synthetic Employee A', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Learning completion queue mobile');
+  await completionQueueCard.getByRole('button', { name: 'Return for correction', exact: true }).click();
+  const returnDialog = managerPage.getByRole('alertdialog');
+  if (await returnDialog.getByRole('button', { name: 'Confirm return', exact: true }).isEnabled()) {
+    throw new Error('A return-for-correction decision must require a reason.');
+  }
+  await returnDialog.getByLabel('Reason for correction').fill('Please attach supporting evidence for this assignment.');
+  const returnResponse = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_resolve_learning_completion') && response.status() === 200);
+  await returnDialog.getByRole('button', { name: 'Confirm return', exact: true }).click();
+  const returnedCompletion = await rpcBody(await returnResponse);
+  if (returnedCompletion.status !== 'returned_for_correction') throw new Error('Manager correction decision did not persist.');
+  await completionQueueCard.waitFor({ state: 'detached' });
+  await assertNoOverflow(managerPage, 'Learning completion returned mobile');
+
+  const returnedContextRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_completion_data') && response.status() === 200);
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await returnedContextRefresh;
+  await completionEmployeeCard.getByText('Returned for correction', { exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('Please attach supporting evidence for this assignment.', { exact: true }).waitFor({ state: 'visible' });
+  await pendingCatalogCard.getByText('Completion returned for correction', { exact: true }).waitFor({ state: 'visible' });
+  if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval/ }).count()) {
+    throw new Error('A returned completion must remain one open assignment until it is corrected and verified.');
+  }
+  await completionEmployeeCard.getByLabel('Supporting evidence (optional)').setInputFiles({
+    name: 'completion-proof.pdf', mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nSynthetic completion evidence\n'),
+  });
+  const resubmitResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_learning_completion') && response.status() === 200);
+  await completionEmployeeCard.getByRole('button', { name: 'Resubmit for verification', exact: true }).click();
+  const resubmittedCompletion = await rpcBody(await resubmitResponse);
+  if (resubmittedCompletion.status !== 'pending_verification') throw new Error('Corrected learning completion did not return to verification.');
+  await completionEmployeeCard.getByText('Pending Verification', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Learning completion resubmitted mobile');
+
+  await managerPage.setViewportSize({ width: 1280, height: 900 });
+  const completionQueueRefresh = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_learning_completion_queue') && response.status() === 200);
+  await managerPage.getByRole('button', { name: 'Refresh completion queue' }).click();
+  await completionQueueRefresh;
+  await completionQueueCard.getByText('completion-proof.pdf', { exact: true }).waitFor({ state: 'visible' });
+  await completionQueueCard.getByRole('button', { name: 'View evidence', exact: true }).click();
+  await completionQueueCard.getByRole('link', { name: 'Open evidence', exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Learning completion queue desktop');
+  await completionQueueCard.getByRole('button', { name: 'Verify', exact: true }).click();
+  const verifyDialog = managerPage.getByRole('alertdialog');
+  await verifyDialog.getByLabel('Verification note').fill('Evidence reviewed.');
+  const verifyResponse = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_resolve_learning_completion') && response.status() === 200);
+  await verifyDialog.getByRole('button', { name: 'Confirm verification', exact: true }).click();
+  const verifiedCompletion = await rpcBody(await verifyResponse);
+  if (verifiedCompletion.status !== 'completed' || !verifiedCompletion.verified_by) throw new Error('Verified completion did not persist its reviewer.');
+  await completionQueueCard.waitFor({ state: 'detached' });
+
+  const verifiedContextRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_completion_data') && response.status() === 200);
+  await page.getByRole('button', { name: 'Refresh learning' }).click();
+  await verifiedContextRefresh;
+  await completionEmployeeCard.getByText('Completed', { exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('completion-proof.pdf', { exact: true }).waitFor({ state: 'visible' });
+  await page.locator(`[data-verified-learning="${completionEnrollmentId}"]`).waitFor({ state: 'visible' });
+  await page.locator('[data-learning-notification]').getByText('QA A Direct Learning completion was verified.', { exact: true }).waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Verified learning completion desktop');
   await managerContext.close();
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -451,7 +557,7 @@ try {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.');
+  console.log('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
