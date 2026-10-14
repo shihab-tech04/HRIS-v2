@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013073243_hris_tenant_employee_directory.sql', import.meta.url), 'utf8');
+const contactMigration = readFileSync(new URL('../../supabase/migrations/20261014171952_employee_contact_details_editing.sql', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../../src/live/OrganizationEmployeeDirectory.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const isolatedRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+const contactBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-directory-browser.mjs', import.meta.url), 'utf8');
 
 test('employee directory RPC requires an active tenant and membership-scoped employee permission', () => {
   assert.match(migration, /public\.is_live_session\(\)/);
@@ -43,7 +45,7 @@ test('employee directory UI uses the secured RPC and supports error recovery, fi
   assert.match(page, /Export current page/);
   assert.match(page, /md:hidden/);
   assert.match(page, /md:block/);
-  assert.match(workspace, /<OrganizationEmployeeDirectory tenantId=\{tenantId\} locale=\{locale\} \/>/);
+  assert.match(workspace, /<OrganizationEmployeeDirectory tenantId=\{tenantId\} locale=\{locale\} employeesManage=\{permissions\.employeesManage\} \/>/);
   assert.match(app, /'employees\.view', 'employees\.manage'/);
   assert.match(app, /employees: grants\.get\('employees\.view'\) === true \|\| grants\.get\('employees\.manage'\) === true/);
   assert.match(workspace, /id: 'employees', label: 'Employees'/);
@@ -54,7 +56,7 @@ test('isolated integration runner executes a local Auth-to-Postgres mobile and d
   assert.match(isolatedRunner, /Real local Auth-to-Postgres employee directory journey/);
 });
 
-test('read-only employee detail sheet reuses only permission-limited directory fields with keyboard and refresh recovery', () => {
+test('employee detail sheet preserves permission-limited directory fields and adds manager-only contact editing with keyboard recovery', () => {
   assert.match(page, /selectedEmployee/);
   assert.match(page, /role="dialog" aria-modal="true" aria-labelledby="employee-record-heading"/);
   assert.match(page, /Escape/);
@@ -64,7 +66,11 @@ test('read-only employee detail sheet reuses only permission-limited directory f
   assert.match(page, /setSelectedEmployee\(null\);[\s\S]*?setLoading\(true\)/);
   assert.match(page, /View details/);
   assert.match(page, /Employee record/);
-  assert.doesNotMatch(page, /official_email|joining_date|gender|salary|user_id|Save changes|Delete employee/);
+  assert.doesNotMatch(page, /joining_date|gender|salary|user_id|Save changes|Delete employee/);
+  assert.match(page, /employeesManage && <section aria-labelledby="employee-contact-heading"/);
+  assert.match(page, /hris_get_tenant_employee_contact_details/);
+  assert.match(page, /hris_update_tenant_employee_contact_details/);
+  assert.match(page, /These changes update the employee contact record only\. Sign-in email is unchanged\./);
   const translations = new Set([...locale.matchAll(/^\s*'([^']+)'\s*:/gm)].map(([, key]) => key));
   const missing = [...page.matchAll(/tx\('([^']+)'\)/g)].map(([, key]) => key).filter(key => !translations.has(key));
   assert.deepEqual(missing, [], 'employee directory strings must have Bengali translations');
@@ -73,4 +79,37 @@ test('read-only employee detail sheet reuses only permission-limited directory f
   assert.match(browser, /getByRole\('dialog'/);
   assert.match(browser, /keyboard\.press\('Escape'\)/);
   assert.match(browser, /Switch language to Bengali/);
+});
+
+test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, validated, and audited', () => {
+  for (const fn of ['hris_get_tenant_employee_contact_details', 'hris_update_tenant_employee_contact_details']) {
+    assert.match(contactMigration, new RegExp(`CREATE OR REPLACE FUNCTION public\\.${fn}`));
+    assert.match(contactMigration, new RegExp(`public\\.${fn}[^;]* FROM PUBLIC,anon,service_role`));
+    assert.match(contactMigration, new RegExp(`public\\.${fn}[^;]* TO authenticated`));
+  }
+  assert.equal((contactMigration.match(/public\.has_tenant_permission\(p_tenant_id, 'employees\.manage'\)/g) || []).length, 2);
+  assert.equal((contactMigration.match(/t\.id=p_tenant_id AND t\.is_active IS TRUE/g) || []).length, 2);
+  assert.match(contactMigration, /e\.id=p_employee_id AND e\.tenant_id=p_tenant_id/);
+  assert.match(contactMigration, /NOT \(item\.key = ANY\(v_allowed_keys\)\)/);
+  for (const field of ['official_email','personal_email','phone','official_phone','address','mailing_address',
+    'emergency_contact_name','emergency_contact_phone','emergency_contact_relation']) {
+    assert.match(contactMigration, new RegExp(`'${field}'`));
+  }
+  for (const forbiddenField of ['department_id','team_id','designation_id','employment_status','joining_date','salary','payroll','user_id']) {
+    assert.doesNotMatch(contactMigration, new RegExp(`'${forbiddenField}'`));
+  }
+  assert.match(contactMigration, /INSERT INTO public\.admin_audit_logs/);
+  assert.match(contactMigration, /employee\.contact_details_updated/);
+  assert.match(contactMigration, /changed_fields/);
+  assert.match(contactMigration, /jsonb_build_object\('tenant_id',p_tenant_id,'changed_fields',to_jsonb\(v_changed_fields\)\)/);
+  assert.match(isolatedRunner, /Employee contact details read only through the active tenant employees\.manage RPC/);
+  assert.match(isolatedRunner, /Employee contact save validates input, rejects non-contact keys and duplicate emails/);
+  assert.match(isolatedRunner, /Employee contact RPC immediately denies inactive tenant membership/);
+  assert.match(isolatedRunner, /DOCKER_CONTEXT: dockerContext/);
+  assert.match(isolatedRunner, /DOCKER_HOST: dockerEndpoint/);
+  assert.match(isolatedRunner, /employeeDirectUpdate\.error/);
+  assert.match(contactBrowser, /HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL/);
+  assert.match(contactBrowser, /Contact details updated\./);
+  assert.match(contactBrowser, /managerContactReadCalls < 3/);
+  assert.match(contactBrowser, /375px mobile\/1280px desktop layouts/);
 });

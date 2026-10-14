@@ -2711,7 +2711,7 @@ export function LiveHrisWorkspace({
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
           {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <OrganizationProjects tenantId={tenantId} locale={locale} />}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
-          {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} />}
+          {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} employeesManage={permissions.employeesManage} />}
           {page === 'onboarding' && permissions.employeesManage && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} locale={locale} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} canManageApplicationStages={permissions.recruitmentManage} />}

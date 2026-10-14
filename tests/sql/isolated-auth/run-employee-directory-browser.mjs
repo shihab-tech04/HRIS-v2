@@ -4,7 +4,8 @@ import { spawn } from 'node:child_process';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
-  'HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL', 'HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID',
+  'HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL', 'HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL',
+  'HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -34,10 +35,10 @@ async function waitForServer() {
   throw new Error('Timed out waiting for the local HRIS UI server.');
 }
 
-async function signIn(page) {
+async function signIn(page, email = process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL) {
   await page.goto(origin);
   await page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible' });
-  await page.getByLabel('Email', { exact: true }).fill(process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL);
+  await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
@@ -139,6 +140,9 @@ try {
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await searchResponse;
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  if (await page.getByText('personal-a@hris.test', { exact: true }).count()) {
+    throw new Error('Employee-view directory exposed a private contact field.');
+  }
   await page.getByLabel('Filter employees by department').selectOption('eeeeeeee-0000-4000-8000-000000000001');
   await page.getByLabel('Filter employees by employment status').selectOption('active');
   const filterResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory'));
@@ -202,11 +206,121 @@ try {
     throw new Error('Employee directory Bengali locale did not persist.');
   }
 
+  const managerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  let managerContactReadCalls = 0;
+  let managerContactWriteCalls = 0;
+  const managerContactReadPayloads = [];
+  const managerContactPayloads = [];
+  await managerPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    const local = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
+    if (local && url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_employee_contact_details')
+      && route.request().method() === 'POST') {
+      managerContactReadCalls += 1;
+      managerContactReadPayloads.push(route.request().postDataJSON());
+      if (managerContactReadCalls === 1) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        await route.fulfill({ status: 503, contentType: 'application/json',
+          body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary contact read outage.' }) });
+        return;
+      }
+      return route.continue();
+    }
+    if (local && url.pathname.endsWith('/rest/v1/rpc/hris_update_tenant_employee_contact_details')
+      && route.request().method() === 'POST') {
+      managerContactWriteCalls += 1;
+      managerContactPayloads.push(route.request().postDataJSON());
+      if (managerContactWriteCalls === 1) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        await route.fulfill({ status: 503, contentType: 'application/json',
+          body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary contact save outage.' }) });
+        return;
+      }
+      return route.continue();
+    }
+    if (local) return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(managerPage, process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL);
+  await openEmployeeDirectory(managerPage);
+  await (await employeeInCurrentLayout(managerPage, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  await managerPage.getByRole('button', { name: 'View details for Synthetic Employee A' }).click();
+  const managerDetails = managerPage.getByRole('dialog', { name: 'Synthetic Employee A' });
+  await managerDetails.waitFor({ state: 'visible' });
+  await managerDetails.getByRole('button', { name: 'View contact details' }).click();
+  await managerDetails.getByRole('status').getByText('Loading contact details…', { exact: true }).waitFor({ state: 'visible' });
+  await managerDetails.getByRole('alert').getByRole('button', { name: 'Retry contact details' }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Employee contact read error on mobile');
+  await managerDetails.getByRole('button', { name: 'Retry contact details' }).click();
+  await managerDetails.getByText('employee-a@hris.test', { exact: true }).waitFor({ state: 'visible' });
+  await managerDetails.getByText('QA A home address', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Employee contact details on mobile');
+  await managerDetails.getByRole('button', { name: 'Edit contact details' }).click();
+  await managerDetails.getByLabel('Home address').fill('Unsaved address that should be discarded');
+  managerPage.once('dialog', dialog => dialog.accept());
+  await managerDetails.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await managerDetails.getByText('QA A home address', { exact: true }).waitFor({ state: 'visible' });
+  await managerDetails.getByRole('button', { name: 'Edit contact details' }).click();
+  await managerDetails.getByLabel('Official email').fill('invalid-email');
+  await managerDetails.getByRole('button', { name: 'Save contact details' }).click();
+  await managerDetails.getByRole('alert').getByText('Enter a valid official email and a valid personal email when provided.', { exact: true }).waitFor({ state: 'visible' });
+  if (managerContactWriteCalls !== 0) throw new Error('Invalid contact email reached the update RPC.');
+
+  const editedContact = {
+    official_email: 'employee-a-updated@hris.test', personal_email: 'employee-a-new@hris.test',
+    phone: '+880 1700 000002', official_phone: '+880 2 5550002', address: 'QA A updated home address',
+    mailing_address: 'QA A updated mailing address', emergency_contact_name: 'QA A updated contact',
+    emergency_contact_phone: '+880 1700 000102', emergency_contact_relation: 'Sibling',
+  };
+  for (const [label, value] of Object.entries({
+    'Official email': editedContact.official_email, 'Personal email': editedContact.personal_email,
+    Phone: editedContact.phone, 'Official phone': editedContact.official_phone,
+    'Home address': editedContact.address, 'Mailing address': editedContact.mailing_address,
+    'Emergency contact name': editedContact.emergency_contact_name,
+    'Emergency contact phone': editedContact.emergency_contact_phone,
+    'Emergency contact relationship': editedContact.emergency_contact_relation,
+  })) await managerDetails.getByLabel(label).fill(value);
+  await managerDetails.getByRole('button', { name: 'Save contact details' }).click();
+  await managerDetails.getByRole('button', { name: 'Saving contact details…' }).waitFor({ state: 'visible' });
+  await managerDetails.getByRole('alert').getByText('Contact update failed. Check your employee-management access and retry.', { exact: true }).waitFor({ state: 'visible' });
+  if (await managerDetails.getByLabel('Official email').inputValue() !== editedContact.official_email) {
+    throw new Error('A temporary contact save error did not preserve the draft for retry.');
+  }
+  await managerDetails.getByRole('button', { name: 'Save contact details' }).click();
+  await managerDetails.getByRole('status').getByText('Contact details updated.', { exact: true }).waitFor({ state: 'visible' });
+  await managerDetails.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Saved employee contact details on mobile');
+  const allowedContactFields = Object.keys(editedContact).sort().join(',');
+  const readsWrongTenant = managerContactReadPayloads.some(payload => payload.p_tenant_id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID);
+  const writesWrongTenant = managerContactPayloads.some(payload => payload.p_tenant_id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID);
+  const writesExtraFields = managerContactPayloads.some(payload => Object.keys(payload.p_contact_details || {}).sort().join(',') !== allowedContactFields);
+  if (managerContactWriteCalls !== 2 || readsWrongTenant || writesWrongTenant || writesExtraFields) {
+    throw new Error('Contact updates did not use the active tenant or the expected retry count.');
+  }
+
+  await managerPage.getByRole('button', { name: 'Close employee record' }).click();
+  await managerPage.reload();
+  await managerPage.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  await openEmployeeDirectory(managerPage);
+  await (await employeeInCurrentLayout(managerPage, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  await managerPage.setViewportSize({ width: 1280, height: 900 });
+  await managerPage.getByRole('button', { name: 'View details for Synthetic Employee A' }).click();
+  const managerDetailsAfterRefresh = managerPage.getByRole('dialog', { name: 'Synthetic Employee A' });
+  await managerDetailsAfterRefresh.getByRole('button', { name: 'View contact details' }).click();
+  await managerDetailsAfterRefresh.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(managerPage, 'Employee contact details after desktop refresh recovery');
+  await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await managerDetailsAfterRefresh.getByText('যোগাযোগের তথ্য', { exact: true }).waitFor({ state: 'visible' });
+  await managerDetailsAfterRefresh.getByText('অফিসিয়াল ইমেইল', { exact: true }).waitFor({ state: 'visible' });
+  await managerPage.getByRole('button', { name: 'কর্মচারীর রেকর্ড বন্ধ করুন' }).click();
+  if (managerContactReadCalls < 3) throw new Error(`Contact read recovery/refresh made too few RPC attempts: ${managerContactReadCalls}.`);
+
   const requestTenants = rpcPayloads.filter(value => value && typeof value.p_tenant_id === 'string').map(value => value.p_tenant_id);
   if (requestTenants.some(id => id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID)) {
     throw new Error(`Employee directory requested a different tenant: ${requestTenants.join(', ')}.`);
   }
-  console.log('Local Auth-to-Postgres employee directory journey passed with permission-limited details, keyboard recovery, refresh recovery, EN/BN parity, and 375px mobile/1280px desktop layouts.');
+  console.log('Local Auth-to-Postgres employee directory and contact-editing journey passed with manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

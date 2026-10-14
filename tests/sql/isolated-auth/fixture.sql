@@ -226,10 +226,20 @@ CREATE TABLE public.employees (
   employee_number text NOT NULL,
   full_name text NOT NULL,
   official_email text NOT NULL,
+  personal_email text,
+  phone text,
+  official_phone text,
+  address text,
+  mailing_address text,
+  emergency_contact_name text,
+  emergency_contact_phone text,
+  emergency_contact_relation text,
   joining_date date NOT NULL,
   gender text,
   employment_status text NOT NULL DEFAULT 'active',
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, official_email)
 );
 
 -- Synthetic Learning & Development tables for the disposable local Auth suite.
@@ -1118,11 +1128,11 @@ INSERT INTO public.teams(id,tenant_id,department_id,name,code) VALUES
 INSERT INTO public.designations(id,tenant_id,department_id,title,code) VALUES
   ('ffffffff-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','eeeeeeee-0000-4000-8000-000000000001','QA A designation','QA-A-D'),
   ('ffffffff-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','eeeeeeee-0000-4000-8000-000000000002','QA B designation','QA-B-D');
-INSERT INTO public.employees(id,tenant_id,user_id,department_id,team_id,designation_id,shift_id,employee_number,full_name,official_email,joining_date)
+INSERT INTO public.employees(id,tenant_id,user_id,department_id,team_id,designation_id,shift_id,employee_number,full_name,official_email,personal_email,phone,official_phone,address,mailing_address,emergency_contact_name,emergency_contact_phone,emergency_contact_relation,joining_date)
   VALUES
-  ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','2026-01-01'),
-  ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','dddddddd-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test','2026-01-01'),
-  ('55555555-5555-4555-8555-555555555560','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-clock@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-006','Synthetic Clock Employee','employee-clock@hris.test','2026-01-01');
+  ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','personal-a@hris.test','+880 1700 000001','+880 2 5550001','QA A home address','QA A mailing address','QA A emergency contact','+880 1700 000101','Parent','2026-01-01'),
+  ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','dddddddd-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-01'),
+  ('55555555-5555-4555-8555-555555555560','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-clock@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-006','Synthetic Clock Employee','employee-clock@hris.test',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-01');
 INSERT INTO public.performance_goals(id,tenant_id,employee_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin) VALUES
   ('88888888-8888-4888-8888-888888888801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A goal','Synthetic own goal','Individual','Complete local acceptance',20,'2026-12-31','in_progress',50,'assigned'),
   ('88888888-8888-4888-8888-888888888802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B goal','Synthetic other-tenant goal','Individual','Complete local acceptance',10,'2026-12-31','in_progress',50,'assigned');

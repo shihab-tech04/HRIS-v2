@@ -19,8 +19,13 @@ const expectedDatabasePort = process.env.HRIS_SUPABASE_DB_PORT || '55422';
 if (!workdir.startsWith('/private/tmp/')) {
   throw new Error('Refusing to test: the disposable Supabase workdir must remain under /private/tmp.');
 }
+const dockerEndpoint = execFileSync('docker', [
+  'context', 'inspect', dockerContext, '--format', '{{.Endpoints.docker.Host}}',
+], { env: process.env, encoding: 'utf8' }).trim();
 const cliEnv = {
   ...process.env,
+  DOCKER_HOST: dockerEndpoint,
+  DOCKER_CONTEXT: dockerContext,
   SUPABASE_HOME: process.env.SUPABASE_HOME || '/private/tmp/synesis-supabase-home',
   SUPABASE_TELEMETRY_DISABLED: '1',
 };
@@ -311,6 +316,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013073243_hris_tenant_employee_directory.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014171952_employee_contact_details_editing.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
@@ -1543,6 +1549,150 @@ record('Employee directory rejects no-permission, global-only, recruiter-only, a
     && Boolean(employeeDirectoryRecruiterOnly.error?.code === '42501')
     && Boolean(employeeDirectoryAnon.error)
     && !employeeDirectoryDirectRead.error && employeeDirectoryDirectRead.data.length === 0);
+
+const contactDetailsForManager = await managerA.client.rpc('hris_get_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+});
+const contactDetailsForViewer = await employeesViewer.client.rpc('hris_get_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+});
+const contactDetailsForManagerB = await managerB.client.rpc('hris_get_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantB, p_employee_id: '66666666-6666-4666-8666-666666666666',
+});
+const contactDetailsForNoPermission = await noPermission.client.rpc('hris_get_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+});
+const contactDetailsCrossTenant = await managerA.client.rpc('hris_get_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantB, p_employee_id: '66666666-6666-4666-8666-666666666666',
+});
+const contactDetailsGlobalOnly = await globalOnly.client.rpc('hris_get_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+});
+const contactReadAnon = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_tenant_employee_contact_details', {
+    p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  });
+record('Employee contact details read only through the active tenant employees.manage RPC',
+  !contactDetailsForManager.error
+    && contactDetailsForManager.data?.official_email === 'employee-a@hris.test'
+    && contactDetailsForManager.data?.phone === '+880 1700 000001'
+    && !contactDetailsForManagerB.error && contactDetailsForManagerB.data?.official_email === 'employee-b@hris.test'
+    && Boolean(contactDetailsForViewer.error?.code === '42501')
+    && Boolean(contactDetailsForNoPermission.error?.code === '42501')
+    && Boolean(contactDetailsCrossTenant.error?.code === '42501')
+    && Boolean(contactDetailsGlobalOnly.error?.code === '42501')
+    && Boolean(contactReadAnon.error),
+  JSON.stringify({ managerCode: contactDetailsForManager.error?.code, managerBCode: contactDetailsForManagerB.error?.code,
+    viewerCode: contactDetailsForViewer.error?.code, noPermissionCode: contactDetailsForNoPermission.error?.code,
+    crossTenantCode: contactDetailsCrossTenant.error?.code, globalCode: contactDetailsGlobalOnly.error?.code,
+    anonymousDenied: Boolean(contactReadAnon.error) }));
+
+const contactBaseline = contactDetailsForManager.data;
+const contactUpdatePayload = {
+  official_email: 'employee-a-updated@hris.test', personal_email: 'employee-a-new@hris.test',
+  phone: '+880 1700 000002', official_phone: '+880 2 5550002', address: 'QA A updated home address',
+  mailing_address: 'QA A updated mailing address', emergency_contact_name: 'QA A updated contact',
+  emergency_contact_phone: '+880 1700 000102', emergency_contact_relation: 'Sibling',
+};
+const restrictedEmployeeBeforeContactEdit = queryAdmin("SELECT jsonb_build_object('id',e.id,'tenant_id',e.tenant_id,'user_id',e.user_id,'employee_number',e.employee_number,'full_name',e.full_name,'department_id',e.department_id,'team_id',e.team_id,'designation_id',e.designation_id,'joining_date',e.joining_date,'employment_status',e.employment_status,'auth_email',u.email) FROM public.employees e LEFT JOIN auth.users u ON u.id=e.user_id WHERE e.id='55555555-5555-4555-8555-555555555555'::uuid");
+const nonContactFieldAttempt = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: { ...contactUpdatePayload, employment_status: 'terminated' },
+});
+const invalidContactAttempt = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: { ...contactUpdatePayload, official_email: 'not-an-email' },
+});
+const longContactAttempt = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: { ...contactUpdatePayload, address: 'x'.repeat(501) },
+});
+const duplicateContactAttempt = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: { ...contactUpdatePayload, official_email: 'employee-a-absent@hris.test' },
+});
+const contactUpdateDeniedForViewer = await employeesViewer.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: contactUpdatePayload,
+});
+const contactUpdateDeniedForNoPermission = await noPermission.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: contactUpdatePayload,
+});
+const contactUpdateCrossTenant = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantB, p_employee_id: '66666666-6666-4666-8666-666666666666',
+  p_contact_details: contactUpdatePayload,
+});
+const employeeDirectUpdate = await managerA.client.from('employees')
+  .update({ employment_status: 'terminated' }).eq('id', '55555555-5555-4555-8555-555555555555').select('id');
+const contactUpdateAnon = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_update_tenant_employee_contact_details', {
+    p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+    p_contact_details: contactUpdatePayload,
+  });
+const contactUpdate = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_contact_details: contactUpdatePayload,
+});
+const restrictedEmployeeAfterContactEdit = queryAdmin("SELECT jsonb_build_object('id',e.id,'tenant_id',e.tenant_id,'user_id',e.user_id,'employee_number',e.employee_number,'full_name',e.full_name,'department_id',e.department_id,'team_id',e.team_id,'designation_id',e.designation_id,'joining_date',e.joining_date,'employment_status',e.employment_status,'auth_email',u.email) FROM public.employees e LEFT JOIN auth.users u ON u.id=e.user_id WHERE e.id='55555555-5555-4555-8555-555555555555'::uuid");
+const contactAudit = queryAdmin("SELECT jsonb_build_object('count',count(*)::integer,'details',max(details::text)) FROM public.admin_audit_logs WHERE target_type='employees' AND target_id='55555555-5555-4555-8555-555555555555' AND action='employee.contact_details_updated'");
+record('Employee contact save validates input, rejects non-contact keys and duplicate emails, audits field names, and preserves identifiers/org/lifecycle/Auth identity',
+  contactBaseline?.official_email === 'employee-a@hris.test'
+    && Boolean(nonContactFieldAttempt.error?.code === '22023')
+    && Boolean(invalidContactAttempt.error?.code === '22023')
+    && Boolean(longContactAttempt.error?.code === '22023')
+    && Boolean(duplicateContactAttempt.error?.code === '23505')
+    && Boolean(contactUpdateDeniedForViewer.error?.code === '42501')
+    && Boolean(contactUpdateDeniedForNoPermission.error?.code === '42501')
+    && Boolean(contactUpdateCrossTenant.error?.code === '42501')
+    && Boolean(employeeDirectUpdate.error)
+    && Boolean(contactUpdateAnon.error)
+    && !contactUpdate.error
+    && contactUpdate.data?.official_email === contactUpdatePayload.official_email
+    && JSON.stringify(restrictedEmployeeAfterContactEdit) === JSON.stringify(restrictedEmployeeBeforeContactEdit)
+    && contactAudit.count === 1
+    && contactAudit.details.includes('official_email')
+    && contactAudit.details.includes('emergency_contact_phone')
+    && !contactAudit.details.includes('employee-a-updated@hris.test'),
+  JSON.stringify({ badPayloadCode: nonContactFieldAttempt.error?.code, invalidCode: invalidContactAttempt.error?.code,
+    longFieldCode: longContactAttempt.error?.code,
+    duplicateCode: duplicateContactAttempt.error?.code, viewerUpdateCode: contactUpdateDeniedForViewer.error?.code,
+    noPermissionUpdateCode: contactUpdateDeniedForNoPermission.error?.code,
+    crossTenantCode: contactUpdateCrossTenant.error?.code, directUpdateDenied: Boolean(employeeDirectUpdate.error),
+    anonymousUpdateDenied: Boolean(contactUpdateAnon.error),
+    updateCode: contactUpdate.error?.code, auditCount: contactAudit.count }));
+
+psqlSync("UPDATE public.employees SET official_email='employee-a@hris.test',personal_email='personal-a@hris.test',phone='+880 1700 000001',official_phone='+880 2 5550001',address='QA A home address',mailing_address='QA A mailing address',emergency_contact_name='QA A emergency contact',emergency_contact_phone='+880 1700 000101',emergency_contact_relation='Parent' WHERE id='55555555-5555-4555-8555-555555555555'::uuid;");
+
+psqlSync("UPDATE public.tenant_memberships SET status='inactive' WHERE user_id=" + sqlLiteral(managerA.userId) + "::uuid AND tenant_id=" + sqlLiteral(ids.tenantA) + "::uuid;");
+let contactDetailsInactiveMembership;
+try {
+  contactDetailsInactiveMembership = await managerA.client.rpc('hris_get_tenant_employee_contact_details', {
+    p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  });
+} finally {
+  psqlSync("UPDATE public.tenant_memberships SET status='active' WHERE user_id=" + sqlLiteral(managerA.userId) + "::uuid AND tenant_id=" + sqlLiteral(ids.tenantA) + "::uuid;");
+}
+record('Employee contact RPC immediately denies inactive tenant membership',
+  Boolean(contactDetailsInactiveMembership.error?.code === '42501'));
+
+psqlSync("UPDATE public.tenants SET is_active=false WHERE id=" + sqlLiteral(ids.tenantA) + "::uuid;");
+let contactDetailsInactiveTenant;
+let contactUpdateInactiveTenant;
+try {
+  contactDetailsInactiveTenant = await managerA.client.rpc('hris_get_tenant_employee_contact_details', {
+    p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+  });
+  contactUpdateInactiveTenant = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+    p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
+    p_contact_details: contactUpdatePayload,
+  });
+} finally {
+  psqlSync("UPDATE public.tenants SET is_active=true WHERE id=" + sqlLiteral(ids.tenantA) + "::uuid;");
+}
+record('Employee contact read and save both deny an inactive organization',
+  Boolean(contactDetailsInactiveTenant.error?.code === '42501')
+    && Boolean(contactUpdateInactiveTenant.error?.code === '42501'));
 psqlSync(`UPDATE public.tenant_memberships SET status='inactive'
   WHERE user_id='${employeesViewer.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 let employeeDirectoryInactiveMembership;
@@ -1568,6 +1718,7 @@ try {
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL: emails[12],
+      HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL: emails[0],
       HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',
@@ -1577,8 +1728,9 @@ try {
   employeeDirectoryBrowserError = String(error.stderr || error.message || 'local employee-directory browser run failed').slice(-1400);
 }
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
-  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory journey passed with permission-limited details, keyboard recovery, refresh recovery, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
+  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
+psqlSync("UPDATE public.employees SET official_email='employee-a@hris.test',personal_email='personal-a@hris.test',phone='+880 1700 000001',official_phone='+880 2 5550001',address='QA A home address',mailing_address='QA A mailing address',emergency_contact_name='QA A emergency contact',emergency_contact_phone='+880 1700 000101',emergency_contact_relation='Parent' WHERE id='55555555-5555-4555-8555-555555555555'::uuid;");
 
 const recruitmentIds = {
   jobA1: 'a1111111-1111-4111-8111-111111111111',
