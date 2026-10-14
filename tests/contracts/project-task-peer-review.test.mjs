@@ -81,6 +81,8 @@ test('the disposable Auth/RLS runner accepts explicit loopback ports while retai
   const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
   assert.match(runner, /HRIS_SUPABASE_API_PORT \|\| '55421'/);
   assert.match(runner, /HRIS_SUPABASE_DB_PORT \|\| '55422'/);
+  assert.match(runner, /HRIS_SUPABASE_API_URL/);
+  assert.match(runner, /override\.hostname !== '127\.0\.0\.1'/);
   assert.match(runner, /apiUrl\.hostname !== '127\.0\.0\.1'/);
   assert.match(runner, /databaseUrl\.hostname !== '127\.0\.0\.1'/);
   assert.match(runner, /apiUrl\.port !== expectedApiPort/);

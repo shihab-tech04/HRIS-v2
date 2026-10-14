@@ -48,6 +48,18 @@ function parseEnv(text) {
 }
 
 const services = parseEnv(cli(['status', '--output', 'env']));
+const apiUrlOverride = process.env.HRIS_SUPABASE_API_URL;
+if (apiUrlOverride) {
+  let override;
+  try { override = new URL(apiUrlOverride); }
+  catch { throw new Error('Refusing to test: the explicit isolated API URL is invalid.'); }
+  if (override.protocol !== 'http:' || override.hostname !== '127.0.0.1'
+      || override.username || override.password || override.pathname !== '/'
+      || override.search || override.hash) {
+    throw new Error('Refusing to test: an explicit isolated API URL must be a plain HTTP loopback origin.');
+  }
+  services.API_URL = override.origin;
+}
 if (!services.API_URL || !services.ANON_KEY || !services.SERVICE_ROLE_KEY) {
   throw new Error('Local Supabase status did not provide the API URL and local keys.');
 }
