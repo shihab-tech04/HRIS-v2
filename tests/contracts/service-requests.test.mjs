@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql', import.meta.url), 'utf8');
 const component = readFileSync(new URL('../../src/live/MyServiceRequests.tsx', import.meta.url), 'utf8');
+const locale = readFileSync(new URL('../../src/live/service-request-locale.ts', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const localRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 
@@ -31,11 +32,16 @@ test('service-request tables are read-only to clients and RPC execute grants exc
 test('employee service-request UI submits through scoped RPCs and recovers history after refresh', () => {
   assert.match(component, /hris_get_my_service_requests/);
   assert.match(component, /hris_submit_my_service_request/);
-  assert.match(component, /Refresh my service requests/);
+  assert.match(component, /serviceRequestText\(locale, english\)/);
+  assert.match(locale, /'Refresh my service requests': 'আমার পরিষেবা অনুরোধ রিফ্রেশ করুন'/);
+  assert.match(locale, /'No service requests yet': 'এখনও কোনো পরিষেবা অনুরোধ নেই'/);
+  assert.match(locale, /'Unable to complete this service request\. Try again\.': 'পরিষেবা অনুরোধটি সম্পন্ন করা যায়নি। আবার চেষ্টা করুন।'/);
   assert.match(component, /role="alert"/);
-  assert.match(component, /No service requests yet/);
   assert.match(component, /disabled=\{submitting \|\| !reason\.trim\(\)\}/);
   assert.match(workspace, /page === 'my-service-requests' && isEmployee/);
   assert.match(workspace, /id: 'my-service-requests', label: 'My Requests'/);
+  assert.match(workspace, /MyServiceRequests tenantId=\{tenantId\} locale=\{locale\}/);
   assert.match(localRunner, /run-service-requests-browser\.mjs/);
+  assert.match(readFileSync(new URL('../sql/isolated-auth/run-service-requests-browser.mjs', import.meta.url), 'utf8'), /Switch language to Bengali/);
+  assert.match(readFileSync(new URL('../sql/isolated-auth/run-service-requests-browser.mjs', import.meta.url), 'utf8'), /Bengali service request desktop/);
 });

@@ -2664,7 +2664,7 @@ export function LiveHrisWorkspace({
     {(['HRIS', 'Personal'] as const).map(group => {
       const items = localizedNav.filter(item => item.group === group);
       return items.length ? <div key={group} className="space-y-1">
-        <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{group === 'HRIS' ? 'Workforce' : 'Self service'}</p>
+        <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{projectText(locale, group === 'HRIS' ? 'Workforce' : 'Self service')}</p>
         {items.map(item => <button key={item.id} type="button" title={item.label} onClick={() => navigate(item.id)} aria-current={page === item.id ? 'page' : undefined}
           className={`flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-lg px-2 text-center text-[11px] focus-visible:outline-2 focus-visible:outline-[#085587] ${page === item.id ? 'bg-[#DCEFF4] text-[#085587] font-semibold' : 'text-slate-700 hover:bg-white hover:text-[#085587]'}`}>
           {item.icon}<span className="leading-tight">{item.label}</span>
@@ -2735,7 +2735,7 @@ export function LiveHrisWorkspace({
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} />}
           {page === 'my-expenses' && isEmployee && <ExpenseClaims tenantId={tenantId} userId={userId} mode="personal" />}
-          {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} />}
+          {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} locale={locale} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>

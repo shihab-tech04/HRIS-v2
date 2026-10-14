@@ -67,11 +67,15 @@ try {
   if (await employee.getByLabel('Reason or details').inputValue()) throw new Error('Clear did not cancel the unsent request text.');
   if (await employee.locator('[data-service-request]').count() !== initialCount) throw new Error('Clearing the form changed persisted requests.');
 
+  await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await employee.getByRole('heading', { name: 'আমার পরিষেবা অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  if (initialCount === 0) await employee.getByText('এখনও কোনো পরিষেবা অনুরোধ নেই', { exact: true }).waitFor({ state: 'visible' });
+
   const reason = `Local employee service request ${Date.now()}`;
-  await employee.getByLabel('Request type').selectOption({ label: 'Employment certificate' });
-  await employee.getByLabel('Reason or details').fill(reason);
+  await employee.getByLabel('অনুরোধের ধরন').selectOption({ label: 'চাকরির প্রত্যয়নপত্র' });
+  await employee.getByLabel('কারণ বা বিস্তারিত').fill(reason);
   const submitResponsePromise = employee.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_submit_my_service_request'));
-  await employee.getByRole('button', { name: 'Submit request', exact: true }).click();
+  await employee.getByRole('button', { name: 'অনুরোধ জমা দিন', exact: true }).click();
   const response = await submitResponsePromise;
   const saved = await response.json();
   if (!response.ok() || !saved?.id || saved.status !== 'pending') {
@@ -80,12 +84,26 @@ try {
   const card = employee.locator(`[data-service-request="${saved.id}"]`);
   await card.waitFor({ state: 'visible' });
   await card.getByText(reason, { exact: true }).waitFor({ state: 'visible' });
-  await card.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
-  await employee.getByRole('button', { name: 'Refresh my service requests' }).click();
+  await card.getByText('অপেক্ষমাণ', { exact: true }).waitFor({ state: 'visible' });
+  await employee.getByRole('status').getByText('আপনার অনুরোধ জমা হয়েছে এবং এখন অপেক্ষমাণ।', { exact: true }).waitFor({ state: 'visible' });
+  await employee.getByRole('button', { name: 'আমার পরিষেবা অনুরোধ রিফ্রেশ করুন', exact: true }).click();
   await card.getByText(reason, { exact: true }).waitFor({ state: 'visible' });
-  await assertNoOverflow(employee, 'Service request mobile');
+  await assertNoOverflow(employee, 'Bengali service request mobile');
+
+  const historyPath = '**/rest/v1/rpc/hris_get_my_service_requests';
+  await employee.route(historyPath, route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"temporary local acceptance outage"}' }));
+  await employee.getByRole('button', { name: 'আমার পরিষেবা অনুরোধ রিফ্রেশ করুন', exact: true }).click();
+  await employee.getByRole('alert').getByText('পরিষেবা অনুরোধটি সম্পন্ন করা যায়নি। আবার চেষ্টা করুন।', { exact: true }).waitFor({ state: 'visible' });
+  await employee.unroute(historyPath);
+  await employee.getByRole('button', { name: 'আবার চেষ্টা করুন', exact: true }).click();
+  await card.getByText(reason, { exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('অপেক্ষমাণ', { exact: true }).waitFor({ state: 'visible' });
   await employee.setViewportSize({ width: 1280, height: 900 });
-  await assertNoOverflow(employee, 'Service request desktop');
+  await assertNoOverflow(employee, 'Bengali service request desktop');
+  await employee.getByRole('button', { name: 'Switch language to English' }).click();
+  await employee.getByRole('heading', { name: 'My Service Requests', exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(employee, 'English service request desktop');
 
   console.log(`SERVICE_REQUEST_ACCEPTANCE_ID=${saved.id}`);
   console.log('Local employee service-request submission and refreshed status history persisted across mobile and desktop.');
