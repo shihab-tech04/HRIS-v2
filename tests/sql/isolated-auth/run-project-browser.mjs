@@ -14,6 +14,7 @@ for (const key of required) if (!process.env[key]) throw new Error(`Missing inte
 const repo = process.cwd();
 const port = '48371';
 const origin = `http://127.0.0.1:${port}`;
+let authOutcome = 'no password-token response observed';
 const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
   env: {
@@ -53,11 +54,27 @@ async function signIn(page, email) {
   }
   await emailInput.fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (response.request().method() !== 'POST' || url.pathname !== '/auth/v1/token' || url.searchParams.get('grant_type') !== 'password') return;
+    authOutcome = `HTTP ${response.status()}`;
+    void response.json().then(body => {
+      const code = String(body.error_code || body.code || body.error || '');
+      const message = String(body.msg || body.message || '').replace(email, '[synthetic account]');
+      authOutcome += `${code ? `, ${code}` : ''}${message ? `: ${message.slice(0, 180)}` : ''}`;
+    }).catch(() => {});
+  });
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  if ((await page.evaluate(() => window.innerWidth)) < 1024) {
-    await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
-  } else {
-    await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible' });
+  try {
+    if ((await page.evaluate(() => window.innerWidth)) < 1024) {
+      await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible', timeout: 10000 });
+    } else {
+      await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible', timeout: 10000 });
+    }
+  } catch {
+    const headings = (await page.getByRole('heading').allTextContents()).join(' | ').slice(0, 240);
+    const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ').replace(email, '[synthetic account]').slice(0, 240);
+    throw new Error(`Project browser sign-in did not reach workspace: ${authOutcome}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}.`);
   }
 }
 

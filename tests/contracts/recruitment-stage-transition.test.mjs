@@ -7,6 +7,7 @@ const page = readFileSync(new URL('../../src/live/RecruitmentPipeline.tsx', impo
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-recruitment-browser.mjs', import.meta.url), 'utf8');
+const rejectionBrowser = readFileSync(new URL('../sql/isolated-auth/run-recruitment-stage-rejection-browser.mjs', import.meta.url), 'utf8');
 
 test('recruiter stage transitions are authenticated, tenant-scoped, locked, and history-backed', () => {
   assert.match(migration, /auth\.uid\(\) IS NULL OR NOT public\.is_live_session\(\)/);
@@ -36,6 +37,11 @@ test('recruitment manager UI confirms rejection and persists review/screening up
   assert.match(page, /result\.created_at/);
   assert.match(workspace, /canManageApplicationStages=\{permissions\.recruitmentManage\}/);
   assert.match(browser, /Update application progress/);
-  assert.match(browser, /Confirm application rejection/);
   assert.match(browser, /mobile\+desktop refresh recovery passed/);
+  assert.match(rejectionBrowser, /Confirm application rejection/);
+  assert.match(rejectionBrowser, /Cancelling rejection unexpectedly wrote a stage transition/);
+  assert.match(runner, /candidateReplacementResponse\.data\?\.response === 'confirmed'/);
+  assert.match(runner, /Recruiter rejection confirmation is cancellable and persists only after confirmation/);
+  assert.match(rejectionBrowser, /after candidate confirmation/);
+  assert.match(runner, /run-recruitment-stage-rejection-browser\.mjs/);
 });

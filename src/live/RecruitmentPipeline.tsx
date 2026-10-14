@@ -116,12 +116,15 @@ function OfferIssueForm({ tenantId, application, onIssued }: {
   </details>;
 }
 
-function InterviewScheduleForm({ tenantId, applicationId, onScheduled, compact = false }: {
+function InterviewScheduleForm({ tenantId, applicationId, onScheduled, onCancel, compact = false, locale }: {
   tenantId: string;
   applicationId: string;
   onScheduled: () => void;
+  onCancel?: () => void;
   compact?: boolean;
+  locale?: Locale;
 }) {
+  const tx = (text: string) => locale ? candidateInterviewText(locale, text) : text;
   const [round, setRound] = useState('');
   const [format, setFormat] = useState('Video Call');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -133,6 +136,19 @@ function InterviewScheduleForm({ tenantId, applicationId, onScheduled, compact =
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [successTimeZone, setSuccessTimeZone] = useState('');
+
+  function cancel() {
+    if (submitting) return;
+    setRound('');
+    setFormat('Video Call');
+    setScheduledAt('');
+    setDuration('30');
+    setLocation('');
+    setPanel('');
+    setInstructions('');
+    setError('');
+    onCancel?.();
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -152,54 +168,57 @@ function InterviewScheduleForm({ tenantId, applicationId, onScheduled, compact =
         p_instructions: instructions.trim() || null,
       });
       if (result.error) throw result.error;
-      setSuccessTimeZone(typeof result.data?.timezone === 'string' ? result.data.timezone : 'organization time zone');
+      setSuccessTimeZone(typeof result.data?.timezone === 'string' ? result.data.timezone : tx('organization time zone'));
       setSuccess(true);
       onScheduled();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message.toLowerCase() : '';
-      setError(message.includes('already active')
+      setError(tx(message.includes('already active')
         ? 'An interview invitation is already awaiting a response. Review the interview response list below.'
         : message.includes('not found in this organization')
           ? 'This application is not available in the selected organization.'
           : message.includes('recruitment management access')
             ? 'You do not have interview scheduling access for this organization.'
-            : 'The interview could not be scheduled. Check the details and your recruitment access, then try again.');
+            : 'The interview could not be scheduled. Check the details and your recruitment access, then try again.'));
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (success) return <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Interview invitation scheduled ({successTimeZone}). The candidate can now review and respond from Interviews.</p>;
+  if (success) return <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Interview invitation scheduled')} ({successTimeZone}). {tx('The candidate can now review and respond from Interviews.')}</p>;
 
   const form = <form onSubmit={submit} className="mt-2 grid gap-3 sm:grid-cols-2">
-      <label className="text-xs font-medium text-slate-700">Interview round
-        <input aria-label="Interview round" required maxLength={120} value={round} onChange={event => setRound(event.target.value)} placeholder="e.g. Technical interview" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      <label className="text-xs font-medium text-slate-700">{tx('Interview round')}
+        <input aria-label={tx('Interview round')} required maxLength={120} value={round} onChange={event => setRound(event.target.value)} placeholder={tx('e.g. Technical interview')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </label>
-      <label className="text-xs font-medium text-slate-700">Format
-        <select aria-label="Interview format" value={format} onChange={event => setFormat(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-          <option>Video Call</option><option>In-person</option><option>Phone Call</option>
+      <label className="text-xs font-medium text-slate-700">{tx('Format')}
+        <select aria-label={tx('Interview format')} value={format} onChange={event => setFormat(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="Video Call">{tx('Video Call')}</option><option value="In-person">{tx('In-person')}</option><option value="Phone Call">{tx('Phone Call')}</option>
         </select>
       </label>
-      <label className="text-xs font-medium text-slate-700">Date and time (organization time zone)
-        <input aria-label="Interview date and time (organization time zone)" type="datetime-local" required value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      <label className="text-xs font-medium text-slate-700">{tx('Date and time (organization time zone)')}
+        <input aria-label={tx('Interview date and time (organization time zone)')} type="datetime-local" required value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </label>
-      <label className="text-xs font-medium text-slate-700">Duration in minutes
-        <input aria-label="Interview duration in minutes" type="number" min="15" max="480" step="15" required value={duration} onChange={event => setDuration(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      <label className="text-xs font-medium text-slate-700">{tx('Duration in minutes')}
+        <input aria-label={tx('Interview duration in minutes')} type="number" min="15" max="480" step="15" required value={duration} onChange={event => setDuration(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </label>
-      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{format === 'Video Call' ? 'Secure meeting link' : format === 'In-person' ? 'Interview location' : 'Call details (optional)'}
-        <input aria-label={format === 'Video Call' ? 'Secure meeting link' : format === 'In-person' ? 'Interview location' : 'Call details'} type={format === 'Video Call' ? 'url' : 'text'} required={format !== 'Phone Call'} value={location} onChange={event => setLocation(event.target.value)} placeholder={format === 'Video Call' ? 'https://…' : format === 'In-person' ? 'Office and room' : 'Optional dial-in details'} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{tx(format === 'Video Call' ? 'Secure meeting link' : format === 'In-person' ? 'Interview location' : 'Call details (optional)')}
+        <input aria-label={tx(format === 'Video Call' ? 'Secure meeting link' : format === 'In-person' ? 'Interview location' : 'Call details')} type={format === 'Video Call' ? 'url' : 'text'} required={format !== 'Phone Call'} value={location} onChange={event => setLocation(event.target.value)} placeholder={tx(format === 'Video Call' ? 'https://…' : format === 'In-person' ? 'Office and room' : 'Optional dial-in details')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </label>
-      <label className="text-xs font-medium text-slate-700 sm:col-span-2">Panel members (comma separated)
-        <input aria-label="Panel members" value={panel} onChange={event => setPanel(event.target.value)} placeholder="Names shown to the candidate" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{tx('Panel members (comma separated)')}
+        <input aria-label={tx('Panel members')} value={panel} onChange={event => setPanel(event.target.value)} placeholder={tx('Names shown to the candidate')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </label>
-      <label className="text-xs font-medium text-slate-700 sm:col-span-2">Candidate instructions (optional)
-        <textarea aria-label="Candidate instructions" rows={3} maxLength={4000} value={instructions} onChange={event => setInstructions(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{tx('Candidate instructions (optional)')}
+        <textarea aria-label={tx('Candidate instructions')} rows={3} maxLength={4000} value={instructions} onChange={event => setInstructions(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       </label>
       {error && <p role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
-      <div className="sm:col-span-2 flex justify-end"><button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{submitting ? 'Scheduling…' : 'Send interview invitation'}</button></div>
+      <div className="sm:col-span-2 flex flex-wrap justify-end gap-2">
+        {compact && <button type="button" disabled={submitting} onClick={cancel} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Cancel')}</button>}
+        <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{submitting ? tx('Scheduling…') : tx('Send interview invitation')}</button>
+      </div>
   </form>;
   return compact ? form : <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
-    <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">Schedule interview</summary>
+    <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">{tx('Schedule interview')}</summary>
     {form}
   </details>;
 }
@@ -239,6 +258,7 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesError, setNotesError] = useState('');
   const [savedNotesFor, setSavedNotesFor] = useState('');
+  const [rescheduledApplicationId, setRescheduledApplicationId] = useState('');
 
   function startEditingNotes(row: InterviewResponse) {
     setNotesError('');
@@ -294,23 +314,25 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
     })();
     return () => { current = false; };
   }, [tenantId, revision, retry]);
+  useEffect(() => setRescheduledApplicationId(''), [tenantId]);
 
   const responseLabel: Record<string, string> = {
-    invited: 'Awaiting candidate response', confirmed: 'Candidate accepted',
-    declined: 'Candidate declined', reschedule_requested: 'Reschedule requested',
+    invited: tx('Awaiting candidate response'), confirmed: tx('Candidate accepted'),
+    declined: tx('Candidate declined'), reschedule_requested: tx('Reschedule requested'),
   };
   return <section aria-labelledby="interview-responses-heading" className="space-y-3">
-    <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 id="interview-responses-heading" className="text-xl font-semibold text-[#1E1B39]">Interview responses</h3>
-      <p className="mt-1 text-sm text-slate-600">Candidate replies and rescheduling availability for this organization.</p></div>
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 id="interview-responses-heading" className="text-xl font-semibold text-[#1E1B39]">{tx('Interview responses')}</h3>
+      <p className="mt-1 text-sm text-slate-600">{tx('Candidate replies and rescheduling availability for this organization.')}</p></div>
       <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} aria-label={tx('Refresh interview responses')} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="mr-2 inline h-4 w-4" aria-hidden="true" />{tx('Refresh')}</button></div>
+    {rescheduledApplicationId && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Replacement interview invitation sent and refreshed. The candidate can respond to the new time.')}</p>}
     {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{error} <button type="button" onClick={() => setRetry(value => value + 1)} className="font-semibold underline">{tx('Retry')}</button></div>}
     {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('Loading interview responses…')}</p>
       : rows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('No interview invitations have been scheduled.')}</p>
-      : <ul className="space-y-3">{rows.map(row => <li key={row.id} data-interview-id={row.id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      : <ul className="space-y-3">{rows.map(row => <li key={row.id} data-interview-id={row.id} data-interview-application-id={row.application_id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-900">{row.candidate_name}</h4><p className="break-all text-sm text-slate-600">{row.candidate_email}</p><p className="mt-1 text-sm text-slate-700">{row.job_title} · {row.round_name.split(' — ')[0]}</p><p className="mt-1 text-xs text-slate-500">{dateTime(row.scheduled_at, row.timezone || undefined)} · {row.duration_minutes} minutes{row.timezone ? ` · ${row.timezone}` : ''}</p></div>
-          <span className="w-fit rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{responseLabel[row.candidate_response] || 'Response recorded'}</span></div>
-        {row.candidate_response_note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><strong>Candidate note:</strong> {row.candidate_response_note}</p>}
-        {row.candidate_proposed_times && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>Proposed availability:</strong> {row.candidate_proposed_times}</p>}
+          <span className="w-fit rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{responseLabel[row.candidate_response] || tx('Response recorded')}</span></div>
+        {row.candidate_response_note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><strong>{tx('Candidate note:')}</strong> {row.candidate_response_note}</p>}
+        {row.candidate_proposed_times && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>{tx('Proposed availability:')}</strong> {row.candidate_proposed_times}</p>}
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="flex flex-wrap items-start justify-between gap-2"><div><h5 className="text-sm font-semibold text-slate-900">{tx('Internal panel notes')}</h5><p className="mt-1 text-xs text-slate-600">{tx('Only authorized recruitment staff can view these notes.')}</p></div>
             {editingNotes !== row.id && <button type="button" onClick={() => startEditingNotes(row)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-[#085587]">{tx(row.panel_notes ? 'Edit panel notes' : 'Add panel notes')}</button>}</div>
@@ -328,8 +350,11 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
           </form>}
         </div>
         {row.candidate_response === 'reschedule_requested' && <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2" open={expanded === row.id} onToggle={event => setExpanded((event.currentTarget as HTMLDetailsElement).open ? row.id : '')}>
-          <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">Offer another time</summary>
-          <InterviewScheduleForm key={`${tenantId}-${row.application_id}-${revision}`} compact tenantId={tenantId} applicationId={row.application_id} onScheduled={() => onRescheduled(row.application_id)} />
+          <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">{tx('Offer another time')}</summary>
+          <InterviewScheduleForm key={`${tenantId}-${row.application_id}-${revision}`} compact locale={locale} tenantId={tenantId} applicationId={row.application_id} onCancel={() => setExpanded('')} onScheduled={() => {
+            setRescheduledApplicationId(row.application_id);
+            onRescheduled(row.application_id);
+          }} />
         </details>}
       </li>)}</ul>}
   </section>;

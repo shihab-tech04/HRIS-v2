@@ -50,7 +50,7 @@ test('isolated acceptance uses disposable Auth/Postgres rows and a real browser 
   assert.match(fixture, /REVOKE ALL PRIVILEGES ON TABLE[\s\S]*?public\.interviews[\s\S]*?FROM PUBLIC,anon,authenticated/);
   assert.match(runner, /20261013221500_hris_candidate_interview_journey\.sql/);
   assert.match(runner, /20261014153343_hris_candidate_interview_panel_debrief\.sql/);
-  assert.match(runner, /candidate owner confirms it, and other tenant identities are denied/);
+  assert.match(runner, /its owner requests a reschedule, and other tenant identities are denied/);
   assert.match(runner, /Private interview notes require active same-tenant recruitment management and server-side validation/);
   assert.match(runner, /Recruitment manager debrief saves through the tenant RPC, survives refresh, and stays hidden from candidate table reads/);
   assert.match(browser, /failNextPanelNotesSave = true/);

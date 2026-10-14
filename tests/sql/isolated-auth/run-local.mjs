@@ -1688,20 +1688,24 @@ const crossTenantInterviewSchedule = await recruitmentManagerA.client.rpc('hris_
 const candidateBInterviewResponse = await assessmentCandidateB.client.rpc('candidate_respond_interview', {
   p_interview_id: interviewId, p_response: 'confirmed',
 });
-const candidateAInterviewResponse = await assessmentCandidateA.client.rpc('candidate_respond_interview', {
-  p_interview_id: interviewId, p_response: 'confirmed',
+const candidateARescheduleRequest = await assessmentCandidateA.client.rpc('candidate_respond_interview', {
+  p_interview_id: interviewId, p_response: 'reschedule_requested',
+  p_reason: 'The scheduled time conflicts with a client meeting.',
+  p_proposed_times: 'Available after 3:00 PM on the next two working days.',
 });
 const interviewResponsesBeforeNotes = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', {
   p_tenant_id: ids.tenantA,
 });
 const interviewResponseBeforeNotes = interviewResponsesBeforeNotes.data?.find(row => row.id === interviewId);
-record('Recruiter schedules an interview, candidate owner confirms it, and other tenant identities are denied',
+record('Recruiter schedules an interview, its owner requests a reschedule, and other tenant identities are denied',
   !interviewSchedule.error && Boolean(interviewId)
     && Boolean(unauthorizedInterviewSchedule.error?.code === '42501')
     && Boolean(crossTenantInterviewSchedule.error?.code === '42501')
     && Boolean(candidateBInterviewResponse.error?.code === 'P0002')
-    && !candidateAInterviewResponse.error && candidateAInterviewResponse.data?.response === 'confirmed'
-    && !interviewResponsesBeforeNotes.error && interviewResponseBeforeNotes?.candidate_response === 'confirmed'
+    && !candidateARescheduleRequest.error && candidateARescheduleRequest.data?.response === 'reschedule_requested'
+    && !interviewResponsesBeforeNotes.error && interviewResponseBeforeNotes?.candidate_response === 'reschedule_requested'
+    && interviewResponseBeforeNotes?.candidate_response_note === 'The scheduled time conflicts with a client meeting.'
+    && interviewResponseBeforeNotes?.candidate_proposed_times === 'Available after 3:00 PM on the next two working days.'
     && interviewResponseBeforeNotes.panel_notes === null);
 
 const viewOnlyInterviewResponses = await recruiterOnly.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
@@ -1809,18 +1813,37 @@ record('Real 375px/1280px browser reads the tenant-scoped recruitment pipeline f
 record('Candidate assessment manager UI assigns work and saves a private note across EN/BN, cancel/retry, refresh, and mobile/desktop',
   recruitmentBrowserOutput.includes('Candidate assessment assignment and internal review note persisted after refresh; EN/BN, cancel, mobile, and desktop passed.'),
   recruitmentBrowserError);
-const interviewAfterBrowser = queryAdmin(`SELECT jsonb_build_object('panel_notes',panel_notes,'candidate_response',candidate_response)
+const interviewAfterBrowser = queryAdmin(`SELECT jsonb_build_object('panel_notes',panel_notes,'candidate_response',candidate_response,'status',status)
   FROM public.interviews WHERE id=${sqlLiteral(interviewId)}::uuid`);
 const managerInterviewRowsAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
-const managerInterviewAfterBrowser = managerInterviewRowsAfterBrowser.data?.find(row => row.id === interviewId);
+const replacementInterview = managerInterviewRowsAfterBrowser.data?.find(row => row.application_id === recruitmentIds.applicationA2 && row.id !== interviewId);
+const candidateReplacementResponse = replacementInterview?.id
+  ? await assessmentCandidateA.client.rpc('candidate_respond_interview', { p_interview_id: replacementInterview.id, p_response: 'confirmed' })
+  : { error: { code: 'P0002' } };
+const managerInterviewRowsAfterCandidateResponse = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
+const confirmedReplacement = managerInterviewRowsAfterCandidateResponse.data?.find(row => row.id === replacementInterview?.id);
+const replacementAfterBrowser = replacementInterview?.id
+  ? queryAdmin(`SELECT jsonb_build_object('status',status,'candidate_response',candidate_response,'panel_notes',panel_notes)
+      FROM public.interviews WHERE id=${sqlLiteral(replacementInterview.id)}::uuid`)
+  : null;
 const candidateDirectInterviewRead = await assessmentCandidateA.client.from('interviews').select('panel_notes').eq('id', interviewId);
 record('Recruitment manager debrief saves through the tenant RPC, survives refresh, and stays hidden from candidate table reads',
-  recruitmentBrowserOutput.includes('Interview scheduling and private panel debrief persist through Auth/Postgres; failure retry, cancel, EN/BN, refresh, and 375px/1280px passed.')
+  recruitmentBrowserOutput.includes('Interview scheduling, candidate reschedule, private panel debrief, failure retry, EN/BN, refresh, and 375px/1280px passed.')
     && interviewAfterBrowser.panel_notes === interviewPanelNote
-    && interviewAfterBrowser.candidate_response === 'confirmed'
-    && !managerInterviewRowsAfterBrowser.error && managerInterviewAfterBrowser?.panel_notes === interviewPanelNote
+    && interviewAfterBrowser.candidate_response === 'reschedule_requested'
+    && interviewAfterBrowser.status === 'cancelled'
+    && !managerInterviewRowsAfterBrowser.error && !managerInterviewRowsAfterBrowser.data?.some(row => row.id === interviewId)
     && Boolean(candidateDirectInterviewRead.error),
   recruitmentBrowserError || (candidateDirectInterviewRead.error?.message ?? ''));
+record('Manager replacement interview persists, cancels the prior request, and lets its owner confirm the new invitation',
+  Boolean(replacementInterview?.id)
+    && replacementInterview.round_name.startsWith('ফলো-আপ সাক্ষাৎকার')
+    && replacementInterview.candidate_response === 'invited'
+    && !candidateReplacementResponse.error && candidateReplacementResponse.data?.response === 'confirmed'
+    && confirmedReplacement?.candidate_response === 'confirmed'
+    && replacementAfterBrowser?.status === 'scheduled'
+    && replacementAfterBrowser.candidate_response === 'confirmed'
+    && replacementAfterBrowser.panel_notes === null);
 const assessmentAfterBrowser = queryAdmin(`SELECT jsonb_build_object('status',status,'note',review_note,'reviewer',reviewed_by,'reviewed_at',reviewed_at)
   FROM public.candidate_assessments WHERE id=${sqlLiteral(assessmentId)}::uuid`);
 const assessmentManagerReadAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
@@ -1840,6 +1863,26 @@ record('Recruitment browser saves an internal assessment note; manager refresh s
     && Boolean(candidateDirectAssessmentRead.error)
     && Boolean(duplicateManagerAssessmentReview.error?.code === 'P0002'),
   recruitmentBrowserError || (candidateDirectAssessmentRead.error?.message ?? ''));
+
+let stageRejectionBrowserOutput = '';
+let stageRejectionBrowserError = '';
+try {
+  stageRejectionBrowserOutput = execFileSync('node', [path.join(here, 'run-recruitment-stage-rejection-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[16],
+      HRIS_LOCAL_APPLICATION_A2_ID: recruitmentIds.applicationA2,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  stageRejectionBrowserError = String(error.stderr || error.message || 'local recruiter rejection browser run failed').slice(-1400);
+}
 
 const stageNoPermission = await noPermission.client.rpc('hris_update_candidate_application_stage', {
   p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'rejected',
@@ -1889,12 +1932,13 @@ const sanitizedStageHistory = await recruiterOnly.client.rpc('hris_get_recruitme
 const candidateA1Milestones = sanitizedStageHistory.data?.applications?.find(row => row.application_id === recruitmentIds.applicationA1)?.milestones || [];
 const candidateA1MilestonesText = JSON.stringify(candidateA1Milestones);
 record('Recruiter stage transitions persist one sanitized history event per accepted change',
-  !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
+  stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
+    && !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
     && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
     && !transitionHistoryA1.error && transitionHistoryA1.data.filter(row => row.stage === 'under_review' || row.stage === 'screening').length === 2
     && transitionHistoryA1.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
-    && !transitionHistoryA2.error && transitionHistoryA2.data.length === 2
-    && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 1
+    && !transitionHistoryA2.error && transitionHistoryA2.data.length === 3
+    && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 2
     && transitionHistoryA2.data.filter(row => row.stage === 'rejected').length === 1
     && transitionHistoryA2.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
     && repeatedStage.data?.changed === false
@@ -1902,6 +1946,11 @@ record('Recruiter stage transitions persist one sanitized history event per acce
     && candidateA1Milestones.some(row => row.stage === 'screening')
     && !candidateA1MilestonesText.includes('actor_user_id')
     && !candidateA1MilestonesText.includes('Application moved to screening.'));
+record('Recruiter rejection confirmation is cancellable and persists only after confirmation, after candidate interview acceptance',
+  stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
+    && persistedStageA2.data?.stage === 'rejected'
+    && candidateReplacementResponse.data?.response === 'confirmed',
+  stageRejectionBrowserError);
 
 const referralFileName = 'qa-referral-resume.pdf';
 const referralPath = `${employeeA.userId}/${ids.tenantA}/${randomUUID()}/${referralFileName}`;
