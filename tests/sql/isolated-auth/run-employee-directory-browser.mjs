@@ -65,10 +65,11 @@ async function signIn(page, email = process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EM
   try {
     await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
   } catch (error) {
+    const timeout = String(error?.message || 'sign-in timed out').split('\n', 1)[0];
     const headings = (await page.getByRole('heading').allTextContents()).join(' | ').slice(0, 200);
     const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ')
       .replaceAll(email, '[synthetic account]').slice(0, 200);
-    throw new Error(`Employee directory sign-in did not reach workspace: ${sanitize(error.message)}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}; Auth=${authTrace.join('; ') || 'no Auth response/error observed'}.`);
+    throw new Error(`Employee directory sign-in did not reach workspace: ${sanitize(timeout)}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}; Auth=${authTrace.join('; ') || 'no Auth response/error observed'}.`);
   }
 }
 
@@ -308,7 +309,7 @@ try {
     'Emergency contact name': editedContact.emergency_contact_name,
     'Emergency contact phone': editedContact.emergency_contact_phone,
     'Emergency contact relationship': editedContact.emergency_contact_relation,
-  })) await managerDetails.getByLabel(label).fill(value);
+  })) await managerDetails.getByLabel(label, { exact: true }).fill(value);
   await managerDetails.getByRole('button', { name: 'Save contact details' }).click();
   await managerDetails.getByRole('button', { name: 'Saving contact details…' }).waitFor({ state: 'visible' });
   await managerDetails.getByRole('alert').getByText('Contact update failed. Check your employee-management access and retry.', { exact: true }).waitFor({ state: 'visible' });
