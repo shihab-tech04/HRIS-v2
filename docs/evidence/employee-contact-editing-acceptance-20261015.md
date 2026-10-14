@@ -27,3 +27,11 @@ Users with the existing `employees.manage` permission may edit only the current 
 ## Checkpoint status
 
 The contact-only implementation remains committed on the development checkpoint branch. Contract, TypeScript, build, and 11 isolated Auth/Postgres/RLS checks pass. Real Auth/browser acceptance and cleanup of two test-created Auth identities remain open because the disposable local Supabase/Docker runtime stopped responding. No production data, permissions, `main` branch or deployment was changed.
+
+## 2026-10-15 continuation checkpoint
+
+- Re-ran `npm run check` against the committed contact-editing implementation: TypeScript **PASS**, contract suite **155/155 PASS**, Vite production build **PASS**. The existing large JavaScript chunk advisory remains.
+- The 11 focused isolated Auth/Postgres/RLS assertions above are the latest successful database evidence; they were not rerun in this continuation.
+- Rechecked the disposable runtime without restarting it: Auth on both configured loopback ports returned HTTP **000**; Docker access to the `hris-acceptance` socket returned **permission denied**; the Colima status query timed out. No local `postgres`, `initdb`, or `psql` binary is installed.
+- Real Auth-to-Postgres browser acceptance remains **blocked**, not passed or product-failed. The 375px mobile and 1280px desktop journey, persistence-through-refresh, and final local Auth cleanup still require a reachable disposable runtime. The two synthetic Auth entries remain untouched because their identities could not be safely re-verified.
+- No application source changed in this continuation; the feature implementation remains in commit `e164521`. Production and `main` remain untouched.
