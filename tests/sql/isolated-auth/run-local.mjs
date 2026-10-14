@@ -3492,7 +3492,8 @@ record('Manager dashboard team report aggregates tenant A counts and groups cros
   && Number(dashboardTeamA?.total_members) === 5
   && Number(dashboardTeamA?.present_members) === 3
   && Number(dashboardTeamA?.absent_members) === 0
-  && Number(dashboardTeamA?.work_from_home) === 2
+  // The earlier work-mode-only correction changes one fixture from home to office.
+  && Number(dashboardTeamA?.work_from_home) === 1
   && Number(dashboardTeamA?.client_meeting) === 1
   && Number(dashboardTeamAUnassigned?.total_members) === 1
   && Number(dashboardTeamAUnassigned?.absent_members) === 1

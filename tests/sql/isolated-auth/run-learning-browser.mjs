@@ -356,11 +356,16 @@ try {
   await managerPage.setViewportSize({ width: 1280, height: 900 });
   const refreshedQueue = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_learning_requests'));
   await managerPage.getByRole('button', { name: 'Refresh learning requests' }).click();
-  await refreshedQueue;
-  await managerPage.waitForFunction(() => document.querySelectorAll('[data-learning-request]').length === 1);
-  if (await managerPage.locator('[data-learning-request]').count() !== 1) {
+  const refreshedQueueResponse = await refreshedQueue;
+  const refreshedQueueRows = await refreshedQueueResponse.json();
+  if (!refreshedQueueResponse.ok() || !Array.isArray(refreshedQueueRows) || refreshedQueueRows.length !== 1
+      || typeof refreshedQueueRows[0]?.id !== 'string') {
     throw new Error('Manager queue should retain only the separate capacity-blocked request after approval.');
   }
+  await managerPage.waitForFunction((expectedId) => {
+    const rows = [...document.querySelectorAll('[data-learning-request]')];
+    return rows.length === 1 && rows[0].getAttribute('data-learning-request') === expectedId;
+  }, refreshedQueueRows[0].id);
   await assertNoOverflow(managerPage, 'Learning manager queue desktop');
 
   await page.getByRole('button', { name: 'Refresh learning' }).click();
@@ -521,7 +526,7 @@ try {
   await page.getByRole('button', { name: 'Refresh learning' }).click();
   await returnedContextRefresh;
   await completionEmployeeCard.getByText('Returned for correction', { exact: true }).waitFor({ state: 'visible' });
-  await completionEmployeeCard.getByText('Please attach supporting evidence for this assignment.', { exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByRole('status').getByText('Please attach supporting evidence for this assignment.', { exact: true }).waitFor({ state: 'visible' });
   await pendingCatalogCard.getByText('Completion returned for correction', { exact: true }).waitFor({ state: 'visible' });
   if (await pendingCatalogCard.getByRole('button', { name: /Enroll now|Request approval/ }).count()) {
     throw new Error('A returned completion must remain one open assignment until it is corrected and verified.');
@@ -558,9 +563,9 @@ try {
   await page.getByRole('button', { name: 'Refresh learning' }).click();
   await verifiedContextRefresh;
   await completionEmployeeCard.getByText('Completed', { exact: true }).waitFor({ state: 'visible' });
-  await completionEmployeeCard.getByText('completion-proof.pdf', { exact: true }).waitFor({ state: 'visible' });
+  await completionEmployeeCard.getByText('Supporting evidence: completion-proof.pdf', { exact: true }).first().waitFor({ state: 'visible' });
   await page.locator(`[data-verified-learning="${completionEnrollmentId}"]`).waitFor({ state: 'visible' });
-  await page.locator('[data-learning-notification]').getByText('QA A Direct Learning completion was verified.', { exact: true }).waitFor({ state: 'visible' });
+  await page.locator('[data-learning-notification]').filter({ hasText: 'QA A Direct Learning completion was verified.' }).first().waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Verified learning completion desktop');
   await managerContext.close();

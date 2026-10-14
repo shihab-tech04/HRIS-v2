@@ -150,6 +150,7 @@ try {
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
   const refreshedFirstApplication = page.getByText('Candidate A One', { exact: true }).locator('xpath=ancestor::li');
   await refreshedFirstApplication.getByText('Screening', { exact: true }).first().waitFor({ state: 'visible' });
+  await refreshedFirstApplication.getByText('View candidate-visible milestones', { exact: true }).click();
   await refreshedFirstApplication.getByText('Screening', { exact: true }).last().waitFor({ state: 'visible' });
   const refreshedSecondApplication = page.getByText('Candidate A Two', { exact: true }).locator('xpath=ancestor::li');
   await refreshedSecondApplication.getByText('Rejected', { exact: true }).first().waitFor({ state: 'visible' });
