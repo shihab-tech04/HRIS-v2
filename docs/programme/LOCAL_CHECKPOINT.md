@@ -1,15 +1,15 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-14 08:12 Asia/Dhaka. **State:** active, incomplete; Main and Candidate changes are locally committed on their recovery branches. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-14 08:22 Asia/Dhaka. **State:** active, incomplete; Main and Candidate changes are locally committed on their recovery branches. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Candidate saved-jobs journey
+## Current checkpoint — Candidate saved-jobs and details journey
 
-- Candidate commit: `837308edaad754dc1efa17fb27da1103158d155b`. Main runtime code remains unchanged; phase ledger/checkpoint records are updated locally.
-- Candidate saved-job save/list/details/apply/remove journey persists in isolated local Postgres across refresh and independent contexts. Owner and anonymous access denials, duplicate uniqueness, retry recovery, mobile and desktop states passed.
-- Acceptance: Candidate disposable Auth/Postgres/browser **152/152 PASS**; route tests **20/20 PASS**; TypeScript/build pass.
+- Candidate latest commit: `98e415eae0b08da6c0a0094164134ace4e9f8a2a`. Main runtime code remains unchanged; phase ledger/checkpoint records are updated locally.
+- Candidate saved-job save/list/details/apply/remove journey persists in isolated local Postgres across refresh and independent contexts. Owner and anonymous access denials, duplicate uniqueness, list/details retry recovery, mobile and desktop states passed.
+- Acceptance: Candidate disposable Auth/Postgres/browser **158/158 PASS**; route tests **20/20 PASS**; TypeScript/build pass.
 - Phase 10/11 Main task and peer-review functionality remains preserved at the prior checkpoint. No production changes, paid services, GitHub push, or deployment.
 - Canonical story count: **0/1,047 mapped and accepted; 1,047 pending** exact source bytes and story-level evidence.
-- Details: `EXECUTION_CHECKPOINT_20261014_0812.md`; evidence: `ACCEPTANCE_EVIDENCE_20261014_0812.md`; current ledger: `MASTER_PHASE_LEDGER.md`.
+- Details: `EXECUTION_CHECKPOINT_20261014_0822.md`; evidence: `ACCEPTANCE_EVIDENCE_20261014_0822.md`; current ledger: `MASTER_PHASE_LEDGER.md`.
 - Next: continue the next complete product journey from the phase ledger, preserving the Phase 10/11 and Candidate regressions.
 
 ## Current checkpoint — persisted Candidate application history
