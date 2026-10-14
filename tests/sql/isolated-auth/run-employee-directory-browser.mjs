@@ -36,12 +36,40 @@ async function waitForServer() {
 }
 
 async function signIn(page, email = process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL) {
+  const authTrace = [];
+  const sanitize = value => String(value || '')
+    .replaceAll(email, '[synthetic account]')
+    .replaceAll(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, '[token redacted]');
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
+      authTrace.push(`password token response HTTP ${response.status()}`);
+    }
+  });
+  page.on('requestfailed', request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/auth/v1/')) {
+      authTrace.push(`Auth request failed: ${sanitize(request.failure()?.errorText || 'network error')}`);
+    }
+  });
+  page.on('console', message => {
+    if (message.type() === 'error' && /auth|cors|fetch|network/i.test(message.text())) {
+      authTrace.push(`Browser console: ${sanitize(message.text()).slice(0, 180)}`);
+    }
+  });
   await page.goto(origin);
   await page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible' });
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  try {
+    await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  } catch (error) {
+    const headings = (await page.getByRole('heading').allTextContents()).join(' | ').slice(0, 200);
+    const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ')
+      .replaceAll(email, '[synthetic account]').slice(0, 200);
+    throw new Error(`Employee directory sign-in did not reach workspace: ${sanitize(error.message)}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}; Auth=${authTrace.join('; ') || 'no Auth response/error observed'}.`);
+  }
 }
 
 async function openEmployeeDirectory(page) {
