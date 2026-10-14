@@ -36,6 +36,23 @@ async function waitForServer() {
 }
 
 async function signIn(page, email = process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL) {
+  const sessionSetting = email === process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL
+    ? process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_SESSION
+    : process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_VIEWER_SESSION;
+  if (sessionSetting) {
+    const session = JSON.parse(sessionSetting);
+    if (!session?.access_token || !session?.refresh_token || session.user?.email !== email) {
+      throw new Error('The supplied local Auth session does not match the synthetic browser identity.');
+    }
+    const projectRef = new URL(process.env.HRIS_LOCAL_SUPABASE_URL).hostname.split('.')[0];
+    await page.goto(origin);
+    await page.evaluate(({ storageKey, value }) => {
+      window.localStorage.setItem(storageKey, JSON.stringify(value));
+    }, { storageKey: `sb-${projectRef}-auth-token`, value: session });
+    await page.reload();
+    await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+    return;
+  }
   const authTrace = [];
   const sanitize = value => String(value || '')
     .replaceAll(email, '[synthetic account]')
