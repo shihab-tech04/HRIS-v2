@@ -1,14 +1,16 @@
 # Local Implementation Checkpoint
 
-**Date:** 2026-10-13 10:10 Asia/Dhaka. **State:** active, incomplete; Main implementation is checkpointed locally on its recovery branch. **Release:** NOT FOR RELEASE.
+**Date:** 2026-10-14 07:09 Asia/Dhaka. **State:** active, incomplete; Main and Candidate changes are locally committed on their recovery branches. **Release:** NOT FOR RELEASE.
 
-## Current checkpoint — Phase 11 organization appraisal status filtering
+## Current checkpoint — persisted Candidate application history
 
-- Latest feature commit: `00e61962a38361c915bbcd985a7b090035cffacd`. Organization Performance now filters appraisal cards by the tenant-visible statuses returned from its existing read, separately from goal status; current visible rows remain the CSV export source. Scores and feedback are not exposed. No database or permission behavior changed.
-- Verification since the 09:55 checkpoint: TypeScript PASS; **57/57 contracts PASS**; focused manager performance browser **1/1 PASS** after correcting a locator that initially matched goal copy; full Chromium **48/48 PASS**; production build PASS; `git diff --check` PASS. The Vite bundle-size advisory remains. Browser-generated screenshots were restored. The prior isolated local Auth/RLS run remains **105/105 PASS** from 09:55 and was not rerun because this slice changed no SQL.
-- Phase 10 project permission correction remains preserved at `a2d5007814af244d059c0e4563b210052d453dc8` with additional SQL boundary coverage at `ab21b62559ae73231048ef7dfcab4194df97acd9`; Super Admin-only creation/appointment and assigned-manager-only membership management are enforced by RPC/UI and tested locally.
-- Canonical story acceptance remains **0/1,047 mapped and accepted; 1,047 pending**. The user reports recovery of the 1,047-story/153-module catalogue and expected SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`. This execution's mounted Project `sources/` directory and exact-name/keyword Drive searches did not expose its bytes. The empty repository tracking skeleton remains unchanged (SHA-256 `456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996`). No requirement text or IDs were inferred.
-- See `EXECUTION_CHECKPOINT_20261013_1010.md`, `ACCEPTANCE_EVIDENCE_20261013_1010.md`, and `MASTER_PHASE_LEDGER_20261013_1010.md`. A fresh full-history local bundle is to be verified for this checkpoint. Complete acceptance and verify the full-source Drive archive before final GitHub push and deployment.
+- Main feature commit: `74516ea07781deb1569f7ee957e573fdca0e6282`. Candidate feature commit: `0262a5bc6c327064fcc048dddcbf515eaf10a8a2`.
+- Candidate application tracking now renders backend-persisted stage history. The initial candidate application writes a first history event transactionally; existing interview and offer events appear after refresh. Recruiter notes and actor identities remain excluded from the candidate payload. No fixed screening milestone is fabricated.
+- Acceptance: Candidate disposable local Auth/Postgres/Storage/browser journey **137/137 PASS**; Candidate route/contracts **20/20 PASS**; Candidate TypeScript/build PASS; Main TypeScript, **122/122 contracts**, and build PASS. Phase 10/11 Auth/Postgres/RLS/browser **206/206 PASS** remains from the previous unchanged checkpoint.
+- No production SQL, data, Auth entries, permissions, paid services, GitHub push, or deployment changed. The feature migration has only run against the disposable local Candidate stack.
+- The recovered 1,047-story catalogue was not mapped in this slice; no story IDs or acceptance counts were inferred.
+- Versioned records: `EXECUTION_CHECKPOINT_20261014_0709.md`, `ACCEPTANCE_EVIDENCE_20261014_0709.md`, and the current `MASTER_PHASE_LEDGER.md`. The new Drive checkpoint will be uploaded and read-back verified before this batch is considered preserved remotely.
+- Continue the next independently executable business journey. Keep authority-gated payroll/appraisal/expense/service-resolution/employee-conversion decisions blocked until verified rules are available. Do not push or deploy before full acceptance and verified Drive backup.
 
 ## Previous checkpoint — Phase 10 Teams directory and filtered CSV export
 
