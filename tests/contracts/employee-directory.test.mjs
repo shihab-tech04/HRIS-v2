@@ -109,6 +109,11 @@ test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, 
   assert.match(isolatedRunner, /Employee contact RPC immediately denies inactive tenant membership/);
   assert.match(isolatedRunner, /DOCKER_CONTEXT: dockerContext/);
   assert.match(isolatedRunner, /DOCKER_HOST: dockerEndpoint/);
+  assert.match(isolatedRunner, /HRIS_SUPABASE_SKIP_LOCAL_RESET === '1'/);
+  assert.match(isolatedRunner, /tablename <> 'schema_migrations'/);
+  assert.match(isolatedRunner, /storage\.buckets/);
+  assert.match(isolatedRunner, /storage\.objects/);
+  assert.match(isolatedRunner, /cli\(\['db', 'reset', '--local', '--no-seed', '--yes'\]\)/);
   assert.match(isolatedRunner, /employeeDirectUpdate\.error/);
   assert.match(contactBrowser, /HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL/);
   assert.match(contactBrowser, /Contact details updated\./);

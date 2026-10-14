@@ -241,11 +241,23 @@ if (existing.data.users.length !== 0 || authRowsBeforeFixture !== 0) {
   throw new Error('Refusing to test: the isolated Auth service and database must both start with zero users.');
 }
 
-// This harness reapplies test migrations directly, so restore the isolated database baseline first.
-// The path, local ports, Docker context, and empty-Auth preflight above keep this reset disposable.
-cli(['db', 'reset', '--local', '--no-seed', '--yes']);
-if (Number(psqlSync('SELECT count(*) FROM auth.users;').trim()) !== 0) {
-  throw new Error('Refusing to test: the isolated Auth database was not empty after its local reset.');
+// This harness reapplies test migrations directly, so reset a reused local stack by default.
+// A newly created stack may skip that service-restarting reset only after proving its
+// application schema, Auth users, and private storage are empty.
+if (process.env.HRIS_SUPABASE_SKIP_LOCAL_RESET === '1') {
+  const applicationTableCount = Number(psqlSync(`SELECT count(*) FROM pg_catalog.pg_tables
+    WHERE schemaname='public' AND tablename <> 'schema_migrations';`).trim());
+  const authUserCount = Number(psqlSync('SELECT count(*) FROM auth.users;').trim());
+  const storageRowCount = Number(psqlSync(`SELECT
+    (SELECT count(*) FROM storage.buckets) + (SELECT count(*) FROM storage.objects);`).trim());
+  if (applicationTableCount !== 0 || authUserCount !== 0 || storageRowCount !== 0) {
+    throw new Error('Refusing to skip reset: the disposable database must have no application tables, Auth users, or storage rows.');
+  }
+} else {
+  cli(['db', 'reset', '--local', '--no-seed', '--yes']);
+  if (Number(psqlSync('SELECT count(*) FROM auth.users;').trim()) !== 0) {
+    throw new Error('Refusing to test: the isolated Auth database was not empty after its local reset.');
+  }
 }
 
 const discovery = await fetch(new URL('/auth/v1/.well-known/openid-configuration', services.API_URL));
