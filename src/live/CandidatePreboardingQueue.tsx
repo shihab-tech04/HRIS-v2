@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
@@ -30,59 +29,8 @@ function formatValue(value: unknown, locale: Locale) {
   return typeof value === 'string' && value.trim() ? value : '—';
 }
 
-function CandidateActivationForm({ packet, tenantId, locale, onActivated }: {
-  packet: PreboardingPacket; tenantId: string; locale: Locale; onActivated: () => void;
-}) {
-  const [employeeNumber, setEmployeeNumber] = useState('');
-  const [joiningDate, setJoiningDate] = useState(packet.proposed_joining_date?.slice(0, 10) || '');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const tx = (copy: string) => projectText(locale, copy);
-
-  async function activate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true); setError('');
-    try {
-      const result = await supabase.rpc('hris_activate_candidate_employee', {
-        p_tenant_id: tenantId,
-        p_application_id: packet.application_id,
-        p_employee_number: employeeNumber.trim(),
-        p_joining_date: joiningDate,
-      });
-      if (result.error) throw result.error;
-      const value = result.data as { success?: boolean; employee_id?: string } | null;
-      if (value?.success !== true || typeof value.employee_id !== 'string') {
-        throw new Error('Activation was not confirmed. Refresh the queue and check the employee directory.');
-      }
-      onActivated();
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '';
-      setError(message.includes('already assigned') || message.includes('already linked')
-        ? tx('That employee number or Auth identity is already linked in this organization.')
-        : tx('Employee activation could not be completed. Check the employee number and joining date, then retry.'));
-    } finally { setBusy(false); }
-  }
-
-  return <form onSubmit={activate} className="mt-4 grid gap-3 rounded-lg border border-[#B9DCE2] bg-[#F6FBFC] p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-    <label className="text-xs font-medium text-slate-700">{tx('Employee number')}
-      <input required maxLength={32} value={employeeNumber} onChange={event => setEmployeeNumber(event.target.value)}
-        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" />
-    </label>
-    <label className="text-xs font-medium text-slate-700">{tx('Confirm joining date')}
-      <input required type="date" value={joiningDate} onChange={event => setJoiningDate(event.target.value)}
-        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" />
-    </label>
-    <button type="submit" disabled={busy || !employeeNumber.trim() || !joiningDate}
-      className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">
-      {busy ? tx('Activating...') : tx('Activate employee')}
-    </button>
-    {error && <p role="alert" className="sm:col-span-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
-  </form>;
-}
-
-export function CandidatePreboardingQueue({ tenantId, locale = 'en', canActivate = false }: {
-  tenantId: string; locale?: Locale; canActivate?: boolean;
+export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
+  tenantId: string; locale?: Locale;
 }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
@@ -90,11 +38,8 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en', canActivate
   const [packets, setPackets] = useState<PreboardingPacket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [revision, setRevision] = useState(0);
   const tx = (copy: string) => projectText(locale, copy);
-
-  useEffect(() => { setNotice(''); }, [tenantId]);
 
   useEffect(() => {
     const request = ++sequence.current;
@@ -119,11 +64,6 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en', canActivate
     return () => { sequence.current += 1; };
   }, [tenantId, revision, locale]);
 
-  function activated() {
-    setNotice(tx('Employee activated. The candidate keeps the same sign-in identity.'));
-    setRevision(value => value + 1);
-  }
-
   return <section aria-labelledby="preboarding-queue-heading" className="mt-8 space-y-4">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div>
@@ -135,7 +75,9 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en', canActivate
         <RefreshCw className="h-4 w-4" aria-hidden="true" /> {tx('Refresh')}
       </button>
     </header>
-    {notice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
+    <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+      {tx('Employee conversion is on hold until employee status and role-mapping rules are approved.')}
+    </p>
     {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
       <p>{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="mt-2 min-h-9 font-semibold underline">{tx('Retry')}</button>
     </div>}
@@ -165,7 +107,6 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en', canActivate
               {fields.map(([key, label]) => <div key={key} className="min-w-0"><dt className="text-xs font-medium text-slate-500">{tx(label)}</dt><dd className="mt-1 break-words text-sm text-slate-900">{formatValue(packet.candidate_personal_data?.[key], locale)}</dd></div>)}
             </dl>
           </details>
-          {canActivate && <CandidateActivationForm packet={packet} tenantId={tenantId} locale={locale} onActivated={activated} />}
           </li>;
         })}
       </ul>}

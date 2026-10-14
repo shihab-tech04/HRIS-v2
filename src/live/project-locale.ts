@@ -239,6 +239,7 @@ const bengali: Record<string, string> = {
   'Submitted': 'জমা হয়েছে',
   'Review submitted details': 'জমা দেওয়া তথ্য পর্যালোচনা করুন',
   'Candidate packets awaiting HR verification. Submission does not activate an employee account.': 'এইচআর যাচাইয়ের অপেক্ষায় প্রার্থীর নথি। জমা দিলেই কর্মচারী অ্যাকাউন্ট সক্রিয় হয় না।',
+  'Employee conversion is on hold until employee status and role-mapping rules are approved.': 'কর্মচারীর অবস্থা ও ভূমিকা নির্ধারণের নিয়ম অনুমোদিত না হওয়া পর্যন্ত কর্মচারীতে রূপান্তর স্থগিত থাকবে।',
   'Designation': 'পদবি',
   'Team': 'দল',
   'Inactive': 'নিষ্ক্রিয়',
