@@ -42,6 +42,29 @@ CREATE TABLE public.candidate_application_stage_history (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.candidate_profiles (
+  user_id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  profile_status text NOT NULL DEFAULT 'active'
+);
+
+CREATE TABLE public.candidate_assessments (
+  id uuid PRIMARY KEY,
+  application_id uuid NOT NULL,
+  title text NOT NULL,
+  assessment_type text NOT NULL,
+  instructions text NOT NULL,
+  deadline_date date NOT NULL,
+  status text NOT NULL,
+  submission_data jsonb,
+  submitted_at timestamptz,
+  review_note text,
+  reviewed_at timestamptz,
+  created_by uuid,
+  reviewed_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX job_applications_tenant_applied_idx
   ON public.job_applications(tenant_id,applied_at DESC,id);
 CREATE INDEX candidate_stage_history_application_idx
@@ -50,7 +73,11 @@ CREATE INDEX candidate_stage_history_application_idx
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_application_stage_history ENABLE ROW LEVEL SECURITY;
-REVOKE ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history
+ALTER TABLE public.candidate_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.candidate_assessments ENABLE ROW LEVEL SECURITY;
+REVOKE ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history,
+  public.candidate_profiles,public.candidate_assessments
   FROM PUBLIC,anon,authenticated;
 GRANT ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history
   TO service_role;
+GRANT ALL PRIVILEGES ON TABLE public.candidate_profiles,public.candidate_assessments TO service_role;

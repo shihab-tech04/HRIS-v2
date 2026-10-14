@@ -212,6 +212,8 @@ const emails = [
   recoveryEmail,
   'payroll-viewer-a@hris.test',
   'recruitment-manager-a@hris.test',
+  'assessment-candidate-a@hris.test',
+  'assessment-candidate-b@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -294,6 +296,8 @@ const employeesViewer = await signIn(emails[12]);
 const learningManagerA = await signIn(emails[13]);
 const payrollViewerA = await signIn(emails[15]);
 const recruitmentManagerA = await signIn(emails[16]);
+const assessmentCandidateA = await signIn(emails[17]);
+const assessmentCandidateB = await signIn(emails[18]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -309,6 +313,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013073243_hris_tenant_employee_directory.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013203000_hris_travel_request_workflow.sql'),
@@ -1591,9 +1596,12 @@ psqlSync(`INSERT INTO public.jobs(id,tenant_id,reference_number,title) VALUES
 UPDATE public.jobs SET status='published',is_published=true,is_active=true
   WHERE id IN ('${recruitmentIds.jobA1}'::uuid,'${recruitmentIds.jobA2}'::uuid,'${recruitmentIds.jobB}'::uuid);
 INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,phone,years_experience,skills,cv_url,cover_letter,stage,status_note,applied_at,application_data) VALUES
-  ('${recruitmentIds.applicationA1}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA1}'::uuid,'55555555-5555-4555-8555-555555555581'::uuid,'Candidate A One','private-email-a@candidate.test','private-phone-a',5,ARRAY['sql'],'private-cv-url-a','private-cover-letter-a','submitted','private-status-note-a','2026-10-12T09:00:00Z','{"answer":"private-screening-answer-a"}'),
+  ('${recruitmentIds.applicationA1}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA1}'::uuid,'${assessmentCandidateA.userId}'::uuid,'Candidate A One','private-email-a@candidate.test','private-phone-a',5,ARRAY['sql'],'private-cv-url-a','private-cover-letter-a','submitted','private-status-note-a','2026-10-12T09:00:00Z','{"answer":"private-screening-answer-a"}'),
   ('${recruitmentIds.applicationA2}'::uuid,'${ids.tenantA}'::uuid,'${recruitmentIds.jobA2}'::uuid,'55555555-5555-4555-8555-555555555582'::uuid,'Candidate A Two','private-email-a2@candidate.test','private-phone-a2',3,ARRAY['design'],'private-cv-url-a2','private-cover-letter-a2','interview_scheduled','private-status-note-a2','2026-10-12T10:00:00Z','{"answer":"private-screening-answer-a2"}'),
   ('${recruitmentIds.applicationB}'::uuid,'${ids.tenantB}'::uuid,'${recruitmentIds.jobB}'::uuid,'66666666-6666-4666-8666-666666666681'::uuid,'Candidate B Only','private-email-b@candidate.test','private-phone-b',2,ARRAY['ops'],'private-cv-url-b','private-cover-letter-b','submitted','private-status-note-b','2026-10-12T11:00:00Z','{"answer":"private-screening-answer-b"}');
+INSERT INTO public.candidate_profiles(user_id,tenant_id,profile_status) VALUES
+  ('${assessmentCandidateA.userId}'::uuid,'${ids.tenantA}'::uuid,'active'),
+  ('${assessmentCandidateB.userId}'::uuid,'${ids.tenantB}'::uuid,'active');
 INSERT INTO public.candidate_application_stage_history(id,application_id,stage,note,actor_type,actor_user_id,created_at) VALUES
   ('${recruitmentIds.historyA1}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'submitted','private-reviewer-note-a','employee','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T09:01:00Z'),
   ('${recruitmentIds.historyA1Second}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'screening','candidate-visible-milestone-note-a','employee','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T10:01:00Z'),
@@ -1658,6 +1666,63 @@ record('Recruitment pipeline rejects no-permission, global-only and anonymous ca
     && Boolean(recruitmentDirectTable.error));
 record('Recruitment pipeline immediately denies an inactive membership',
   Boolean(recruitmentInactiveMembership.error?.code === '42501'));
+
+const assessmentDeadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const assessmentTitle = 'QA Assessment Review A';
+const assessmentPrivateNote = 'Internal review note from isolated browser acceptance.';
+const assessmentAssignment = await recruitmentManagerA.client.rpc('hris_assign_candidate_assessment', {
+  p_tenant_id: ids.tenantA,
+  p_application_id: recruitmentIds.applicationA1,
+  p_title: assessmentTitle,
+  p_assessment_type: 'Technical',
+  p_instructions: 'Submit a short solution for the isolated assessment journey.',
+  p_deadline_date: assessmentDeadline,
+});
+const assessmentId = assessmentAssignment.data?.assessment_id;
+const unauthorizedAssessmentAssignment = await recruiterOnly.client.rpc('hris_assign_candidate_assessment', {
+  p_tenant_id: ids.tenantA,
+  p_application_id: recruitmentIds.applicationA1,
+  p_title: 'Unauthorized assessment',
+  p_assessment_type: 'Technical',
+  p_instructions: 'This must not be assigned.',
+  p_deadline_date: assessmentDeadline,
+});
+const wrongTenantAssessmentAssignment = await recruitmentManagerA.client.rpc('hris_assign_candidate_assessment', {
+  p_tenant_id: ids.tenantB,
+  p_application_id: recruitmentIds.applicationA1,
+  p_title: 'Cross-tenant assessment',
+  p_assessment_type: 'Technical',
+  p_instructions: 'This must not be assigned.',
+  p_deadline_date: assessmentDeadline,
+});
+const candidateAForbiddenAssessment = await assessmentCandidateB.client.rpc('candidate_submit_assessment', {
+  p_assessment_id: assessmentId,
+  p_payload: { submission_text: 'Candidate B must not submit Candidate A work.' },
+});
+const candidateAssessmentSubmit = await assessmentCandidateA.client.rpc('candidate_submit_assessment', {
+  p_assessment_id: assessmentId,
+  p_payload: { submission_text: 'Persisted synthetic candidate assessment response.' },
+});
+const duplicateCandidateAssessmentSubmit = await assessmentCandidateA.client.rpc('candidate_submit_assessment', {
+  p_assessment_id: assessmentId,
+  p_payload: { submission_text: 'A second response must be denied.' },
+});
+const unauthorizedAssessmentReview = await recruiterOnly.client.rpc('hris_review_candidate_assessment', {
+  p_tenant_id: ids.tenantA, p_assessment_id: assessmentId, p_review_note: 'This review must be denied.',
+});
+const assessmentReadBeforeReview = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
+const submittedAssessmentBeforeReview = assessmentReadBeforeReview.data?.find(row => row.id === assessmentId);
+record('Candidate assessment assignment, owner-only submission, duplicate protection, and reviewer authorization are enforced in local Auth/Postgres',
+  !assessmentAssignment.error && assessmentAssignment.data?.status === 'pending'
+    && Boolean(unauthorizedAssessmentAssignment.error?.code === '42501')
+    && Boolean(wrongTenantAssessmentAssignment.error?.code === '42501')
+    && Boolean(candidateAForbiddenAssessment.error?.code === 'P0002')
+    && !candidateAssessmentSubmit.error && candidateAssessmentSubmit.data?.status === 'submitted'
+    && Boolean(duplicateCandidateAssessmentSubmit.error?.code === 'P0002')
+    && Boolean(unauthorizedAssessmentReview.error?.code === '42501')
+    && submittedAssessmentBeforeReview?.status === 'submitted'
+    && submittedAssessmentBeforeReview.submission_data?.submission_text === 'Persisted synthetic candidate assessment response.');
+
 let recruitmentBrowserOutput = '';
 let recruitmentBrowserError = '';
 try {
@@ -1669,6 +1734,8 @@ try {
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_RECRUITMENT_EMAIL: emails[16],
+      HRIS_LOCAL_ASSESSMENT_TITLE: assessmentTitle,
+      HRIS_LOCAL_ASSESSMENT_REVIEW_NOTE: assessmentPrivateNote,
       HRIS_LOCAL_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',
@@ -1680,6 +1747,28 @@ try {
 record('Real 375px/1280px browser reads the tenant-scoped recruitment pipeline from local Auth/Postgres',
   recruitmentBrowserOutput.includes('Local Auth-to-Postgres recruitment stage workflow passed at 375px and 1280px; mobile+desktop refresh recovery passed.'),
   recruitmentBrowserError);
+record('Candidate assessment manager UI assigns work and saves a private note across EN/BN, cancel/retry, refresh, and mobile/desktop',
+  recruitmentBrowserOutput.includes('Candidate assessment assignment and internal review note persisted after refresh; EN/BN, cancel, mobile, and desktop passed.'),
+  recruitmentBrowserError);
+const assessmentAfterBrowser = queryAdmin(`SELECT jsonb_build_object('status',status,'note',review_note,'reviewer',reviewed_by,'reviewed_at',reviewed_at)
+  FROM public.candidate_assessments WHERE id=${sqlLiteral(assessmentId)}::uuid`);
+const assessmentManagerReadAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
+const reviewedAssessment = assessmentManagerReadAfterBrowser.data?.find(row => row.id === assessmentId);
+const candidateDirectAssessmentRead = await assessmentCandidateA.client.from('candidate_assessments').select('review_note').eq('id', assessmentId);
+const duplicateManagerAssessmentReview = await recruitmentManagerA.client.rpc('hris_review_candidate_assessment', {
+  p_tenant_id: ids.tenantA, p_assessment_id: assessmentId, p_review_note: assessmentPrivateNote,
+});
+record('Recruitment browser saves an internal assessment note; manager refresh sees it and candidate table access stays denied',
+  recruitmentBrowserOutput.includes('Candidate assessment assignment and internal review note persisted after refresh; EN/BN, cancel, mobile, and desktop passed.')
+    && assessmentAfterBrowser.status === 'reviewed'
+    && assessmentAfterBrowser.note === assessmentPrivateNote
+    && assessmentAfterBrowser.reviewer === recruitmentManagerA.userId
+    && Boolean(assessmentAfterBrowser.reviewed_at)
+    && reviewedAssessment?.status === 'reviewed'
+    && reviewedAssessment.review_note === assessmentPrivateNote
+    && Boolean(candidateDirectAssessmentRead.error)
+    && Boolean(duplicateManagerAssessmentReview.error?.code === 'P0002'),
+  recruitmentBrowserError || (candidateDirectAssessmentRead.error?.message ?? ''));
 
 const stageNoPermission = await noPermission.client.rpc('hris_update_candidate_application_stage', {
   p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'rejected',

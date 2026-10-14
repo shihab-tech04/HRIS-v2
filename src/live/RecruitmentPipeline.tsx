@@ -554,7 +554,7 @@ export function RecruitmentPipeline({ tenantId, locale = 'en', canManagePreboard
                 setRevision(value => value + 1);
               }} />}
             {canManageOffers && !['withdrawn', 'rejected', 'offer_accepted', 'hired'].includes(application.stage)
-              && <CandidateAssessmentAssignment tenantId={tenantId} application={application} onAssigned={() => setAssessmentRevision(value => value + 1)} />}
+              && <CandidateAssessmentAssignment tenantId={tenantId} application={application} locale={locale} onAssigned={() => setAssessmentRevision(value => value + 1)} />}
           </li>)}
         </ul>}
         <footer className="flex items-center justify-between gap-3 border-t border-slate-100 p-3">
@@ -570,7 +570,7 @@ export function RecruitmentPipeline({ tenantId, locale = 'en', canManagePreboard
       setApplications(current => current.map(value => value.application_id === applicationId ? { ...value, stage: 'interview_scheduled' } : value));
       setRevision(value => value + 1);
     }} />}
-    {canManageOffers && <CandidateAssessmentQueue tenantId={tenantId} revision={assessmentRevision} />}
+    {canManageOffers && <CandidateAssessmentQueue tenantId={tenantId} revision={assessmentRevision} locale={locale} />}
     {canManagePreboarding && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} />}
   </section>;
 }

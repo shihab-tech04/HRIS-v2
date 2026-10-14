@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql', import.meta.url), 'utf8');
+const candidateContext = readFileSync(new URL('../../supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql', import.meta.url), 'utf8');
 const privileges = readFileSync(new URL('../../supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql', import.meta.url), 'utf8');
 const mainPage = readFileSync(new URL('../../src/live/RecruitmentPipeline.tsx', import.meta.url), 'utf8');
 const mainUi = readFileSync(new URL('../../src/live/CandidateAssessments.tsx', import.meta.url), 'utf8');
@@ -35,4 +36,11 @@ test('recruitment managers assign and review while candidates receive owner-scop
   assert.match(candidateAdapter, /assessments: asRows\(ctx\.assessments\)\.map\(adaptLiveAssessment\)/);
   assert.match(candidatePage, /Review Complete/);
   assert.match(candidatePage, /aria-modal="true"/);
+  assert.match(mainUi, /Internal review note/);
+  assert.match(mainUi, /p_review_note: savedNote/);
+  assert.match(mainUi, /This note is visible only to authorized recruitment staff/);
+  assert.match(mainUi, /review_note: savedNote/);
+  assert.match(migration, /'review_note', ca\.review_note/);
+  assert.match(candidateContext, /to_jsonb\(x\) - 'review_note' - 'reviewed_by' - 'created_by'/);
+  assert.match(mainPage, /CandidateAssessmentQueue tenantId=\{tenantId\} revision=\{assessmentRevision\} locale=\{locale\}/);
 });
