@@ -159,6 +159,13 @@ try {
   const requestProgram = page.locator('[data-learning-program="90000000-0000-4000-8000-000000000002"]');
   await directProgram.getByRole('heading', { name: 'QA A Direct Learning' }).waitFor({ state: 'visible' });
   await requestProgram.getByRole('heading', { name: 'QA A Approval Learning' }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await page.getByRole('heading', { name: 'আমার শেখা', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'আপনার দক্ষতার প্রোফাইল', exact: true }).waitFor({ state: 'visible' });
+  await page.getByLabel('দক্ষতার নাম').waitFor({ state: 'visible' });
+  if (await page.evaluate(() => document.documentElement.lang) !== 'bn') throw new Error('Learning locale switch did not update the document language.');
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
   const unsafeCertificateEnrollment = page.locator('[data-learning-enrollment="92000000-0000-4000-8000-000000000003"]');
   if (await unsafeCertificateEnrollment.getByRole('link', { name: 'View certificate' }).count() !== 0) {
     throw new Error('An unsafe certificate URL must not render as a navigable link.');
@@ -306,6 +313,12 @@ try {
   });
   await signIn(managerPage, process.env.HRIS_LOCAL_LEARNING_MANAGER_EMAIL);
   await openLearningRequests(managerPage);
+  await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await managerPage.getByRole('heading', { name: 'শেখার অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  await managerPage.getByText('মতামত অপেক্ষমাণ', { exact: true }).first().waitFor({ state: 'visible' });
+  if (await managerPage.evaluate(() => document.documentElement.lang) !== 'bn') throw new Error('Manager learning locale did not update document language.');
+  await managerPage.getByRole('button', { name: 'Switch language to English' }).click();
+  await managerPage.getByRole('heading', { name: 'Learning requests', exact: true }).waitFor({ state: 'visible' });
   const managerRequestCard = managerPage.locator(`[data-learning-request="${finalRequest.id}"]`);
   await managerRequestCard.getByRole('heading', { name: 'QA A Approval Learning' }).waitFor({ state: 'visible' });
   await managerRequestCard.getByText('Approval via the learning manager queue.', { exact: true }).waitFor({ state: 'visible' });

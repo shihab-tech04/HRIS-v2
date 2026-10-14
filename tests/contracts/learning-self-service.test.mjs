@@ -92,14 +92,14 @@ test('self-enrollment, approval requests, and cancellation enforce server-side e
 
 test('employee learning UI is mounted for linked employees and uses only tenant RPC actions', () => {
   assert.match(workspace, /id: 'my-learning', label: 'My Learning'/);
-  assert.match(workspace, /page === 'my-learning' && isEmployee && <MyLearning tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /page === 'my-learning' && isEmployee && <MyLearning tenantId=\{tenantId\} locale=\{locale\} \/>/);
   for (const rpc of ['hris_get_my_learning_context', 'hris_get_my_learning_join_links', 'hris_employee_enroll_learning', 'hris_employee_request_learning', 'hris_employee_cancel_learning']) {
     assert.ok(ui.includes(`'${rpc}'`), `learning UI must call ${rpc}`);
   }
   assert.match(ui, /Join online session/);
   assert.match(ui, /noopener noreferrer/);
   assert.match(ui, /safeMeetingUrl\(enrollment\.certificate_url \|\| undefined\)/);
-  assert.match(ui, /href=\{certificateUrl\} target="_blank" rel="noopener noreferrer"[^>]*>View certificate/);
+  assert.match(ui, /href=\{certificateUrl\} target="_blank" rel="noopener noreferrer"[^>]*>\{tx\("View certificate"\)\}/);
   assert.doesNotMatch(ui, /href=\{enrollment\.certificate_url\}/);
   assert.match(ui, /Retry/);
   assert.match(ui, /role="alertdialog"/);
@@ -134,7 +134,7 @@ test('manager permission is wired through tenant membership to a responsive deci
   assert.match(app, /learningManage: grants\.get\('learning\.manage'\) === true/);
   assert.match(app, /workspacePermissions\.learningManage/);
   assert.match(workspace, /id: 'learning-requests', label: 'Learning requests'/);
-  assert.match(workspace, /page === 'learning-requests' && permissions\.learningManage && <LearningRequests tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /page === 'learning-requests' && permissions\.learningManage && <LearningRequests tenantId=\{tenantId\} locale=\{locale\} \/>/);
   assert.match(managerUi, /hris_get_learning_requests/);
   assert.match(managerUi, /hris_resolve_learning_request/);
   assert.match(managerUi, /role="alertdialog"/);

@@ -25,7 +25,7 @@ test('learning program and session management is tenant-scoped to active learnin
 
 test('learning management reuses tenant navigation and supplies program and scheduled-session forms', () => {
   assert.match(workspace, /id: 'learning-programs', label: 'Learning programs'/);
-  assert.match(workspace, /page === 'learning-programs' && permissions\.learningManage && <LearningProgramAdmin tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /page === 'learning-programs' && permissions\.learningManage && <LearningProgramAdmin tenantId=\{tenantId\} locale=\{locale\} \/>/);
   for (const rpc of ['hris_get_learning_admin_catalog', 'hris_save_learning_program', 'hris_save_learning_session']) {
     assert.ok(ui.includes(`'${rpc}'`), `manager UI must call ${rpc}`);
   }

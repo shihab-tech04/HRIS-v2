@@ -2586,8 +2586,8 @@ export function LiveHrisWorkspace({
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} />}
           {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
           {page === 'holidays' && permissions.holidayManage && <OrganizationHolidayCalendar tenantId={tenantId} />}
-          {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} />}
-          {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} />}
+          {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} locale={locale} />}
+          {page === 'learning-requests' && permissions.learningManage && <LearningRequests tenantId={tenantId} locale={locale} />}
           {page === 'travel' && permissions.travel && <TravelRequests tenantId={tenantId} canManage={permissions.travelManage} />}
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
@@ -2595,7 +2595,7 @@ export function LiveHrisWorkspace({
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale} onOpenProjects={() => navigate('my-projects')} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
-          {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} />}
+          {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
