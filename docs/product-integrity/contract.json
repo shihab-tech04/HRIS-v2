@@ -1,0 +1,16 @@
+{
+  "schema": "product-integrity/1",
+  "product": "Synesis HRIS Main",
+  "sourceOfApproval": "User-approved original HRIS roadmap (1047 stories/153 modules); approved Figma XEXLe9J1oATlITS9I5u1P9; Oct 14 historical-to-current audit",
+  "checks": [
+    {"id":"HRIS-01-live-workspace", "path":"src/live/LiveApp.tsx", "op":"contains", "text":"import { LiveHrisWorkspace }", "enforcement":"release", "reason":"Final HRIS must render approved authenticated role-aware workspace, not legacy generic record explorer", "approvalReference":"User requested complete employee/manager/HR/admin role journeys and final handoff; HRIS deep audit"},
+    {"id":"HRIS-02-canonical-story-mapping", "path":"docs/programme/CANONICAL_USER_STORY_MATRIX.json", "op":"json_field_equals", "field":"mapped_story_count", "value":1047, "enforcement":"release", "reason":"Story-by-story acceptance must reference canonical 1047-row source; no invented completion", "approvalReference":"Original 1047 story ledger and 22-phase roadmap"},
+    {"id":"HRIS-03-accepted-story-proof", "path":"docs/programme/CANONICAL_USER_STORY_MATRIX.json", "op":"json_field_equals", "field":"accepted_end_to_end_story_count", "value":1047, "enforcement":"release", "reason":"Do not publish 'final' before every original in-scope story has evidence", "approvalReference":"Original 1047 story ledger and final acceptance policy"}
+  ],
+  "requiredEvidence": [
+    {"id":"approved-figma", "description":"Side-by-side responsive Figma parity across approved role screens", "status":"NOT_VERIFIED", "reference":"Figma XEXLe9J1oATlITS9I5u1P9; docs/programme/MASTER_PHASE_LEDGER.md"},
+    {"id":"role-and-security", "description":"Hosted multi-tenant role/RLS/browser acceptance for required journeys", "status":"NOT_VERIFIED", "reference":"docs/programme/FRONTEND_BACKEND_INTEGRATION_MATRIX.md"},
+    {"id":"business-rule-gates", "description":"Original Project Manager evaluation/project-release and candidate employee-conversion rules reconciled", "status":"CONFLICT", "reference":"Original HRIS instructions; docs/programme/APPROVED_BUSINESS_RULES.md"},
+    {"id":"production-parity", "description":"Approved final source SHA equals deployed SHA with all required modules enabled", "status":"NOT_VERIFIED", "reference":"Production main 4ded5f1 vs development fe4ef79 at 2026-10-14"}
+  ]
+}
