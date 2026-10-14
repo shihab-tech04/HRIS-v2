@@ -30,6 +30,20 @@ function probe(check, base = root) {
   else if (check.op === 'json_field_equals') {
     try { let data = JSON.parse(source); for (const key of check.field.split('.')) data = data?.[key]; matched = data === check.value; }
     catch { matched = false; }
+  } else if (check.op === 'json_story_coverage') {
+    try {
+      const data = JSON.parse(source), stories = data.stories;
+      const ids = new Set();
+      matched = Array.isArray(stories) && stories.length === check.value && stories.every(story => {
+        const id = story?.id;
+        if (typeof id !== 'string' || !id || ids.has(id)) return false;
+        ids.add(id);
+        return story?.status === 'PASS' && typeof story?.sourceLocator === 'string'
+          && story.sourceLocator.length > 0 && typeof story?.acceptanceCriteria === 'string'
+          && story.acceptanceCriteria.length > 0 && Array.isArray(story?.acceptanceEvidence)
+          && story.acceptanceEvidence.length > 0;
+      });
+    } catch { matched = false; }
   } else throw Error('Unsupported probe operation: ' + check.op);
   return { id: check.id, pass: matched, detail: matched ? 'Observed' : `Mismatch: ${check.path} (${check.op})` };
 }
@@ -49,6 +63,9 @@ function validate(contract) {
     assert.ok(x.id && x.description && x.reference && x.status, 'Incomplete evidence');
     assert.ok(['VERIFIED', 'NOT_VERIFIED', 'BLOCKED', 'CONFLICT', 'FAILED'].includes(x.status));
     assert.ok(!ids.has(x.id)); ids.add(x.id);
+    if (x.status === 'VERIFIED') {
+      assert.ok(x.reviewer && x.evidence && x.verifiedSourceSha, `VERIFIED requires independent reviewer, evidence and observed source SHA: ${x.id}`);
+    }
   }
 }
 function checkUiManifest(changedFiles) {
@@ -74,6 +91,7 @@ function selfTest() {
     assert.equal(probe({...base, path:'../escape'}, tmp).pass, false);
     fs.writeFileSync(path.join(tmp, 'story.json'), JSON.stringify({ mapped_story_count: 0 }));
     assert.equal(probe({id:'count',path:'story.json',op:'json_field_equals',field:'mapped_story_count',value:1047},tmp).pass,false);
+    assert.equal(probe({id:'stories',path:'story.json',op:'json_story_coverage',value:1047},tmp).pass,false);
     fs.mkdirSync(path.join(tmp,'docs/product-integrity'),{recursive:true});
     fs.writeFileSync(path.join(tmp,'docs/product-integrity/ui-change-manifest.json'),JSON.stringify({schema:'approved-ui-change/1',changes:[]}));
     // UI-change manifest accepts only explicitly traced changes; see checkUiManifest path in repository execution.
