@@ -1006,6 +1006,7 @@ INSERT INTO public.roles(id,name) VALUES
   ('qa_tenant_viewer_b','Synthetic tenant B viewer'),
   ('qa_tenant_reporter_a','Synthetic tenant A report-only viewer'),
   ('qa_tenant_recruitment_a','Synthetic tenant A recruiter-only viewer'),
+  ('qa_tenant_recruitment_manager_a','Synthetic tenant A recruitment manager'),
   ('qa_tenant_employee_viewer_a','Synthetic tenant A employee-directory viewer'),
   ('qa_tenant_learning_manager_a','Synthetic tenant A learning manager'),
   ('qa_tenant_payroll_viewer_a','Synthetic tenant A payroll viewer');
@@ -1055,6 +1056,7 @@ CROSS JOIN (VALUES
 ) perms(permission_id);
 INSERT INTO public.role_permissions(role_id,permission_id)
 VALUES ('qa_tenant_recruitment_a','recruitment.view'),
+  ('qa_tenant_recruitment_manager_a','recruitment.manage'),
   ('qa_tenant_employee_viewer_a','employees.view'),
   ('qa_tenant_learning_manager_a','learning.view'),
   ('qa_tenant_learning_manager_a','learning.manage'),
@@ -1091,6 +1093,9 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_recruitment_a','active'
   FROM auth.users WHERE email='recruiter-a@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_recruitment_manager_a','active'
+  FROM auth.users WHERE email='recruitment-manager-a@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee_viewer_a','active'
   FROM auth.users WHERE email='employee-directory-a@hris.test';

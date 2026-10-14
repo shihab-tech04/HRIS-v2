@@ -207,6 +207,7 @@ const emails = [
   'learning-manager-a@hris.test',
   recoveryEmail,
   'payroll-viewer-a@hris.test',
+  'recruitment-manager-a@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -270,6 +271,7 @@ const recruiterOnly = await signIn(emails[11]);
 const employeesViewer = await signIn(emails[12]);
 const learningManagerA = await signIn(emails[13]);
 const payrollViewerA = await signIn(emails[15]);
+const recruitmentManagerA = await signIn(emails[16]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -311,6 +313,8 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014110000_hris_employee_payslip_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014120000_hris_tenant_payroll_register_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013215431_employee_dashboard_attendance_period_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014150000_hris_candidate_initial_application_history.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014012249_recruiter_application_stage_transition.sql'),
 ]) applySql(file);
 // The local PostgREST container predates SQL applied directly by this harness.
 // Refresh its function catalog before testing newly installed RPCs.
@@ -1394,7 +1398,7 @@ try {
       HRIS_LOCAL_SUPABASE_URL: services.API_URL,
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
-      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[11],
+      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[16],
       HRIS_LOCAL_TENANT_ID: ids.tenantA,
     },
     encoding: 'utf8',
@@ -1404,8 +1408,69 @@ try {
   recruitmentBrowserError = String(error.stderr || error.message || 'local recruitment browser run failed').slice(-1400);
 }
 record('Real 375px/1280px browser reads the tenant-scoped recruitment pipeline from local Auth/Postgres',
-  recruitmentBrowserOutput.includes('Local Auth-to-Postgres recruitment pipeline journey passed at 375px mobile and 1280px desktop.'),
+  recruitmentBrowserOutput.includes('Local Auth-to-Postgres recruitment stage workflow passed at 375px and 1280px; mobile+desktop refresh recovery passed.'),
   recruitmentBrowserError);
+
+const stageNoPermission = await noPermission.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'rejected',
+});
+const stageViewOnly = await recruiterOnly.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'under_review',
+});
+const stageWrongTenantId = await recruitmentManagerA.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationB, p_stage: 'rejected',
+});
+const stageWrongTenantPermission = await recruitmentManagerA.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantB, p_application_id: recruitmentIds.applicationB, p_stage: 'rejected',
+});
+const stageInvalid = await recruitmentManagerA.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'hired',
+});
+const stageRegression = await recruitmentManagerA.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'under_review',
+});
+const stageClosedApplication = await recruitmentManagerA.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA2, p_stage: 'screening',
+});
+const stageDirectWrite = await recruitmentManagerA.client.from('job_applications')
+  .update({ stage: 'rejected' }).eq('id', recruitmentIds.applicationA1).select('id');
+record('Recruiter stage transitions deny unauthorized, cross-tenant, invalid, and regressive updates',
+  stageNoPermission.error?.code === '42501'
+    && stageViewOnly.error?.code === '42501'
+    && stageWrongTenantId.error?.code === 'P0002'
+    && stageWrongTenantPermission.error?.code === '42501'
+    && stageInvalid.error?.code === '22023'
+    && stageRegression.error?.code === '22023'
+    && stageClosedApplication.error?.code === '22023'
+    && Boolean(stageDirectWrite.error || stageDirectWrite.data?.length === 0));
+
+const repeatedStage = await recruitmentManagerA.client.rpc('hris_update_candidate_application_stage', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1, p_stage: 'screening',
+});
+const persistedStageA1 = await adminAuth.from('job_applications').select('stage').eq('id', recruitmentIds.applicationA1).single();
+const persistedStageA2 = await adminAuth.from('job_applications').select('stage').eq('id', recruitmentIds.applicationA2).single();
+const transitionHistoryA1 = await adminAuth.from('candidate_application_stage_history')
+  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA1).eq('actor_type', 'recruiter');
+const transitionHistoryA2 = await adminAuth.from('candidate_application_stage_history')
+  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA2).eq('actor_type', 'recruiter');
+const sanitizedStageHistory = await recruiterOnly.client.rpc('hris_get_recruitment_pipeline', {
+  p_tenant_id: ids.tenantA, p_search: 'Candidate A One',
+});
+const candidateA1Milestones = sanitizedStageHistory.data?.applications?.find(row => row.application_id === recruitmentIds.applicationA1)?.milestones || [];
+const candidateA1MilestonesText = JSON.stringify(candidateA1Milestones);
+record('Recruiter stage transitions persist one sanitized history event per accepted change',
+  !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
+    && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
+    && !transitionHistoryA1.error && transitionHistoryA1.data.filter(row => row.stage === 'under_review' || row.stage === 'screening').length === 2
+    && transitionHistoryA1.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
+    && !transitionHistoryA2.error && transitionHistoryA2.data.length === 1
+    && transitionHistoryA2.data[0].stage === 'rejected'
+    && transitionHistoryA2.data[0].actor_user_id === recruitmentManagerA.userId
+    && repeatedStage.data?.changed === false
+    && candidateA1Milestones.some(row => row.stage === 'under_review')
+    && candidateA1Milestones.some(row => row.stage === 'screening')
+    && !candidateA1MilestonesText.includes('actor_user_id')
+    && !candidateA1MilestonesText.includes('Application moved to screening.'));
 
 const referralFileName = 'qa-referral-resume.pdf';
 const referralPath = `${employeeA.userId}/${ids.tenantA}/${randomUUID()}/${referralFileName}`;

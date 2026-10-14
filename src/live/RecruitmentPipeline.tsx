@@ -24,6 +24,13 @@ type PipelinePayload = {
   limit?: number;
   offset?: number;
 };
+type StageTransitionResult = {
+  success?: boolean;
+  changed?: boolean;
+  stage?: string;
+  history_id?: string;
+  created_at?: string;
+};
 
 const PAGE_SIZE = 50;
 
@@ -268,7 +275,101 @@ function dateTime(value: string, timeZone?: string) {
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString(undefined, timeZone ? { timeZone } : undefined);
 }
 
-export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, canManageOffers = false }: { tenantId: string; canManagePreboarding?: boolean; canManageOffers?: boolean }) {
+function applicationStageOptions(stage: string) {
+  const options: { value: string; label: string }[] = [];
+  if (stage === 'applied' || stage === 'submitted') {
+    options.push({ value: 'under_review', label: 'Move to review' });
+  }
+  if (stage === 'applied' || stage === 'submitted' || stage === 'under_review') {
+    options.push({ value: 'screening', label: 'Move to screening' });
+  }
+  if (!['withdrawn', 'rejected', 'offer_extended', 'offer_accepted', 'offer_declined', 'hired'].includes(stage)) {
+    options.push({ value: 'rejected', label: 'Reject application' });
+  }
+  return options;
+}
+
+function ApplicationStageForm({ tenantId, application, onUpdated }: {
+  tenantId: string;
+  application: Application;
+  onUpdated: (result: StageTransitionResult) => void;
+}) {
+  const options = applicationStageOptions(application.stage);
+  const [nextStage, setNextStage] = useState(options[0]?.value || '');
+  const [confirmingRejection, setConfirmingRejection] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setNextStage(applicationStageOptions(application.stage)[0]?.value || '');
+    setConfirmingRejection(false);
+    setError('');
+  }, [tenantId, application.application_id, application.stage]);
+
+  async function saveStage() {
+    if (saving || !nextStage) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await supabase.rpc('hris_update_candidate_application_stage', {
+        p_tenant_id: tenantId,
+        p_application_id: application.application_id,
+        p_stage: nextStage,
+      });
+      if (response.error) throw response.error;
+      const result = response.data as StageTransitionResult | null;
+      if (!result?.success || result.stage !== nextStage || (result.changed && (!result.history_id || !result.created_at))) {
+        throw new Error('Application stage update returned an invalid response.');
+      }
+      onUpdated(result);
+      setMessage(result.changed ? 'Application progress updated.' : 'This application is already at that stage.');
+      setConfirmingRejection(false);
+    } catch {
+      setError('The application could not be updated. Refresh the pipeline and try again, or check your recruitment access.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!options.length) return null;
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (nextStage === 'rejected') setConfirmingRejection(true);
+    else void saveStage();
+  }
+
+  return <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+    <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium text-[#085587]">Update application progress</summary>
+    <form onSubmit={submit} className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+      <label className="block text-xs font-medium text-slate-700">
+        Next application stage
+        <select aria-label={`Next application stage for ${application.candidate_name}`} required value={nextStage}
+          onChange={event => { setNextStage(event.target.value); setConfirmingRejection(false); setError(''); setMessage(''); }}
+          disabled={saving || confirmingRejection} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+      {!confirmingRejection && <button type="submit" disabled={saving || !nextStage}
+        className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+        {saving ? 'Saving…' : 'Save stage'}
+      </button>}
+      {confirmingRejection && <div role="alertdialog" aria-label="Confirm application rejection" className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+        <p className="text-sm font-medium text-amber-950">Reject this application? The decision will be recorded in the candidate’s history and cannot be reversed here.</p>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={saving} onClick={() => setConfirmingRejection(false)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium">Cancel</button>
+          <button type="button" disabled={saving} onClick={() => void saveStage()} className="min-h-10 rounded-lg bg-rose-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Rejecting…' : 'Confirm rejection'}</button>
+        </div>
+      </div>}
+      {error && <p role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+      {message && <p role="status" className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
+    </form>
+  </details>;
+}
+
+export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, canManageOffers = false, canManageApplicationStages = false }: { tenantId: string; canManagePreboarding?: boolean; canManageOffers?: boolean; canManageApplicationStages?: boolean }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const [applications, setApplications] = useState<Application[]>([]);
@@ -423,6 +524,16 @@ export function RecruitmentPipeline({ tenantId, canManagePreboarding = false, ca
                   </li>)}
                 </ol>}
             </details>
+            {canManageApplicationStages && <ApplicationStageForm key={`${tenantId}-${application.application_id}`} tenantId={tenantId} application={application} onUpdated={result => {
+              if (!result.changed || !result.stage || !result.history_id || !result.created_at) return;
+              setApplications(current => current.flatMap(value => {
+                if (value.application_id !== application.application_id) return [value];
+                if (stage && stage !== result.stage) return [];
+                return [{ ...value, stage: result.stage!, milestones: [...value.milestones, { stage: result.stage!, created_at: result.created_at! }] }];
+              }));
+              if (stage && stage !== result.stage) setTotalCount(value => Math.max(0, value - 1));
+              setStages(current => current.includes(result.stage!) ? current : [...current, result.stage!].sort());
+            }} />}
             {canManageOffers && recentlyIssuedApplicationIds.has(application.application_id)
               && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Offer issued to the candidate. Their response is tracked separately from this application workflow.</p>}
             {canManageOffers && !recentlyIssuedApplicationIds.has(application.application_id) && application.stage !== 'offer_extended' && !['withdrawn', 'rejected', 'offer_accepted', 'hired'].includes(application.stage)

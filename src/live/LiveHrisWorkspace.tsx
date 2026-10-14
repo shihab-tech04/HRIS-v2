@@ -2583,7 +2583,7 @@ export function LiveHrisWorkspace({
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
-          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} />}
+          {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} canManageApplicationStages={permissions.recruitmentManage} />}
           {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
           {page === 'holidays' && permissions.holidayManage && <OrganizationHolidayCalendar tenantId={tenantId} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} locale={locale} />}

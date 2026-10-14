@@ -105,7 +105,60 @@ try {
   await page.getByRole('button', { name: 'Refresh candidate applications' }).click();
   await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Recruitment desktop');
-  console.log('Local Auth-to-Postgres recruitment pipeline journey passed at 375px mobile and 1280px desktop.');
+
+  await page.getByLabel('Filter candidate applications by stage').selectOption('');
+  await page.getByLabel('Search candidate applications').fill('');
+  const resetResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_recruitment_pipeline'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await resetResponse;
+  await page.getByText('Candidate A Two', { exact: true }).waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  const firstApplication = page.getByText('Candidate A One', { exact: true }).locator('xpath=ancestor::li');
+  await firstApplication.getByText('Update application progress', { exact: true }).click();
+  await firstApplication.getByLabel('Next application stage for Candidate A One').selectOption('under_review');
+  let updateResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_update_candidate_application_stage'));
+  await firstApplication.getByRole('button', { name: 'Save stage', exact: true }).click();
+  await updateResponse;
+  await firstApplication.getByText('Under Review', { exact: true }).first().waitFor({ state: 'visible' });
+
+  await firstApplication.getByLabel('Next application stage for Candidate A One').selectOption('screening');
+  updateResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_update_candidate_application_stage'));
+  await firstApplication.getByRole('button', { name: 'Save stage', exact: true }).click();
+  await updateResponse;
+  await firstApplication.getByText('Screening', { exact: true }).first().waitFor({ state: 'visible' });
+  await firstApplication.getByText('View candidate-visible milestones', { exact: true }).click();
+  await firstApplication.getByText('Screening', { exact: true }).last().waitFor({ state: 'visible' });
+
+  const secondApplication = page.getByText('Candidate A Two', { exact: true }).locator('xpath=ancestor::li');
+  await secondApplication.getByText('Update application progress', { exact: true }).click();
+  await secondApplication.getByLabel('Next application stage for Candidate A Two').selectOption('rejected');
+  await secondApplication.getByRole('button', { name: 'Save stage', exact: true }).click();
+  await secondApplication.getByRole('alertdialog', { name: 'Confirm application rejection' }).waitFor({ state: 'visible' });
+  await secondApplication.getByRole('button', { name: 'Cancel', exact: true }).click();
+  if (await secondApplication.getByRole('alertdialog', { name: 'Confirm application rejection' }).count()) {
+    throw new Error('Rejection confirmation did not cancel.');
+  }
+  await secondApplication.getByRole('button', { name: 'Save stage', exact: true }).click();
+  await secondApplication.getByRole('alertdialog', { name: 'Confirm application rejection' }).waitFor({ state: 'visible' });
+  updateResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_update_candidate_application_stage'));
+  await secondApplication.getByRole('button', { name: 'Confirm rejection', exact: true }).click();
+  await updateResponse;
+  await secondApplication.getByText('Rejected', { exact: true }).first().waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Recruitment stage update mobile');
+
+  await page.getByRole('button', { name: 'Refresh candidate applications' }).click();
+  await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
+  const refreshedFirstApplication = page.getByText('Candidate A One', { exact: true }).locator('xpath=ancestor::li');
+  await refreshedFirstApplication.getByText('Screening', { exact: true }).first().waitFor({ state: 'visible' });
+  await refreshedFirstApplication.getByText('Screening', { exact: true }).last().waitFor({ state: 'visible' });
+  const refreshedSecondApplication = page.getByText('Candidate A Two', { exact: true }).locator('xpath=ancestor::li');
+  await refreshedSecondApplication.getByText('Rejected', { exact: true }).first().waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Recruitment stage update mobile refresh');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole('button', { name: 'Refresh candidate applications' }).click();
+  await page.getByText('Candidate A One', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Recruitment stage update desktop');
+  console.log('Local Auth-to-Postgres recruitment stage workflow passed at 375px and 1280px; mobile+desktop refresh recovery passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
