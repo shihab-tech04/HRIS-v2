@@ -494,7 +494,7 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
               </button>}
             </div>
             {contactMode === 'loading' && <p role="status" className="mt-3 text-sm text-slate-600">{tx('Loading contact details…')}</p>}
-            {contactError && <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+            {contactError && contactMode !== 'editing' && <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
               <p>{tx(contactError)}</p>
               {contactMode === 'idle' && <button type="button" onClick={() => void loadContactDetails()}
                 className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">{tx('Retry contact details')}</button>}

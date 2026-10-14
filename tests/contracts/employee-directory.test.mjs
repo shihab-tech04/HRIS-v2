@@ -71,6 +71,8 @@ test('employee detail sheet preserves permission-limited directory fields and ad
   assert.match(page, /hris_get_tenant_employee_contact_details/);
   assert.match(page, /hris_update_tenant_employee_contact_details/);
   assert.match(page, /These changes update the employee contact record only\. Sign-in email is unchanged\./);
+  assert.match(page, /contactError && contactMode !== 'editing'/);
+  assert.match(page, /id="contact-form-error" role="alert"/);
   const translations = new Set([...locale.matchAll(/^\s*'([^']+)'\s*:/gm)].map(([, key]) => key));
   const missing = [...page.matchAll(/tx\('([^']+)'\)/g)].map(([, key]) => key).filter(key => !translations.has(key));
   assert.deepEqual(missing, [], 'employee directory strings must have Bengali translations');
