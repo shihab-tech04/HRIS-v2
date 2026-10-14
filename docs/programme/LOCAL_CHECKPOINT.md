@@ -10,7 +10,7 @@
 - Phase 10/11 Main project-task-peer-review work remains preserved from the prior **208/208** checkpoint; the next functional batch returns to the user's approved peer-review eligibility workflow. No production changes, paid services, GitHub push, or deployment.
 - Canonical story count: **0/1,047 mapped and accepted; 1,047 pending** exact source bytes and story-level evidence.
 - Details: `EXECUTION_CHECKPOINT_20261014_0836.md`; evidence: `ACCEPTANCE_EVIDENCE_20261014_0836.md`; current ledger: `MASTER_PHASE_LEDGER.md`.
-- A new versioned Drive archive and preservation receipt are pending after the Main records commit; older archives will remain intact.
+- Versioned Drive archive and acceptance records are uploaded to the user-owned preservation folder; exact archive size and metadata, exact text readback for all four checkpoint records, and downloaded-file availability are verified. Older archives remain intact. Receipt: `DRIVE_PRESERVATION_RECEIPT_20261014_0836.md`.
 
 ## Current checkpoint — persisted Candidate application history
 
