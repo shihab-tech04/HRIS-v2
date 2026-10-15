@@ -103,7 +103,7 @@ BEGIN
     id,application_id,stage,note,actor_type,actor_user_id,created_at
   ) VALUES (
     gen_random_uuid(),p_application_id,'interview_scheduled',
-    'An interview invitation is ready for your response.','recruiter',auth.uid(),now()
+    'An interview invitation is ready for your response.','recruitment',auth.uid(),now()
   );
   RETURN jsonb_build_object('interview_id',v_interview_id,'application_id',p_application_id,'status','scheduled','timezone',v_timezone);
 END

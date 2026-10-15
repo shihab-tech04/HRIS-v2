@@ -18,7 +18,7 @@ test('recruiter stage transitions are authenticated, tenant-scoped, locked, and 
   assert.match(migration, /v_stage NOT IN \('under_review', 'screening', 'rejected'\)/);
   assert.match(migration, /v_application\.stage IN \('withdrawn', 'rejected', 'offer_extended', 'offer_accepted', 'offer_declined', 'hired'\)/);
   assert.match(migration, /INSERT INTO public\.candidate_application_stage_history/);
-  assert.match(migration, /'recruiter', auth\.uid\(\)/);
+  assert.match(migration, /'recruitment', auth\.uid\(\)/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.hris_update_candidate_application_stage[^;]* FROM PUBLIC, anon/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.hris_update_candidate_application_stage[^;]* TO authenticated, service_role/);
   assert.match(runner, /Recruiter stage transitions deny unauthorized, cross-tenant, invalid, and regressive updates/);

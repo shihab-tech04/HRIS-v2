@@ -37,8 +37,27 @@ CREATE TABLE public.candidate_application_stage_history (
   application_id uuid NOT NULL,
   stage text NOT NULL,
   note text,
-  actor_type text NOT NULL,
+  actor_type text NOT NULL CONSTRAINT candidate_application_stage_history_actor_check
+    CHECK (actor_type = ANY (ARRAY['candidate','recruitment','system']::text[])),
+  CONSTRAINT candidate_application_stage_history_stage_check
+    CHECK (stage = ANY (ARRAY[
+      'applied','screening','shortlisted','assessment','interview','final_review',
+      'offer','offer_accepted','offer_declined','hired','rejected','withdrawn'
+    ]::text[])),
   actor_user_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.candidate_notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  candidate_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  message text NOT NULL,
+  notification_type text NOT NULL DEFAULT 'system',
+  related_application_id uuid REFERENCES public.job_applications(id) ON DELETE CASCADE,
+  related_job_id uuid REFERENCES public.jobs(id) ON DELETE CASCADE,
+  action_view text,
+  is_read boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -96,10 +115,12 @@ ALTER TABLE public.candidate_application_stage_history ENABLE ROW LEVEL SECURITY
 ALTER TABLE public.candidate_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.candidate_notifications ENABLE ROW LEVEL SECURITY;
 REVOKE ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history,
   public.interviews,
-  public.candidate_profiles,public.candidate_assessments
+  public.candidate_profiles,public.candidate_assessments,public.candidate_notifications
   FROM PUBLIC,anon,authenticated;
 GRANT ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history
   TO service_role;
-GRANT ALL PRIVILEGES ON TABLE public.interviews,public.candidate_profiles,public.candidate_assessments TO service_role;
+GRANT ALL PRIVILEGES ON TABLE public.interviews,public.candidate_profiles,public.candidate_assessments,
+  public.candidate_notifications TO service_role;

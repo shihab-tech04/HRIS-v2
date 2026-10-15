@@ -123,7 +123,7 @@ users.forEach((user, i) => {
   const panelNote = `private panel notes ${i === 0 ? 'A' : 'B'}`;
   const reviewNote = `private review note ${i === 0 ? 'A' : 'B'}`;
   const verificationNote = `private verification note ${i === 0 ? 'A' : 'B'}`;
-  seed.push(`INSERT INTO public.candidate_application_stage_history (id,application_id,stage,note,actor_type,actor_user_id,created_at) VALUES (${sql(historyIds[i])}::uuid,${sql(user.appId)}::uuid,'interview',${sql(staffNote)},'employee',${sql(staffId)}::uuid,'2026-01-01T00:00:00Z');`);
+  seed.push(`INSERT INTO public.candidate_application_stage_history (id,application_id,stage,note,actor_type,actor_user_id,created_at) VALUES (${sql(historyIds[i])}::uuid,${sql(user.appId)}::uuid,'interview',${sql(staffNote)},'recruitment',${sql(staffId)}::uuid,'2026-01-01T00:00:00Z');`);
   if (i === 0) seed.push(`INSERT INTO public.candidate_application_stage_history (id,application_id,stage,note,actor_type,actor_user_id,created_at) VALUES ('52525252-5252-4252-8252-525252525252',${sql(user.appId)}::uuid,'interview','candidate-visible note A','candidate',${sql(ids[i])}::uuid,'2026-01-02T00:00:00Z');`);
   seed.push(`INSERT INTO public.interviews (id,application_id,scheduled_at,interview_type,panel_notes,status,panel_members) VALUES (${sql(interviewIds[i])}::uuid,${sql(user.appId)}::uuid,now(),'Video',${sql(panelNote)},'scheduled',ARRAY['Hiring Manager']);`);
   seed.push(`INSERT INTO public.candidate_assessments (id,application_id,title,assessment_type,instructions,deadline_date,status,review_note,reviewed_by) VALUES (${sql(assessmentIds[i])}::uuid,${sql(user.appId)}::uuid,${sql(`Assessment ${i}`)},'Technical','Complete',current_date,'submitted',${sql(reviewNote)},${sql(staffId)}::uuid);`);

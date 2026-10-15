@@ -107,7 +107,7 @@ CREATE TABLE public.candidate_application_stage_history (
   application_id uuid NOT NULL,
   stage text NOT NULL,
   note text,
-  actor_type text NOT NULL,
+  actor_type text NOT NULL CHECK (actor_type = ANY (ARRAY['candidate','recruitment','system']::text[])),
   actor_user_id uuid,
   created_at timestamptz NOT NULL DEFAULT now()
 );

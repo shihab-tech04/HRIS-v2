@@ -175,7 +175,7 @@ BEGIN
   INSERT INTO public.candidate_application_stage_history (
     id,application_id,stage,note,actor_type,actor_user_id,created_at
   ) VALUES (
-    gen_random_uuid(),p_application_id,'hired','Employee activation completed.','recruiter',auth.uid(),now()
+    gen_random_uuid(),p_application_id,'hired','Employee activation completed.','recruitment',auth.uid(),now()
   );
 
   RETURN jsonb_build_object('success',true,'employee_id',v_employee_id,'idempotent',false);

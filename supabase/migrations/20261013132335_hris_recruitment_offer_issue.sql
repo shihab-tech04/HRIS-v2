@@ -95,7 +95,7 @@ BEGIN
     id, application_id, stage, note, actor_type, actor_user_id
   ) VALUES (
     gen_random_uuid(), p_application_id, 'offer_extended',
-    'An employment offer was issued.', 'recruiter', auth.uid()
+    'An employment offer was issued.', 'recruitment', auth.uid()
   );
 
   RETURN jsonb_build_object('success', true, 'offer_id', v_offer_id, 'stage', 'offer_extended');

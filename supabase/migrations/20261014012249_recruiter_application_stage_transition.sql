@@ -66,7 +66,7 @@ BEGIN
       WHEN 'screening' THEN 'Application moved to screening.'
       ELSE 'Application was not selected.'
     END,
-    'recruiter', auth.uid(), now()
+    'recruitment', auth.uid(), now()
   ) RETURNING id, created_at INTO v_history_id, v_created_at;
 
   RETURN jsonb_build_object(

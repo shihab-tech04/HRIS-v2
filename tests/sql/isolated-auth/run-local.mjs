@@ -368,6 +368,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014160001_hris_learning_completion_evidence_requirement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160002_hris_system_notifications_inbox.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015022305_hris_travel_decision_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -1783,9 +1784,9 @@ INSERT INTO public.candidate_profiles(user_id,tenant_id,profile_status) VALUES
   ('${assessmentCandidateA.userId}'::uuid,'${ids.tenantA}'::uuid,'active'),
   ('${assessmentCandidateB.userId}'::uuid,'${ids.tenantB}'::uuid,'active');
 INSERT INTO public.candidate_application_stage_history(id,application_id,stage,note,actor_type,actor_user_id,created_at) VALUES
-  ('${recruitmentIds.historyA1}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'submitted','private-reviewer-note-a','employee','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T09:01:00Z'),
-  ('${recruitmentIds.historyA1Second}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'screening','candidate-visible-milestone-note-a','employee','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T10:01:00Z'),
-  ('${recruitmentIds.historyB}'::uuid,'${recruitmentIds.applicationB}'::uuid,'submitted','private-reviewer-note-b','employee','66666666-6666-4666-8666-666666666601'::uuid,'2026-10-12T11:01:00Z');`);
+  ('${recruitmentIds.historyA1}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'submitted','private-reviewer-note-a','recruitment','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T09:01:00Z'),
+  ('${recruitmentIds.historyA1Second}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'screening','candidate-visible-milestone-note-a','recruitment','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T10:01:00Z'),
+  ('${recruitmentIds.historyB}'::uuid,'${recruitmentIds.applicationB}'::uuid,'submitted','private-reviewer-note-b','recruitment','66666666-6666-4666-8666-666666666601'::uuid,'2026-10-12T11:01:00Z');`);
 
 const recruitmentA = await managerA.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
 const recruitmentB = await managerB.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantB });
@@ -2101,9 +2102,9 @@ const repeatedStage = await recruitmentManagerA.client.rpc('hris_update_candidat
 const persistedStageA1 = await adminAuth.from('job_applications').select('stage').eq('id', recruitmentIds.applicationA1).single();
 const persistedStageA2 = await adminAuth.from('job_applications').select('stage').eq('id', recruitmentIds.applicationA2).single();
 const transitionHistoryA1 = await adminAuth.from('candidate_application_stage_history')
-  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA1).eq('actor_type', 'recruiter');
+  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA1).eq('actor_type', 'recruitment');
 const transitionHistoryA2 = await adminAuth.from('candidate_application_stage_history')
-  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA2).eq('actor_type', 'recruiter');
+  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA2).eq('actor_type', 'recruitment');
 const sanitizedStageHistory = await recruiterOnly.client.rpc('hris_get_recruitment_pipeline', {
   p_tenant_id: ids.tenantA, p_search: 'Candidate A One',
 });
@@ -2124,6 +2125,65 @@ record('Recruiter stage transitions persist one sanitized history event per acce
     && candidateA1Milestones.some(row => row.stage === 'screening')
     && !candidateA1MilestonesText.includes('actor_user_id')
     && !candidateA1MilestonesText.includes('Application moved to screening.'));
+
+const candidateStageNotificationsA1 = await assessmentCandidateA.client.from('candidate_notifications')
+  .select('id,notification_type,related_application_id,related_job_id,action_view,related_stage_history_id,is_read,title,message')
+  .eq('related_application_id', recruitmentIds.applicationA1)
+  .eq('notification_type', 'application_update')
+  .order('created_at', { ascending: true });
+const candidateStageHistoryA1 = await adminAuth.from('candidate_application_stage_history')
+  .select('id').eq('application_id', recruitmentIds.applicationA1).eq('actor_type', 'recruitment');
+const candidateStageNotificationsForOtherCandidate = await assessmentCandidateB.client.from('candidate_notifications')
+  .select('id').eq('related_application_id', recruitmentIds.applicationA1);
+const candidateStageNotificationsOtherTenant = await assessmentCandidateA.client.from('candidate_notifications')
+  .select('id').eq('related_application_id', recruitmentIds.applicationB);
+const candidateNotificationEventIds = new Set((candidateStageNotificationsA1.data || [])
+  .map(row => row.related_stage_history_id));
+const candidateRecruitmentEventIds = new Set((candidateStageHistoryA1.data || []).map(row => row.id));
+const candidateStageNotification = candidateStageNotificationsA1.data?.[0];
+record('Recruitment stage events create one private owner notification without leaking notes or crossing tenants',
+  !candidateStageNotificationsA1.error
+    && !candidateStageHistoryA1.error
+    && candidateStageNotificationsA1.data.length === candidateRecruitmentEventIds.size
+    && candidateNotificationEventIds.size === candidateStageNotificationsA1.data.length
+    && [...candidateRecruitmentEventIds].every(id => candidateNotificationEventIds.has(id))
+    && candidateStageNotificationsA1.data.every(row =>
+      row.notification_type === 'application_update'
+        && row.related_application_id === recruitmentIds.applicationA1
+        && row.related_job_id === recruitmentIds.jobA1
+        && row.action_view === 'applications'
+        && row.title === 'Application update'
+        && row.message.includes('application timeline')
+        && !row.message.includes('private-reviewer-note')
+        && !Object.hasOwn(row, 'actor_user_id'))
+    && !candidateStageNotificationsForOtherCandidate.error
+    && candidateStageNotificationsForOtherCandidate.data.length === 0
+    && !candidateStageNotificationsOtherTenant.error
+    && candidateStageNotificationsOtherTenant.data.length === 0);
+
+const candidateNotificationInsertAttempt = await assessmentCandidateA.client.from('candidate_notifications').insert({
+  candidate_user_id: assessmentCandidateA.userId,
+  title: 'Untrusted client notification',
+  message: 'Candidates cannot create recruitment notices.',
+  notification_type: 'application_update',
+  related_application_id: recruitmentIds.applicationA1,
+  related_job_id: recruitmentIds.jobA1,
+  action_view: 'applications',
+});
+const candidateOwnNotificationRead = candidateStageNotification?.id
+  ? await assessmentCandidateA.client.from('candidate_notifications').update({ is_read: true })
+      .eq('id', candidateStageNotification.id).select('id').maybeSingle()
+  : { error: { code: 'P0002' }, data: null };
+const candidateOtherNotificationRead = candidateStageNotification?.id
+  ? await assessmentCandidateB.client.from('candidate_notifications').update({ is_read: true })
+      .eq('id', candidateStageNotification.id).select('id').maybeSingle()
+  : { error: { code: 'P0002' }, data: null };
+record('Candidates cannot create notifications; only the owner can update the existing read state',
+  Boolean(candidateNotificationInsertAttempt.error)
+    && !candidateOwnNotificationRead.error
+    && Boolean(candidateOwnNotificationRead.data?.id)
+    && (candidateOtherNotificationRead.error?.code === '42501' || !candidateOtherNotificationRead.data));
+
 record('Recruiter rejection confirmation is cancellable and persists only after confirmation, after candidate interview acceptance',
   stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
     && persistedStageA2.data?.stage === 'rejected'
