@@ -88,6 +88,38 @@ try {
   await monthInput.waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'visible' });
   if (failInitialPeriodRead) throw new Error('The injected monthly attendance outage was not observed.');
+
+  await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
+  await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByLabel('উপস্থিতির মাস', { exact: true }).waitFor({ state: 'visible' });
+  if (await page.locator('html').getAttribute('lang') !== 'bn'
+      || await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
+    throw new Error('The employee dashboard did not persist Bengali locale state.');
+  }
+  await assertNoOverflow(page, 'Employee attendance month Bengali mobile');
+
+  const correctionButton = page.getByRole('button', { name: 'সংশোধনের আবেদন করুন', exact: true });
+  await correctionButton.click();
+  const correctionDialog = page.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
+  await correctionDialog.waitFor({ state: 'visible' });
+  await correctionDialog.getByLabel('কারণ', { exact: true }).fill('synthetic validation check');
+  await correctionDialog.getByRole('button', { name: 'আবেদন জমা দিন', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।' }).waitFor({ state: 'visible' });
+  await correctionDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
+  await correctionDialog.waitFor({ state: 'detached' });
+
+  const leaveRequestButton = page.getByRole('button', { name: 'ছুটির আবেদন', exact: true });
+  if (!(await leaveRequestButton.isEnabled())) throw new Error('The synthetic employee did not receive an authorized leave type for the localized request dialog.');
+  await leaveRequestButton.click();
+  const leaveDialog = page.getByRole('dialog', { name: 'ছুটির আবেদন', exact: true });
+  await leaveDialog.waitFor({ state: 'visible' });
+  await leaveDialog.getByLabel('ছুটির ধরন', { exact: true }).waitFor({ state: 'visible' });
+  await leaveDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
+  await leaveDialog.waitFor({ state: 'detached' });
+
+  await page.getByRole('button', { name: 'Switch language to English', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+
   await page.getByRole('button', { name: 'Retry attendance month', exact: true }).click();
   await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'detached' });
   if (await monthInput.getAttribute('value') !== process.env.HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH) {
@@ -133,7 +165,23 @@ try {
   if (directAttendanceTableRequests.length) {
     throw new Error(`Employee attendance history bypassed the secured period RPC: ${JSON.stringify(directAttendanceTableRequests)}.`);
   }
-  console.log('Local Auth/Postgres employee attendance journey passed: injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
+  await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  if (await page.locator('html').getAttribute('lang') !== 'bn'
+      || await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
+    throw new Error('The employee dashboard did not persist Bengali locale state.');
+  }
+  await assertNoOverflow(page, 'Employee attendance month Bengali mobile');
+  await page.reload();
+  await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  if (await page.locator('html').getAttribute('lang') !== 'bn'
+      || await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
+    throw new Error('The employee dashboard lost Bengali locale after a full browser refresh.');
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Employee attendance month Bengali desktop');
+  console.log('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');

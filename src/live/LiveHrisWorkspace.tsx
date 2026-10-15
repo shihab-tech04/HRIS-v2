@@ -148,6 +148,33 @@ function display(value: unknown): string {
   return String(value);
 }
 
+function localizedEmployeeNumber(value: unknown, locale: Locale, fractionDigits = 0): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  return number.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
+function localizedEmployeeTime(value: unknown, locale: Locale): string {
+  if (typeof value !== 'string' || !value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString(locale === 'bn' ? 'bn-BD' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function localizedEmployeeDate(value: unknown, locale: Locale): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return display(value);
+  return new Date(`${value}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'short', day: 'numeric' });
+}
+
+function localizedProjectText(locale: Locale, source: string, values: Record<string, string | number> = {}): string {
+  const translated = projectText(locale, source);
+  return Object.entries(values).reduce((text, [key, value]) =>
+    text.replaceAll(`{${key}}`, String(value)), translated);
+}
+
 function displayTime(value: unknown): string {
   if (typeof value !== 'string' || !value) return '—';
   const date = new Date(value);
@@ -1631,7 +1658,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
 }
 
 function PersonalLeaveRequests({
-  tenantId, userId, leave, onRefresh, compact = false, showBalances = true, showHistory = true,
+  tenantId, userId, leave, onRefresh, compact = false, showBalances = true, showHistory = true, locale = 'en',
 }: {
   tenantId: string;
   userId: string;
@@ -1640,7 +1667,11 @@ function PersonalLeaveRequests({
   compact?: boolean;
   showBalances?: boolean;
   showHistory?: boolean;
+  locale?: Locale;
 }) {
+  const tx = (source: string) => projectText(locale, source);
+  const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
+  const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
   const [requestOpen, setRequestOpen] = useState(false);
   const [leaveTypeId, setLeaveTypeId] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -1698,17 +1729,17 @@ function PersonalLeaveRequests({
     event.preventDefault();
     if (submittingRef.current) return;
     const selected = leaveTypes.find(item => item.id === leaveTypeId);
-    if (!selected) { setFormError('Choose a leave type.'); return; }
-    if (fromDate > toDate) { setFormError('The end date must be on or after the start date.'); return; }
+    if (!selected) { setFormError(tx('Choose a leave type.')); return; }
+    if (fromDate > toDate) { setFormError(tx('The end date must be on or after the start date.')); return; }
     if (earliestStartDate && fromDate < earliestStartDate) {
-      setFormError(`Choose a start date on or after ${earliestStartDate} to meet the ${noticeDays}-day advance notice.`);
+      setFormError(txf('Choose a start date on or after {date} to meet the {days}-day advance notice.', { date: employeeDate(earliestStartDate), days: localizedEmployeeNumber(noticeDays, locale) }));
       return;
     }
     if (dayPortion !== 'full' && fromDate !== toDate) {
-      setFormError('A half-day request must use one date.'); return;
+      setFormError(tx('A half-day request must use one date.')); return;
     }
     if (selected.requires_document_proof === true && !evidence) {
-      setFormError('Upload supporting evidence for this leave type.'); return;
+      setFormError(tx('Upload supporting evidence for this leave type.')); return;
     }
     const allowedMimeTypes = new Set([
       'application/pdf', 'application/msword',
@@ -1716,7 +1747,7 @@ function PersonalLeaveRequests({
       'image/jpeg', 'image/png',
     ]);
     if (evidence && (!allowedMimeTypes.has(evidence.type) || evidence.size > 10 * 1024 * 1024)) {
-      setFormError('Use a PDF, Word document, JPG, or PNG up to 10 MB.'); return;
+      setFormError(tx('Use a PDF, Word document, JPG, or PNG up to 10 MB.')); return;
     }
 
     submittingRef.current = true;
@@ -1749,8 +1780,8 @@ function PersonalLeaveRequests({
         },
       });
       if (rpcError) throw rpcError;
-      if (!data) throw new Error('The leave request was not confirmed. Refresh and check your request history.');
-      setSuccess('Leave request submitted. You can follow its status in your history.');
+      if (!data) throw new Error(tx('The leave request was not confirmed. Refresh and check your request history.'));
+      setSuccess(tx('Leave request submitted. You can follow its status in your history.'));
       if (evidenceInputRef.current) evidenceInputRef.current.value = '';
       setRequestOpen(false);
       setLeaveTypeId(''); setFromDate(''); setToDate(''); setDayPortion('full');
@@ -1766,9 +1797,9 @@ function PersonalLeaveRequests({
           cleanupFailed = true;
         }
       }
-      const message = cause instanceof Error ? cause.message : 'Unable to submit this leave request.';
+      const message = tx(cause instanceof Error ? cause.message : 'Unable to submit this leave request.');
       setFormError(cleanupFailed
-        ? `${message} The private evidence upload could not be removed; please contact HRIS support.`
+        ? `${message} ${tx('The private evidence upload could not be removed; please contact HRIS support.')}`
         : message);
     } finally {
       submittingRef.current = false;
@@ -1779,38 +1810,38 @@ function PersonalLeaveRequests({
   return <>
     <section className={`space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${compact ? 'xl:p-4' : 'sm:p-5'}`} aria-labelledby="personal-leave-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 id="personal-leave-heading" className="text-lg font-semibold text-[#49454F]">{compact ? 'Request time off' : 'My leave'}</h3>
-          <p className="mt-1 text-sm text-slate-600">{compact ? 'Submit a request for an authorized leave type' : 'Current-year balances and your request history'}</p></div>
+        <div><h3 id="personal-leave-heading" className="text-lg font-semibold text-[#49454F]">{tx(compact ? 'Request time off' : 'My leave')}</h3>
+          <p className="mt-1 text-sm text-slate-600">{tx(compact ? 'Submit a request for an authorized leave type' : 'Current-year balances and your request history')}</p></div>
         <button ref={requestButtonRef} type="button" disabled={!leaveTypes.length} onClick={() => { setFormError(''); setRequestOpen(true); }}
           className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:cursor-not-allowed disabled:opacity-50">
-          Request for leave
+          {tx('Request for leave')}
         </button>
       </div>
       {success && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
       {showBalances && balances.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-6">
         {balances.map((item, index) => <div key={String(item.leave_type_id || index)} className="rounded-md border border-slate-200 p-3">
           <p className="truncate text-sm font-semibold text-[#49454F]">{display(item.leave_type_name)}</p>
-          <p className="mt-1 text-sm text-slate-700">{display(item.available_days)} available</p>
+          <p className="mt-1 text-sm text-slate-700">{localizedEmployeeNumber(item.available_days, locale)} {tx('days available')}</p>
         </div>)}
       </div>}
       {showHistory && <div>
-        <h4 className="mb-2 font-medium text-slate-800">Leave request history</h4>
-        {!requests.length ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave requests yet.</p> :
+        <h4 className="mb-2 font-medium text-slate-800">{tx('Leave request history')}</h4>
+        {!requests.length ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave requests yet.')}</p> :
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
-                {['Leave type', 'From', 'To', 'Days', 'Reason', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+                {['Leave type', 'From', 'To', 'Days', 'Reason', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}
               </tr></thead>
               <tbody className="divide-y divide-slate-100">{requests.map((item, index) => <tr key={String(item.id || index)}>
                 <td className="px-3 py-3">{display(item.leave_type_name)}</td>
-                <td className="px-3 py-3">{display(item.from_date)}</td>
-                <td className="px-3 py-3">{display(item.to_date)}</td>
-                <td className="px-3 py-3">{display(item.requested_days)}</td>
+                <td className="px-3 py-3">{employeeDate(item.from_date)}</td>
+                <td className="px-3 py-3">{employeeDate(item.to_date)}</td>
+                <td className="px-3 py-3">{localizedEmployeeNumber(item.requested_days, locale)}</td>
                 <td className="max-w-48 px-3 py-3" title={String(item.reason || '')}>
                   <span className="block truncate">{display(item.reason)}</span>
                   {Boolean(item.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(item.resolution_note)}</span>}
                 </td>
-                <td className="px-3 py-3 font-medium">{display(item.status)}</td>
+                <td className="px-3 py-3 font-medium">{tx(display(item.status))}</td>
               </tr>)}</tbody>
             </table>
           </div>}
@@ -1822,8 +1853,8 @@ function PersonalLeaveRequests({
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="request-leave-title"
         className="flex max-h-[calc(100vh-2rem)] w-full max-w-[667px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 id="request-leave-title" className="text-lg font-semibold text-slate-950">Request for leave</h2>
-          <button type="button" onClick={() => setRequestOpen(false)} disabled={submitting} className="min-h-11 min-w-11 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-50" aria-label="Close leave request">
+          <h2 id="request-leave-title" className="text-lg font-semibold text-slate-950">{tx('Request for leave')}</h2>
+          <button type="button" onClick={() => setRequestOpen(false)} disabled={submitting} className="min-h-11 min-w-11 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-50" aria-label={tx('Close leave request')}>
             <X className="mx-auto h-5 w-5" />
           </button>
         </div>
@@ -1835,39 +1866,39 @@ function PersonalLeaveRequests({
                 <p className="mt-1 text-sm text-slate-700">{display(item.available_days)}</p>
               </div>)}
             </div>}
-            <div><label htmlFor="personal-leave-type" className="mb-1 block text-sm font-medium text-slate-700">Leave type <span aria-hidden="true">*</span></label>
+            <div><label htmlFor="personal-leave-type" className="mb-1 block text-sm font-medium text-slate-700">{tx('Leave type')} <span aria-hidden="true">*</span></label>
               <select id="personal-leave-type" required value={leaveTypeId} onChange={event => setLeaveTypeId(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                <option value="">Choose a leave type</option>{leaveTypes.map(item => <option key={String(item.id)} value={String(item.id)}>{display(item.name)}</option>)}
+                <option value="">{tx('Choose a leave type')}</option>{leaveTypes.map(item => <option key={String(item.id)} value={String(item.id)}>{display(item.name)}</option>)}
               </select>
               {selectedLeaveType?.min_days_notice != null && Number(selectedLeaveType.min_days_notice) > 0 &&
-                <p className="mt-1 text-xs text-slate-600">This leave type requires {display(selectedLeaveType.min_days_notice)} days’ advance notice{earliestStartDate ? ` · Earliest start date: ${earliestStartDate}` : ''}.</p>}
-              {selectedLeaveType?.requires_document_proof === true && <p className="mt-1 text-xs text-slate-600">Supporting evidence is required for this leave type.</p>}
+                <p className="mt-1 text-xs text-slate-600">{txf('This leave type requires {days} days’ advance notice', { days: localizedEmployeeNumber(selectedLeaveType.min_days_notice, locale) })}{earliestStartDate ? ` · ${txf('Earliest start date: {date}', { date: employeeDate(earliestStartDate) })}` : ''}.</p>}
+              {selectedLeaveType?.requires_document_proof === true && <p className="mt-1 text-xs text-slate-600">{tx('Supporting evidence is required for this leave type.')}</p>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label htmlFor="personal-leave-from" className="mb-1 block text-sm font-medium text-slate-700">From date <span aria-hidden="true">*</span></label>
+              <div><label htmlFor="personal-leave-from" className="mb-1 block text-sm font-medium text-slate-700">{tx('From date')} <span aria-hidden="true">*</span></label>
                 <input id="personal-leave-from" type="date" required min={earliestStartDate || undefined} value={fromDate} onChange={event => setFromDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-              <div><label htmlFor="personal-leave-to" className="mb-1 block text-sm font-medium text-slate-700">To date <span aria-hidden="true">*</span></label>
+              <div><label htmlFor="personal-leave-to" className="mb-1 block text-sm font-medium text-slate-700">{tx('To date')} <span aria-hidden="true">*</span></label>
                 <input id="personal-leave-to" type="date" required min={fromDate || undefined} value={toDate} onChange={event => setToDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
             </div>
-            <div><label htmlFor="personal-leave-portion" className="mb-1 block text-sm font-medium text-slate-700">Day portion</label>
+            <div><label htmlFor="personal-leave-portion" className="mb-1 block text-sm font-medium text-slate-700">{tx('Day portion')}</label>
               <select id="personal-leave-portion" value={dayPortion} onChange={event => setDayPortion(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                <option value="full">Full day</option><option value="first_half">First half</option><option value="second_half">Second half</option>
+                <option value="full">{tx('Full day')}</option><option value="first_half">{tx('First half')}</option><option value="second_half">{tx('Second half')}</option>
               </select>
-              {dayPortion !== 'full' && <p className="mt-1 text-xs text-slate-600">Half-day leave can be requested for one date only.</p>}
+              {dayPortion !== 'full' && <p className="mt-1 text-xs text-slate-600">{tx('Half-day leave can be requested for one date only.')}</p>}
             </div>
-            <div><label htmlFor="personal-leave-reason" className="mb-1 block text-sm font-medium text-slate-700">Reason <span aria-hidden="true">*</span></label>
+            <div><label htmlFor="personal-leave-reason" className="mb-1 block text-sm font-medium text-slate-700">{tx('Reason')} <span aria-hidden="true">*</span></label>
               <textarea id="personal-leave-reason" required rows={3} value={reason} onChange={event => setReason(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
-            <div><label htmlFor="personal-leave-evidence" className="mb-1 block text-sm font-medium text-slate-700">Supporting evidence {selectedLeaveType?.requires_document_proof === true ? <span aria-hidden="true">*</span> : <span className="text-slate-500">(optional)</span>}</label>
+            <div><label htmlFor="personal-leave-evidence" className="mb-1 block text-sm font-medium text-slate-700">{tx('Supporting evidence')} {selectedLeaveType?.requires_document_proof === true ? <span aria-hidden="true">*</span> : <span className="text-slate-500">{tx('(optional)')}</span>}</label>
               <input ref={evidenceInputRef} id="personal-leave-evidence" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required={selectedLeaveType?.requires_document_proof === true}
                 onChange={event => setEvidence(event.target.files?.[0] || null)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              <p className="mt-1 text-xs text-slate-600">PDF, Word, JPG, or PNG up to 10 MB. Evidence is private to you and authorized leave managers in this organization.</p>
+              <p className="mt-1 text-xs text-slate-600">{tx('PDF, Word, JPG, or PNG up to 10 MB. Evidence is private to you and authorized leave managers in this organization.')}</p>
             </div>
             {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{formError}</p>}
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
-            <button type="button" disabled={submitting} onClick={() => setRequestOpen(false)} className="min-h-11 rounded-lg px-4 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={submitting} onClick={() => setRequestOpen(false)} className="min-h-11 rounded-lg px-4 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50">{tx('Cancel')}</button>
             <button type="submit" disabled={submitting || !leaveTypes.length} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white disabled:opacity-50">
-              {submitting ? 'Sending…' : 'Send request'}
+              {submitting ? tx('Sending…') : tx('Send request')}
             </button>
           </div>
         </form>
@@ -2389,13 +2420,18 @@ function EmployeeTimesheets({ tenantId, tenantName }: { tenantId: string; tenant
 type EmployeePanelId = 'working-hours' | 'work-location' | 'leave-type' | 'check-in-times';
 
 function PersonalAttendanceCorrections({
-  tenantId, today, corrections, onRefresh,
+  tenantId, today, corrections, onRefresh, locale,
 }: {
   tenantId: string;
   today: string;
   corrections: AttendanceRecord[];
   onRefresh: () => Promise<void>;
+  locale: Locale;
 }) {
+  const tx = (source: string) => projectText(locale, source);
+  const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
+  const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
+  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
   const [requestOpen, setRequestOpen] = useState(false);
   const [attendanceDate, setAttendanceDate] = useState('');
   const [checkIn, setCheckIn] = useState('');
@@ -2440,10 +2476,10 @@ function PersonalAttendanceCorrections({
     event.preventDefault();
     if (submittingRef.current) return;
     if (!checkIn && !checkOut && !workMode) {
-      setFormError('Enter at least one attendance field to correct.'); return;
+      setFormError(tx('Enter at least one attendance field to correct.')); return;
     }
     if (checkIn && checkOut && checkOut < checkIn) {
-      setFormError('Check-out must be after check-in.'); return;
+      setFormError(tx('Check-out must be after check-in.')); return;
     }
     submittingRef.current = true;
     setSubmitting(true); setFormError(''); setSuccess('');
@@ -2459,12 +2495,12 @@ function PersonalAttendanceCorrections({
         },
       });
       if (rpcError) throw rpcError;
-      if (!data) throw new Error('The correction request was not confirmed. Refresh and check your request history.');
-      setSuccess('Attendance correction submitted for review.');
+      if (!data) throw new Error(tx('The correction request was not confirmed. Refresh and check your request history.'));
+      setSuccess(tx('Attendance correction submitted for review.'));
       setRequestOpen(false); setAttendanceDate(''); setCheckIn(''); setCheckOut(''); setWorkMode(''); setReason('');
       await onRefresh();
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : 'Unable to submit this attendance correction.');
+      setFormError(tx(cause instanceof Error ? cause.message : 'Unable to submit this attendance correction.'));
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -2474,59 +2510,59 @@ function PersonalAttendanceCorrections({
   return <>
     <section aria-labelledby="employee-attendance-corrections-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div><h3 id="employee-attendance-corrections-heading" className="font-semibold text-[#08263D]">My attendance correction requests</h3>
-          <p className="mt-1 text-xs text-slate-500">Requests are reviewed by an authorized attendance manager before records change.</p></div>
+        <div><h3 id="employee-attendance-corrections-heading" className="font-semibold text-[#08263D]">{tx('My attendance correction requests')}</h3>
+          <p className="mt-1 text-xs text-slate-500">{tx('Requests are reviewed by an authorized attendance manager before records change.')}</p></div>
         <button ref={requestButtonRef} type="button" onClick={() => { setFormError(''); setRequestOpen(true); }}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white">
-          <Clock3 className="h-4 w-4" /> Request a correction
+          <Clock3 className="h-4 w-4" /> {tx('Request a correction')}
         </button>
       </div>
       {success && <p role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
       {corrections.length ? <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[760px] text-left text-sm">
         <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
-          {['Date', 'Requested change', 'Reason', 'Status', 'Resolution'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+          {['Date', 'Requested change', 'Reason', 'Status', 'Resolution'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}
         </tr></thead>
         <tbody className="divide-y divide-slate-100">{corrections.map((item, index) => <tr key={String(item.id || index)}>
-          <td className="px-3 py-3">{displayShortDate(item.attendance_date)}</td>
+          <td className="px-3 py-3">{employeeDate(item.attendance_date)}</td>
           <td className="px-3 py-3">{[
-            item.requested_check_in ? `In ${displayTime(item.requested_check_in)}` : '',
-            item.requested_check_out ? `Out ${displayTime(item.requested_check_out)}` : '',
-            item.requested_work_mode ? `Mode ${displayWorkMode(item.requested_work_mode)}` : '',
+            item.requested_check_in ? txf('In {time}', { time: employeeTime(item.requested_check_in) }) : '',
+            item.requested_check_out ? txf('Out {time}', { time: employeeTime(item.requested_check_out) }) : '',
+            item.requested_work_mode ? txf('Mode {mode}', { mode: tx(displayWorkMode(item.requested_work_mode)) }) : '',
           ].filter(Boolean).join(' · ') || '—'}</td>
           <td className="max-w-64 px-3 py-3"><span className="block truncate" title={String(item.reason || '')}>{display(item.reason)}</span></td>
-          <td className="px-3 py-3 capitalize">{display(item.status)}</td>
+          <td className="px-3 py-3 capitalize">{tx(display(item.status))}</td>
           <td className="max-w-56 px-3 py-3"><span className="block truncate" title={String(item.resolution_note || '')}>{display(item.resolution_note)}</span></td>
         </tr>)}</tbody>
-      </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No attendance correction requests yet.</p>}
+      </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No attendance correction requests yet.')}</p>}
     </section>
     {requestOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-3 sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget && !submitting) setRequestOpen(false); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-correction-dialog-heading" className="flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div><h3 id="attendance-correction-dialog-heading" className="text-lg font-semibold text-[#08263D]">Request attendance correction</h3>
-            <p className="mt-1 text-xs text-slate-500">Times use the organization’s local time.</p></div>
-          <button type="button" aria-label="Close attendance correction request" disabled={submitting} onClick={() => setRequestOpen(false)} className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
+          <div><h3 id="attendance-correction-dialog-heading" className="text-lg font-semibold text-[#08263D]">{tx('Request attendance correction')}</h3>
+            <p className="mt-1 text-xs text-slate-500">{tx('Times use the organization’s local time.')}</p></div>
+          <button type="button" aria-label={tx('Close attendance correction request')} disabled={submitting} onClick={() => setRequestOpen(false)} className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={event => void submitRequest(event)} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
-            <div><label htmlFor="attendance-correction-date" className="mb-1 block text-sm font-medium text-slate-700">Attendance date <span aria-hidden="true">*</span></label>
+            <div><label htmlFor="attendance-correction-date" className="mb-1 block text-sm font-medium text-slate-700">{tx('Attendance date')} <span aria-hidden="true">*</span></label>
               <input id="attendance-correction-date" autoFocus type="date" required value={attendanceDate || today} onChange={event => setAttendanceDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label htmlFor="attendance-correction-check-in" className="mb-1 block text-sm font-medium text-slate-700">Requested check-in</label>
+              <div><label htmlFor="attendance-correction-check-in" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-in')}</label>
                 <input id="attendance-correction-check-in" type="time" value={checkIn} onChange={event => setCheckIn(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-              <div><label htmlFor="attendance-correction-check-out" className="mb-1 block text-sm font-medium text-slate-700">Requested check-out</label>
+              <div><label htmlFor="attendance-correction-check-out" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-out')}</label>
                 <input id="attendance-correction-check-out" type="time" value={checkOut} onChange={event => setCheckOut(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
             </div>
-            <div><label htmlFor="attendance-correction-work-mode" className="mb-1 block text-sm font-medium text-slate-700">Requested work location</label>
+            <div><label htmlFor="attendance-correction-work-mode" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested work location')}</label>
               <select id="attendance-correction-work-mode" value={workMode} onChange={event => setWorkMode(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                <option value="">No change</option><option value="office">Office</option><option value="home">Home</option><option value="client_meeting">Client Meeting</option>
+                <option value="">{tx('No change')}</option><option value="office">{tx('Office')}</option><option value="home">{tx('Home')}</option><option value="client_meeting">{tx('Client Meeting')}</option>
               </select></div>
-            <div><label htmlFor="attendance-correction-reason" className="mb-1 block text-sm font-medium text-slate-700">Reason <span aria-hidden="true">*</span></label>
+            <div><label htmlFor="attendance-correction-reason" className="mb-1 block text-sm font-medium text-slate-700">{tx('Reason')} <span aria-hidden="true">*</span></label>
               <textarea id="attendance-correction-reason" required maxLength={2000} rows={3} value={reason} onChange={event => setReason(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
             {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{formError}</p>}
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
-            <button type="button" disabled={submitting} onClick={() => setRequestOpen(false)} className="min-h-11 rounded-lg px-4 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
-            <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white disabled:opacity-50">{submitting ? 'Sending…' : 'Send request'}</button>
+            <button type="button" disabled={submitting} onClick={() => setRequestOpen(false)} className="min-h-11 rounded-lg px-4 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50">{tx('Cancel')}</button>
+            <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white disabled:opacity-50">{submitting ? tx('Sending…') : tx('Send request')}</button>
           </div>
         </form>
       </div>
@@ -2534,7 +2570,13 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; tenantName: string; userId: string }) {
+function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: string; tenantName: string; userId: string; locale: Locale }) {
+  const tx = (source: string) => projectText(locale, source);
+  const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
+  const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
+  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
+  const employeeWorkMode = (value: unknown) => tx(displayWorkMode(value));
+  const employeeNumber = (value: unknown, fractionDigits = 0) => localizedEmployeeNumber(value, locale, fractionDigits);
   const [attendance, setAttendance] = useState<Record<string, unknown> | null>(null);
   const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
   const [loadedTenantId, setLoadedTenantId] = useState('');
@@ -2566,9 +2608,9 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
       if (rpcError) throw rpcError;
       const dashboardData = asObject(data);
       const attendanceData = asObject(dashboardData?.attendance);
-      if (!attendanceData || !dashboardData) throw new Error('Employee services returned an invalid response.');
+      if (!attendanceData || !dashboardData) throw new Error(tx('Employee services returned an invalid response.'));
       const dashboardDate = typeof dashboardData.dashboard_date === 'string' ? dashboardData.dashboard_date : '';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dashboardDate)) throw new Error('Employee services returned an invalid organization date.');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dashboardDate)) throw new Error(tx('Employee services returned an invalid organization date.'));
       if (requestId !== requestSequence.current) return;
       if (loadedTenantId !== tenantId) setSelectedAttendanceMonth(dashboardDate.slice(0, 7));
       setAttendance(attendanceData);
@@ -2577,7 +2619,7 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
     } catch (cause) {
       if (requestId !== requestSequence.current) return;
       setAttendance(null); setLeave(null); setLoadedTenantId('');
-      setError(cause instanceof Error ? cause.message : 'Unable to load your HRIS summary.');
+      setError(tx(cause instanceof Error ? cause.message : 'Unable to load your HRIS summary.'));
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
@@ -2594,11 +2636,11 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
         p_event: event,
       });
       if (rpcError) throw rpcError;
-      setAttendanceActionSuccess(event === 'check_in' ? 'You are checked in for today.' : 'You are checked out for today.');
+      setAttendanceActionSuccess(tx(event === 'check_in' ? 'You are checked in for today.' : 'You are checked out for today.'));
       await load(false);
       setAttendanceMonthRevision(value => value + 1);
     } catch (cause) {
-      setAttendanceActionError(cause instanceof Error ? cause.message : 'Unable to update your attendance. Please retry.');
+      setAttendanceActionError(tx(cause instanceof Error ? cause.message : 'Unable to update your attendance. Please retry.'));
     } finally {
       setAttendanceAction(null);
     }
@@ -2635,7 +2677,7 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
         const data = asObject(result.data);
         const rows = asRows(data?.records);
         if (!data || data.tenant_id !== tenantId || data.month_start !== `${selectedAttendanceMonth}-01` || !Array.isArray(data.records)) {
-          throw new Error('Monthly attendance returned an invalid response.');
+          throw new Error(tx('Monthly attendance returned an invalid response.'));
         }
         if (!isCurrent()) return;
         setMonthlyAttendance(rows);
@@ -2644,7 +2686,7 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
         if (!isCurrent()) return;
         setMonthlyAttendance([]);
         setLoadedAttendanceMonth('');
-        setAttendanceMonthError(cause instanceof Error ? cause.message : 'Unable to load this month of attendance.');
+        setAttendanceMonthError(tx(cause instanceof Error ? cause.message : 'Unable to load this month of attendance.'));
       } finally {
         if (isCurrent()) setAttendanceMonthLoading(false);
       }
@@ -2688,36 +2730,36 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
   }
   const maxWeekHours = Math.max(0, ...weekBuckets.map(bucket => bucket.hours));
   const attendanceMonthLabel = selectedAttendanceMonth && monthParts.length === 2
-    ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    ? new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
       .format(new Date(Date.UTC(monthParts[0], monthParts[1] - 1, 1)))
     : 'selected month';
   const workModes = monthAttendanceRows.reduce<Record<string, number>>((counts, row) => {
-    const mode = displayWorkMode(row.work_mode);
-    if (mode !== 'Not recorded') counts[mode] = (counts[mode] || 0) + 1;
+    const mode = employeeWorkMode(row.work_mode);
+    if (mode !== tx('Not recorded')) counts[mode] = (counts[mode] || 0) + 1;
     return counts;
   }, {});
   const tabs: { id: EmployeePanelId; label: string }[] = [
-    { id: 'working-hours', label: 'Working hours' },
-    { id: 'work-location', label: 'Work location' },
-    { id: 'leave-type', label: 'Leave type' },
-    { id: 'check-in-times', label: 'Check-in times' },
+    { id: 'working-hours', label: tx('Working hours') },
+    { id: 'work-location', label: tx('Work location') },
+    { id: 'leave-type', label: tx('Leave type') },
+    { id: 'check-in-times', label: tx('Check-in times') },
   ];
 
   return <section aria-labelledby="employee-summary-heading" className="space-y-5">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="employee-summary-heading" className="text-2xl font-medium text-[#49454F]">Personal Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-500">Your attendance and leave information for {tenantName}</p></div>
+      <div><h2 id="employee-summary-heading" className="text-2xl font-medium text-[#49454F]">{tx('Personal Dashboard')}</h2>
+        <p className="mt-1 text-sm text-slate-500">{txf('Your attendance and leave information for {organization}', { organization: tenantName })}</p></div>
       <button type="button" disabled={loading} onClick={() => {
         void load().finally(() => setAttendanceMonthRevision(value => value + 1));
-      }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Refresh</button>
+      }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" /> {tx('Refresh')}</button>
     </div>
-    {error && <StatusMessage error={error} onRetry={() => void load()} />}
-    {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your HRIS summary…</p>}
+    {error && <StatusMessage error={tx(error)} retryLabel={tx('Retry')} onRetry={() => void load()} />}
+    {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading your HRIS summary…')}</p>}
     {currentTenantDataReady && attendance && leave && <>
       <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(0,2fr)] xl:grid-cols-[180px_minmax(0,1fr)_288px]">
         <section aria-labelledby="employee-profile-heading" className="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
           <div className="mx-auto grid h-24 w-24 place-items-center rounded-xl bg-[#E7F1F3] text-2xl font-semibold text-[#08558B]" aria-hidden="true">{initials}</div>
-          <h3 id="employee-profile-heading" className="mt-3 break-words text-base font-semibold text-[#08263D]">{fullName || 'Employee profile'}</h3>
+          <h3 id="employee-profile-heading" className="mt-3 break-words text-base font-semibold text-[#08263D]">{fullName || tx('Employee profile')}</h3>
           <p className="mt-1 text-xs text-slate-500">{display(employee?.employee_number)}</p>
           <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 text-left text-sm">
             <p className="flex items-start gap-2"><BriefcaseBusiness className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.designation_title)}</span></p>
@@ -2729,24 +2771,24 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
         <div className="min-w-0 space-y-4">
           <section aria-labelledby="employee-today-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h3 id="employee-today-heading" className="font-semibold text-[#08263D]">Today’s attendance</h3>
-                <p className="mt-1 text-xs text-slate-500">{displayShortDate(today)} · organization local date</p></div>
-              {todayRecord && <span className="rounded-full bg-[#E7F1F3] px-3 py-1 text-xs font-medium text-[#08558B]">{display(todayRecord.status)}</span>}
+              <div><h3 id="employee-today-heading" className="font-semibold text-[#08263D]">{tx('Today’s attendance')}</h3>
+                <p className="mt-1 text-xs text-slate-500">{employeeDate(today)} · {tx('organization local date')}</p></div>
+              {todayRecord && <span className="rounded-full bg-[#E7F1F3] px-3 py-1 text-xs font-medium text-[#08558B]">{tx(display(todayRecord.status))}</span>}
             </div>
             {todayRecord ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <div><p className="text-xs text-slate-500">Check in</p><p className="mt-1 text-sm font-medium">{displayTime(todayRecord.check_in)}</p></div>
-              <div><p className="text-xs text-slate-500">Check out</p><p className="mt-1 text-sm font-medium">{displayTime(todayRecord.check_out)}</p></div>
-              <div><p className="text-xs text-slate-500">Work location</p><p className="mt-1 text-sm font-medium">{displayWorkMode(todayRecord.work_mode)}</p></div>
-            </div> : <p className="mt-3 text-sm text-slate-600">No attendance record is available for this date. Your work schedule is not included in this summary.</p>}
+              <div><p className="text-xs text-slate-500">{tx('Check in')}</p><p className="mt-1 text-sm font-medium">{employeeTime(todayRecord.check_in)}</p></div>
+              <div><p className="text-xs text-slate-500">{tx('Check out')}</p><p className="mt-1 text-sm font-medium">{employeeTime(todayRecord.check_out)}</p></div>
+              <div><p className="text-xs text-slate-500">{tx('Work location')}</p><p className="mt-1 text-sm font-medium">{employeeWorkMode(todayRecord.work_mode)}</p></div>
+            </div> : <p className="mt-3 text-sm text-slate-600">{tx('No attendance record is available for this date. Your work schedule is not included in this summary.')}</p>}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
               <p className="text-sm text-slate-600">{todayRecord?.check_out
-                ? `Attendance recorded through ${displayTime(todayRecord.check_out)}`
-                : todayRecord?.check_in ? `Checked in at ${displayTime(todayRecord.check_in)}` : 'You have not checked in today.'}</p>
+                ? txf('Attendance recorded through {time}', { time: employeeTime(todayRecord.check_out) })
+                : todayRecord?.check_in ? txf('Checked in at {time}', { time: employeeTime(todayRecord.check_in) }) : tx('You have not checked in today.')}</p>
               {!todayRecord?.check_out && <button type="button" disabled={loading || attendanceAction !== null}
                 onClick={() => void recordAttendanceEvent(todayRecord?.check_in ? 'check_out' : 'check_in')}
                 className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:cursor-wait disabled:opacity-60">
-                {attendanceAction ? (attendanceAction === 'check_in' ? 'Checking in…' : 'Checking out…')
-                  : todayRecord?.check_in ? 'Check out' : 'Check in'}
+                {attendanceAction ? (attendanceAction === 'check_in' ? tx('Checking in…') : tx('Checking out…'))
+                  : todayRecord?.check_in ? tx('Check out') : tx('Check in')}
               </button>}
             </div>
             {attendanceActionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{attendanceActionError}</p>}
@@ -2755,8 +2797,8 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
 
           <section aria-labelledby="employee-insights-heading" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 pt-3 sm:px-5">
-              <h3 id="employee-insights-heading" className="mb-2 font-semibold text-[#08263D]">Attendance and leave</h3>
-              <div role="group" aria-label="Personal dashboard views" className="-mb-px grid grid-cols-2 gap-x-2 sm:flex sm:min-w-0 sm:overflow-x-auto">
+              <h3 id="employee-insights-heading" className="mb-2 font-semibold text-[#08263D]">{tx('Attendance and leave')}</h3>
+              <div role="group" aria-label={tx('Personal dashboard views')} className="-mb-px grid grid-cols-2 gap-x-2 sm:flex sm:min-w-0 sm:overflow-x-auto">
                 {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={activePanel === tab.id}
                   onClick={() => setActivePanel(tab.id)} className={`min-h-12 w-full border-b-2 px-2 text-xs sm:w-auto sm:shrink-0 sm:flex-1 sm:px-2 sm:text-sm ${activePanel === tab.id ? 'border-[#08558B] text-[#08558B]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
                   {tab.label}
@@ -2764,51 +2806,51 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
               </div>
             </div>
             <div className="min-h-56 p-4 sm:p-5" aria-live="polite">
-              {attendanceMonthLoading && <p role="status" className="mb-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Loading {attendanceMonthLabel} attendance…</p>}
+              {attendanceMonthLoading && <p role="status" className="mb-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{txf('Loading {month} attendance…', { month: attendanceMonthLabel })}</p>}
               {attendanceMonthError && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
                 <span>{attendanceMonthError}</span>
-                <button type="button" onClick={() => setAttendanceMonthRevision(value => value + 1)} className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">Retry attendance month</button>
+                <button type="button" onClick={() => setAttendanceMonthRevision(value => value + 1)} className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">{tx('Retry attendance month')}</button>
               </div>}
               {activePanel === 'working-hours' && <div>
                 <div className="flex flex-wrap items-end justify-between gap-2">
-                  <div><h4 className="font-medium text-slate-800">Recorded working hours</h4>
+                  <div><h4 className="font-medium text-slate-800">{tx('Recorded working hours')}</h4>
                     <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                      <span>Attendance month</span>
-                      <input aria-label="Attendance month" type="month" value={selectedAttendanceMonth}
+                      <span>{tx('Attendance month')}</span>
+                      <input aria-label={tx('Attendance month')} type="month" value={selectedAttendanceMonth}
                         max={today.slice(0, 7)} onChange={event => setSelectedAttendanceMonth(event.target.value)}
                         className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#08558B] focus:outline-none focus:ring-2 focus:ring-[#08558B]/20" />
                     </label>
                   </div>
-                  <p className="text-right"><span className="block text-xl font-semibold tabular-nums text-[#08558B]">{attendanceMonthReady ? recordedHours.toFixed(1) : '—'} hr</span><span className="text-xs text-slate-500">{attendanceMonthLabel} · complete check-in pairs</span></p>
+                  <p className="text-right"><span className="block text-xl font-semibold tabular-nums text-[#08558B]">{attendanceMonthReady ? employeeNumber(recordedHours, 1) : '—'} {tx('hr')}</span><span className="text-xs text-slate-500">{txf('{month} · complete check-in pairs', { month: attendanceMonthLabel })}</span></p>
                 </div>
-                {attendanceMonthReady && (workHours.some(item => item.hours !== null) ? <div role="img" aria-label={`Recorded work hours for ${attendanceMonthLabel} by week`} className="mt-5 grid grid-cols-4 items-end gap-2 border-b border-slate-200 pb-2 sm:grid-cols-5">
+                {attendanceMonthReady && (workHours.some(item => item.hours !== null) ? <div role="img" aria-label={txf('Recorded work hours for {month} by week', { month: attendanceMonthLabel })} className="mt-5 grid grid-cols-4 items-end gap-2 border-b border-slate-200 pb-2 sm:grid-cols-5">
                   {weekBuckets.map((bucket, index) => <div key={bucket.label} className="min-w-0 text-center">
-                    <div className="flex h-28 items-end justify-center"><div title={`${bucket.hours.toFixed(1)} recorded hours`} className="w-full max-w-10 rounded-t bg-[#08558B]" style={{ height: `${maxWeekHours > 0 && bucket.hours ? Math.max(6, (bucket.hours / maxWeekHours) * 100) : 0}%` }} /></div>
-                    <span className="mt-2 block truncate text-[10px] text-slate-500">Week {index + 1} · {bucket.label}</span>
-                    <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{bucket.count ? `${bucket.hours.toFixed(1)}h` : '—'}</span>
+                    <div className="flex h-28 items-end justify-center"><div title={txf('{hours} recorded hours', { hours: employeeNumber(bucket.hours, 1) })} className="w-full max-w-10 rounded-t bg-[#08558B]" style={{ height: `${maxWeekHours > 0 && bucket.hours ? Math.max(6, (bucket.hours / maxWeekHours) * 100) : 0}%` }} /></div>
+                    <span className="mt-2 block truncate text-[10px] text-slate-500">{txf('Week {week} · {range}', { week: employeeNumber(index + 1), range: bucket.label.replace(/\d+/g, digits => employeeNumber(Number(digits))) })}</span>
+                    <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{bucket.count ? `${employeeNumber(bucket.hours, 1)}${tx('h')}` : '—'}</span>
                   </div>)}
                 </div> : null)}
-                {attendanceMonthReady && !workHours.some(item => item.hours !== null) && <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No complete check-in and check-out pairs are available for {attendanceMonthLabel}.</p>}
-                {attendanceMonthReady && <p className="mt-3 text-xs text-slate-500">Scheduled hours are not returned in this personal summary, so no required-hours target is shown.</p>}
+                {attendanceMonthReady && !workHours.some(item => item.hours !== null) && <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{txf('No complete check-in and check-out pairs are available for {month}.', { month: attendanceMonthLabel })}</p>}
+                {attendanceMonthReady && <p className="mt-3 text-xs text-slate-500">{tx('Scheduled hours are not returned in this personal summary, so no required-hours target is shown.')}</p>}
               </div>}
               {activePanel === 'work-location' && <div>
-                <h4 className="font-medium text-slate-800">Recorded work locations</h4><p className="mt-1 text-xs text-slate-500">{attendanceMonthLabel}</p>
+                <h4 className="font-medium text-slate-800">{tx('Recorded work locations')}</h4><p className="mt-1 text-xs text-slate-500">{attendanceMonthLabel}</p>
                 {attendanceMonthReady && (Object.keys(workModes).length ? <div className="mt-4 grid grid-cols-2 gap-3">{Object.entries(workModes).map(([mode, count]) => <div key={mode} className="rounded-lg border border-slate-200 p-3">
-                  <p className="flex items-center gap-2 text-sm text-slate-600"><MapPin className="h-4 w-4 text-[#08558B]" />{mode}</p><p className="mt-2 text-xl font-semibold tabular-nums">{count}</p><p className="text-xs text-slate-500">attendance entries</p>
-                </div>)}</div> : <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No work location is recorded for {attendanceMonthLabel}.</p>)}
+                  <p className="flex items-center gap-2 text-sm text-slate-600"><MapPin className="h-4 w-4 text-[#08558B]" />{mode}</p><p className="mt-2 text-xl font-semibold tabular-nums">{employeeNumber(count)}</p><p className="text-xs text-slate-500">{tx('attendance entries')}</p>
+                </div>)}</div> : <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{txf('No work location is recorded for {month}.', { month: attendanceMonthLabel })}</p>)}
               </div>}
               {activePanel === 'leave-type' && <div>
-                <h4 className="font-medium text-slate-800">Leave balances · {display(leave.balance_year)}</h4>
+                <h4 className="font-medium text-slate-800">{tx('Leave balances')} · {employeeNumber(leave.balance_year)}</h4>
                 {balances.length ? <div className="mt-3 divide-y divide-slate-100">{balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-                  <span className="text-sm font-medium">{display(row.leave_type_name)}</span><span className="text-sm tabular-nums text-slate-700">{display(row.available_days)} days available</span>
-                </div>)}</div> : <p className="mt-3 text-sm text-slate-600">No leave balance records are available.</p>}
+                  <span className="text-sm font-medium">{display(row.leave_type_name)}</span><span className="text-sm tabular-nums text-slate-700">{employeeNumber(row.available_days)} {tx('days available')}</span>
+                </div>)}</div> : <p className="mt-3 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
               </div>}
               {activePanel === 'check-in-times' && <div>
-                <h4 className="font-medium text-slate-800">Check-in history · {attendanceMonthLabel}</h4>
+                <h4 className="font-medium text-slate-800">{tx('Check-in history')} · {attendanceMonthLabel}</h4>
                 {attendanceMonthReady && (monthAttendanceRows.length ? <ul className="mt-2 divide-y divide-slate-100">{monthAttendanceRows.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <span><strong>{displayShortDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{display(row.status)}</span></span>
-                  <span className="tabular-nums">{displayTime(row.check_in)} – {displayTime(row.check_out)}</span>
-                </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No attendance records are available for {attendanceMonthLabel}.</p>)}
+                  <span><strong>{employeeDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{tx(display(row.status))}</span></span>
+                  <span className="tabular-nums">{employeeTime(row.check_in)} – {employeeTime(row.check_out)}</span>
+                </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{txf('No attendance records are available for {month}.', { month: attendanceMonthLabel })}</p>)}
               </div>}
             </div>
           </section>
@@ -2816,35 +2858,35 @@ function EmployeeOverview({ tenantId, tenantName, userId }: { tenantId: string; 
 
         <aside className="min-w-0 space-y-4 md:col-span-2 xl:col-span-1">
           <section aria-labelledby="employee-leave-balances-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2"><div><h3 id="employee-leave-balances-heading" className="font-semibold text-[#08263D]">Leave balances</h3>
-              <p className="mt-1 text-xs text-slate-500">Current year · {display(leave.balance_year)}</p></div><CalendarDays className="h-5 w-5 text-[#08558B]" /></div>
+            <div className="flex items-center justify-between gap-2"><div><h3 id="employee-leave-balances-heading" className="font-semibold text-[#08263D]">{tx('Leave balances')}</h3>
+              <p className="mt-1 text-xs text-slate-500">{txf('Current year · {year}', { year: employeeNumber(leave.balance_year) })}</p></div><CalendarDays className="h-5 w-5 text-[#08558B]" /></div>
             {balances.length ? <ul className="mt-3 divide-y divide-slate-100">{balances.map((row, index) => <li key={String(row.leave_type_id || index)} className="flex items-center justify-between gap-2 py-2 text-sm">
-              <span className="min-w-0 truncate">{display(row.leave_type_name)}</span><strong className="shrink-0 tabular-nums">{display(row.available_days)} days</strong>
-            </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No leave balance records are available.</p>}
+              <span className="min-w-0 truncate">{display(row.leave_type_name)}</span><strong className="shrink-0 tabular-nums">{employeeNumber(row.available_days)} {tx('days')}</strong>
+            </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
           </section>
-          <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} />
+          <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} locale={locale} />
           <section aria-labelledby="employee-holidays-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 id="employee-holidays-heading" className="font-semibold text-[#08263D]">Upcoming holidays</h3>
+            <h3 id="employee-holidays-heading" className="font-semibold text-[#08263D]">{tx('Upcoming holidays')}</h3>
             {holidays.length ? <ul className="mt-3 max-h-56 divide-y divide-slate-100 overflow-y-auto">{holidays.slice(0, 8).map((holiday, index) => <li key={String(holiday.id || index)} className="flex items-start justify-between gap-3 py-3 text-sm">
-              <span className="min-w-0 break-words">{display(holiday.name)}</span><span className="shrink-0 text-xs text-slate-500">{displayShortDate(holiday.start_date)}{holiday.end_date && holiday.end_date !== holiday.start_date ? ` – ${displayShortDate(holiday.end_date)}` : ''}</span>
-            </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">No upcoming holidays are published.</p>}
+              <span className="min-w-0 break-words">{display(holiday.name)}</span><span className="shrink-0 text-xs text-slate-500">{employeeDate(holiday.start_date)}{holiday.end_date && holiday.end_date !== holiday.start_date ? ` – ${employeeDate(holiday.end_date)}` : ''}</span>
+            </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{tx('No upcoming holidays are published.')}</p>}
           </section>
         </aside>
       </div>
 
       <section aria-labelledby="employee-leave-history-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h3 id="employee-leave-history-heading" className="font-semibold text-[#08263D]">My leave requests</h3>
-          <p className="mt-1 text-xs text-slate-500">Status and resolution updates from this organization</p></div><span className="text-xs text-slate-500">{requests.length} requests</span></div>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h3 id="employee-leave-history-heading" className="font-semibold text-[#08263D]">{tx('My leave requests')}</h3>
+          <p className="mt-1 text-xs text-slate-500">{tx('Status and resolution updates from this organization')}</p></div><span className="text-xs text-slate-500">{txf('{count} requests', { count: employeeNumber(requests.length) })}</span></div>
         {requests.length ? <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[680px] text-left text-sm">
-          <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{['Leave type', 'From', 'To', 'Days', 'Reason', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}</tr></thead>
+          <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{['Leave type', 'From', 'To', 'Days', 'Reason', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{requests.map((item, index) => <tr key={String(item.id || index)}>
-            <td className="px-3 py-3">{display(item.leave_type_name)}</td><td className="px-3 py-3">{displayShortDate(item.from_date)}</td><td className="px-3 py-3">{displayShortDate(item.to_date)}</td>
-            <td className="px-3 py-3">{display(item.requested_days)}</td><td className="max-w-48 px-3 py-3"><span className="block truncate" title={String(item.reason || '')}>{display(item.reason)}</span>
-              {Boolean(item.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(item.resolution_note)}</span>}</td><td className="px-3 py-3 font-medium">{display(item.status)}</td>
+            <td className="px-3 py-3">{display(item.leave_type_name)}</td><td className="px-3 py-3">{employeeDate(item.from_date)}</td><td className="px-3 py-3">{employeeDate(item.to_date)}</td>
+            <td className="px-3 py-3">{employeeNumber(item.requested_days)}</td><td className="max-w-48 px-3 py-3"><span className="block truncate" title={String(item.reason || '')}>{display(item.reason)}</span>
+              {Boolean(item.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(item.resolution_note)}</span>}</td><td className="px-3 py-3 font-medium">{tx(display(item.status))}</td>
           </tr>)}</tbody>
-        </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">No leave requests yet.</p>}
+        </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave requests yet.')}</p>}
       </section>
-      <PersonalAttendanceCorrections tenantId={tenantId} today={today} corrections={asRows(attendance.corrections)} onRefresh={() => load(false)} />
+      <PersonalAttendanceCorrections tenantId={tenantId} today={today} corrections={asRows(attendance.corrections)} onRefresh={() => load(false)} locale={locale} />
     </>}
   </section>;
 }
@@ -3012,7 +3054,7 @@ export function LiveHrisWorkspace({
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
-          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
+          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}

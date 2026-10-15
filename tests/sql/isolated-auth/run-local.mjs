@@ -5015,7 +5015,7 @@ try {
   employeeAttendanceBrowserOutput = String(error.stdout || '');
 }
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
-  employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
+  employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
   employeeAttendanceBrowserError);
 
 let browserIntegrationOutput = '';
