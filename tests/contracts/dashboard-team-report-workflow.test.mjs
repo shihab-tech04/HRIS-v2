@@ -95,3 +95,13 @@ test('manager dashboard controls, data labels, accessibility text, and CSV label
   assert.match(browserRunner, /ব্যবস্থাপক ড্যাশবোর্ড/);
   assert.match(browserRunner, /Dashboard CSV did not use the Bengali labels/);
 });
+
+test('attendance trend exposes the selected daily data to screen readers in both locales', () => {
+  assert.match(workspace, /<table className="sr-only" aria-label=\{tx\('Attendance chart data'\)\}>/);
+  assert.match(workspace, /safePoints\.map\(\(point, index\) => <tr/);
+  assert.match(workspace, /Number\(point\.records\)\.toLocaleString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
+  assert.match(locale, /'Attendance chart data':/);
+  assert.match(locale, /'Attendance records':/);
+  assert.match(browserSpec, /Attendance chart data/);
+  assert.match(browserSpec, /bengaliChartData\.getByRole\('columnheader'/);
+});

@@ -320,6 +320,8 @@ const bengali: Record<string, string> = {
   'Attendance records over the last': 'গত',
   'days': 'দিন',
   'records': 'রেকর্ড',
+  'Attendance chart data': 'উপস্থিতির চার্টের তথ্য',
+  'Attendance records': 'উপস্থিতির রেকর্ড',
   'Attendance records trend': 'উপস্থিতির রেকর্ডের প্রবণতা',
   'Daily attendance record counts returned by the tenant-scoped HRIS dashboard service.': 'প্রতিষ্ঠানভিত্তিক দৈনিক উপস্থিতির নথির সংখ্যা।',
   'No attendance summary is available for the recent date range.': 'সাম্প্রতিক তারিখসীমার জন্য উপস্থিতির কোনো সারসংক্ষেপ নেই।',

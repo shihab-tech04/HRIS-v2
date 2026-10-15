@@ -222,6 +222,10 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
   expect(metricColumns).toBe(8);
   await expect(page.getByRole('img', { name: /Attendance records over the last 7 days/ })).toBeVisible();
+  const chartData = page.getByRole('table', { name: 'Attendance chart data' });
+  await expect(chartData).toBeAttached();
+  await expect(chartData.locator('tbody tr')).toHaveCount(7);
+  await expect(chartData.locator('tbody tr').last()).toContainText('30');
   await page.screenshot({ path: evidencePath('managerial-dashboard-desktop-20261015.png'), fullPage: true });
 
   await page.getByRole('searchbox', { name: 'Search dashboard metrics' }).fill('Home');
@@ -233,6 +237,7 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   await page.getByLabel('Attendance chart range').selectOption('30');
   await expect(page.getByText('Recorded attendance by day · last 30 days')).toBeVisible();
   await expect(page.getByRole('img', { name: /Attendance records over the last 30 days/ })).toBeVisible();
+  await expect(chartData.locator('tbody tr')).toHaveCount(30);
 
   const downloadWaiter = page.waitForEvent('download');
   const dashboardActions = page.getByRole('group', { name: 'Managerial dashboard actions' });
@@ -307,6 +312,10 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await expect(page.getByRole('heading', { name: 'আজকের উপস্থিতির সারসংক্ষেপ' })).toBeVisible();
   await expect(page.getByText('দলের সদস্য', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'উপস্থিতির চার্ট ফিল্টার করুন' })).toBeVisible();
+  const bengaliChartData = page.getByRole('table', { name: 'উপস্থিতির চার্টের তথ্য' });
+  await expect(bengaliChartData).toBeAttached();
+  await expect(bengaliChartData.getByRole('columnheader', { name: 'তারিখ' })).toBeAttached();
+  await expect(bengaliChartData.getByRole('columnheader', { name: 'উপস্থিতির রেকর্ড' })).toBeAttached();
   const dashboardActions = page.getByRole('group', { name: 'ব্যবস্থাপক ড্যাশবোর্ডের কার্যক্রম' });
   await expect(dashboardActions.getByRole('button', { name: 'প্রতিবেদন ডাউনলোড করুন', exact: true })).toBeVisible();
   await expect(teamReport.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদন' })).toBeVisible();

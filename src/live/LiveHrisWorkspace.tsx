@@ -286,6 +286,14 @@ function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; 
           </text>}
       </g>)}
     </svg>
+    <table className="sr-only" aria-label={tx('Attendance chart data')}>
+      <caption>{tx('Attendance chart data')}</caption>
+      <thead><tr><th scope="col">{tx('Date')}</th><th scope="col">{tx('Attendance records')}</th></tr></thead>
+      <tbody>{safePoints.map((point, index) => <tr key={`${point.date}-${index}`}>
+        <th scope="row">{new Date(`${point.date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</th>
+        <td>{Number(point.records).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}</td>
+      </tr>)}</tbody>
+    </table>
   </div>;
 }
 
