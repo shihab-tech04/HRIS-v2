@@ -28,3 +28,12 @@
 - Isolated Auth/Postgres/RLS acceptance for the new migration and detail RPC. No healthy local test runtime is available: `colima list` reports `Broken` for `hris-acceptance`, `hris-candidate-e2e-20261014`, `hris-contact-acceptance-20261015-free`, `hris-scratch`, and `taxpay-supabase-local-20261011`; the HRIS Docker socket is unavailable. No profile was restarted or rebuilt.
 - Phase 16 Auth/RLS integration remains pending for the same environment reason.
 - No production SQL, data, permissions, GitHub `main`, or live deployment was changed.
+
+## Figma-aligned Team Report follow-up — 2026-10-15
+
+- Used the Managerial Dashboard source frame `9:22640` and Team Report design context `9:23134` to align the report heading, 48px controls, desktop table width, header height, and row density while preserving date selection, filtered totals, detail access, and CSV behavior.
+- Kept the existing 790px mobile table width, enabled the 980px desktop layout at the small breakpoint, and made the horizontally scrollable report region keyboard-focusable with an EN/BN accessible name. The table header uses `#64748B` instead of the lower-contrast Figma gray to keep the small labels readable.
+- Updated screenshots were captured by synthetic browser checks at 1440px desktop and 375px mobile. These remain UI-only checks; they do not certify live Auth, Postgres, RLS, or data persistence.
+- Verification after the refinement: `npm run check` passed (TypeScript, 163/163 contracts, Vite build); Managerial Dashboard Playwright passed 3/3.
+- The Figma API returned 1×1 exports for the Team Report subframe and its table children. High-fidelity design context was available, but a pixel-level visual comparison for this subframe is **not verified**. The root frame screenshot does not show the scrolled Team Report region.
+- Auth/Postgres/RLS acceptance remains pending for the broken local runtime recorded above. No production SQL or deployment occurred.

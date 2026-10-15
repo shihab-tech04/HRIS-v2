@@ -59,7 +59,7 @@ test('isolated acceptance covers selected dates, role denials, team scoping, ret
   assert.match(browserSpec, /Switch language to Bengali/);
   assert.match(browserSpec, /375/);
   assert.match(browserSpec, /download/);
-  for (const phrase of ['Team Report', 'Apply date', 'Filtered total', 'Team report details', 'View details', 'Employee number']) {
+  for (const phrase of ['Team Report', 'Apply date', 'Filtered total', 'Team report details', 'Scrollable team report totals', 'View details', 'Employee number']) {
     assert.ok(locale.includes(`'${phrase}'`), `missing EN/BN translation: ${phrase}`);
   }
 });

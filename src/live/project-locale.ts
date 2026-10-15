@@ -303,6 +303,7 @@ const bengali: Record<string, string> = {
   'Download Report': 'প্রতিবেদন ডাউনলোড করুন',
   'Team report data is unavailable until the connection recovers.': 'সংযোগ পুনরুদ্ধার না হওয়া পর্যন্ত দলভিত্তিক প্রতিবেদন পাওয়া যাবে না।',
   'Team report totals': 'দলভিত্তিক প্রতিবেদনের মোট হিসাব',
+  'Scrollable team report totals': 'স্ক্রলযোগ্য দলভিত্তিক প্রতিবেদনের মোট হিসাব',
   'Team Name': 'দলের নাম',
   'Present Member': 'উপস্থিত সদস্য',
   'Absent Member': 'অনুপস্থিত সদস্য',

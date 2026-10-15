@@ -561,7 +561,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
       {canReport && <section aria-labelledby="dashboard-team-report-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 border-b border-[#E5E5EF] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 id="dashboard-team-report-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Team Report')}</h3>
+            <h3 id="dashboard-team-report-heading" className="text-2xl font-normal text-[#3D3D3D]">{tx('Team Report')}</h3>
             <p className="mt-1 text-xs text-[#86929E]">{tx('Attendance totals by organizational team')} · {currentTeamReportDate ? displayAttendanceDate(currentTeamReportDate) : tx('today')}</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
@@ -569,18 +569,18 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
               <label htmlFor="dashboard-team-report-date" className="mb-1 block text-xs font-medium text-slate-600">{tx('Report date')}</label>
               <input id="dashboard-team-report-date" type="date" value={teamReportDateDraft}
                 onChange={event => setTeamReportDateDraft(event.target.value)}
-                className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm focus:outline-2 focus:outline-[#08558B]" />
+                className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm focus:outline-2 focus:outline-[#08558B]" />
             </div>
             <button type="button" disabled={teamReportLoading || !teamReportDateDraft} onClick={applyTeamReportDate}
-              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">{tx('Apply date')}</button>
-            <label className="relative block min-w-0 flex-1 sm:w-[280px] sm:flex-none">
+              className="inline-flex min-h-12 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">{tx('Apply date')}</button>
+            <label className="relative block min-w-0 flex-1 sm:w-[334px] sm:flex-none">
               <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input type="search" value={teamReportSearch} onChange={event => setTeamReportSearch(event.target.value)}
                 placeholder={tx('Search teams')} aria-label={tx('Search team report')}
-                className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
+                className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
             </label>
             <button type="button" disabled={teamReportLoading || !visibleTeamReportRows.length} onClick={downloadTeamReport}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50 sm:w-[184px]">
               <img src={attendanceDownloadIcon} alt="" className="h-4 w-4 shrink-0 object-contain" /> {tx('Download Report')}
             </button>
           </div>
@@ -597,24 +597,25 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
           : teamReportLoading && !currentTeamReportRows.length ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized team report…')}</p>
           : !teamReportError && !currentTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">{tx('No active employees are available for a team report.')}</p>
             : !teamReportError && !visibleTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">{tx('No teams match')} “{teamReportSearch}”.</p>
-              : <div className="overflow-x-auto rounded-lg border border-[#E6EEF3]">
-                <table aria-label={tx('Team report totals')} className="w-full min-w-[790px] border-collapse text-left text-sm">
-                  <thead className="bg-[#F4F8FA] text-xs font-semibold text-[#49454F]">
+              : <div role="region" aria-label={tx('Scrollable team report totals')} tabIndex={0}
+                className="overflow-x-auto rounded-lg border border-[#E6EEF3] focus-visible:outline-2 focus-visible:outline-[#08558B]">
+                <table aria-label={tx('Team report totals')} className="w-full min-w-[790px] border-collapse text-left text-sm sm:min-w-[980px]">
+                  <thead className="bg-white text-sm font-normal text-[#64748B]">
                     <tr>{['Team Name', 'Present Member', 'Absent Member', 'Total Member', 'Work from office', 'Work from Home', 'Client meeting', 'Details'].map(label =>
-                      <th key={label} scope="col" className="whitespace-nowrap px-3 py-3">{tx(label)}</th>)}</tr>
+                      <th key={label} scope="col" className="h-[59px] whitespace-nowrap px-4 font-normal">{tx(label)}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-[#E6EEF3] text-[#1E1B39]">
-                    {visibleTeamReportRows.map((row, index) => <tr key={row.team_id || `unassigned-${index}`} className="hover:bg-[#FAFCFD]">
-                      <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium">{display(tx(String(row.team_name || 'Unassigned')))}</th>
-                      <td className="px-3 py-3 tabular-nums">{display(row.present_members)}</td>
-                      <td className="px-3 py-3 tabular-nums">{display(row.absent_members)}</td>
-                      <td className="px-3 py-3 tabular-nums">{display(row.total_members)}</td>
-                      <td className="px-3 py-3 tabular-nums">{display(row.work_from_office)}</td>
-                      <td className="px-3 py-3 tabular-nums">{display(row.work_from_home)}</td>
-                      <td className="px-3 py-3 tabular-nums">{display(row.client_meeting)}</td>
-                      <td className="px-3 py-3"><button type="button" onClick={() => openTeamReportDetails(row)}
+                    {visibleTeamReportRows.map((row, index) => <tr key={row.team_id || `unassigned-${index}`} className="h-20 hover:bg-[#FAFCFD]">
+                      <th scope="row" className="whitespace-nowrap px-4 py-4 font-normal text-[#424242]">{display(tx(String(row.team_name || 'Unassigned')))}</th>
+                      <td className="px-4 py-4 tabular-nums">{display(row.present_members)}</td>
+                      <td className="px-4 py-4 tabular-nums">{display(row.absent_members)}</td>
+                      <td className="px-4 py-4 tabular-nums">{display(row.total_members)}</td>
+                      <td className="px-4 py-4 tabular-nums">{display(row.work_from_office)}</td>
+                      <td className="px-4 py-4 tabular-nums">{display(row.work_from_home)}</td>
+                      <td className="px-4 py-4 tabular-nums">{display(row.client_meeting)}</td>
+                      <td className="px-4 py-4"><button type="button" onClick={() => openTeamReportDetails(row)}
                         aria-label={`${tx('View attendance details for')} ${display(tx(String(row.team_name || 'Unassigned')))}`}
-                        className="min-h-10 rounded-md border border-[#DEE0E3] px-3 text-xs font-medium text-[#08558B] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">{tx('View details')}</button></td>
+                        className="min-h-12 rounded-md border border-[#DEE0E3] px-3 text-xs font-medium text-[#08558B] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">{tx('View details')}</button></td>
                     </tr>)}
                   </tbody>
                   <tfoot className="border-t-2 border-[#D1DEE5] bg-[#F4F8FA] font-semibold text-[#1E1B39]">

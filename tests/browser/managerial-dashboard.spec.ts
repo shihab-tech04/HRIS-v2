@@ -215,9 +215,15 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await teamReport.getByRole('button', { name: 'Retry', exact: true }).click();
   await teamReport.getByRole('row', { name: /QA A Team/ }).waitFor({ state: 'visible' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  const totalsRegion = teamReport.getByRole('region', { name: 'Scrollable team report totals' });
+  await expect(totalsRegion).toBeVisible();
+  expect(await totalsRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await totalsRegion.focus();
+  await expect(totalsRegion).toBeFocused();
 
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(teamReport.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদন' })).toBeVisible();
+  await expect(teamReport.getByRole('region', { name: 'স্ক্রলযোগ্য দলভিত্তিক প্রতিবেদনের মোট হিসাব' })).toBeVisible();
   await expect(teamReport.getByLabel('প্রতিবেদনের তারিখ')).toBeVisible();
   const detailButton = teamReport.getByRole('button', { name: 'উপস্থিতির বিস্তারিত দেখুন: QA A Team' });
   await detailButton.click();
