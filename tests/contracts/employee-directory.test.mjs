@@ -73,6 +73,10 @@ test('employee detail sheet preserves permission-limited directory fields and ad
   assert.match(page, /employeesManage && <section aria-labelledby="employee-contact-heading"/);
   assert.match(page, /hris_get_tenant_employee_contact_details/);
   assert.match(page, /hris_update_tenant_employee_contact_details/);
+  assert.match(page, /htmlFor="employee-contact-home-address"/);
+  assert.match(page, /id="employee-contact-home-address"/);
+  assert.match(page, /htmlFor="employee-contact-mailing-address"/);
+  assert.match(page, /id="employee-contact-mailing-address"/);
   assert.match(page, /These changes update the employee contact record only\. Sign-in email is unchanged\./);
   assert.match(page, /contactError && contactMode !== 'editing'/);
   assert.match(page, /id="contact-form-error" role="alert"/);
@@ -83,7 +87,7 @@ test('employee detail sheet preserves permission-limited directory fields and ad
   const browser = readFileSync(new URL('../sql/isolated-auth/run-employee-directory-browser.mjs', import.meta.url), 'utf8');
   assert.match(browser, /getByRole\('dialog'/);
   assert.match(browser, /keyboard\.press\('Escape'\)/);
-  assert.match(browser, /Switch language to Bengali/);
+  assert.match(browser, /managerDetailsAfterRefresh\.getByRole\('button', \{ name: 'Close', exact: true \}\)\.click\(\);[\s\S]*?Switch language to Bengali/);
 });
 
 test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, validated, and audited', () => {
@@ -118,6 +122,10 @@ test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, 
   assert.match(contactRunner, /override\.protocol !== 'tcp:' \|\| override\.hostname !== '127\.0\.0\.1'/);
   assert.match(contactRunner, /colimaProfile = dockerContext\.startsWith\('colima-'\)/);
   assert.match(contactRunner, /'ssh', '--profile', colimaProfile, '--', 'docker'/);
+  assert.match(contactRunner, /DELETE FROM public\.tenant_memberships WHERE user_id=ANY/);
+  assert.match(contactRunner, /DELETE FROM public\.user_roles WHERE user_id=ANY/);
+  assert.match(contactRunner, /DELETE FROM public\.admin_users WHERE user_id=ANY/);
+  assert.match(contactRunner, /Synthetic authorization and employee links are removed from the disposable fixture/);
   assert.match(contactRunner, /managerDataKeys/);
   assert.match(isolatedRunner, /HRIS_SUPABASE_SKIP_LOCAL_RESET === '1'/);
   assert.match(isolatedRunner, /tablename <> 'schema_migrations'/);

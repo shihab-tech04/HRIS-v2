@@ -540,16 +540,18 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
                     onChange={event => setContactDraft(current => ({ ...current, official_phone: event.target.value }))}
                     className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal" />
                 </label>
-                <label className="block text-sm font-medium text-slate-700">{tx('Home address')}
-                  <textarea maxLength={500} rows={3} value={contactDraft.address || ''}
+                <div className="block text-sm font-medium text-slate-700">
+                  <label htmlFor="employee-contact-home-address">{tx('Home address')}</label>
+                  <textarea id="employee-contact-home-address" maxLength={500} rows={3} value={contactDraft.address || ''}
                     onChange={event => setContactDraft(current => ({ ...current, address: event.target.value }))}
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">{tx('Mailing address')}
-                  <textarea maxLength={500} rows={3} value={contactDraft.mailing_address || ''}
+                </div>
+                <div className="block text-sm font-medium text-slate-700">
+                  <label htmlFor="employee-contact-mailing-address">{tx('Mailing address')}</label>
+                  <textarea id="employee-contact-mailing-address" maxLength={500} rows={3} value={contactDraft.mailing_address || ''}
                     onChange={event => setContactDraft(current => ({ ...current, mailing_address: event.target.value }))}
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-                </label>
+                </div>
                 <label className="block text-sm font-medium text-slate-700">{tx('Emergency contact name')}
                   <input autoComplete="off" maxLength={160} value={contactDraft.emergency_contact_name || ''}
                     onChange={event => setContactDraft(current => ({ ...current, emergency_contact_name: event.target.value }))}
