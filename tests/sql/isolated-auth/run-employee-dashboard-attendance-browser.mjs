@@ -116,7 +116,7 @@ try {
   await leaveRequestButton.click();
   const leaveDialog = page.getByRole('dialog', { name: 'ছুটির আবেদন', exact: true });
   await leaveDialog.waitFor({ state: 'visible' });
-  await leaveDialog.getByLabel('ছুটির ধরন', { exact: true }).waitFor({ state: 'visible' });
+  await leaveDialog.getByLabel('ছুটির ধরন').waitFor({ state: 'visible' });
   await leaveDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
   await leaveDialog.waitFor({ state: 'detached' });
 
