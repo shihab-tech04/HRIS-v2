@@ -16,8 +16,12 @@ const workdir = path.resolve(process.env.HRIS_SUPABASE_TEST_WORKDIR || '/private
 const dockerContext = process.env.HRIS_DOCKER_CONTEXT || 'colima-hris-scratch';
 const expectedApiPort = process.env.HRIS_SUPABASE_API_PORT || '55421';
 const expectedDatabasePort = process.env.HRIS_SUPABASE_DB_PORT || '55422';
-if (!workdir.startsWith('/private/tmp/')) {
-  throw new Error('Refusing to test: the disposable Supabase workdir must remain under /private/tmp.');
+const allowedTestWorkdirs = new Set([
+  path.resolve('/private/tmp/synesis-local-hris-test'),
+  path.resolve('/tmp/synesis-local-hris-test'),
+]);
+if (!allowedTestWorkdirs.has(workdir)) {
+  throw new Error('Refusing to test: use only the dedicated /private/tmp or /tmp Synesis HRIS acceptance workdir.');
 }
 const dockerEndpoint = execFileSync('docker', [
   'context', 'inspect', dockerContext, '--format', '{{.Endpoints.docker.Host}}',

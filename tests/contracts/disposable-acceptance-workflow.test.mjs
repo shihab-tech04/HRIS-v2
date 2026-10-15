@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../../.github/workflows/disposable-auth-postgres-acceptance.yml', import.meta.url), 'utf8');
 const checks = readFileSync(new URL('../../.github/workflows/check.yml', import.meta.url), 'utf8');
+const localRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 
 test('disposable Auth/Postgres/browser acceptance uses trusted standard runners and no deploy or production credentials', () => {
   assert.match(workflow, /branches: \[development\/hris-checkpoints\]/);
@@ -11,6 +12,11 @@ test('disposable Auth/Postgres/browser acceptance uses trusted standard runners 
   assert.match(workflow, /timeout-minutes: 60/);
   assert.match(workflow, /permissions:\s+contents: read/);
   assert.match(workflow, /supabase start --workdir/);
+  assert.match(workflow, /HRIS_SUPABASE_TEST_WORKDIR: \/tmp\/synesis-local-hris-test/);
+  assert.match(localRunner, /allowedTestWorkdirs = new Set\(\[/);
+  assert.match(localRunner, /path\.resolve\('\/private\/tmp\/synesis-local-hris-test'\)/);
+  assert.match(localRunner, /path\.resolve\('\/tmp\/synesis-local-hris-test'\)/);
+  assert.match(localRunner, /allowedTestWorkdirs\.has\(workdir\)/);
   assert.match(workflow, /node tests\/sql\/isolated-auth\/run-local\.mjs/);
   assert.match(workflow, /supabase stop --workdir .*--no-backup/);
   assert.doesNotMatch(workflow, /pull_request_target|deploy-pages|supabase\.co|secrets\./i);
