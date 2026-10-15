@@ -114,6 +114,10 @@ test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, 
   assert.match(isolatedRunner, /DOCKER_HOST: dockerEndpoint/);
   assert.match(contactRunner, /HRIS_SUPABASE_API_URL_OVERRIDE/);
   assert.match(contactRunner, /override\.hostname !== '127\.0\.0\.1'/);
+  assert.match(contactRunner, /HRIS_DOCKER_HOST_OVERRIDE/);
+  assert.match(contactRunner, /override\.protocol !== 'tcp:' \|\| override\.hostname !== '127\.0\.0\.1'/);
+  assert.match(contactRunner, /colimaProfile = dockerContext\.startsWith\('colima-'\)/);
+  assert.match(contactRunner, /'ssh', '--profile', colimaProfile, '--', 'docker'/);
   assert.match(contactRunner, /managerDataKeys/);
   assert.match(isolatedRunner, /HRIS_SUPABASE_SKIP_LOCAL_RESET === '1'/);
   assert.match(isolatedRunner, /tablename <> 'schema_migrations'/);

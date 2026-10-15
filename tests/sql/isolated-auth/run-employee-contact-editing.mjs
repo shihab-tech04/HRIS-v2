@@ -14,22 +14,44 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
 const workdir = path.resolve(process.env.HRIS_SUPABASE_TEST_WORKDIR || '');
 const dockerContext = process.env.HRIS_DOCKER_CONTEXT || 'colima-hris-acceptance';
+const dockerHostOverride = process.env.HRIS_DOCKER_HOST_OVERRIDE;
+const colimaProfile = dockerContext.startsWith('colima-') ? dockerContext.slice('colima-'.length) : dockerContext;
 const expectedApiPort = process.env.HRIS_SUPABASE_API_PORT || '59621';
 const expectedDbPort = process.env.HRIS_SUPABASE_DB_PORT || '59622';
 if (!workdir.startsWith('/private/tmp/synesis-hris-contact-')) {
   throw new Error('Refusing to run: use the explicitly disposable /private/tmp HRIS contact test workdir.');
 }
 
-const dockerEndpoint = execFileSync('docker', [
+if (dockerHostOverride) {
+  const override = new URL(dockerHostOverride);
+  if (override.protocol !== 'tcp:' || override.hostname !== '127.0.0.1'
+      || !override.port || Number(override.port) < 1024 || Number(override.port) > 65535) {
+    throw new Error('Refusing a non-loopback Docker host override for the disposable contact test.');
+  }
+}
+const dockerEndpoint = dockerHostOverride || execFileSync('docker', [
   'context', 'inspect', dockerContext, '--format', '{{.Endpoints.docker.Host}}',
 ], { encoding: 'utf8' }).trim();
 const cliEnv = {
   ...process.env,
   DOCKER_HOST: dockerEndpoint,
-  DOCKER_CONTEXT: dockerContext,
   SUPABASE_HOME: process.env.SUPABASE_HOME || '/private/tmp/synesis-supabase-home',
   SUPABASE_TELEMETRY_DISABLED: '1',
 };
+if (dockerHostOverride) delete cliEnv.DOCKER_CONTEXT;
+else cliEnv.DOCKER_CONTEXT = dockerContext;
+const dockerArgs = (...args) => [
+  ...(dockerHostOverride ? ['--host', dockerEndpoint] : ['--context', dockerContext]),
+  ...args,
+];
+function runDocker(args, options = {}) {
+  if (dockerHostOverride) {
+    return execFileSync('colima', [
+      'ssh', '--profile', colimaProfile, '--', 'docker', ...args,
+    ], { env: cliEnv, ...options });
+  }
+  return execFileSync('docker', dockerArgs(...args), { env: cliEnv, ...options });
+}
 const statusText = execFileSync('supabase', ['status', '--output', 'env', '--workdir', workdir], {
   cwd: repo, env: cliEnv, encoding: 'utf8',
 });
@@ -61,18 +83,24 @@ if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== expectedApiPort
   throw new Error(`Refusing to run: expected only local ports ${expectedApiPort}/${expectedDbPort}.`);
 }
 
-const dbContainer = execFileSync('docker', [
-  '--context', dockerContext, 'ps', '--filter', `name=supabase_db_${path.basename(workdir)}`, '--format', '{{.Names}}',
-], { env: cliEnv, encoding: 'utf8' }).trim().split(/\r?\n/)[0];
+const dbContainer = runDocker([
+  'ps', '--filter', `name=supabase_db_${path.basename(workdir)}`, '--format', '{{.Names}}',
+], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
 if (!dbContainer) throw new Error('No Postgres container matched the disposable workdir.');
 function psql(sql) {
-  return execFileSync('docker', [
-    '--context', dockerContext, 'exec', '-i', dbContainer, 'psql', '-X', '-A', '-t', '-q',
+  return runDocker([
+    'exec', '-i', dbContainer, 'psql', '-X', '-A', '-t', '-q',
     '--set=ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres',
-  ], { env: cliEnv, input: sql, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  ], { input: sql, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 }
 function sqlLiteral(value) { return `'${String(value).replaceAll("'", "''")}'`; }
-function jsonQuery(sql) { return JSON.parse(psql(sql).split(/\r?\n/).at(-1)); }
+function jsonQuery(sql) {
+  const output = psql(sql);
+  try { return JSON.parse(output.split(/\r?\n/).at(-1)); }
+  catch (error) {
+    throw new Error(`Disposable Postgres JSON query returned invalid output (${output.length} characters): ${error.message}`);
+  }
+}
 function sqlOutcomeAsUser(userId, expression) {
   const claims = JSON.stringify({ sub: userId, role: 'authenticated' });
   const output = psql(`BEGIN;
