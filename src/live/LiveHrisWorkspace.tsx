@@ -938,7 +938,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   }, [aggregateOnly, appliedTeamFilter, currentRecords, teamSortDirection]);
   const rows = filteredRows;
 
-  return <section aria-labelledby="attendance-report-heading" className="space-y-4">
+  return <section aria-labelledby="attendance-report-heading" className={`space-y-4 ${aggregateOnly ? 'mx-auto w-full max-w-[1386px]' : ''}`}>
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
       <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
         {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
@@ -1053,7 +1053,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-2' : 'min-w-[1160px] border-spacing-0'}`}>
+        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1160px] border-spacing-0'}`}>
           <thead className="bg-white text-xs text-slate-500"><tr>
             {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="border-b border-slate-200 px-4 py-4 font-medium">
               {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">

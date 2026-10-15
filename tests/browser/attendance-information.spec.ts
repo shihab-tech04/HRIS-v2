@@ -174,7 +174,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   ]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261012.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261016.png'), fullPage: true });
 
   await page.getByLabel('Search employees').fill('Synthetic');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
@@ -197,7 +197,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
   await expect(tableRegion).toBeVisible();
   expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261012.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261016.png'), fullPage: true });
 
   reportOnly = true;
   await page.setViewportSize({ width: 1920, height: 1117 });
@@ -205,6 +205,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
   const reportTable = page.getByRole('table', { name: 'Attendance summary by employee' });
   await expect(reportTable).toBeVisible();
+  const reportFrame = page.locator('section[aria-labelledby="attendance-report-heading"]');
+  const reportFrameBounds = await reportFrame.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, width: bounds.width };
+  });
+  expect(Math.abs(reportFrameBounds.width - 1386)).toBeLessThan(1);
+  expect(Math.abs(reportFrameBounds.x - 320)).toBeLessThan(4);
   const reportControls = page.getByRole('form', { name: 'Attendance report controls' });
   const reportSearch = reportControls.getByLabel('Search employees');
   const toolbarDownload = reportControls.getByRole('button', { name: 'Download Report', exact: true });
@@ -243,6 +250,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(Math.abs(filterIconBounds.width - 18)).toBeLessThan(0.1);
   const positiveRow = reportTable.getByRole('row', { name: /Aggregate Report Employee/ });
   const negativeRow = reportTable.getByRole('row', { name: /Aggregate Negative Employee/ });
+  const aggregateRows = reportTable.locator('tbody tr');
+  const aggregateRowGap = await aggregateRows.evaluateAll(rows => {
+    const first = rows[0].getBoundingClientRect();
+    const second = rows[1].getBoundingClientRect();
+    return second.top - first.bottom;
+  });
+  expect(Math.abs(aggregateRowGap - 6)).toBeLessThan(0.5);
   await expect(positiveRow).toContainText('UX Designer');
   await expect(positiveRow).toContainText('Synthetic Product Team');
   await expect(positiveRow).toContainText('Experience Design');
@@ -258,7 +272,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   ]);
   await expect(positiveRow).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261012.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261016.png'), fullPage: true });
 
   const teamNameHeader = reportTable.getByRole('columnheader', { name: /Team Name/ });
   await expect(teamNameHeader).toHaveAttribute('aria-sort', 'none');
@@ -324,7 +338,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   expect(await page.getByRole('region', { name: 'Scrollable attendance report table' }).evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261012.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261016.png'), fullPage: true });
   await page.getByLabel('Search employees').fill('Formula');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Formula')).toBe(true);
