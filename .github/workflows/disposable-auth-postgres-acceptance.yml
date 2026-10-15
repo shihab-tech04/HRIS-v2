@@ -22,7 +22,7 @@ jobs:
       HRIS_SUPABASE_TEST_WORKDIR: /tmp/synesis-local-hris-test
       HRIS_SUPABASE_API_PORT: '55421'
       HRIS_SUPABASE_DB_PORT: '55422'
-      SUPABASE_HOME: ${{ runner.temp }}/synesis-supabase-home
+      SUPABASE_HOME: /tmp/synesis-supabase-home
       SUPABASE_TELEMETRY_DISABLED: '1'
       DOCKER_CONTEXT: default
     steps:
