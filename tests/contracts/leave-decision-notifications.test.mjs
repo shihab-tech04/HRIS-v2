@@ -62,4 +62,6 @@ test('isolated Auth/RLS acceptance covers immutable owner reads, tenant privacy,
   assert.match(browser, /HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID/);
   assert.match(browser, /focusedUiRequestId !== uiLeaveRequestId/);
   assert.match(browser, /focusedRejectedRequestId !== process\.env\.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID/);
+  assert.match(browser, /LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS/);
+  assert.match(runner, /leaveEvidenceBrowserOutput\.includes\('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS'\)/);
 });

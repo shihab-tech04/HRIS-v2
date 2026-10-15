@@ -2941,8 +2941,9 @@ if (uiLeaveAcceptanceMatch) {
     uiLeaveAcceptance = null;
   }
 }
+const leaveEvidenceBrowserPassed = leaveEvidenceBrowserOutput.includes('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
 record('Real Auth/Postgres/Storage employee and same-tenant manager browsers retrieve persisted private leave evidence',
-  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves employee requests and rejects with a note, and refreshed employee history shows the decisions.'),
+  leaveEvidenceBrowserPassed,
   leaveEvidenceBrowserError);
 const browserApprovedEvidence = evidenceRequestId ? tableRow('leave_requests', evidenceRequestId) : null;
 const browserUiLeave = uiLeaveAcceptance?.id ? tableRow('leave_requests', uiLeaveAcceptance.id) : null;
@@ -2950,7 +2951,7 @@ const approvedEvidenceBalance = queryAdmin(`SELECT to_jsonb(b) FROM public.emplo
   WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'
     AND leave_type_id='${ids.leaveTypeEvidence}'::uuid AND balance_year=2026`);
 record('Real manager leave UI approves the persisted employee request and updates its ledger once',
-  leaveEvidenceBrowserOutput.includes('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves employee requests and rejects with a note, and refreshed employee history shows the decisions.')
+  leaveEvidenceBrowserPassed
   && browserApprovedEvidence?.status === 'approved'
   && Number(approvedEvidenceBalance.pending_days) === 0
   && Number(approvedEvidenceBalance.used_days) === 2
