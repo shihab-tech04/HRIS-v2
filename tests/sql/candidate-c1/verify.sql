@@ -37,3 +37,33 @@ BEGIN
   RAISE NOTICE 'C1 PASS: all direct client privileges revoked; backend grants preserved: %',table_name;
  END LOOP;
 END $$;
+
+-- The exposed stage-history table must retain RLS and must never regain a
+-- direct SELECT grant through PUBLIC. Candidate-visible history is served only
+-- through the sanitized, authenticated context RPC.
+DO $$
+BEGIN
+ IF NOT EXISTS (
+   SELECT 1
+   FROM pg_class c
+   JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public'
+     AND c.relname='candidate_application_stage_history'
+     AND c.relrowsecurity
+ ) THEN
+   RAISE EXCEPTION 'Candidate C1 fail: stage-history RLS is disabled';
+ END IF;
+ IF EXISTS (
+   SELECT 1
+   FROM pg_class c
+   JOIN pg_namespace n ON n.oid=c.relnamespace
+   CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault('r',c.relowner))) acl
+   WHERE n.nspname='public'
+     AND c.relname='candidate_application_stage_history'
+     AND acl.grantee=0
+     AND acl.privilege_type='SELECT'
+ ) THEN
+   RAISE EXCEPTION 'Candidate C1 fail: PUBLIC has direct SELECT on stage history';
+ END IF;
+ RAISE NOTICE 'C1 PASS: stage-history RLS is enabled and PUBLIC has no direct SELECT grant';
+END $$;
