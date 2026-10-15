@@ -148,6 +148,13 @@ function display(value: unknown): string {
   return String(value);
 }
 
+function displayLocalizedNumber(value: unknown, locale: Locale): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  return number.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US');
+}
+
 function localizedEmployeeNumber(value: unknown, locale: Locale, fractionDigits = 0): string {
   if (value === null || value === undefined || value === '') return '—';
   const number = typeof value === 'number' ? value : Number(value);
@@ -714,12 +721,12 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
                   <tbody className="divide-y divide-[#E6EEF3] text-[#1E1B39]">
                     {visibleTeamReportRows.map((row, index) => <tr key={row.team_id || `unassigned-${index}`} className="h-20 hover:bg-[#FAFCFD]">
                       <th scope="row" className="whitespace-nowrap px-4 py-4 font-normal text-[#424242]">{display(tx(String(row.team_name || 'Unassigned')))}</th>
-                      <td className="px-4 py-4 tabular-nums">{display(row.present_members)}</td>
-                      <td className="px-4 py-4 tabular-nums">{display(row.absent_members)}</td>
-                      <td className="px-4 py-4 tabular-nums">{display(row.total_members)}</td>
-                      <td className="px-4 py-4 tabular-nums">{display(row.work_from_office)}</td>
-                      <td className="px-4 py-4 tabular-nums">{display(row.work_from_home)}</td>
-                      <td className="px-4 py-4 tabular-nums">{display(row.client_meeting)}</td>
+                      <td className="px-4 py-4 tabular-nums">{displayLocalizedNumber(row.present_members, locale)}</td>
+                      <td className="px-4 py-4 tabular-nums">{displayLocalizedNumber(row.absent_members, locale)}</td>
+                      <td className="px-4 py-4 tabular-nums">{displayLocalizedNumber(row.total_members, locale)}</td>
+                      <td className="px-4 py-4 tabular-nums">{displayLocalizedNumber(row.work_from_office, locale)}</td>
+                      <td className="px-4 py-4 tabular-nums">{displayLocalizedNumber(row.work_from_home, locale)}</td>
+                      <td className="px-4 py-4 tabular-nums">{displayLocalizedNumber(row.client_meeting, locale)}</td>
                       <td className="px-4 py-4"><button type="button" onClick={event => openTeamReportDetails(row, event.currentTarget)}
                         aria-label={`${tx('View attendance details for')} ${display(tx(String(row.team_name || 'Unassigned')))}`}
                         className="min-h-12 rounded-md border border-[#DEE0E3] px-3 text-xs font-medium text-[#08558B] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">{tx('View details')}</button></td>
@@ -727,12 +734,12 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
                   </tbody>
                   <tfoot className="border-t-2 border-[#D1DEE5] bg-[#F4F8FA] font-semibold text-[#1E1B39]">
                     <tr><th scope="row" className="whitespace-nowrap px-3 py-3">{tx('Filtered total')}</th>
-                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.present_members.toLocaleString()}</td>
-                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.absent_members.toLocaleString()}</td>
-                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.total_members.toLocaleString()}</td>
-                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.work_from_office.toLocaleString()}</td>
-                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.work_from_home.toLocaleString()}</td>
-                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.client_meeting.toLocaleString()}</td><td className="px-3 py-3">—</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(teamReportTotals.present_members, locale)}</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(teamReportTotals.absent_members, locale)}</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(teamReportTotals.total_members, locale)}</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(teamReportTotals.work_from_office, locale)}</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(teamReportTotals.work_from_home, locale)}</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(teamReportTotals.client_meeting, locale)}</td><td className="px-3 py-3">—</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -768,8 +775,8 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
                     <tbody className="divide-y divide-slate-100">{teamReportDetailRows.map((row, index) => <tr key={`${row.employee_number || 'employee'}-${index}`}>
                       <th scope="row" className="px-3 py-3 font-medium">{display(row.employee_name)}</th>
                       <td className="px-3 py-3">{display(row.employee_number)}</td><td className="px-3 py-3">{display(row.designation_title)}</td>
-                      <td className="px-3 py-3">{display(row.department_name)}</td><td className="px-3 py-3 tabular-nums">{display(row.attendance_days)}</td>
-                      <td className="px-3 py-3 tabular-nums">{display(row.office_hours)}</td><td className="px-3 py-3 tabular-nums">{display(row.working_hours)}</td><td className="px-3 py-3 tabular-nums">{display(row.deviation)}</td>
+                      <td className="px-3 py-3">{display(row.department_name)}</td><td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(row.attendance_days, locale)}</td>
+                      <td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(row.office_hours, locale)}</td><td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(row.working_hours, locale)}</td><td className="px-3 py-3 tabular-nums">{displayLocalizedNumber(row.deviation, locale)}</td>
                     </tr>)}</tbody>
                   </table>
                 </div>}

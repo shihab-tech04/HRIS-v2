@@ -320,6 +320,10 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await expect(dashboardActions.getByRole('button', { name: 'প্রতিবেদন ডাউনলোড করুন', exact: true })).toBeVisible();
   await expect(teamReport.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদন' })).toBeVisible();
   await expect(teamReport.getByRole('region', { name: 'স্ক্রলযোগ্য দলভিত্তিক প্রতিবেদনের মোট হিসাব' })).toBeVisible();
+  const bengaliTeamRow = teamReport.getByRole('row', { name: /QA A Team/ });
+  await expect(bengaliTeamRow.getByRole('cell', { name: '৩', exact: true })).toBeVisible();
+  await expect(bengaliTeamRow.getByRole('cell', { name: '০', exact: true })).toBeVisible();
+  await expect(teamReport.getByRole('row', { name: /ফিল্টার করা মোট ৩ ১ ৬ ২ ১ ১/ })).toBeVisible();
   await expect(teamReport.getByLabel('প্রতিবেদনের তারিখ')).toBeVisible();
   const detailButton = teamReport.getByRole('button', { name: 'উপস্থিতির বিস্তারিত দেখুন: QA A Team' });
   await detailButton.click();
@@ -334,7 +338,11 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   reportState.teamDetailsDelay = 250;
   await retryDetails.click();
   await expect(details.getByText('দলের বিস্তারিত লোড হচ্ছে…')).toBeVisible();
-  await expect(details.getByRole('row', { name: /Synthetic Team Employee/ })).toBeVisible();
+  const bengaliEmployeeDetailRow = details.getByRole('row', { name: /Synthetic Team Employee/ });
+  await expect(bengaliEmployeeDetailRow).toBeVisible();
+  await expect(bengaliEmployeeDetailRow.getByRole('cell', { name: '১', exact: true })).toBeVisible();
+  await expect(bengaliEmployeeDetailRow.getByRole('cell', { name: '৮', exact: true })).toHaveCount(2);
+  await expect(bengaliEmployeeDetailRow.getByRole('cell', { name: '০', exact: true })).toBeVisible();
   await expect(details.getByText('QA-A-001')).toBeVisible();
   await expect(details.getByText('QA-A-002')).toHaveCount(0);
   await expect(detailsDownload).toBeEnabled();

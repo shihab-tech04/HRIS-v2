@@ -40,7 +40,9 @@ test('filtered dashboard totals and CSV use the same visible aggregate team rows
   assert.match(workspace, /const teamReportTotals = useMemo\(\(\) => \{[\s\S]*for \(const row of visibleTeamReportRows\)/);
   assert.match(workspace, /const rows = visibleTeamReportRows\.map/);
   assert.match(workspace, /rows\.push\(\[teamReportDate, tx\('Filtered total'\), teamReportTotals\.present_members/);
-  assert.match(workspace, /teamReportTotals\.total_members\.toLocaleString\(\)/);
+  assert.match(workspace, /displayLocalizedNumber\(teamReportTotals\.total_members, locale\)/);
+  assert.match(workspace, /displayLocalizedNumber\(row\.present_members, locale\)/);
+  assert.match(workspace, /displayLocalizedNumber\(row\.working_hours, locale\)/);
   assert.match(workspace, /disabled=\{teamReportLoading \|\| !visibleTeamReportRows\.length\}/);
 });
 
