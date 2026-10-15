@@ -338,8 +338,6 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
         HRIS_LOCAL_TEST_PASSWORD: password,
         HRIS_LOCAL_EMPLOYEE_DIRECTORY_EMAIL: 'employee-directory-a@hris.test',
         HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL: 'manager-a@hris.test',
-        HRIS_LOCAL_EMPLOYEE_DIRECTORY_VIEWER_SESSION: JSON.stringify(directoryViewer.session),
-        HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_SESSION: JSON.stringify(managerA.session),
         HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID: tenantA,
       },
       encoding: 'utf8',
@@ -347,7 +345,8 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
     }).trim();
   } catch (error) {
     const detail = String(error?.stderr || error?.message || 'Browser journey failed.').trim();
-    browserError = `${detail.slice(0, 500)} … ${detail.slice(-350)}`.slice(0, 900);
+    const journeyFailure = detail.match(/Error: Employee directory sign-in did not reach workspace:[^\r\n]*/);
+    browserError = journeyFailure?.[0] || `${detail.slice(0, 500)} … ${detail.slice(-350)}`.slice(0, 900);
   }
   const afterBrowser = jsonQuery(`SELECT jsonb_build_object('official_email',official_email,'phone',phone,
     'address',address,'team_id',team_id,'department_id',department_id,'designation_id',designation_id,
