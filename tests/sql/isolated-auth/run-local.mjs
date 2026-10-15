@@ -2918,6 +2918,7 @@ try {
       HRIS_LOCAL_LEAVE_REQUEST_REASON: 'Synthetic evidence-backed leave request',
       HRIS_LOCAL_LEAVE_HISTORY_YEAR: String(evidenceRequest?.from_date).slice(0, 4),
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
+      HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
