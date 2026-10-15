@@ -11,6 +11,7 @@ const required = [
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
 const repo = process.cwd();
+const csvDownloadTimeoutMs = 30_000;
 const port = await new Promise((resolve, reject) => {
   const probe = createNetServer();
   probe.once('error', reject);
@@ -111,6 +112,13 @@ function csvNumber(value) {
   return normalized === '' ? 0 : Number(normalized);
 }
 
+function waitForCsvDownload(page, label) {
+  return page.waitForEvent('download', { timeout: csvDownloadTimeoutMs }).catch(error => {
+    if (error?.name !== 'TimeoutError') throw error;
+    throw new Error(`Timed out waiting for the ${label} CSV download after ${csvDownloadTimeoutMs} ms.`);
+  });
+}
+
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
@@ -199,7 +207,7 @@ try {
   if (JSON.stringify(visibleTotal) !== JSON.stringify(visibleSums)) {
     throw new Error(`Displayed filtered totals did not equal the visible team rows: totals=${JSON.stringify(visibleTotal)} rows=${JSON.stringify(visibleSums)}.`);
   }
-  const filteredDownloadWait = page.waitForEvent('download');
+  const filteredDownloadWait = waitForCsvDownload(page, 'filtered team report');
   await teamReport.getByRole('button', { name: 'Download Report', exact: true }).click();
   const filteredDownload = await filteredDownloadWait;
   const filteredStream = await filteredDownload.createReadStream();
@@ -245,7 +253,7 @@ try {
   const refreshResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_dashboard_team_report') && response.ok());
   await refresh.click();
   await refreshResponse;
-  const downloadWait = page.waitForEvent('download');
+  const downloadWait = waitForCsvDownload(page, 'team report');
   await teamReport.getByRole('button', { name: 'Download Report', exact: true }).click();
   const download = await downloadWait;
   if (!download.suggestedFilename().startsWith('managerial-dashboard-team-report-')) throw new Error('Team report filename was not generated.');
@@ -264,7 +272,7 @@ try {
   await page.getByText('দলের সদস্য', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'উপস্থিতির চার্ট ফিল্টার করুন' }).waitFor({ state: 'visible' });
   const dashboardActions = page.getByRole('group', { name: 'ব্যবস্থাপক ড্যাশবোর্ডের কার্যক্রম' });
-  const dashboardDownloadWait = page.waitForEvent('download');
+  const dashboardDownloadWait = waitForCsvDownload(page, 'dashboard');
   await dashboardActions.getByRole('button', { name: 'প্রতিবেদন ডাউনলোড করুন', exact: true }).click();
   const dashboardDownload = await dashboardDownloadWait;
   const dashboardStream = await dashboardDownload.createReadStream();

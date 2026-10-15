@@ -542,6 +542,26 @@ function record(label, ok, note = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
 
+const candidateStageHistoryAccess = queryAdmin(`SELECT jsonb_build_object(
+  'rls_enabled', c.relrowsecurity,
+  'public_select', EXISTS (
+    SELECT 1
+    FROM aclexplode(COALESCE(c.relacl, acldefault('r'::"char", c.relowner))) privilege
+    WHERE privilege.grantee = 0 AND privilege.privilege_type = 'SELECT'
+  ),
+  'anon_select', has_table_privilege('anon', c.oid, 'SELECT'),
+  'authenticated_select', has_table_privilege('authenticated', c.oid, 'SELECT'),
+  'service_role_select', has_table_privilege('service_role', c.oid, 'SELECT')
+) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'candidate_application_stage_history'`);
+record('Candidate stage history keeps RLS enabled, denies direct client SELECT, and preserves server access',
+  candidateStageHistoryAccess.rls_enabled === true
+    && candidateStageHistoryAccess.public_select === false
+    && candidateStageHistoryAccess.anon_select === false
+    && candidateStageHistoryAccess.authenticated_select === false
+    && candidateStageHistoryAccess.service_role_select === true,
+  JSON.stringify(candidateStageHistoryAccess));
+
 const foundationTables = [
   'employee_shift_assignments', 'roles', 'permissions', 'role_permissions', 'user_roles', 'admin_audit_logs',
 ];
