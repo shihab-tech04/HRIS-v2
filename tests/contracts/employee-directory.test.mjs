@@ -133,6 +133,7 @@ test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, 
   assert.match(isolatedRunner, /storage\.objects/);
   assert.match(isolatedRunner, /cli\(\['db', 'reset', '--local', '--no-seed', '--yes'\]\)/);
   assert.match(isolatedRunner, /employeeDirectUpdate\.error/);
+  assert.match(isolatedRunner, /employeeUpdatePrivileges\.employment_status_update === false/);
   assert.match(contactBrowser, /HRIS_LOCAL_EMPLOYEE_DIRECTORY_MANAGER_EMAIL/);
   assert.match(contactBrowser, /Contact details updated\./);
   assert.match(contactBrowser, /managerContactReadCalls < 3/);

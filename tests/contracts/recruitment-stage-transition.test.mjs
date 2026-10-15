@@ -23,6 +23,8 @@ test('recruiter stage transitions are authenticated, tenant-scoped, locked, and 
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.hris_update_candidate_application_stage[^;]* TO authenticated, service_role/);
   assert.match(runner, /Recruiter stage transitions deny unauthorized, cross-tenant, invalid, and regressive updates/);
   assert.match(runner, /Recruiter stage transitions persist one sanitized history event per accepted change/);
+  assert.match(runner, /seededRecruitmentHistoryIds\.has\(row\.id\)/);
+  assert.match(runner, /acceptedTransitionHistoryA1\.every\(row => row\.actor_user_id === recruitmentManagerA\.userId\)/);
 });
 
 test('recruitment manager UI confirms rejection and persists review/screening updates through the RPC', () => {

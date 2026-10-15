@@ -1659,6 +1659,7 @@ const contactUpdateCrossTenant = await managerA.client.rpc('hris_update_tenant_e
 });
 const employeeDirectUpdate = await managerA.client.from('employees')
   .update({ employment_status: 'terminated' }).eq('id', '55555555-5555-4555-8555-555555555555').select('id');
+const employeeUpdatePrivileges = queryAdmin("SELECT jsonb_build_object('table_update',has_table_privilege('authenticated','public.employees','UPDATE'),'employment_status_update',has_column_privilege('authenticated','public.employees','employment_status','UPDATE'))");
 const contactUpdateAnon = await createClient(services.API_URL, services.ANON_KEY, authOptions)
   .rpc('hris_update_tenant_employee_contact_details', {
     p_tenant_id: ids.tenantA, p_employee_id: '55555555-5555-4555-8555-555555555555',
@@ -1679,7 +1680,9 @@ record('Employee contact save validates input, rejects non-contact keys and dupl
     && Boolean(contactUpdateDeniedForViewer.error?.code === '42501')
     && Boolean(contactUpdateDeniedForNoPermission.error?.code === '42501')
     && Boolean(contactUpdateCrossTenant.error?.code === '42501')
-    && Boolean(employeeDirectUpdate.error)
+    && (Boolean(employeeDirectUpdate.error) || (Array.isArray(employeeDirectUpdate.data) && employeeDirectUpdate.data.length === 0))
+    && employeeUpdatePrivileges.table_update === false
+    && employeeUpdatePrivileges.employment_status_update === false
     && Boolean(contactUpdateAnon.error)
     && !contactUpdate.error
     && contactUpdate.data?.official_email === contactUpdatePayload.official_email
@@ -1692,7 +1695,11 @@ record('Employee contact save validates input, rejects non-contact keys and dupl
     longFieldCode: longContactAttempt.error?.code,
     duplicateCode: duplicateContactAttempt.error?.code, viewerUpdateCode: contactUpdateDeniedForViewer.error?.code,
     noPermissionUpdateCode: contactUpdateDeniedForNoPermission.error?.code,
-    crossTenantCode: contactUpdateCrossTenant.error?.code, directUpdateDenied: Boolean(employeeDirectUpdate.error),
+    crossTenantCode: contactUpdateCrossTenant.error?.code,
+    directUpdateDenied: Boolean(employeeDirectUpdate.error) || (Array.isArray(employeeDirectUpdate.data) && employeeDirectUpdate.data.length === 0),
+    directUpdateRows: Array.isArray(employeeDirectUpdate.data) ? employeeDirectUpdate.data.length : null,
+    directTableUpdatePrivilege: employeeUpdatePrivileges.table_update,
+    directEmploymentStatusPrivilege: employeeUpdatePrivileges.employment_status_update,
     anonymousUpdateDenied: Boolean(contactUpdateAnon.error),
     updateCode: contactUpdate.error?.code, auditCount: contactAudit.count }));
 
@@ -2109,9 +2116,11 @@ const repeatedStage = await recruitmentManagerA.client.rpc('hris_update_candidat
 const persistedStageA1 = await adminAuth.from('job_applications').select('stage').eq('id', recruitmentIds.applicationA1).single();
 const persistedStageA2 = await adminAuth.from('job_applications').select('stage').eq('id', recruitmentIds.applicationA2).single();
 const transitionHistoryA1 = await adminAuth.from('candidate_application_stage_history')
-  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA1).eq('actor_type', 'recruitment');
+  .select('id,stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA1).eq('actor_type', 'recruitment');
 const transitionHistoryA2 = await adminAuth.from('candidate_application_stage_history')
-  .select('stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA2).eq('actor_type', 'recruitment');
+  .select('id,stage,note,actor_type,actor_user_id').eq('application_id', recruitmentIds.applicationA2).eq('actor_type', 'recruitment');
+const seededRecruitmentHistoryIds = new Set([recruitmentIds.historyA1, recruitmentIds.historyA1Second]);
+const acceptedTransitionHistoryA1 = (transitionHistoryA1.data || []).filter(row => !seededRecruitmentHistoryIds.has(row.id));
 const sanitizedStageHistory = await recruiterOnly.client.rpc('hris_get_recruitment_pipeline', {
   p_tenant_id: ids.tenantA, p_search: 'Candidate A One',
 });
@@ -2121,8 +2130,9 @@ record('Recruiter stage transitions persist one sanitized history event per acce
   stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
     && !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
     && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
-    && !transitionHistoryA1.error && transitionHistoryA1.data.filter(row => row.stage === 'under_review' || row.stage === 'screening').length === 2
-    && transitionHistoryA1.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
+    && !transitionHistoryA1.error && acceptedTransitionHistoryA1.length === 2
+    && acceptedTransitionHistoryA1.map(row => row.stage).sort().join(',') === 'screening,under_review'
+    && acceptedTransitionHistoryA1.every(row => row.actor_user_id === recruitmentManagerA.userId)
     && !transitionHistoryA2.error && transitionHistoryA2.data.length === 3
     && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 2
     && transitionHistoryA2.data.filter(row => row.stage === 'rejected').length === 1
@@ -2135,7 +2145,8 @@ record('Recruiter stage transitions persist one sanitized history event per acce
   JSON.stringify({ browserCompleted: stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.'),
     browserError: Boolean(stageRejectionBrowserError),
     finalStages: [persistedStageA1.data?.stage, persistedStageA2.data?.stage],
-    a1Events: transitionHistoryA1.data?.map(row => ({ stage: row.stage, actor: row.actor_type, actorMatchesManager: row.actor_user_id === recruitmentManagerA.userId })),
+    a1SeededEvents: transitionHistoryA1.data?.filter(row => seededRecruitmentHistoryIds.has(row.id)).length,
+    a1AcceptedTransitions: acceptedTransitionHistoryA1.map(row => ({ stage: row.stage, actorMatchesManager: row.actor_user_id === recruitmentManagerA.userId })),
     a2Events: transitionHistoryA2.data?.map(row => ({ stage: row.stage, actor: row.actor_type, actorMatchesManager: row.actor_user_id === recruitmentManagerA.userId })),
     repeatedStageChanged: repeatedStage.data?.changed,
     candidateMilestones: candidateA1Milestones.map(row => ({ stage: row.stage, hasPrivateActor: Object.hasOwn(row, 'actor_user_id') })) }));
