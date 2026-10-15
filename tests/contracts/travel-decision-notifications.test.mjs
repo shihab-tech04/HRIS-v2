@@ -44,13 +44,21 @@ test('unified inbox merges travel decisions without changing project unread sema
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.hris_get_my_notifications\(uuid,integer,timestamptz,text,uuid\) TO authenticated,service_role/);
 });
 
-test('notification center renders localized decision outcomes and opens the existing employee travel page', () => {
+test('notification center opens the matching employee travel request and expands its history', () => {
+  const travelRequests = read('../../src/live/TravelRequests.tsx');
+  const travelLocale = read('../../src/live/travel-request-locale.ts');
   assert.match(component, /source: 'travel_decision'/);
   assert.match(component, /Travel request approved/);
   assert.match(component, /Travel request rejected/);
   assert.match(component, /data-notification-source=\{item\.source\}/);
-  assert.match(component, /onOpenTravel/);
-  assert.match(workspace, /onOpenTravel=\{\(\) => navigate\('my-travel'\)\}/);
+  assert.match(component, /onOpenTravel\(item\.travel_request_id\)/);
+  assert.match(workspace, /const openTravelRequest = \(requestId: string\) => \{ setTravelFocusRequestId\(requestId\); navigate\('my-travel'\); \}/);
+  assert.match(workspace, /focusRequestId=\{travelFocusRequestId\} onFocusHandled=\{clearTravelRequestFocus\}/);
+  assert.match(travelRequests, /card\.scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
+  assert.match(travelRequests, /card\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(travelRequests, /open=\{expandedHistoryRequestId === request\.id\}/);
+  assert.match(browser, /details\[open\]/);
+  assert.ok(travelLocale.includes("'The request linked to this notification is not in your travel history. Refresh your requests and try again.':"));
   for (const phrase of ['Travel update','Travel request approved','Travel request rejected',
     'Your travel request was approved.','Your travel request was rejected.','Open travel']) {
     assert.ok(locale.includes(`'${phrase}':`), `missing Bengali translation for ${phrase}`);

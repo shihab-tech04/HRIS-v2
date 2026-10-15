@@ -90,7 +90,11 @@ function useEscapeToClose(open: boolean, close: () => void) {
   }, [open, close]);
 }
 
-export function MyTravelRequests({ tenantId, locale }: { tenantId: string } & TravelLocaleProps) {
+export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHandled }: {
+  tenantId: string;
+  focusRequestId?: string | null;
+  onFocusHandled?: (requestId: string) => void;
+} & TravelLocaleProps) {
   const tx = (text: string, values?: Record<string, string | number>) => travelRequestText(locale, text, values);
   const currentLocale = useRef(locale);
   currentLocale.current = locale;
@@ -102,8 +106,13 @@ export function MyTravelRequests({ tenantId, locale }: { tenantId: string } & Tr
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [message, setMessage] = useState('');
+  const [focusMessage, setFocusMessage] = useState('');
+  const [expandedHistoryRequestId, setExpandedHistoryRequestId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const requestSequence = useRef(0);
+  const requestCards = useRef(new Map<string, HTMLElement>());
+  const focusHandled = useRef(onFocusHandled);
+  focusHandled.current = onFocusHandled;
   const activeTenantId = useRef(tenantId);
   const previousTenantId = useRef(tenantId);
   activeTenantId.current = tenantId;
@@ -135,6 +144,26 @@ export function MyTravelRequests({ tenantId, locale }: { tenantId: string } & Tr
     })();
     return () => { requestSequence.current += 1; };
   }, [tenantId, revision]);
+
+  useEffect(() => {
+    if (!focusRequestId) return;
+    setFocusMessage('');
+    setExpandedHistoryRequestId(null);
+  }, [focusRequestId]);
+
+  useEffect(() => {
+    if (!focusRequestId || loading || error) return;
+    const card = requestCards.current.get(focusRequestId);
+    if (!card) {
+      setFocusMessage(tx('The request linked to this notification is not in your travel history. Refresh your requests and try again.'));
+      return;
+    }
+    setFocusMessage('');
+    setExpandedHistoryRequestId(focusRequestId);
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.focus({ preventScroll: true });
+    focusHandled.current?.(focusRequestId);
+  }, [focusRequestId, loading, error, requests, locale]);
 
   function startDraft(request?: PersonalTravelRequest) {
     setActionError(''); setMessage('');
@@ -206,6 +235,7 @@ export function MyTravelRequests({ tenantId, locale }: { tenantId: string } & Tr
 
     {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">{tx('Retry')}</button></div>}
     {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
+    {focusMessage && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{focusMessage}</p>}
     {actionError && !editorOpen && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{actionError}</p>}
 
     <div className="grid gap-3 sm:grid-cols-3">
@@ -216,13 +246,18 @@ export function MyTravelRequests({ tenantId, locale }: { tenantId: string } & Tr
 
     {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{tx('Loading your travel requests…')}</p>
       : requests.length === 0 ? <div role="status" className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-6 text-center"><MapPin className="mx-auto h-7 w-7 text-[#08558B]" aria-hidden="true"/><h3 className="mt-2 font-semibold text-slate-800">{tx('No travel requests yet')}</h3><p className="mt-1 text-sm text-slate-600">{tx('Start a draft when you need to request business travel.')}</p></div>
-      : <div className="grid min-w-0 gap-3 xl:grid-cols-2">{requests.map(request => <article key={request.id} data-travel-request={request.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+      : <div className="grid min-w-0 gap-3 xl:grid-cols-2">{requests.map(request => <article key={request.id} tabIndex={-1} ref={node => {
+        if (node) requestCards.current.set(request.id, node);
+        else requestCards.current.delete(request.id);
+      }} data-travel-request={request.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-[#615E83]">{request.id.slice(0, 8)}</p><h3 className="mt-1 break-words text-lg font-semibold text-[#1E1B39]">{request.destination || tx('Destination not set')}</h3></div><span className={`inline-flex shrink-0 rounded-full px-3 py-1 text-xs font-medium ${request.status === 'submitted' ? 'bg-amber-50 text-amber-800' : request.status === 'approved' ? 'bg-emerald-50 text-emerald-800' : request.status === 'rejected' ? 'bg-rose-50 text-rose-800' : 'bg-slate-100 text-slate-700'}`}>{statusLabel(request.status, tx)}</span></div>
         <p className="mt-3 flex items-start gap-2 text-sm text-slate-600"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"/>{showDate(request.from_date, locale, tx)} – {showDate(request.to_date, locale, tx)}</p>
         {request.purpose && <p className="mt-2 break-words text-sm text-slate-700">{request.purpose}</p>}
         {request.estimated_cost !== null && <p className="mt-2 text-sm text-slate-600">{tx('Estimated cost:')} {Number(request.estimated_cost).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {request.estimated_currency}</p>}
         {request.review_note && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><span className="font-medium">{tx('Reviewer note:')}</span> {request.review_note}</p>}
-        {request.history?.length > 0 && <details className="mt-3 text-sm"><summary className="min-h-10 cursor-pointer py-2 font-medium text-[#08558B]">{tx('Request history')}</summary><ol className="space-y-2 border-l border-slate-200 pl-3">{request.history.map((item, index) => <li key={`${item.created_at}-${index}`}><p className="font-medium text-slate-700">{item.previous_status ? `${statusLabel(item.previous_status, tx)} → ` : ''}{statusLabel(item.new_status, tx)}</p><p className="text-xs text-slate-500">{showTimestamp(item.created_at, locale, tx)}</p>{item.note && <p className="mt-1 break-words text-xs text-slate-600">{item.note}</p>}</li>)}</ol></details>}
+        {request.history?.length > 0 && <details className="mt-3 text-sm" open={expandedHistoryRequestId === request.id} onToggle={event => {
+          setExpandedHistoryRequestId(event.currentTarget.open ? request.id : currentId => currentId === request.id ? null : currentId);
+        }}><summary className="min-h-10 cursor-pointer py-2 font-medium text-[#08558B]">{tx('Request history')}</summary><ol className="space-y-2 border-l border-slate-200 pl-3">{request.history.map((item, index) => <li key={`${item.created_at}-${index}`}><p className="font-medium text-slate-700">{item.previous_status ? `${statusLabel(item.previous_status, tx)} → ` : ''}{statusLabel(item.new_status, tx)}</p><p className="text-xs text-slate-500">{showTimestamp(item.created_at, locale, tx)}</p>{item.note && <p className="mt-1 break-words text-xs text-slate-600">{item.note}</p>}</li>)}</ol></details>}
         {(request.status === 'draft' || request.status === 'rejected') && <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={saving} onClick={() => startDraft(request)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-medium disabled:opacity-50">{tx(request.status === 'rejected' ? 'Revise request' : 'Edit draft')}</button><button type="button" disabled={saving} onClick={() => void submitRequest(request)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true"/>{tx(saving ? 'Submitting…' : 'Submit for review')}</button></div>}
       </article>)}</div>}
 

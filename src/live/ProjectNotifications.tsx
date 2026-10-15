@@ -64,7 +64,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
   locale: Locale;
   onOpenProjects: () => void;
   onOpenLearning: () => void;
-  onOpenTravel: () => void;
+  onOpenTravel: (travelRequestId: string) => void;
 }) {
   const tx = (english: string) => projectText(locale, english);
   const [items, setItems] = useState<Notification[]>([]);
@@ -193,7 +193,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
             </div>
             {pending && <button type="button" onClick={onOpenProjects} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open review')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
             {item.source === 'learning_completion' && <button type="button" onClick={onOpenLearning} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open learning')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
-            {isTravelDecision && <button type="button" onClick={onOpenTravel} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open travel')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
+            {isTravelDecision && <button type="button" onClick={() => onOpenTravel(item.travel_request_id)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open travel')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
           </div>
         </article>;
       })}</div>}

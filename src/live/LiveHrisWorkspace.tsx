@@ -2605,6 +2605,7 @@ export function LiveHrisWorkspace({
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [travelFocusRequestId, setTravelFocusRequestId] = useState<string | null>(null);
   const nav = useMemo(() => {
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
     if (permissions.dashboard) items.push({ id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" />, group: 'HRIS' });
@@ -2658,6 +2659,8 @@ export function LiveHrisWorkspace({
 
   const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.employeesManage || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses || permissions.payroll ? 'HRIS Administrator' : 'Employee';
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
+  const openTravelRequest = (requestId: string) => { setTravelFocusRequestId(requestId); navigate('my-travel'); };
+  const clearTravelRequestFocus = (requestId: string) => setTravelFocusRequestId(currentId => currentId === requestId ? null : currentId);
   const current = localizedNav.find(item => item.id === page);
 
   const navigation = <nav aria-label="HRIS modules" className="space-y-1">
@@ -2728,13 +2731,14 @@ export function LiveHrisWorkspace({
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
-            onOpenTravel={() => navigate('my-travel')} />}
+            onOpenTravel={openTravelRequest} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
-          {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} locale={locale} />}
+          {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} locale={locale}
+            focusRequestId={travelFocusRequestId} onFocusHandled={clearTravelRequestFocus} />}
           {page === 'my-expenses' && isEmployee && <ExpenseClaims tenantId={tenantId} userId={userId} mode="personal" />}
           {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} locale={locale} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">

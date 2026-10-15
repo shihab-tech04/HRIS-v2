@@ -26,6 +26,7 @@ const bengali: Record<string, string> = {
   'Estimated cost:': 'আনুমানিক খরচ:',
   'Reviewer note:': 'পর্যালোচকের নোট:',
   'Request history': 'অনুরোধের ইতিহাস',
+  'The request linked to this notification is not in your travel history. Refresh your requests and try again.': 'এই বিজ্ঞপ্তির সঙ্গে যুক্ত অনুরোধটি আপনার ভ্রমণ ইতিহাসে নেই। অনুরোধ রিফ্রেশ করে আবার চেষ্টা করুন।',
   'Draft': 'খসড়া',
   'Submitted': 'জমা দেওয়া হয়েছে',
   'Approved': 'অনুমোদিত',

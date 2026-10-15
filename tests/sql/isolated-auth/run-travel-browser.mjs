@@ -280,7 +280,10 @@ try {
   await assertNoOverflow(employeePage, 'Travel decisions notification desktop');
   await approvedTravelNotification.getByRole('button', { name: 'ভ্রমণ খুলুন', exact: true }).click();
   await employeePage.getByRole('heading', { name: 'আমার ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
-  await employeePage.locator(`[data-travel-request="${requestId}"]`).waitFor({ state: 'visible' });
+  const openedTravelRequest = employeePage.locator(`[data-travel-request="${requestId}"]`);
+  await openedTravelRequest.waitFor({ state: 'visible' });
+  await openedTravelRequest.locator('details[open]').waitFor({ state: 'visible' });
+  await openedTravelRequest.getByText('জমা দেওয়া হয়েছে → অনুমোদিত', { exact: true }).waitFor({ state: 'visible' });
   if (directTravelEndpoints.length) throw new Error(`Travel UI bypassed tenant-scoped RPCs: ${directTravelEndpoints.join(', ')}.`);
   console.log(`TRAVEL_ACCEPTANCE_ID=${requestId}`);
   console.log('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history in EN/BN across mobile and desktop; failed history read recovered on retry.');

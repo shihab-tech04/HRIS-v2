@@ -10,7 +10,7 @@ const navigation = read('../../src/live/project-locale.ts');
 const browser = read('../sql/isolated-auth/run-travel-browser.mjs');
 
 test('employee and reviewer travel pages receive the workspace locale', () => {
-  assert.match(component, /export function MyTravelRequests\(\{ tenantId, locale \}/);
+  assert.match(component, /export function MyTravelRequests\(\{ tenantId, locale, focusRequestId, onFocusHandled \}/);
   assert.match(component, /export function TravelRequests\(\{ tenantId, canManage, locale \}/);
   assert.match(workspace, /<TravelRequests tenantId=\{tenantId\} canManage=\{permissions\.travelManage\} locale=\{locale\}/);
   assert.match(workspace, /<MyTravelRequests tenantId=\{tenantId\} locale=\{locale\}/);
