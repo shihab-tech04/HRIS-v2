@@ -439,7 +439,6 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       tenants={tenants}
       onTenantChange={nextTenantId => {
         setTenantId(nextTenantId);
-        setView('employee');
         setRecords(empty());
       }}
       onSignOut={() => { void signOut(); }}
