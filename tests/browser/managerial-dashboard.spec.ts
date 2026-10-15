@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
+import { mkdirSync } from 'node:fs';
+
+const evidenceDirectory = process.env.HRIS_DASHBOARD_EVIDENCE_DIR || path.resolve(process.cwd(), 'docs/evidence');
+mkdirSync(evidenceDirectory, { recursive: true });
+const evidencePath = (name: string) => path.join(evidenceDirectory, name);
 
 const userId = 'd1111111-1111-4111-8111-111111111111';
 const tenantId = 'd2222222-2222-4222-8222-222222222222';
@@ -87,7 +92,7 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
   expect(metricColumns).toBe(8);
   await expect(page.getByRole('img', { name: /Attendance records over the last 7 days/ })).toBeVisible();
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/managerial-dashboard-desktop-20261014.png'), fullPage: true });
+  await page.screenshot({ path: evidencePath('managerial-dashboard-desktop-20261014.png'), fullPage: true });
 
   await page.getByRole('searchbox', { name: 'Search dashboard metrics' }).fill('Home');
   await expect(page.getByRole('button', { name: 'Work From Home 1' })).toBeVisible();
@@ -100,7 +105,9 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   await expect(page.getByRole('img', { name: /Attendance records over the last 30 days/ })).toBeVisible();
 
   const downloadWaiter = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download Report' }).click();
+  const dashboardActions = page.getByRole('group', { name: 'Managerial dashboard actions' });
+  await expect(dashboardActions.getByRole('button', { name: 'Download Report', exact: true })).toHaveCount(1);
+  await dashboardActions.getByRole('button', { name: 'Download Report', exact: true }).click();
   const download = await downloadWaiter;
   expect(download.suggestedFilename()).toMatch(/^managerial-dashboard-\d{4}-\d{2}-\d{2}\.csv$/);
 });
@@ -117,5 +124,5 @@ test('manager dashboard fits a narrow mobile viewport and keeps all attendance t
   const metricColumns = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
   expect(metricColumns).toBe(2);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/managerial-dashboard-mobile-20261014.png'), fullPage: true });
+  await page.screenshot({ path: evidencePath('managerial-dashboard-mobile-20261014.png'), fullPage: true });
 });

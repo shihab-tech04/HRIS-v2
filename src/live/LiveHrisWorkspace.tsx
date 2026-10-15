@@ -375,7 +375,7 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
     <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div><h2 id="live-dashboard-heading" className="text-2xl font-semibold text-[#1E1B39]">Managerial Dashboard</h2>
         <p className="mt-1 text-sm text-[#86929E]">Today’s workforce attendance for this organization</p></div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[540px]">
+      <div role="group" aria-label="Managerial dashboard actions" className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[540px]">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86929E]" />
           <input type="search" value={search} onChange={event => setSearch(event.target.value)}
@@ -2727,7 +2727,8 @@ export function LiveHrisWorkspace({
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} />}
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
-            onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')} />}
+            onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
+            onOpenTravel={() => navigate('my-travel')} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}

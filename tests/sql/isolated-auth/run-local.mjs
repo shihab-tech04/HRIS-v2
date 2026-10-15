@@ -366,6 +366,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014160000_hris_learning_completion_verification.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160001_hris_learning_completion_evidence_requirement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160002_hris_system_notifications_inbox.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261015022305_hris_travel_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
@@ -4368,6 +4369,11 @@ const unifiedAnonymousNotifications = attemptAs(null,
   `SELECT public.hris_get_my_notifications('${ids.tenantA}'::uuid)`, 'anon');
 const unifiedLearningRows = unifiedLearningNotifications.data?.notifications || [];
 const unifiedProjectRows = unifiedProjectNotifications.data?.notifications || [];
+const unifiedTravelRowsA = unifiedProjectRows.filter(row => row.source === 'travel_decision');
+const unifiedTravelRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'travel_decision');
+const travelApprovalNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'approved');
+const travelRejectionNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'rejected');
+const travelApprovalNotificationB = unifiedTravelRowsB.find(row => row.travel_request_id === travelIds.requestB && row.kind === 'approved');
 const unifiedProjectReviewRow = unifiedProjectRows.find(row => row.source === 'project_review' && row.task_id === projectTaskId);
 const unifiedLearningRowCount = unifiedProjectRows.filter(row => row.source === 'learning_completion').length;
 record('Unified notification feed merges project and learning events with keyset paging, tenant isolation, and source-specific unread semantics',
@@ -4381,14 +4387,24 @@ record('Unified notification feed merges project and learning events with keyset
     && !unifiedProjectNotifications.error && unifiedProjectNotifications.data.unread_project_reviews === 1
     && unifiedProjectRows.length >= 2 && unifiedLearningRowCount >= 1
     && unifiedProjectReviewRow?.review_status === 'pending'
-    && !unifiedTenantBNotifications.error && unifiedTenantBNotifications.data.notifications.length === 0
+    && travelApprovalNotificationA?.travel_destination === 'QA A client site'
+    && travelRejectionNotificationA?.travel_from_date === '2026-11-02'
+    && travelApprovalNotificationB?.travel_destination === 'QA B client site'
+    && !Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key))
+    && !unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB)
+    && !unifiedTenantBNotifications.error
+    && unifiedTenantBNotifications.data.notifications.every(row => row.source === 'travel_decision')
     && Boolean(unifiedCrossTenantNotifications.error?.code === '42501')
     && Boolean(unifiedGlobalNotifications.error?.code === '42501') && !unifiedAnonymousNotifications.ok
     && functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon === false,
   JSON.stringify({ orderedSources: [unifiedLearningRows[0]?.source,
     unifiedLearningNotificationsPageTwo.data?.notifications?.[0]?.source],
     sourceCounts: { total: unifiedProjectRows.length, learning: unifiedLearningRowCount,
+      travel: unifiedTravelRowsA.length,
       projectReview: unifiedProjectRows.filter(row => row.source === 'project_review').length },
+    travelApprovalA: travelApprovalNotificationA?.travel_destination,
+    travelRejectionA: travelRejectionNotificationA?.kind,
+    travelApprovalB: travelApprovalNotificationB?.travel_destination,
     taskReviewStatus: unifiedProjectReviewRow?.review_status,
     learningError: unifiedLearningNotifications.error?.code,
     pageTwoError: unifiedLearningNotificationsPageTwo.error?.code,
@@ -4398,6 +4414,43 @@ record('Unified notification feed merges project and learning events with keyset
     tenantB: unifiedTenantBNotifications.data?.notifications?.length,
     crossTenant: unifiedCrossTenantNotifications.error?.code,
     globalOnly: unifiedGlobalNotifications.error?.code, anonymousDenied: !unifiedAnonymousNotifications.ok }));
+const directTravelDecisionRowsA = await employeeA.client.from('travel_request_notifications')
+  .select('id,tenant_id,travel_request_id,travel_status_history_id,recipient_employee_id,kind')
+  .eq('tenant_id', ids.tenantA);
+const directTravelDecisionRowsForeign = await employeeA.client.from('travel_request_notifications')
+  .select('id,tenant_id').eq('tenant_id', ids.tenantB);
+const anonDirectTravelDecisionRows = attemptAs(null,
+  'SELECT id FROM public.travel_request_notifications', 'anon');
+const travelDecisionNotificationIntegrity = queryAdmin(`SELECT jsonb_build_object(
+  'a_notifications',(SELECT count(*)::integer FROM public.travel_request_notifications
+    WHERE tenant_id='${ids.tenantA}'::uuid AND travel_request_id='${travelIds.requestA}'::uuid),
+  'a_decision_history',(SELECT count(*)::integer FROM public.travel_status_history
+    WHERE tenant_id='${ids.tenantA}'::uuid AND travel_request_id='${travelIds.requestA}'::uuid
+      AND previous_status='submitted' AND new_status IN ('approved','rejected')),
+  'b_notifications',(SELECT count(*)::integer FROM public.travel_request_notifications
+    WHERE tenant_id='${ids.tenantB}'::uuid AND travel_request_id='${travelIds.requestB}'::uuid),
+  'b_decision_history',(SELECT count(*)::integer FROM public.travel_status_history
+    WHERE tenant_id='${ids.tenantB}'::uuid AND travel_request_id='${travelIds.requestB}'::uuid
+      AND previous_status='submitted' AND new_status IN ('approved','rejected')),
+  'mismatched_links',(SELECT count(*)::integer FROM public.travel_request_notifications n
+    JOIN public.travel_status_history h ON h.id=n.travel_status_history_id
+    JOIN public.travel_requests r ON r.id=n.travel_request_id
+    WHERE n.tenant_id<>h.tenant_id OR n.tenant_id<>r.tenant_id
+      OR n.travel_request_id<>h.travel_request_id OR n.recipient_employee_id<>r.employee_id
+      OR n.kind<>h.new_status))`);
+record('Travel decision notifications are one-per-history, employee-owned, tenant-isolated, and hidden from anonymous callers',
+  !directTravelDecisionRowsA.error && directTravelDecisionRowsA.data.length === 2
+    && !directTravelDecisionRowsForeign.error && directTravelDecisionRowsForeign.data.length === 0
+    && !anonDirectTravelDecisionRows.ok
+    && travelDecisionNotificationIntegrity.a_notifications === travelDecisionNotificationIntegrity.a_decision_history
+    && travelDecisionNotificationIntegrity.a_notifications === 2
+    && travelDecisionNotificationIntegrity.b_notifications === travelDecisionNotificationIntegrity.b_decision_history
+    && travelDecisionNotificationIntegrity.b_notifications === 1
+    && travelDecisionNotificationIntegrity.mismatched_links === 0,
+  JSON.stringify({ ownRows: directTravelDecisionRowsA.data?.length,
+    foreignRows: directTravelDecisionRowsForeign.data?.length,
+    anonDenied: !anonDirectTravelDecisionRows.ok,
+    ...travelDecisionNotificationIntegrity }));
 const releaseNotificationsDirectA = await employeeA.client.from('hris_in_app_notifications').select('id,tenant_id')
   .eq('tenant_id', ids.tenantA);
 const releaseNotificationsDirectForeign = await employeeB.client.from('hris_in_app_notifications').select('id')

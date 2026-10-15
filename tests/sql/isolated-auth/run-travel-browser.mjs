@@ -239,6 +239,48 @@ try {
   await employeeCard.getByText('Submitted → Returned for changes', { exact: true }).waitFor({ state: 'visible' });
   await employeeCard.getByText('Submitted → Approved', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(employeePage, 'Travel history desktop');
+
+  await employeePage.setViewportSize({ width: 375, height: 812 });
+  let inboxReads = 0;
+  await employeePage.route('**/rest/v1/rpc/hris_get_my_notifications', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    inboxReads += 1;
+    if (inboxReads === 1) {
+      return route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        headers: {
+          'access-control-allow-origin': origin,
+          'access-control-allow-credentials': 'true',
+          'access-control-allow-headers': 'apikey, authorization, content-type, x-client-info, prefer',
+          'access-control-allow-methods': 'POST, OPTIONS',
+        },
+        body: JSON.stringify({ message: 'Temporary test outage' }),
+      });
+    }
+    return route.continue();
+  });
+  const inboxFailure = employeePage.waitForResponse(response =>
+    response.url().includes('/rest/v1/rpc/hris_get_my_notifications') && response.status() === 503);
+  await navigateTo(employeePage, 'Notifications');
+  await employeePage.getByRole('heading', { name: 'Notifications', exact: true }).waitFor({ state: 'visible' });
+  await inboxFailure;
+  await employeePage.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
+  await employeePage.getByRole('alert').waitFor({ state: 'detached' });
+  if (inboxReads !== 2) throw new Error(`Expected one failed and one recovered inbox read, got ${inboxReads}.`);
+  const approvedTravelNotification = employeePage.locator('article[data-notification-source="travel_decision"][data-notification-kind="approved"]');
+  const rejectedTravelNotification = employeePage.locator('article[data-notification-source="travel_decision"][data-notification-kind="rejected"]');
+  await approvedTravelNotification.getByText(destination, { exact: true }).waitFor({ state: 'visible' });
+  await rejectedTravelNotification.getByText(destination, { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(employeePage, 'Travel decisions notification mobile');
+  await employeePage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await approvedTravelNotification.getByRole('heading', { name: 'ভ্রমণ অনুরোধ অনুমোদিত', exact: true }).waitFor({ state: 'visible' });
+  await rejectedTravelNotification.getByRole('heading', { name: 'ভ্রমণ অনুরোধ প্রত্যাখ্যাত', exact: true }).waitFor({ state: 'visible' });
+  await employeePage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(employeePage, 'Travel decisions notification desktop');
+  await approvedTravelNotification.getByRole('button', { name: 'ভ্রমণ খুলুন', exact: true }).click();
+  await employeePage.getByRole('heading', { name: 'আমার ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  await employeePage.locator(`[data-travel-request="${requestId}"]`).waitFor({ state: 'visible' });
   if (directTravelEndpoints.length) throw new Error(`Travel UI bypassed tenant-scoped RPCs: ${directTravelEndpoints.join(', ')}.`);
   console.log(`TRAVEL_ACCEPTANCE_ID=${requestId}`);
   console.log('Local Auth-to-Postgres travel workflow persisted employee draft, submission, manager return, employee recovery, resubmission, approval, and history in EN/BN across mobile and desktop; failed history read recovered on retry.');

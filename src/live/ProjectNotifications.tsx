@@ -25,7 +25,17 @@ type LearningNotification = {
   program_title: string;
   created_at: string;
 };
-type Notification = ProjectNotification | LearningNotification;
+type TravelNotification = {
+  id: string;
+  source: 'travel_decision';
+  kind: 'approved' | 'rejected';
+  travel_request_id: string;
+  travel_destination: string | null;
+  travel_from_date: string | null;
+  travel_to_date: string | null;
+  created_at: string;
+};
+type Notification = ProjectNotification | LearningNotification | TravelNotification;
 type Cursor = { createdAt: string; source: Notification['source']; id: string };
 type NotificationResponse = {
   notifications?: Notification[];
@@ -49,11 +59,12 @@ function message(error: unknown): string {
   return 'Unable to load your notifications.';
 }
 
-export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenLearning }: {
+export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenLearning, onOpenTravel }: {
   tenantId: string;
   locale: Locale;
   onOpenProjects: () => void;
   onOpenLearning: () => void;
+  onOpenTravel: () => void;
 }) {
   const tx = (english: string) => projectText(locale, english);
   const [items, setItems] = useState<Notification[]>([]);
@@ -133,7 +144,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 id="project-notifications-heading" className="text-2xl font-medium text-[#49454F]">{tx('Notifications')}</h2>
-        <p className="mt-1 text-sm text-slate-500">{tx('Project review alerts and learning completion decisions from your organization.')}</p>
+        <p className="mt-1 text-sm text-slate-500">{tx('Project review alerts, learning completion decisions, and travel request outcomes from your organization.')}</p>
       </div>
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900">{unreadCount.toLocaleString()} {tx('unread project review alerts')}</span>
@@ -146,20 +157,31 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
       <div className="space-y-3">{items.map(item => {
         const isProjectReview = item.source === 'project_review';
         const pending = isProjectReview && item.review_status === 'pending';
-        const needsCorrection = !isProjectReview && item.kind === 'returned_for_correction';
+        const isTravelDecision = item.source === 'travel_decision';
+        const needsCorrection = item.source === 'learning_completion' && item.kind === 'returned_for_correction';
         const needsAction = pending || needsCorrection;
-        return <article key={`${item.source}:${item.id}`} data-notification-source={item.source}
-          className={`rounded-xl border p-4 shadow-sm sm:p-5 ${needsAction ? 'border-amber-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+        const travelRejected = isTravelDecision && item.kind === 'rejected';
+        const dateRange = isTravelDecision && item.travel_from_date && item.travel_to_date
+          ? `${new Date(`${item.travel_from_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')} – ${new Date(`${item.travel_to_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')}`
+          : '';
+        return <article key={`${item.source}:${item.id}`} data-notification-source={item.source} data-notification-kind={item.kind}
+          className={`rounded-xl border p-4 shadow-sm sm:p-5 ${needsAction ? 'border-amber-200 bg-white' : travelRejected ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${needsAction ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>
-                {needsAction ? <Bell className="h-4 w-4" aria-hidden="true"/> : <CheckCircle2 className="h-4 w-4" aria-hidden="true"/>}
+              <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${needsAction ? 'bg-amber-50 text-amber-800' : travelRejected ? 'bg-rose-100 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>
+                {needsAction || travelRejected ? <Bell className="h-4 w-4" aria-hidden="true"/> : <CheckCircle2 className="h-4 w-4" aria-hidden="true"/>}
               </span>
               <div className="min-w-0">
                 {isProjectReview ? <>
                   <p className="text-xs font-medium text-slate-500">{tx('Project review')} · {item.project_name} · {item.task_title}</p>
                   <h3 className="mt-1 break-words font-semibold text-slate-900">{pending ? (locale === 'bn' ? `${item.reviewee_name}-এর জন্য সহকর্মী পর্যালোচনা` : `Peer review for ${item.reviewee_name}`) : (locale === 'bn' ? `${item.reviewee_name}-এর পর্যালোচনা সম্পন্ন` : `Review for ${item.reviewee_name} completed`)}</h3>
                   <p className="mt-1 text-sm text-slate-600">{tx(pending ? 'A task collaborator is waiting for your review.' : 'Your submitted review is recorded in the task history.')}</p>
+                </> : isTravelDecision ? <>
+                  <p className="text-xs font-medium text-slate-500">{tx('Travel update')}</p>
+                  <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'approved' ? 'Travel request approved' : 'Travel request rejected')}</h3>
+                  <p className="mt-1 break-words text-sm font-medium text-slate-700">{item.travel_destination || tx('Travel request')}</p>
+                  {dateRange && <p className="mt-1 text-sm text-slate-600">{dateRange}</p>}
+                  <p className="mt-1 text-sm text-slate-600">{tx(item.kind === 'approved' ? 'Your travel request was approved.' : 'Your travel request was rejected.')}</p>
                 </> : <>
                   <p className="text-xs font-medium text-slate-500">{tx('Learning update')}</p>
                   <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'verified' ? 'Learning completion verified' : 'Learning completion returned for correction')}</h3>
@@ -170,7 +192,8 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
               </div>
             </div>
             {pending && <button type="button" onClick={onOpenProjects} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open review')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
-            {!isProjectReview && <button type="button" onClick={onOpenLearning} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open learning')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
+            {item.source === 'learning_completion' && <button type="button" onClick={onOpenLearning} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open learning')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
+            {isTravelDecision && <button type="button" onClick={onOpenTravel} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open travel')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
           </div>
         </article>;
       })}</div>}
