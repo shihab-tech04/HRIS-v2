@@ -3891,6 +3891,7 @@ const concurrentAttendanceCorrection = tableRow('attendance_corrections', ids.at
 const concurrentAttendanceRecord = queryAdmin(`SELECT to_jsonb(a) FROM public.attendance_records a
   WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'
     AND attendance_date='2026-10-14'`);
+const dashboardReportFixtureDate = concurrentAttendanceRecord?.attendance_date || '2026-10-14';
 record('Concurrent attendance decisions resolve and create one record and audit once',
   concurrentAttendance.filter(result => result.status === 'fulfilled').length === 1
   && concurrentAttendanceCorrection.status === 'approved'
@@ -3947,8 +3948,8 @@ const dashboardTeamReportB = queryAs(managerB, `SELECT public.hris_get_tenant_da
 const dashboardTeamReportOnly = attemptAs(reportViewerA, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid, NULL::date)`);
 const dashboardTeamReportNoPermission = attemptAs(noPermission, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid, NULL::date)`);
 const dashboardTeamReportCrossTenant = attemptAs(managerB, `SELECT public.hris_get_tenant_dashboard_team_report('${ids.tenantA}'::uuid, NULL::date)`);
-const dashboardTeamReportPreviousDate = queryAs(managerA, `SELECT public.hris_get_tenant_dashboard_team_report(
-  '${ids.tenantA}'::uuid, '${addCalendarDays(localCurrentDate, -1)}'::date)`);
+const dashboardTeamReportFixtureDate = queryAs(managerA, `SELECT public.hris_get_tenant_dashboard_team_report(
+  '${ids.tenantA}'::uuid, '${dashboardReportFixtureDate}'::date)`);
 const reportEmployeeA = attendanceReportA.find(row => row.employee_number === 'QA-A-001');
 const reportEmployeeB = attendanceReportB.find(row => row.employee_number === 'QA-B-001');
 const reportCrossTenantTeam = attendanceReportA.find(row => row.employee_number === 'QA-A-002');
@@ -3990,14 +3991,15 @@ record('Manager dashboard team report is tenant-scoped and cross-tenant RPC acce
   && Number(dashboardTeamB?.present_members) === 1
   && Number(dashboardTeamB?.work_from_office) === 1
   && !dashboardTeamReportCrossTenant.ok);
-const dashboardTeamReportPreviousDateTeam = dashboardTeamReportPreviousDate.teams.find(row => row.team_name === 'QA A Team');
+const dashboardTeamReportFixtureDateTeam = dashboardTeamReportFixtureDate.teams.find(row => row.team_name === 'QA A Team');
 record('Manager dashboard team report applies the selected report date to attendance while retaining active team membership totals',
-  dashboardTeamReportPreviousDate.dashboard_date === addCalendarDays(localCurrentDate, -1)
-  && Number(dashboardTeamReportPreviousDateTeam?.total_members) === 5
-  && Number(dashboardTeamReportPreviousDateTeam?.present_members) === 1
-  && Number(dashboardTeamReportPreviousDateTeam?.work_from_office) === 1
-  && Number(dashboardTeamReportPreviousDateTeam?.absent_members) === 0,
-  JSON.stringify({ dashboard_date: dashboardTeamReportPreviousDate.dashboard_date, team: dashboardTeamReportPreviousDateTeam }));
+  concurrentAttendanceRecord?.attendance_date === dashboardReportFixtureDate
+  && dashboardTeamReportFixtureDate.dashboard_date === dashboardReportFixtureDate
+  && Number(dashboardTeamReportFixtureDateTeam?.total_members) === 5
+  && Number(dashboardTeamReportFixtureDateTeam?.present_members) === 1
+  && Number(dashboardTeamReportFixtureDateTeam?.work_from_office) === 1
+  && Number(dashboardTeamReportFixtureDateTeam?.absent_members) === 0,
+  JSON.stringify({ dashboard_date: dashboardTeamReportFixtureDate.dashboard_date, team: dashboardTeamReportFixtureDateTeam }));
 record('Team detail RPC returns only the selected authorized tenant team and preserves the report contract fields',
   dashboardTeamDetailsA.report_date === localCurrentDate
   && dashboardTeamDetailsA.details.length === Number(dashboardTeamA.total_members)

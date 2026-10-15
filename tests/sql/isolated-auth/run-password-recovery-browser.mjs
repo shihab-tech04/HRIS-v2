@@ -3,6 +3,7 @@
 // occupies or navigates the user's port 3000 app.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY',
@@ -11,7 +12,22 @@ const required = [
 for (const key of required) if (!process.env[key]) throw new Error(`Missing local recovery setting ${key}.`);
 
 const repo = process.cwd();
-const vitePort = '48382';
+async function findAvailableLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      if (!address || typeof address === 'string') {
+        probe.close(() => reject(new Error('Could not reserve a local browser port.')));
+        return;
+      }
+      probe.close(error => error ? reject(error) : resolve(String(address.port)));
+    });
+  });
+}
+
+const vitePort = await findAvailableLoopbackPort();
 const viteOrigin = `http://127.0.0.1:${vitePort}`;
 const redirectOrigin = viteOrigin;
 const authUrl = new URL(process.env.HRIS_LOCAL_SUPABASE_URL);
@@ -30,17 +46,24 @@ const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', vitePort, 
 let browser;
 let stage = 'starting local web server';
 let safeFailureDetail = '';
+let serverSpawnErrorCode = '';
+let serverExitInfo = '';
+server.once('error', error => { serverSpawnErrorCode = error.code || error.name || 'spawn_error'; });
+server.once('exit', (code, signal) => {
+  serverExitInfo = `exit=${code ?? 'none'}${signal ? ` signal=${signal}` : ''}`;
+});
 
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    if (server.exitCode !== null) throw new Error('Local HRIS web server exited before recovery testing.');
+    if (serverSpawnErrorCode) throw new Error(`Local web server spawn failed (${serverSpawnErrorCode}).`);
+    if (server.exitCode !== null) throw new Error(`Local HRIS web server exited before recovery testing (${serverExitInfo || 'exit status unavailable'}).`);
     try {
       const response = await fetch(viteOrigin);
       if (response.ok && (await response.text()).includes('Synesis HRIS 360°')) return;
     } catch { /* the local web server is starting */ }
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  throw new Error('Timed out waiting for the local HRIS web server.');
+  throw new Error(`Timed out waiting for the local HRIS web server (${serverExitInfo || 'process still running'}).`);
 }
 
 function stringsDeep(value, output = []) {
@@ -210,8 +233,11 @@ async function run() {
 
 try {
   await run();
-} catch {
-  console.error(`Local password-recovery journey failed while ${stage}${safeFailureDetail ? `: ${safeFailureDetail}` : ''}; recovery URLs and tokens were suppressed.`);
+} catch (error) {
+  const safeStartupError = stage === 'starting local web server'
+    ? String(error?.message || 'unknown startup error').replace(/[^a-zA-Z0-9 _=().:-]/g, '').slice(0, 180)
+    : '';
+  console.error(`Local password-recovery journey failed while ${stage}${safeFailureDetail ? `: ${safeFailureDetail}` : ''}${safeStartupError ? `: ${safeStartupError}` : ''}; recovery URLs and tokens were suppressed.`);
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();

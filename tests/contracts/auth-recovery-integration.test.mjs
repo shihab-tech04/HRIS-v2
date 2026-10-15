@@ -17,7 +17,11 @@ test('password recovery uses a fresh synthetic account and real disposable Auth 
   assert.match(browserRunner, /Passwords do not match/);
   assert.match(browserRunner, /No authorized HRIS organization/);
   assert.match(browserRunner, /recovery URLs and tokens were suppressed/);
-  assert.match(browserRunner, /const vitePort = '48382'/);
+  assert.match(browserRunner, /findAvailableLoopbackPort/);
+  assert.match(browserRunner, /probe\.listen\(0, '127\.0\.0\.1'/);
+  assert.match(browserRunner, /serverSpawnErrorCode/);
+  assert.match(browserRunner, /serverExitInfo/);
+  assert.doesNotMatch(browserRunner, /const vitePort = '48382'/);
   assert.match(browserRunner, /const redirectOrigin = viteOrigin/);
   assert.doesNotMatch(browserRunner, /oslgwxaqfbteqtwqvdzs\.supabase\.co/);
 });
