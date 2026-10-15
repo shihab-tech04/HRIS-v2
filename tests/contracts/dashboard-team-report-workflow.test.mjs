@@ -69,6 +69,9 @@ test('isolated acceptance covers selected dates, role denials, team scoping, ret
     'Team detail RPC denies cross-tenant and dashboard-ineligible report viewers',
   ]) assert.ok(sqlRunner.includes(label), `missing SQL acceptance: ${label}`);
   assert.match(browserRunner, /injected Team Report outage/);
+  assert.match(browserRunner, /probe\.listen\(0, '127\.0\.0\.1'/);
+  assert.match(browserRunner, /safeServerDiagnostic\(\)/);
+  assert.doesNotMatch(browserRunner, /const port = '48386'/);
   assert.match(browserRunner, /setViewportSize\(\{ width: 1280, height: 900 \}\)/);
   assert.match(browserSpec, /Apply date/);
   assert.match(browserSpec, /Filtered total/);

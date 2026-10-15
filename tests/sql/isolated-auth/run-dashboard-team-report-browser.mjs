@@ -2,6 +2,7 @@
 // tenant-scoped Postgres RPCs, with one injected request outage for recovery.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
@@ -10,7 +11,18 @@ const required = [
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
 const repo = process.cwd();
-const port = '48386';
+const port = await new Promise((resolve, reject) => {
+  const probe = createNetServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close(() => reject(new Error('Unable to select an available loopback port for the report browser journey.')));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolve(String(address.port)));
+  });
+});
 const origin = `http://127.0.0.1:${port}`;
 const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
@@ -19,13 +31,38 @@ const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--s
     VITE_SUPABASE_URL: process.env.HRIS_LOCAL_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: process.env.HRIS_LOCAL_SUPABASE_ANON_KEY,
   },
-  stdio: 'ignore',
+  stdio: ['ignore', 'ignore', 'pipe'],
 });
+let serverStderr = '';
+let serverSpawnError = '';
+server.stderr.on('data', chunk => { serverStderr = `${serverStderr}${chunk.toString()}`.slice(-4000); });
+server.on('error', error => { serverSpawnError = error.message; });
+
+function safeServerDiagnostic() {
+  let diagnostic = serverStderr;
+  for (const key of [
+    'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
+    'HRIS_LOCAL_DASHBOARD_MANAGER_EMAIL',
+  ]) {
+    const secret = process.env[key];
+    if (secret) diagnostic = diagnostic.replaceAll(secret, '[REDACTED]');
+  }
+  diagnostic = diagnostic
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\b/g, '[REDACTED_TOKEN]')
+    .replace(/\b(?:sb_secret|sb_publishable)_[A-Za-z0-9_-]+\b/g, '[REDACTED_KEY]')
+    .replace(/(authorization:\s*bearer\s+)\S+/gi, '$1[REDACTED]')
+    .trim();
+  return diagnostic.slice(-1200);
+}
 
 let browser;
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
+    if (serverSpawnError) throw new Error(`Local Vite server could not start: ${serverSpawnError}.`);
+    if (server.exitCode !== null) {
+      const diagnostic = safeServerDiagnostic();
+      throw new Error(`Local Vite server exited with ${server.exitCode}.${diagnostic ? ` Startup diagnostic: ${diagnostic}` : ''}`);
+    }
     try {
       const response = await fetch(origin);
       if (response.ok && (await response.text()).includes('Synesis HRIS 360°')) return;
