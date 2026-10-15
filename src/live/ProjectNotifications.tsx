@@ -35,7 +35,17 @@ type TravelNotification = {
   travel_to_date: string | null;
   created_at: string;
 };
-type Notification = ProjectNotification | LearningNotification | TravelNotification;
+type LeaveNotification = {
+  id: string;
+  source: 'leave_decision';
+  kind: 'approved' | 'rejected';
+  leave_request_id: string;
+  leave_type_name: string | null;
+  leave_from_date: string | null;
+  leave_to_date: string | null;
+  created_at: string;
+};
+type Notification = ProjectNotification | LearningNotification | TravelNotification | LeaveNotification;
 type Cursor = { createdAt: string; source: Notification['source']; id: string };
 type NotificationResponse = {
   notifications?: Notification[];
@@ -59,12 +69,13 @@ function message(error: unknown): string {
   return 'Unable to load your notifications.';
 }
 
-export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenLearning, onOpenTravel }: {
+export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenLearning, onOpenTravel, onOpenLeave }: {
   tenantId: string;
   locale: Locale;
   onOpenProjects: () => void;
   onOpenLearning: () => void;
   onOpenTravel: (travelRequestId: string) => void;
+  onOpenLeave: (leaveRequestId: string) => void;
 }) {
   const tx = (english: string) => projectText(locale, english);
   const [items, setItems] = useState<Notification[]>([]);
@@ -158,18 +169,22 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
         const isProjectReview = item.source === 'project_review';
         const pending = isProjectReview && item.review_status === 'pending';
         const isTravelDecision = item.source === 'travel_decision';
+        const isLeaveDecision = item.source === 'leave_decision';
         const needsCorrection = item.source === 'learning_completion' && item.kind === 'returned_for_correction';
         const needsAction = pending || needsCorrection;
-        const travelRejected = isTravelDecision && item.kind === 'rejected';
-        const dateRange = isTravelDecision && item.travel_from_date && item.travel_to_date
-          ? `${new Date(`${item.travel_from_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')} – ${new Date(`${item.travel_to_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')}`
+        const decisionRejected = (isTravelDecision || isLeaveDecision) && item.kind === 'rejected';
+        const decisionFromDate = isLeaveDecision ? item.leave_from_date : isTravelDecision ? item.travel_from_date : null;
+        const decisionToDate = isLeaveDecision ? item.leave_to_date : isTravelDecision ? item.travel_to_date : null;
+        const dateRange = decisionFromDate && decisionToDate
+          ? `${new Date(`${decisionFromDate}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')} – ${new Date(`${decisionToDate}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')}`
           : '';
         return <article key={`${item.source}:${item.id}`} data-notification-source={item.source} data-notification-kind={item.kind}
-          className={`rounded-xl border p-4 shadow-sm sm:p-5 ${needsAction ? 'border-amber-200 bg-white' : travelRejected ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
+          data-notification-request-id={isLeaveDecision ? item.leave_request_id : undefined}
+          className={`rounded-xl border p-4 shadow-sm sm:p-5 ${needsAction ? 'border-amber-200 bg-white' : decisionRejected ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${needsAction ? 'bg-amber-50 text-amber-800' : travelRejected ? 'bg-rose-100 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>
-                {needsAction || travelRejected ? <Bell className="h-4 w-4" aria-hidden="true"/> : <CheckCircle2 className="h-4 w-4" aria-hidden="true"/>}
+              <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${needsAction ? 'bg-amber-50 text-amber-800' : decisionRejected ? 'bg-rose-100 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>
+                {needsAction || decisionRejected ? <Bell className="h-4 w-4" aria-hidden="true"/> : <CheckCircle2 className="h-4 w-4" aria-hidden="true"/>}
               </span>
               <div className="min-w-0">
                 {isProjectReview ? <>
@@ -182,6 +197,12 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
                   <p className="mt-1 break-words text-sm font-medium text-slate-700">{item.travel_destination || tx('Travel request')}</p>
                   {dateRange && <p className="mt-1 text-sm text-slate-600">{dateRange}</p>}
                   <p className="mt-1 text-sm text-slate-600">{tx(item.kind === 'approved' ? 'Your travel request was approved.' : 'Your travel request was rejected.')}</p>
+                </> : isLeaveDecision ? <>
+                  <p className="text-xs font-medium text-slate-500">{tx('Leave update')}</p>
+                  <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'approved' ? 'Leave request approved' : 'Leave request rejected')}</h3>
+                  <p className="mt-1 break-words text-sm font-medium text-slate-700">{item.leave_type_name || tx('Leave request')}</p>
+                  {dateRange && <p className="mt-1 text-sm text-slate-600">{dateRange}</p>}
+                  <p className="mt-1 text-sm text-slate-600">{tx(item.kind === 'approved' ? 'Your leave request was approved.' : 'Your leave request was rejected.')}</p>
                 </> : <>
                   <p className="text-xs font-medium text-slate-500">{tx('Learning update')}</p>
                   <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'verified' ? 'Learning completion verified' : 'Learning completion returned for correction')}</h3>
@@ -194,6 +215,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
             {pending && <button type="button" onClick={onOpenProjects} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open review')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
             {item.source === 'learning_completion' && <button type="button" onClick={onOpenLearning} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open learning')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
             {isTravelDecision && <button type="button" onClick={() => onOpenTravel(item.travel_request_id)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open travel')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
+            {isLeaveDecision && <button type="button" onClick={() => onOpenLeave(item.leave_request_id)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open leave')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
           </div>
         </article>;
       })}</div>}
