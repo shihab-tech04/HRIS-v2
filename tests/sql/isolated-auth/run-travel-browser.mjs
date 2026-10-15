@@ -268,8 +268,10 @@ try {
   await employeePage.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
   await employeePage.getByRole('alert').waitFor({ state: 'detached' });
   if (inboxReads !== 2) throw new Error(`Expected one failed and one recovered inbox read, got ${inboxReads}.`);
-  const approvedTravelNotification = employeePage.locator('article[data-notification-source="travel_decision"][data-notification-kind="approved"]');
-  const rejectedTravelNotification = employeePage.locator('article[data-notification-source="travel_decision"][data-notification-kind="rejected"]');
+  const approvedTravelNotification = employeePage.locator('article[data-notification-source="travel_decision"][data-notification-kind="approved"]')
+    .filter({ hasText: destination }).first();
+  const rejectedTravelNotification = employeePage.locator('article[data-notification-source="travel_decision"][data-notification-kind="rejected"]')
+    .filter({ hasText: destination }).first();
   await approvedTravelNotification.getByText(destination, { exact: true }).waitFor({ state: 'visible' });
   await rejectedTravelNotification.getByText(destination, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(employeePage, 'Travel decisions notification mobile');

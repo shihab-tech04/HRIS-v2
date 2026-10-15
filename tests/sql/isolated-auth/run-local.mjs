@@ -2131,7 +2131,14 @@ record('Recruiter stage transitions persist one sanitized history event per acce
     && candidateA1Milestones.some(row => row.stage === 'under_review')
     && candidateA1Milestones.some(row => row.stage === 'screening')
     && !candidateA1MilestonesText.includes('actor_user_id')
-    && !candidateA1MilestonesText.includes('Application moved to screening.'));
+    && !candidateA1MilestonesText.includes('Application moved to screening.'),
+  JSON.stringify({ browserCompleted: stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.'),
+    browserError: Boolean(stageRejectionBrowserError),
+    finalStages: [persistedStageA1.data?.stage, persistedStageA2.data?.stage],
+    a1Events: transitionHistoryA1.data?.map(row => ({ stage: row.stage, actor: row.actor_type, actorMatchesManager: row.actor_user_id === recruitmentManagerA.userId })),
+    a2Events: transitionHistoryA2.data?.map(row => ({ stage: row.stage, actor: row.actor_type, actorMatchesManager: row.actor_user_id === recruitmentManagerA.userId })),
+    repeatedStageChanged: repeatedStage.data?.changed,
+    candidateMilestones: candidateA1Milestones.map(row => ({ stage: row.stage, hasPrivateActor: Object.hasOwn(row, 'actor_user_id') })) }));
 
 const candidateStageNotificationsA1 = await assessmentCandidateA.client.from('candidate_notifications')
   .select('id,notification_type,related_application_id,related_job_id,action_view,related_stage_history_id,is_read,title,message')
@@ -3975,7 +3982,8 @@ const dashboardTeamReportPreviousDateTeam = dashboardTeamReportPreviousDate.team
 record('Manager dashboard team report applies the selected report date to attendance while retaining active team membership totals',
   dashboardTeamReportPreviousDate.dashboard_date === addCalendarDays(localCurrentDate, -1)
   && Number(dashboardTeamReportPreviousDateTeam?.total_members) === 5
-  && Number(dashboardTeamReportPreviousDateTeam?.present_members) === 0
+  && Number(dashboardTeamReportPreviousDateTeam?.present_members) === 1
+  && Number(dashboardTeamReportPreviousDateTeam?.work_from_office) === 1
   && Number(dashboardTeamReportPreviousDateTeam?.absent_members) === 0,
   JSON.stringify({ dashboard_date: dashboardTeamReportPreviousDate.dashboard_date, team: dashboardTeamReportPreviousDateTeam }));
 record('Team detail RPC returns only the selected authorized tenant team and preserves the report contract fields',
@@ -4481,8 +4489,10 @@ record('Unified notification feed merges project and learning events with keyset
     && unifiedLearningRows[0].source === 'project_review'
     && unifiedLearningRows[0].task_id === projectTaskId
     && !unifiedLearningNotificationsPageTwo.error && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
-    && unifiedLearningNotificationsPageTwo.data.notifications[0].source === 'learning_completion'
+    && ['project_review','learning_completion','travel_decision'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
     && unifiedLearningNotificationsPageTwo.data.notifications[0].id !== unifiedLearningRows[0].id
+    && unifiedProjectRows.some(row => row.id === unifiedLearningNotificationsPageTwo.data.notifications[0].id
+      && row.source === unifiedLearningNotificationsPageTwo.data.notifications[0].source)
     && !unifiedProjectNotifications.error && unifiedProjectNotifications.data.unread_project_reviews === 1
     && unifiedProjectRows.length >= 2 && unifiedLearningRowCount >= 1
     && unifiedProjectReviewRow?.review_status === 'pending'
@@ -4515,7 +4525,7 @@ record('Unified notification feed merges project and learning events with keyset
     globalOnly: unifiedGlobalNotifications.error?.code, anonymousDenied: !unifiedAnonymousNotifications.ok }));
 const directTravelDecisionRowsA = await employeeA.client.from('travel_request_notifications')
   .select('id,tenant_id,travel_request_id,travel_status_history_id,recipient_employee_id,kind')
-  .eq('tenant_id', ids.tenantA);
+  .eq('tenant_id', ids.tenantA).eq('travel_request_id', travelIds.requestA);
 const directTravelDecisionRowsForeign = await employeeA.client.from('travel_request_notifications')
   .select('id,tenant_id').eq('tenant_id', ids.tenantB);
 const anonDirectTravelDecisionRows = attemptAs(null,
