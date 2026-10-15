@@ -87,6 +87,12 @@ test('isolated acceptance covers selected dates, role denials, team scoping, ret
   }
 });
 
+test('Team Report browser acceptance uses a direct Vite child and bounds shutdown escalation', () => {
+  assert.match(browserRunner, /spawn\(process\.execPath, \[resolve\(repo, 'node_modules\/vite\/bin\/vite\.js'\)/);
+  assert.match(browserRunner, /import { stopChildProcess } from '\.\/stop-child-process\.mjs'/);
+  assert.ok(browserRunner.includes('await stopChildProcess(server)'));
+});
+
 test('manager dashboard controls, data labels, accessibility text, and CSV labels follow the selected EN/BN locale', () => {
   for (const phrase of [
     'Managerial Dashboard', 'Today’s workforce attendance for this organization', 'Managerial dashboard actions',

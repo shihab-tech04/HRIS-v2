@@ -3,6 +3,8 @@
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createServer as createNetServer } from 'node:net';
+import { resolve } from 'node:path';
+import { stopChildProcess } from './stop-child-process.mjs';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
@@ -25,7 +27,7 @@ const port = await new Promise((resolve, reject) => {
   });
 });
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
   env: {
     ...process.env,
@@ -295,8 +297,5 @@ try {
   console.log('Local Auth-to-Postgres Team Report journey passed: tenant-scoped date selection, filtered totals/CSV parity, team-scoped detail retry, Bengali labels, refresh recovery, and 375px mobile/1280px desktop layouts.');
 } finally {
   if (browser) await browser.close();
-  if (server.exitCode === null) {
-    server.kill('SIGTERM');
-    await new Promise(resolve => server.once('exit', resolve));
-  }
+  await stopChildProcess(server);
 }
