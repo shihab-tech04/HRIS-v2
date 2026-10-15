@@ -391,7 +391,9 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
   } catch (error) {
     const detail = String(error?.stderr || error?.message || 'Browser journey failed.').trim();
     const journeyFailure = detail.match(/Error: Employee directory sign-in did not reach workspace:[^\r\n]*/);
-    browserError = journeyFailure?.[0] || `${detail.slice(0, 500)} … ${detail.slice(-350)}`.slice(0, 900);
+    const contactFieldFailure = detail.match(/Error: Home address field is not accessible through its visible label:[^\r\n]*/);
+    browserError = journeyFailure?.[0] || contactFieldFailure?.[0]
+      || `${detail.slice(0, 500)} … ${detail.slice(-350)}`.slice(0, 900);
   }
   const afterBrowser = jsonQuery(`SELECT jsonb_build_object('official_email',official_email,'phone',phone,
     'address',address,'team_id',team_id,'department_id',department_id,'designation_id',designation_id,
@@ -422,6 +424,25 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
           AND action='employee.contact_details_updated';`);
     } catch (error) {
       record('Synthetic contact fixture and audit history reset', false,
+        `${error?.name || 'Error'}: ${String(error?.message || error).split('\n')[0].slice(0, 240)}`);
+    }
+  }
+  if (fixtureReady && createdUserIds.length) {
+    try {
+      const trackedIds = `ARRAY[${createdUserIds.map(id => `${sqlLiteral(id)}::uuid`).join(',')}]::uuid[]`;
+      psql(`UPDATE public.employees SET user_id=NULL WHERE user_id=ANY(${trackedIds});
+DELETE FROM public.tenant_memberships WHERE user_id=ANY(${trackedIds});
+DELETE FROM public.user_roles WHERE user_id=ANY(${trackedIds});
+DELETE FROM public.admin_users WHERE user_id=ANY(${trackedIds});`);
+      const linkedRows = jsonQuery(`SELECT jsonb_build_object(
+        'memberships',(SELECT count(*) FROM public.tenant_memberships WHERE user_id=ANY(${trackedIds})),
+        'user_roles',(SELECT count(*) FROM public.user_roles WHERE user_id=ANY(${trackedIds})),
+        'admin_users',(SELECT count(*) FROM public.admin_users WHERE user_id=ANY(${trackedIds})),
+        'employee_links',(SELECT count(*) FROM public.employees WHERE user_id=ANY(${trackedIds})))`);
+      record('Synthetic authorization and employee links are removed from the disposable fixture',
+        Object.values(linkedRows).every(count => count === 0), JSON.stringify(linkedRows));
+    } catch (error) {
+      record('Synthetic authorization and employee links are removed from the disposable fixture', false,
         `${error?.name || 'Error'}: ${String(error?.message || error).split('\n')[0].slice(0, 240)}`);
     }
   }

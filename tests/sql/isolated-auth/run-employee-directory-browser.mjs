@@ -326,7 +326,21 @@ try {
   if (!editorLabels.some(label => label.includes('Home address'))) {
     throw new Error(`Contact editor labels do not include Home address: ${JSON.stringify(editorLabels)}.`);
   }
-  await contactEditor.getByLabel('Home address', { exact: true }).fill('Unsaved address that should be discarded');
+  try {
+    await contactEditor.getByLabel('Home address', { exact: true }).fill('Unsaved address that should be discarded');
+  } catch (error) {
+    const labelText = await contactEditor.locator('label').allTextContents();
+    const controls = await contactEditor.locator('textarea').evaluateAll(elements => elements.map(element => ({
+      id: element.id,
+      name: element.getAttribute('name'),
+      ariaLabel: element.getAttribute('aria-label'),
+      labelledBy: element.getAttribute('aria-labelledby'),
+      labels: element.labels ? [...element.labels].map(label => label.innerText) : [],
+      disabled: element.disabled,
+      placeholder: element.getAttribute('placeholder'),
+    })));
+    throw new Error(`Home address field is not accessible through its visible label: ${String(error?.message || error).split('\n', 1)[0]}; labels=${JSON.stringify(labelText)}; controls=${JSON.stringify(controls)}.`);
+  }
   managerPage.once('dialog', dialog => dialog.accept());
   await managerDetails.getByRole('button', { name: 'Cancel', exact: true }).click();
   await managerDetails.getByText('QA A home address', { exact: true }).waitFor({ state: 'visible' });
@@ -394,9 +408,14 @@ try {
   await managerDetailsAfterRefresh.getByRole('button', { name: 'View contact details' }).click();
   await managerDetailsAfterRefresh.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Employee contact details after desktop refresh recovery');
+  await managerDetailsAfterRefresh.getByRole('button', { name: 'Close', exact: true }).click();
   await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await managerDetailsAfterRefresh.getByText('যোগাযোগের তথ্য', { exact: true }).waitFor({ state: 'visible' });
-  await managerDetailsAfterRefresh.getByText('অফিসিয়াল ইমেইল', { exact: true }).waitFor({ state: 'visible' });
+  await managerPage.getByRole('button', { name: 'বিস্তারিত দেখুন: Synthetic Employee A' }).click();
+  const managerDetailsBengali = managerPage.getByRole('dialog', { name: 'Synthetic Employee A' });
+  await managerDetailsBengali.getByRole('button', { name: 'যোগাযোগের তথ্য দেখুন' }).click();
+  await managerDetailsBengali.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
+  await managerDetailsBengali.getByText('যোগাযোগের তথ্য', { exact: true }).waitFor({ state: 'visible' });
+  await managerDetailsBengali.getByText('অফিসিয়াল ইমেইল', { exact: true }).waitFor({ state: 'visible' });
   await managerPage.getByRole('button', { name: 'কর্মচারীর রেকর্ড বন্ধ করুন' }).click();
   if (managerContactReadCalls < 3) throw new Error(`Contact read recovery/refresh made too few RPC attempts: ${managerContactReadCalls}.`);
 
