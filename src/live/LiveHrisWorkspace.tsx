@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import attendanceDownloadIcon from '../assets/attendance-download.png';
 import attendanceFilterIcon from '../assets/attendance-filter.svg';
 import attendanceSearchIcon from '../assets/attendance-search.svg';
@@ -290,6 +290,8 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   const teamReportDetailSequence = useRef(0);
   const activeDashboardTenantId = useRef(tenantId);
   const teamReportDetailHeading = useRef<HTMLHeadingElement>(null);
+  const teamReportDetailDialog = useRef<HTMLElement>(null);
+  const teamReportDetailTrigger = useRef<HTMLButtonElement | null>(null);
   activeDashboardTenantId.current = tenantId;
 
   async function load() {
@@ -404,11 +406,6 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   useEffect(() => {
     if (!teamReportDetail) return;
     teamReportDetailHeading.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setTeamReportDetail(null);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
   }, [teamReportDetail]);
   useEffect(() => {
     if (summary && (!Array.isArray(summary.attendance_last_30_days) || summary.attendance_last_30_days.length < 30)) {
@@ -462,9 +459,55 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     setTeamReportDateFilter(teamReportDateDraft);
   }
 
-  function openTeamReportDetails(row: DashboardTeamReportRow) {
+  function closeTeamReportDetails() {
+    setTeamReportDetail(null);
+    const trigger = teamReportDetailTrigger.current;
+    window.requestAnimationFrame(() => {
+      if (trigger?.isConnected) trigger.focus();
+      else document.getElementById('dashboard-team-report-heading')?.focus();
+      if (teamReportDetailTrigger.current === trigger) teamReportDetailTrigger.current = null;
+    });
+  }
+
+  function handleTeamReportDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeTeamReportDetails();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const dialog = teamReportDetailDialog.current;
+    if (!dialog) return;
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter(element => element.tabIndex >= 0 && element.getClientRects().length > 0);
+    if (!focusable.length) {
+      event.preventDefault();
+      teamReportDetailHeading.current?.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement;
+    const activeIndex = focusable.indexOf(activeElement as HTMLElement);
+    if (activeIndex < 0) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && activeIndex === 0) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && activeIndex === focusable.length - 1) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function openTeamReportDetails(row: DashboardTeamReportRow, trigger: HTMLButtonElement) {
     if (!canReport || !currentTeamReportDate) return;
     if (!row.team_id && String(row.team_name || '') !== 'Unassigned') return;
+    teamReportDetailTrigger.current = trigger;
     setTeamReportDetail({
       tenantId,
       teamName: String(row.team_name || tx('Unassigned')),
@@ -613,7 +656,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
                       <td className="px-4 py-4 tabular-nums">{display(row.work_from_office)}</td>
                       <td className="px-4 py-4 tabular-nums">{display(row.work_from_home)}</td>
                       <td className="px-4 py-4 tabular-nums">{display(row.client_meeting)}</td>
-                      <td className="px-4 py-4"><button type="button" onClick={() => openTeamReportDetails(row)}
+                      <td className="px-4 py-4"><button type="button" onClick={event => openTeamReportDetails(row, event.currentTarget)}
                         aria-label={`${tx('View attendance details for')} ${display(tx(String(row.team_name || 'Unassigned')))}`}
                         className="min-h-12 rounded-md border border-[#DEE0E3] px-3 text-xs font-medium text-[#08558B] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">{tx('View details')}</button></td>
                     </tr>)}
@@ -634,13 +677,13 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         <p className="mt-1 text-xs text-slate-500">{tx('Team membership totals reflect current active employee records; attendance counts use the selected report date.')}</p>
       </section>}
       {teamReportDetail && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
-        onMouseDown={event => { if (event.target === event.currentTarget) setTeamReportDetail(null); }}>
-        <section role="dialog" aria-modal="true" aria-labelledby="team-report-detail-heading" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+        onMouseDown={event => { if (event.target === event.currentTarget) closeTeamReportDetails(); }}>
+        <section ref={teamReportDetailDialog} role="dialog" aria-modal="true" aria-labelledby="team-report-detail-heading" onKeyDown={handleTeamReportDialogKeyDown} className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
           <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-5">
             <div><h3 ref={teamReportDetailHeading} id="team-report-detail-heading" tabIndex={-1} className="font-semibold text-slate-900">{tx('Team report details')}</h3>
               <p className="mt-1 text-sm text-slate-600">{display(tx(teamReportDetail.teamName))} · {displayAttendanceDate(teamReportDetail.date)}</p>
               <p className="mt-1 text-xs text-slate-500">{tx('Authorized employee-level attendance aggregates for the selected date.')}</p></div>
-            <button type="button" onClick={() => setTeamReportDetail(null)} className="min-h-10 shrink-0 rounded-md border border-slate-300 px-3 text-sm">{tx('Close')}</button>
+            <button type="button" onClick={closeTeamReportDetails} className="min-h-10 shrink-0 rounded-md border border-slate-300 px-3 text-sm">{tx('Close')}</button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
             {teamReportDetailError && teamReportErrorMessage(teamReportDetailError, () => setTeamReportDetailRetry(value => value + 1))}
