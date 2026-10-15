@@ -57,6 +57,10 @@ async function signIn(page, email = process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EM
   const sanitize = value => String(value || '')
     .replaceAll(email, '[synthetic account]')
     .replaceAll(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, '[token redacted]');
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/auth/v1/')) authTrace.push(`Auth request started: ${request.method()} ${url.pathname}`);
+  });
   page.on('response', response => {
     const url = new URL(response.url());
     if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {

@@ -47,6 +47,13 @@ const services = parseEnv(statusText);
 if (!services.API_URL || !services.ANON_KEY || !services.SERVICE_ROLE_KEY || !services.DB_URL) {
   throw new Error('The local Supabase CLI did not return the expected disposable service settings.');
 }
+if (process.env.HRIS_SUPABASE_API_URL_OVERRIDE) {
+  const override = new URL(process.env.HRIS_SUPABASE_API_URL_OVERRIDE);
+  if (override.protocol !== 'http:' || override.hostname !== '127.0.0.1') {
+    throw new Error('Refusing a non-loopback API override for the disposable contact test.');
+  }
+  services.API_URL = override.origin;
+}
 const apiUrl = new URL(services.API_URL);
 const dbUrl = new URL(services.DB_URL);
 if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== expectedApiPort
@@ -226,6 +233,8 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
       && readDeniedCodes.every(code => code === '42501')
       && crossTenantRead.error?.code === '42501' && Boolean(anonymousRead.error),
     JSON.stringify({ manager: managerRead.error?.code || managerRead.data?.official_email || 'allowed',
+      managerError: managerRead.error ? { code: managerRead.error.code, message: managerRead.error.message } : null,
+      managerDataKeys: managerRead.data && typeof managerRead.data === 'object' ? Object.keys(managerRead.data) : [],
       managerB: managerBRead.error?.code || managerBRead.data?.official_email || 'allowed',
       denied: readDeniedCodes, crossTenant: crossTenantRead.error?.code, anonymousDenied: Boolean(anonymousRead.error) }));
 
