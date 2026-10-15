@@ -26,16 +26,26 @@ async function signInSyntheticManager(
   page: import('@playwright/test').Page,
   failures: { teamReport?: number; teamDetails?: number } = {},
   tenantScenario: 'single' | 'both-admin' | 'employee-only-b' = 'single',
+  deferDashboardTenantId: string | null = null,
 ) {
   const reportState: {
     teamReportCalls: Record<string, unknown>[];
     teamDetailsCalls: Record<string, unknown>[];
     dashboardSummaryCalls: Record<string, unknown>[];
+    dashboardSummaryCompletedCalls: Record<string, unknown>[];
+    dashboardSummaryDeferTenantId: string | null;
+    dashboardSummaryWasDeferred: boolean;
+    releaseDashboardSummary: (() => void) | null;
     teamReportFailures: number;
     teamDetailsFailures: number;
     teamReportDelay: number;
     teamDetailsDelay: number;
-  } = { teamReportCalls: [], teamDetailsCalls: [], dashboardSummaryCalls: [], teamReportFailures: failures.teamReport || 0, teamDetailsFailures: failures.teamDetails || 0, teamReportDelay: 0, teamDetailsDelay: 0 };
+  } = {
+    teamReportCalls: [], teamDetailsCalls: [], dashboardSummaryCalls: [], dashboardSummaryCompletedCalls: [],
+    dashboardSummaryDeferTenantId: deferDashboardTenantId, dashboardSummaryWasDeferred: false, releaseDashboardSummary: null,
+    teamReportFailures: failures.teamReport || 0, teamDetailsFailures: failures.teamDetails || 0,
+    teamReportDelay: 0, teamDetailsDelay: 0,
+  };
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.route('**/auth/v1/**', async route => {
     const requestPath = new URL(route.request().url()).pathname;
@@ -101,6 +111,11 @@ async function signInSyntheticManager(
     if (requestPath.endsWith('/rpc/hris_get_tenant_dashboard_summary')) {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       reportState.dashboardSummaryCalls.push(request);
+      if (!reportState.dashboardSummaryWasDeferred && request.p_tenant_id === reportState.dashboardSummaryDeferTenantId) {
+        reportState.dashboardSummaryWasDeferred = true;
+        await new Promise<void>(resolve => { reportState.releaseDashboardSummary = resolve; });
+        reportState.releaseDashboardSummary = null;
+      }
       const tenantB = request.p_tenant_id === tenantIdB;
       const trend = Array.from({ length: 30 }, (_, index) => {
         const date = new Date(Date.now() - (29 - index) * 86_400_000).toISOString().slice(0, 10);
@@ -113,6 +128,7 @@ async function signInSyntheticManager(
         attendance_corrections_pending: 2, leave_pending: 4, approvals_pending: 6,
         attendance_last_7_days: trend.slice(-7), attendance_last_30_days: trend,
       }) });
+      reportState.dashboardSummaryCompletedCalls.push(request);
       return;
     }
     const table = requestPath.split('/').pop();
@@ -158,6 +174,24 @@ test('tenant switching keeps the authorized manager workspace and loads the sele
     .filter({ has: page.getByText('Team Members', { exact: true }) });
   await expect(teamMembersCard).toContainText('11');
   expect(reportState.teamReportCalls.some(call => call.p_tenant_id === tenantIdB)).toBe(true);
+});
+
+test('late dashboard summary from the previous tenant cannot replace the selected tenant data', async ({ page }) => {
+  const reportState = await signInSyntheticManager(page, {}, 'both-admin', tenantId);
+  await expect.poll(() => reportState.dashboardSummaryCalls.some(call => call.p_tenant_id === tenantId)).toBe(true);
+
+  const tenantSelector = page.getByLabel('Organization');
+  await tenantSelector.selectOption(tenantIdB);
+  await expect.poll(() => reportState.dashboardSummaryCalls.some(call => call.p_tenant_id === tenantIdB)).toBe(true);
+  const teamMembersCard = page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid > div')
+    .filter({ has: page.getByText('Team Members', { exact: true }) });
+  await expect(teamMembersCard).toContainText('11');
+
+  expect(typeof reportState.releaseDashboardSummary).toBe('function');
+  reportState.releaseDashboardSummary?.();
+  await expect.poll(() => reportState.dashboardSummaryCompletedCalls.some(call => call.p_tenant_id === tenantId)).toBe(true);
+  await expect(teamMembersCard).toContainText('11');
+  await expect(teamMembersCard).not.toContainText('8');
 });
 
 test('tenant switching does not retain manager access in a tenant without dashboard permission', async ({ page }) => {
