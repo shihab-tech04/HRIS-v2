@@ -10,6 +10,7 @@ const activation = readFileSync(new URL('../../supabase/migrations/2026101407084
 const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const c1Fixture = readFileSync(new URL('../sql/candidate-c1/tenant-fixture.sql', import.meta.url), 'utf8');
 const c1Runner = readFileSync(new URL('../sql/candidate-c1/run-local-tenant-auth.mjs', import.meta.url), 'utf8');
+const c1Verification = readFileSync(new URL('../sql/candidate-c1/verify.sql', import.meta.url), 'utf8');
 
 test('recruitment events create one candidate-owned notification per history row', () => {
   assert.match(migration, /related_stage_history_id uuid/);
@@ -32,6 +33,9 @@ test('notification reads and read-state updates are owner-scoped and client inse
   assert.match(runner, /Candidates cannot create notifications; only the owner can update the existing read state/);
   assert.match(c1Fixture, /actor_type text NOT NULL CHECK \(actor_type = ANY \(ARRAY\['candidate','recruitment','system'\]/);
   assert.match(c1Runner, /'recruitment',\$\{sql\(staffId\)\}/);
+  assert.match(c1Runner, /path\.join\(here, 'verify\.sql'\)/);
+  assert.match(c1Verification, /c\.relrowsecurity/);
+  assert.match(c1Verification, /acl\.grantee=0[\s\S]*?acl\.privilege_type='SELECT'/);
 });
 
 test('recruitment event actor labels match the accepted database constraint', () => {

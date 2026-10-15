@@ -100,6 +100,9 @@ for (const file of [
   path.join(root, 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'),
   path.join(root, 'supabase/migrations/20261013120355_hris_candidate_profile_rpcs_active_tenant_scope.sql'),
 ]) psql(readFileSync(file, 'utf8'));
+// Exercise the catalog-level grant and RLS assertions against this isolated
+// database after applying the same access-control migrations under test.
+psql(readFileSync(path.join(here, 'verify.sql'), 'utf8'));
 
 const ids = users.map(() => randomUUID());
 const staffId = randomUUID();
