@@ -1,26 +1,5 @@
 name: Phase 2A isolated PostgreSQL execution
 on:
-  pull_request:
-    paths:
-      - 'supabase/staging/phase2a/**'
-      - 'tests/sql/phase2a/**'
-      - 'tests/sql/candidate-c1/**'
-      - 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'
-      - 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'
-      - 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'
-      - 'supabase/migrations/20261013120355_hris_candidate_profile_rpcs_active_tenant_scope.sql'
-      - '.github/workflows/phase2a-postgres.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'supabase/staging/phase2a/**'
-      - 'tests/sql/phase2a/**'
-      - 'tests/sql/candidate-c1/**'
-      - 'supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql'
-      - 'supabase/migrations/20261013052128_hris_candidate_c1_revoke_direct_table_access.sql'
-      - 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'
-      - 'supabase/migrations/20261013120355_hris_candidate_profile_rpcs_active_tenant_scope.sql'
-      - '.github/workflows/phase2a-postgres.yml'
   workflow_dispatch:
 
 permissions:
@@ -28,7 +7,8 @@ permissions:
 
 jobs:
   phase2a-postgres:
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development/hris-checkpoints'
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       database:

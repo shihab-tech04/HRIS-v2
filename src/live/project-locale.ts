@@ -301,6 +301,7 @@ const bengali: Record<string, string> = {
   'No teams match': 'কোনো দলের মিল পাওয়া যায়নি',
   'today': 'আজ',
   'Download Report': 'প্রতিবেদন ডাউনলোড করুন',
+  'Download details': 'বিস্তারিত ডাউনলোড করুন',
   'Team report data is unavailable until the connection recovers.': 'সংযোগ পুনরুদ্ধার না হওয়া পর্যন্ত দলভিত্তিক প্রতিবেদন পাওয়া যাবে না।',
   'Team report totals': 'দলভিত্তিক প্রতিবেদনের মোট হিসাব',
   'Scrollable team report totals': 'স্ক্রলযোগ্য দলভিত্তিক প্রতিবেদনের মোট হিসাব',

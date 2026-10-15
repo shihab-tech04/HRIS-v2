@@ -44,6 +44,20 @@ test('filtered dashboard totals and CSV use the same visible aggregate team rows
   assert.match(workspace, /disabled=\{teamReportLoading \|\| !visibleTeamReportRows\.length\}/);
 });
 
+test('team detail CSV is limited to the authorized selected tenant, date, and returned detail rows', () => {
+  const detailExport = workspace.slice(workspace.indexOf('function downloadTeamReportDetails()'), workspace.indexOf('\n  return <section aria-labelledby="live-dashboard-heading"'));
+  assert.match(detailExport, /!canReport \|\| !detail \|\| detail\.tenantId !== tenantId/);
+  assert.match(detailExport, /activeDashboardTenantId\.current !== detail\.tenantId/);
+  assert.match(detailExport, /teamReportDetailTenantId !== detail\.tenantId \|\| !teamReportDetailRows\.length/);
+  assert.match(detailExport, /teamReportDetailRows\.map\(row => \[/);
+  assert.match(detailExport, /managerial-dashboard-team-details-\$\{detail\.date\}\.csv/);
+  assert.match(workspace, /aria-label=\{tx\('Download details'\)\}/);
+  assert.match(workspace, /teamReportDetailError !== ''[\s\S]*teamReportDetailTenantId !== teamReportDetail\.tenantId/);
+  assert.match(browserSpec, /managerial-dashboard-team-details-2026-10-15\.csv/);
+  assert.match(browserSpec, /expect\(detailsCsv\)\.not\.toContain\('QA-A-002'\)/);
+  assert.match(locale, /'Download details':/);
+});
+
 test('isolated acceptance covers selected dates, role denials, team scoping, retry, refresh, CSV, and responsive layout', () => {
   assert.match(sqlRunner, /maxBuffer:\s*16 \* 1024 \* 1024/);
   for (const label of [

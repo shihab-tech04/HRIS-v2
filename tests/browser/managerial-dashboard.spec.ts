@@ -229,6 +229,8 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await detailButton.click();
   const details = page.getByRole('dialog', { name: 'দলভিত্তিক প্রতিবেদনের বিস্তারিত' });
   await expect(details.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদনের বিস্তারিত' })).toBeFocused();
+  const detailsDownload = details.getByRole('button', { name: 'বিস্তারিত ডাউনলোড করুন' });
+  await expect(detailsDownload).toBeDisabled();
   const retryDetails = details.getByRole('button', { name: 'আবার চেষ্টা করুন' });
   await retryDetails.waitFor({ state: 'visible' });
   await page.keyboard.press('Shift+Tab');
@@ -239,6 +241,19 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await expect(details.getByRole('row', { name: /Synthetic Team Employee/ })).toBeVisible();
   await expect(details.getByText('QA-A-001')).toBeVisible();
   await expect(details.getByText('QA-A-002')).toHaveCount(0);
+  await expect(detailsDownload).toBeEnabled();
+  const detailsDownloadWaiter = page.waitForEvent('download');
+  await detailsDownload.click();
+  const detailsDownloadFile = await detailsDownloadWaiter;
+  expect(detailsDownloadFile.suggestedFilename()).toBe('managerial-dashboard-team-details-2026-10-15.csv');
+  const detailsCsvStream = await detailsDownloadFile.createReadStream();
+  const detailsCsvChunks: Buffer[] = [];
+  for await (const chunk of detailsCsvStream) detailsCsvChunks.push(Buffer.from(chunk));
+  const detailsCsv = Buffer.concat(detailsCsvChunks).toString('utf8');
+  expect(detailsCsv).toContain('Synthetic Team Employee');
+  expect(detailsCsv).toContain('QA-A-001');
+  expect(detailsCsv).not.toContain('QA-A-002');
+  expect(detailsCsv).toContain('উপস্থিতির দিন');
   expect(reportState.teamDetailsCalls).toHaveLength(2);
   expect(reportState.teamDetailsCalls.every(call => call.p_team_id === 'dddddddd-0000-4000-8000-000000000001'
     && call.p_unassigned === false && call.p_tenant_id === tenantId)).toBe(true);
@@ -248,9 +263,11 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   const detailsRegion = details.getByRole('region', { name: 'স্ক্রলযোগ্য দলভিত্তিক প্রতিবেদন বিস্তারিত' });
   await closeDetails.focus();
   await page.keyboard.press('Shift+Tab');
+  await expect(detailsDownload).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(detailsRegion).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(closeDetails).toBeFocused();
+  await expect(detailsDownload).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(details).toHaveCount(0);
   await expect(detailButton).toBeFocused();

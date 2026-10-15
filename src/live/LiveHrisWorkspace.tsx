@@ -541,6 +541,21 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     ], rows);
   }
 
+  function downloadTeamReportDetails() {
+    const detail = teamReportDetail;
+    if (!canReport || !detail || detail.tenantId !== tenantId
+      || activeDashboardTenantId.current !== detail.tenantId
+      || teamReportDetailTenantId !== detail.tenantId || !teamReportDetailRows.length) return;
+    const rows = teamReportDetailRows.map(row => [
+      row.employee_name, row.employee_number, row.designation_title, row.department_name,
+      row.attendance_days, row.office_hours, row.working_hours, row.deviation,
+    ]);
+    downloadCsv(`managerial-dashboard-team-details-${detail.date}.csv`, [
+      tx('Employee'), tx('Employee number'), tx('Designation'), tx('Department'),
+      tx('Attendance days'), tx('Office hours'), tx('Working hours'), tx('Deviation'),
+    ], rows);
+  }
+
   return <section aria-labelledby="live-dashboard-heading" className="space-y-5">
     <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div><h2 id="live-dashboard-heading" className="text-2xl font-semibold text-[#1E1B39]">Managerial Dashboard</h2>
@@ -683,7 +698,15 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
             <div><h3 ref={teamReportDetailHeading} id="team-report-detail-heading" tabIndex={-1} className="font-semibold text-slate-900">{tx('Team report details')}</h3>
               <p className="mt-1 text-sm text-slate-600">{display(tx(teamReportDetail.teamName))} · {displayAttendanceDate(teamReportDetail.date)}</p>
               <p className="mt-1 text-xs text-slate-500">{tx('Authorized employee-level attendance aggregates for the selected date.')}</p></div>
-            <button type="button" onClick={closeTeamReportDetails} className="min-h-10 shrink-0 rounded-md border border-slate-300 px-3 text-sm">{tx('Close')}</button>
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              <button type="button" disabled={!canReport || teamReportDetailLoading || teamReportDetailError !== ''
+                || teamReportDetailTenantId !== teamReportDetail.tenantId || !teamReportDetailRows.length}
+                onClick={downloadTeamReportDetails} aria-label={tx('Download details')}
+                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DEE0E3] px-3 text-sm text-[#08558B] disabled:opacity-50">
+                <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 object-contain" />{tx('Download details')}
+              </button>
+              <button type="button" onClick={closeTeamReportDetails} className="min-h-10 rounded-md border border-slate-300 px-3 text-sm">{tx('Close')}</button>
+            </div>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
             {teamReportDetailError && teamReportErrorMessage(teamReportDetailError, () => setTeamReportDetailRetry(value => value + 1))}
