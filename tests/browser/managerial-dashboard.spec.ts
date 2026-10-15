@@ -222,6 +222,9 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
   expect(metricColumns).toBe(8);
   await expect(page.getByRole('img', { name: /Attendance records over the last 7 days/ })).toBeVisible();
+  const attendanceChart = page.getByRole('img', { name: /Attendance records over the last 7 days/ });
+  await expect(attendanceChart.locator('line')).toHaveCount(6);
+  expect(await attendanceChart.locator('path[stroke="#08558B"]').getAttribute('d')).toContain('C ');
   const chartData = page.getByRole('table', { name: 'Attendance chart data' });
   await expect(chartData).toBeAttached();
   await expect(chartData.locator('tbody tr')).toHaveCount(7);

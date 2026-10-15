@@ -268,23 +268,36 @@ function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; 
     y: 176 - (Number(point.records) / max) * 132,
     point,
   }));
-  const path = coords.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+  const path = coords.length < 2
+    ? `M ${coords[0].x} ${coords[0].y}`
+    : coords.slice(0, -1).map((point, index) => {
+      const next = coords[index + 1];
+      const previous = coords[Math.max(0, index - 1)];
+      const after = coords[Math.min(coords.length - 1, index + 2)];
+      const lowerY = Math.min(point.y, next.y);
+      const upperY = Math.max(point.y, next.y);
+      const control1Y = Math.max(lowerY, Math.min(upperY, point.y + (next.y - previous.y) / 6));
+      const control2Y = Math.max(lowerY, Math.min(upperY, next.y - (after.y - point.y) / 6));
+      const control1X = point.x + (next.x - previous.x) / 6;
+      const control2X = next.x - (after.x - point.x) / 6;
+      return `${index ? '' : `M ${point.x} ${point.y} `}C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${next.x} ${next.y}`;
+    }).join(' ');
   const areaPath = coords.length ? `${path} L ${coords.at(-1)!.x} 176 L ${coords[0].x} 176 Z` : '';
   return <div className="overflow-x-auto p-3">
     <svg viewBox="0 0 650 220" role="img" aria-labelledby="attendance-trend-title attendance-trend-description" className="min-w-[600px] w-full">
       <title id="attendance-trend-title">{locale === 'bn' ? `${tx('Attendance records over the last')} ${range} ${tx('days')}` : `Attendance records over the last ${range} days`}</title>
       <desc id="attendance-trend-description">{tx('Daily attendance record counts returned by the tenant-scoped HRIS dashboard service.')}</desc>
       <defs><linearGradient id="attendance-trend-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#08558B" stopOpacity="0.22" /><stop offset="100%" stopColor="#08558B" stopOpacity="0.02" /></linearGradient></defs>
-      {[0, 1, 2, 3, 4].map(i => {
-        const y = 44 + i * 33;
-        const tick = Math.round(max * (1 - i / 4));
+      {[0, 1, 2, 3, 4, 5].map(i => {
+        const y = 44 + i * 26.4;
+        const tick = Math.round(max * (1 - i / 5));
         return <g key={i}>
           <line x1="58" x2="630" y1={y} y2={y} stroke="#e7eef0" />
           <text x="48" y={y + 4} textAnchor="end" fontSize="11" fill="#77838f">{tick}</text>
         </g>;
       })}
       <path d={areaPath} fill="url(#attendance-trend-area)" />
-      <path d={path} fill="none" stroke="#08558B" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={path} fill="none" stroke="#08558B" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {coords.map((point, index) => <g key={`${point.point.date}-${index}`}>
         <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#08558B" strokeWidth="2" />
         {(safePoints.length <= 7 || index % 5 === 0 || index === safePoints.length - 1) &&
@@ -651,7 +664,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     {error && <StatusMessage error={error} retryLabel={tx('Retry')} onRetry={() => void load()} />}
     {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized dashboard data…')}</p> : currentSummary && <>
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
-        <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Today’s Attendance Summary')}</h3>
+        <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-lg font-normal text-[#49454F]">{tx('Today’s Attendance Summary')}</h3>
           <p className="mt-1 text-xs text-[#86929E]">{tx('Live counts from this organization’s authorized records')}</p></div>
         {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
           {visibleMetrics.map(metric => <Metric key={metric.label} label={tx(metric.label)} value={metric.value} icon={metric.icon}
@@ -659,7 +672,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No dashboard metrics match')} “{search}”.</p>}
       </section>
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
-        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Daily Attendance Chart')}</h3>
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-normal text-[#49454F]">{tx('Daily Attendance Chart')}</h3>
           <p className="mt-1 text-xs text-[#86929E]">{locale === 'bn' ? `${tx('Recorded attendance by day')} · গত ${activeChartRange} ${tx('days')}` : `${tx('Recorded attendance by day')} · last ${activeChartRange} days`}</p></div>
           <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {tx('records')}</span></div>
         <AttendanceTrend points={trendPoints} range={activeChartRange} locale={locale} />
