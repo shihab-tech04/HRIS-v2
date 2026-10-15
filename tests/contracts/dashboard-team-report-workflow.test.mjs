@@ -45,6 +45,7 @@ test('filtered dashboard totals and CSV use the same visible aggregate team rows
 });
 
 test('isolated acceptance covers selected dates, role denials, team scoping, retry, refresh, CSV, and responsive layout', () => {
+  assert.match(sqlRunner, /maxBuffer:\s*16 \* 1024 \* 1024/);
   for (const label of [
     'Manager dashboard team report applies the selected report date',
     'Team detail RPC returns only the selected authorized tenant team',

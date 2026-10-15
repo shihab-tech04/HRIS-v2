@@ -33,6 +33,9 @@ const cliEnv = {
 function cli(args) {
   return execFileSync('supabase', [...args, '--workdir', workdir], {
     cwd: mainRoot, env: cliEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    // Supabase reset can emit several megabytes of container logs while
+    // restarting services in this disposable test stack.
+    maxBuffer: 16 * 1024 * 1024,
   });
 }
 
