@@ -88,3 +88,12 @@ The contact-only implementation remains committed on the development checkpoint 
 - Root cause is the disposable local Auth-to-Postgres request timeout, not a tested contact-form response. Do not count the browser journey as accepted or as a product-code failure. Do not repeat the same run until the local runtime is responsive; rerun once its `/user` request completes reliably.
 - Focused employee-directory contracts: **6/6 PASS**. Runner syntax checks: **2/2 PASS**. The current edit improves the captured failure summary so the actual Auth diagnostic is retained. No employee application source changed in this acceptance attempt.
 - No production service/data/permissions, paid service, `main`, or deployment was accessed or changed.
+
+## Bounded Auth and validation retry — 2026-10-15
+
+- Added a one-time browser login retry only when GoTrue returns HTTP 504 and the app displays its explicit “timed out, please retry” message. Added one retry for the side-effect-free forbidden-field RPC only when Postgres returns query-canceled `57014`; the original and retry codes remain in the output. These are test-harness changes; application source is unchanged.
+- A separate real local Auth smoke test passed: one synthetic user was created, signed in, verified with `getUser`, deleted, and readback confirmed zero synthetic users remaining.
+- After the bounded retry changes, `npm run check`: TypeScript **PASS**, contract tests **155/155 PASS**, Vite build **PASS** with the existing large-chunk advisory. Focused directory/contact contracts: **6/6 PASS**; both runner files pass `node --check`; `git diff --check` passes.
+- Focused isolated Auth/Postgres/browser acceptance: **5/6 PASS, 1 FAIL**. All **3/3 backend security records passed**, including the forbidden-field `22023`, email/length validation, duplicate `23505`, contact-only audited save, unchanged protected fields, cross-tenant denial and inactive membership/tenant denial. Cleanup deleted **7/7** tracked identities and verified **0 remaining**.
+- Browser acceptance again stopped before the manager reached the contact editor. The disposable Auth password-token request returned HTTP **504** during the real UI sign-in attempt; the bounded retry did not produce a workspace session. This is still an environment-level Auth/Postgres timeout, not a contact-form result. Do not claim the contact browser journey, persistence-after-refresh, or 375px/1280px contact screens accepted.
+- No production service/data/permissions, paid service, `main`, or deployment was accessed or changed.

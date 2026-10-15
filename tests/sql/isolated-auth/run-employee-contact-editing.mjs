@@ -239,9 +239,16 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
     'official_email','personal_email','phone','official_phone','address','mailing_address',
     'emergency_contact_name','emergency_contact_phone','emergency_contact_relation','updated_at'
   ] FROM public.employees e WHERE e.id=${sqlLiteral(employeeA)}::uuid`);
-  const invalidField = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
+  const invalidFieldAttempts = [];
+  const tryInvalidField = () => managerA.client.rpc('hris_update_tenant_employee_contact_details', {
     ...readArgs, p_contact_details: { ...updatePayload, employment_status: 'terminated' },
   });
+  let invalidField = await tryInvalidField();
+  invalidFieldAttempts.push(invalidField.error?.code || 'allowed');
+  if (invalidField.error?.code === '57014') {
+    invalidField = await tryInvalidField();
+    invalidFieldAttempts.push(invalidField.error?.code || 'allowed');
+  }
   const invalidEmail = await managerA.client.rpc('hris_update_tenant_employee_contact_details', {
     ...readArgs, p_contact_details: { ...updatePayload, official_email: 'not-an-email' },
   });
@@ -285,6 +292,7 @@ UPDATE public.employees SET user_id=(SELECT id FROM auth.users WHERE email='empl
   record('Backend allows contact-only saves, rejects lifecycle/org fields and invalid/duplicate values, denies direct writes, and audits changed field names',
     expectedValidation && expectedDenials && saveSucceeded && protectedFieldsUnchanged && auditIsFieldOnly,
     JSON.stringify({ invalidField: invalidField.error?.code, invalidEmail: invalidEmail.error?.code,
+      invalidFieldAttempts,
       longAddress: longAddress.error?.code, duplicateEmail: duplicateEmail.error?.code,
       unauthorizedWrites: deniedWriteCodes, crossTenantWrite: crossTenantWrite.error?.code,
       anonymousWriteDenied: Boolean(anonymousWrite.error), directWrite: directWrite.error?.code || `rows=${directWrite.data?.length}`,

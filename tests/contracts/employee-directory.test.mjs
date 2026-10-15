@@ -10,6 +10,7 @@ const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url),
 const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const isolatedRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const contactBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-directory-browser.mjs', import.meta.url), 'utf8');
+const contactRunner = readFileSync(new URL('../sql/isolated-auth/run-employee-contact-editing.mjs', import.meta.url), 'utf8');
 
 test('employee directory RPC requires an active tenant and membership-scoped employee permission', () => {
   assert.match(migration, /public\.is_live_session\(\)/);
@@ -54,6 +55,8 @@ test('employee directory UI uses the secured RPC and supports error recovery, fi
 test('isolated integration runner executes a local Auth-to-Postgres mobile and desktop directory journey', () => {
   assert.match(isolatedRunner, /run-employee-directory-browser\.mjs/);
   assert.match(isolatedRunner, /Real local Auth-to-Postgres employee directory journey/);
+  assert.match(contactBrowser, /retryableTimeout/);
+  assert.match(contactRunner, /invalidField\.error\?\.code === '57014'/);
 });
 
 test('employee detail sheet preserves permission-limited directory fields and adds manager-only contact editing with keyboard recovery', () => {

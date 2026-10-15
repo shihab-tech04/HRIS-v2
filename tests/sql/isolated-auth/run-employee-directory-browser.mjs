@@ -78,16 +78,29 @@ async function signIn(page, email = process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_EM
   await page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible' });
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  try {
-    await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
-  } catch (error) {
-    const timeout = String(error?.message || 'sign-in timed out').split('\n', 1)[0];
-    const headings = (await page.getByRole('heading').allTextContents()).join(' | ').slice(0, 200);
-    const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ')
-      .replaceAll(email, '[synthetic account]').slice(0, 200);
-    throw new Error(`Employee directory sign-in did not reach workspace: ${sanitize(timeout)}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}; Auth=${authTrace.join('; ') || 'no Auth response/error observed'}.`);
+  const submit = page.getByRole('button', { name: 'Sign in', exact: true });
+  let signInError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await submit.click();
+    try {
+      await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+      return;
+    } catch (error) {
+      signInError = error;
+      const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ')
+        .replaceAll(email, '[synthetic account]').slice(0, 200);
+      const retryableTimeout = attempt === 0
+        && authTrace.some(item => item === 'password token response HTTP 504')
+        && /timed out, please retry after a moment/i.test(alerts);
+      if (retryableTimeout) continue;
+      const timeout = String(signInError?.message || 'sign-in timed out').split('\n', 1)[0];
+      const headings = (await page.getByRole('heading').allTextContents()).join(' | ').slice(0, 200);
+      throw new Error(`Employee directory sign-in did not reach workspace: ${sanitize(timeout)}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}; Auth=${authTrace.join('; ') || 'no Auth response/error observed'}.`);
+    }
   }
+  const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ')
+    .replaceAll(email, '[synthetic account]').slice(0, 200);
+  throw new Error(`Employee directory sign-in did not reach workspace after one retry: ${String(signInError?.message || 'sign-in timed out').split('\n', 1)[0]}; alerts=${alerts || '[none]'}; Auth=${authTrace.join('; ') || 'no Auth response/error observed'}.`);
 }
 
 async function openEmployeeDirectory(page) {
