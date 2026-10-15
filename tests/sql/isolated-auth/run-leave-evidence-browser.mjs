@@ -344,6 +344,7 @@ try {
   await refreshedEmployeeContext.close();
 
   console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves and rejects, refreshed employee history and owner-only decision notifications persist, Bengali and English notification actions return to the matching request on mobile and desktop.');
+  console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {
