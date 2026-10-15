@@ -102,7 +102,10 @@ try {
   await correctionButton.click();
   const correctionDialog = page.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
   await correctionDialog.waitFor({ state: 'visible' });
-  await correctionDialog.getByLabel('কারণ', { exact: true }).fill('synthetic validation check');
+  // The required marker is visually hidden from assistive technology but remains
+  // part of Playwright's associated-label text; match the translated label
+  // without requiring an exact text-node match.
+  await correctionDialog.getByLabel('কারণ').fill('synthetic validation check');
   await correctionDialog.getByRole('button', { name: 'আবেদন জমা দিন', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।' }).waitFor({ state: 'visible' });
   await correctionDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
