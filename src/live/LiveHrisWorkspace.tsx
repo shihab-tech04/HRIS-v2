@@ -266,6 +266,7 @@ function AttendanceTrend({ points, range }: { points: DashboardPoint[]; range: '
 function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean; locale: Locale }) {
   const tx = (value: string) => projectText(locale, value);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryTenantId, setSummaryTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshedAt, setRefreshedAt] = useState('');
@@ -288,6 +289,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   const [teamReportDetailError, setTeamReportDetailError] = useState('');
   const [teamReportDetailRetry, setTeamReportDetailRetry] = useState(0);
   const teamReportDetailSequence = useRef(0);
+  const dashboardSummarySequence = useRef(0);
   const activeDashboardTenantId = useRef(tenantId);
   const teamReportDetailHeading = useRef<HTMLHeadingElement>(null);
   const teamReportDetailDialog = useRef<HTMLElement>(null);
@@ -295,6 +297,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   activeDashboardTenantId.current = tenantId;
 
   async function load() {
+    const requestId = ++dashboardSummarySequence.current;
     setLoading(true); setError('');
     try {
       const { data, error: rpcError } = await supabase.rpc('hris_get_tenant_dashboard_summary', {
@@ -303,15 +306,25 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
       if (rpcError) throw rpcError;
       const value = asObject(data);
       if (!value) throw new Error('Dashboard service returned an invalid response.');
+      if (requestId !== dashboardSummarySequence.current || activeDashboardTenantId.current !== tenantId) return;
       setSummary(value as DashboardSummary);
+      setSummaryTenantId(tenantId);
       setRefreshedAt(new Date().toLocaleString());
     } catch (cause) {
-      setSummary(null);
-      setError(cause instanceof Error ? cause.message : 'Unable to load the authorized dashboard.');
-    } finally { setLoading(false); }
+      if (requestId === dashboardSummarySequence.current && activeDashboardTenantId.current === tenantId) {
+        setSummary(null);
+        setSummaryTenantId('');
+        setError(cause instanceof Error ? cause.message : 'Unable to load the authorized dashboard.');
+      }
+    } finally {
+      if (requestId === dashboardSummarySequence.current && activeDashboardTenantId.current === tenantId) setLoading(false);
+    }
   }
 
-  useEffect(() => { void load(); }, [tenantId]);
+  useEffect(() => {
+    void load();
+    return () => { dashboardSummarySequence.current += 1; };
+  }, [tenantId]);
   useEffect(() => {
     setTeamReportDateDraft('');
     setTeamReportDateFilter('');
@@ -408,25 +421,27 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     teamReportDetailHeading.current?.focus();
   }, [teamReportDetail]);
   useEffect(() => {
-    if (summary && (!Array.isArray(summary.attendance_last_30_days) || summary.attendance_last_30_days.length < 30)) {
+    if (summaryTenantId === tenantId && summary
+      && (!Array.isArray(summary.attendance_last_30_days) || summary.attendance_last_30_days.length < 30)) {
       setChartRange('7');
     }
-  }, [summary]);
+  }, [summary, summaryTenantId, tenantId]);
 
+  const currentSummary = summaryTenantId === tenantId ? summary : null;
   const metrics = [
-    { label: 'Team Members', value: summary?.team_members ?? summary?.employees, icon: <Users className="h-4 w-4" />, emphasized: true },
-    { label: 'Present', value: summary?.present_today, icon: <CheckCircle2 className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
-    { label: 'Absent', value: summary?.absent_today, icon: <XCircle className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
-    { label: 'Work from Office', value: summary?.wfo_today, icon: <Building2 className="h-4 w-4" />, page: 'attendance' as PageId },
-    { label: 'Work From Home', value: summary?.wfh_today, icon: <House className="h-4 w-4" />, page: 'attendance' as PageId },
-    { label: 'Client Meeting', value: summary?.client_meeting_today, icon: <BriefcaseBusiness className="h-4 w-4" />, page: 'attendance' as PageId },
-    { label: 'On Leave', value: summary?.on_leave_today, icon: <CalendarDays className="h-4 w-4" />, page: 'leave' as PageId },
-    { label: 'Late', value: summary?.late_today, icon: <Clock3 className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'Team Members', value: currentSummary?.team_members ?? currentSummary?.employees, icon: <Users className="h-4 w-4" />, emphasized: true },
+    { label: 'Present', value: currentSummary?.present_today, icon: <CheckCircle2 className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
+    { label: 'Absent', value: currentSummary?.absent_today, icon: <XCircle className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
+    { label: 'Work from Office', value: currentSummary?.wfo_today, icon: <Building2 className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'Work From Home', value: currentSummary?.wfh_today, icon: <House className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'Client Meeting', value: currentSummary?.client_meeting_today, icon: <BriefcaseBusiness className="h-4 w-4" />, page: 'attendance' as PageId },
+    { label: 'On Leave', value: currentSummary?.on_leave_today, icon: <CalendarDays className="h-4 w-4" />, page: 'leave' as PageId },
+    { label: 'Late', value: currentSummary?.late_today, icon: <Clock3 className="h-4 w-4" />, page: 'attendance' as PageId },
   ];
   const visibleMetrics = metrics.filter(metric => metric.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
-  const has30DayTrend = Array.isArray(summary?.attendance_last_30_days) && summary.attendance_last_30_days.length >= 30;
+  const has30DayTrend = Array.isArray(currentSummary?.attendance_last_30_days) && currentSummary.attendance_last_30_days.length >= 30;
   const activeChartRange = chartRange === '30' && has30DayTrend ? '30' : '7';
-  const trendSource = has30DayTrend ? summary?.attendance_last_30_days || [] : summary?.attendance_last_7_days || [];
+  const trendSource = has30DayTrend ? currentSummary?.attendance_last_30_days || [] : currentSummary?.attendance_last_7_days || [];
   const trendPoints = trendSource.slice(-Number(activeChartRange));
   const currentTeamReportRows = teamReportTenantId === tenantId ? teamReportRows : [];
   const currentTeamReportDate = teamReportTenantId === tenantId ? teamReportDate : '';
@@ -518,13 +533,13 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   }
 
   function downloadReport() {
-    if (!summary) return;
+    if (!currentSummary) return;
     const rows: unknown[][] = [
-      ['Today', 'Team Members', summary.team_members ?? summary.employees],
+      ['Today', 'Team Members', currentSummary.team_members ?? currentSummary.employees],
       ...metrics.slice(1).map(metric => ['Today', metric.label, metric.value]),
       ...trendPoints.map(point => ['Attendance trend', point.date, point.records]),
     ];
-    downloadCsv(`managerial-dashboard-${summary.dashboard_date || localIsoDate(new Date())}.csv`, ['Section', 'Metric', 'Value'], rows);
+    downloadCsv(`managerial-dashboard-${currentSummary.dashboard_date || localIsoDate(new Date())}.csv`, ['Section', 'Metric', 'Value'], rows);
   }
 
   function downloadTeamReport() {
@@ -593,7 +608,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
       </button>
     </div>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
-    {loading && !summary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized dashboard data…</p> : summary && <>
+    {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized dashboard data…</p> : currentSummary && <>
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
         <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-base font-semibold text-[#1E1B39]">Today’s Attendance Summary</h3>
           <p className="mt-1 text-xs text-[#86929E]">Live counts from this organization’s authorized records</p></div>
@@ -612,8 +627,8 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">Needs attention</h3>
           <p className="mt-1 text-xs text-[#86929E]">Open a work queue to review pending items.</p></div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Metric label="Pending attendance corrections" value={summary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
-          <Metric label="Pending leave requests" value={summary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
+          <Metric label="Pending attendance corrections" value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
+          <Metric label="Pending leave requests" value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
         </div>
       </section>
       {canReport && <section aria-labelledby="dashboard-team-report-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
@@ -938,7 +953,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
   }, [aggregateOnly, appliedTeamFilter, currentRecords, teamSortDirection]);
   const rows = filteredRows;
 
-  return <section aria-labelledby="attendance-report-heading" className="space-y-4">
+  return <section aria-labelledby="attendance-report-heading" className={`space-y-4 ${aggregateOnly ? 'mx-auto w-full max-w-[1386px]' : ''}`}>
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
       <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
         {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
@@ -1053,7 +1068,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-2' : 'min-w-[1160px] border-spacing-0'}`}>
+        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1160px] border-spacing-0'}`}>
           <thead className="bg-white text-xs text-slate-500"><tr>
             {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="border-b border-slate-200 px-4 py-4 font-medium">
               {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">

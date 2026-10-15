@@ -40,6 +40,40 @@ async function assertNoOverflow(page, label) {
   if (dimensions.document > dimensions.viewport) throw new Error(`${label} overflowed: ${JSON.stringify(dimensions)}.`);
 }
 
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (character === '"') quoted = false;
+      else field += character;
+    } else if (character === '"' && field === '') quoted = true;
+    else if (character === ',') {
+      row.push(field);
+      field = '';
+    } else if (character === '\n') {
+      row.push(field.replace(/\r$/, ''));
+      if (row.some(value => value !== '')) rows.push(row);
+      row = [];
+      field = '';
+    } else field += character;
+  }
+  row.push(field.replace(/\r$/, ''));
+  if (row.some(value => value !== '')) rows.push(row);
+  return rows;
+}
+
+function csvNumber(value) {
+  const normalized = value.replaceAll(',', '').trim();
+  return normalized === '' ? 0 : Number(normalized);
+}
+
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
@@ -114,7 +148,36 @@ try {
   await teamSearch.fill('QA A Team');
   await teamReport.getByRole('row', { name: /QA A Team/ }).waitFor({ state: 'visible' });
   if (await teamReport.getByRole('row', { name: /Unassigned/ }).count()) throw new Error('The team search did not filter the visible rows.');
-  await teamReport.getByRole('row', { name: /Filtered total/ }).waitFor({ state: 'visible' });
+  const filteredTotal = teamReport.getByRole('row', { name: /Filtered total/ });
+  await filteredTotal.waitFor({ state: 'visible' });
+  const visibleSums = await teamReport.locator('tbody tr').evaluateAll(rows => {
+    const sums = Array.from({ length: 6 }, () => 0);
+    for (const row of rows) {
+      const values = Array.from(row.querySelectorAll('td')).slice(0, 6);
+      values.forEach((cell, index) => { sums[index] += Number((cell.textContent || '').replaceAll(',', '').trim()) || 0; });
+    }
+    return sums;
+  });
+  const visibleTotal = (await filteredTotal.locator('td').allTextContents()).slice(0, 6).map(csvNumber);
+  if (JSON.stringify(visibleTotal) !== JSON.stringify(visibleSums)) {
+    throw new Error(`Displayed filtered totals did not equal the visible team rows: totals=${JSON.stringify(visibleTotal)} rows=${JSON.stringify(visibleSums)}.`);
+  }
+  const filteredDownloadWait = page.waitForEvent('download');
+  await teamReport.getByRole('button', { name: 'Download Report', exact: true }).click();
+  const filteredDownload = await filteredDownloadWait;
+  const filteredStream = await filteredDownload.createReadStream();
+  const filteredChunks = [];
+  for await (const chunk of filteredStream) filteredChunks.push(chunk);
+  const filteredCsv = parseCsvRows(Buffer.concat(filteredChunks).toString('utf8'));
+  const filteredCsvTeams = filteredCsv.slice(1, -1);
+  const filteredCsvTotal = filteredCsv.at(-1);
+  if (!filteredCsvTeams.length || filteredCsvTeams.some(row => row[1] !== 'QA A Team')) {
+    throw new Error(`Filtered CSV included rows outside the visible team filter: ${JSON.stringify(filteredCsvTeams)}.`);
+  }
+  if (filteredCsvTotal?.[1] !== 'Filtered total'
+      || JSON.stringify(filteredCsvTotal.slice(2, 8).map(csvNumber)) !== JSON.stringify(visibleTotal)) {
+    throw new Error(`Filtered CSV total did not match the displayed total: csv=${JSON.stringify(filteredCsvTotal)} ui=${JSON.stringify(visibleTotal)}.`);
+  }
   await teamSearch.fill('');
   await teamReport.getByRole('row', { name: /Unassigned/ }).waitFor({ state: 'visible' });
 
