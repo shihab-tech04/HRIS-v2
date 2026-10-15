@@ -10,7 +10,7 @@ const required = [
   'HRIS_LOCAL_LEAVE_TENANT_ID', 'HRIS_LOCAL_LEAVE_EMPLOYEE_ID',
   'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
   'HRIS_LOCAL_LEAVE_REQUEST_REASON', 'HRIS_LOCAL_LEAVE_HISTORY_YEAR',
-  'HRIS_LOCAL_LEAVE_REJECTION_NOTE',
+  'HRIS_LOCAL_LEAVE_REJECTION_NOTE', 'HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -305,9 +305,45 @@ try {
       || !employeeRejectionText.includes(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE.toLocaleLowerCase())) {
     throw new Error('The employee did not see the manager rejection status and note after refreshing leave history.');
   }
+
+  await navigateTo(refreshedEmployee, 'Notifications');
+  const leaveApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);
+  await leaveApprovalCard.waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await leaveApprovalCard.waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Leave decision notifications mobile');
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'ছুটির অনুরোধ অনুমোদিত' }).first().waitFor({ state: 'visible' });
+  const bengaliApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);
+  await bengaliApprovalCard.getByRole('button', { name: 'ছুটির তথ্য খুলুন', exact: true }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const focusedUiRequest = refreshedEmployee.locator(`[data-leave-request-id="${uiLeaveRequestId}"]`);
+  await focusedUiRequest.waitFor({ state: 'visible' });
+  await refreshedEmployee.waitForFunction(expectedId =>
+    document.activeElement?.getAttribute('data-leave-request-id') === expectedId, uiLeaveRequestId);
+  const focusedUiRequestId = await refreshedEmployee.evaluate(() => document.activeElement?.getAttribute('data-leave-request-id'));
+  if (focusedUiRequestId !== uiLeaveRequestId) throw new Error('Opening the leave notification did not focus its matching request history row.');
+
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
+  await refreshedEmployee.setViewportSize({ width: 1280, height: 900 });
+  await navigateTo(refreshedEmployee, 'Notifications');
+  const leaveRejectionCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="rejected"][data-notification-request-id="${process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID}"]`);
+  await leaveRejectionCard.waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Leave decision notifications desktop');
+  await leaveRejectionCard.getByRole('button', { name: 'Open leave', exact: true }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const focusedRejectedRequest = refreshedEmployee.locator(`[data-leave-request-id="${process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID}"]`);
+  await focusedRejectedRequest.waitFor({ state: 'visible' });
+  await refreshedEmployee.waitForFunction(expectedId =>
+    document.activeElement?.getAttribute('data-leave-request-id') === expectedId,
+  process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID);
+  const focusedRejectedRequestId = await refreshedEmployee.evaluate(() => document.activeElement?.getAttribute('data-leave-request-id'));
+  if (focusedRejectedRequestId !== process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID) {
+    throw new Error('Opening the rejected leave notification did not focus its matching request history row.');
+  }
   await refreshedEmployeeContext.close();
 
-  console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves employee requests and rejects with a note, and refreshed employee history shows the decisions.');
+  console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves and rejects, refreshed employee history and owner-only decision notifications persist, Bengali and English notification actions return to the matching request on mobile and desktop.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

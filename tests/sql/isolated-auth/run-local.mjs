@@ -376,6 +376,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014160001_hris_learning_completion_evidence_requirement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014160002_hris_system_notifications_inbox.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015022305_hris_travel_decision_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261015195145_hris_leave_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
@@ -3819,6 +3820,44 @@ record('Tenant A leave approval applies holiday-aware balance and audit atomical
   leaveApproved.success === true && approvedRow.status === 'approved'
   && Number(leaveBalance.pending_days) === 4 && Number(leaveBalance.used_days) === 1
   && auditCount(ids.leaveApprove, 'leave.request.approved') === 1);
+const persistedLeaveDecision = queryAdmin(`SELECT jsonb_build_object(
+  'count',count(*)::integer,'kind',max(kind),'tenant_id',max(tenant_id::text),
+  'request_id',max(leave_request_id::text),'recipient_id',max(recipient_employee_id::text),
+  'created_at',max(created_at))
+  FROM public.leave_request_notifications WHERE tenant_id='${ids.tenantA}'::uuid
+    AND leave_request_id='${ids.leaveApprove}'::uuid`);
+const ownerLeaveDecisionRows = await employeeA.client.from('leave_request_notifications')
+  .select('id,tenant_id,leave_request_id,recipient_employee_id,kind,created_at')
+  .eq('tenant_id', ids.tenantA).eq('leave_request_id', ids.leaveApprove);
+const otherTenantLeaveDecisionRows = await employeeB.client.from('leave_request_notifications')
+  .select('id,tenant_id,leave_request_id,recipient_employee_id,kind')
+  .eq('tenant_id', ids.tenantA);
+const directLeaveDecisionInsert = await employeeA.client.from('leave_request_notifications').insert({
+  tenant_id: ids.tenantA, leave_request_id: ids.leaveApprove,
+  recipient_employee_id: '55555555-5555-4555-8555-555555555555', kind: 'rejected',
+  created_at: new Date().toISOString(),
+});
+const directLeaveDecisionUpdate = await employeeA.client.from('leave_request_notifications')
+  .update({ kind: 'rejected' }).eq('tenant_id', ids.tenantA).eq('leave_request_id', ids.leaveApprove);
+const directLeaveDecisionDelete = await employeeA.client.from('leave_request_notifications')
+  .delete().eq('tenant_id', ids.tenantA).eq('leave_request_id', ids.leaveApprove);
+const anonLeaveDecisionRead = attemptAs(null,
+  `SELECT * FROM public.leave_request_notifications WHERE tenant_id='${ids.tenantA}'::uuid`, 'anon');
+record('Leave decision notifications persist atomically and are owner-readable, tenant-isolated, and immutable to client roles',
+  persistedLeaveDecision.count === 1 && persistedLeaveDecision.kind === 'approved'
+    && persistedLeaveDecision.tenant_id === ids.tenantA
+    && persistedLeaveDecision.request_id === ids.leaveApprove
+    && persistedLeaveDecision.recipient_id === '55555555-5555-4555-8555-555555555555'
+    && Boolean(persistedLeaveDecision.created_at)
+    && !ownerLeaveDecisionRows.error && ownerLeaveDecisionRows.data.length === 1
+    && ownerLeaveDecisionRows.data[0].kind === 'approved'
+    && !otherTenantLeaveDecisionRows.error && otherTenantLeaveDecisionRows.data.length === 0
+    && Boolean(directLeaveDecisionInsert.error) && Boolean(directLeaveDecisionUpdate.error)
+    && Boolean(directLeaveDecisionDelete.error) && !anonLeaveDecisionRead.ok,
+  JSON.stringify({ persistedKind: persistedLeaveDecision.kind, ownerRows: ownerLeaveDecisionRows.data?.length,
+    foreignTenantRows: otherTenantLeaveDecisionRows.data?.length,
+    insertDenied: Boolean(directLeaveDecisionInsert.error), updateDenied: Boolean(directLeaveDecisionUpdate.error),
+    deleteDenied: Boolean(directLeaveDecisionDelete.error), anonymousDenied: !anonLeaveDecisionRead.ok }));
 
 const yearApproval = resolveLeave(managerA, ids.leaveYearBoundary, 'approved');
 const year2026 = balance(ids.leaveTypeA, 2026);
@@ -4492,18 +4531,25 @@ const unifiedLearningRows = unifiedLearningNotifications.data?.notifications || 
 const unifiedProjectRows = unifiedProjectNotifications.data?.notifications || [];
 const unifiedTravelRowsA = unifiedProjectRows.filter(row => row.source === 'travel_decision');
 const unifiedTravelRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'travel_decision');
+const unifiedLeaveRowsA = unifiedProjectRows.filter(row => row.source === 'leave_decision');
+const unifiedLeaveRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'leave_decision');
 const travelApprovalNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'approved');
 const travelRejectionNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'rejected');
 const travelApprovalNotificationB = unifiedTravelRowsB.find(row => row.travel_request_id === travelIds.requestB && row.kind === 'approved');
+const leaveApprovalNotificationA = unifiedLeaveRowsA.find(row => row.leave_request_id === ids.leaveApprove && row.kind === 'approved');
+const leaveRejectionNotificationA = unifiedLeaveRowsA.find(row => row.leave_request_id === ids.leaveHalfDay && row.kind === 'rejected');
+const leaveBrowserApprovalNotificationA = unifiedLeaveRowsA.find(row => row.leave_request_id === uiLeaveAcceptance?.id && row.kind === 'approved');
+const leaveBrowserRejectionNotificationA = unifiedLeaveRowsA.find(row => row.leave_request_id === leaveRejectionRequestId && row.kind === 'rejected');
+const leaveApprovalNotificationB = unifiedLeaveRowsB.find(row => row.leave_request_id === ids.leaveTenantB && row.kind === 'approved');
 const unifiedProjectReviewRow = unifiedProjectRows.find(row => row.source === 'project_review' && row.task_id === projectTaskId);
 const unifiedLearningRowCount = unifiedProjectRows.filter(row => row.source === 'learning_completion').length;
-record('Unified notification feed merges project and learning events with keyset paging, tenant isolation, and source-specific unread semantics',
+record('Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership',
   !unifiedLearningNotifications.error && unifiedLearningRows.length === 1
     && unifiedLearningNotifications.data.has_more === true
     && unifiedLearningRows[0].source === 'project_review'
     && unifiedLearningRows[0].task_id === projectTaskId
     && !unifiedLearningNotificationsPageTwo.error && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
-    && ['project_review','learning_completion','travel_decision'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
+    && ['project_review','learning_completion','travel_decision','leave_decision'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
     && unifiedLearningNotificationsPageTwo.data.notifications[0].id !== unifiedLearningRows[0].id
     && unifiedProjectRows.some(row => row.id === unifiedLearningNotificationsPageTwo.data.notifications[0].id
       && row.source === unifiedLearningNotificationsPageTwo.data.notifications[0].source)
@@ -4513,10 +4559,16 @@ record('Unified notification feed merges project and learning events with keyset
     && travelApprovalNotificationA?.travel_destination === 'QA A client site'
     && travelRejectionNotificationA?.travel_from_date === '2026-11-02'
     && travelApprovalNotificationB?.travel_destination === 'QA B client site'
+    && leaveApprovalNotificationA?.leave_type_name === 'Synthetic annual leave'
+    && leaveRejectionNotificationA?.leave_type_name === 'Synthetic annual leave'
+    && leaveBrowserApprovalNotificationA?.leave_type_name === 'Synthetic evidence-required leave'
+    && leaveBrowserRejectionNotificationA?.kind === 'rejected'
+    && leaveApprovalNotificationB?.leave_type_name === 'Synthetic tenant B leave'
+    && !Object.keys(leaveApprovalNotificationA || {}).some(key => /note|reason|employee|recipient/i.test(key))
     && !Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key))
     && !unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB)
     && !unifiedTenantBNotifications.error
-    && unifiedTenantBNotifications.data.notifications.every(row => row.source === 'travel_decision')
+    && unifiedTenantBNotifications.data.notifications.every(row => ['travel_decision','leave_decision'].includes(row.source))
     && Boolean(unifiedCrossTenantNotifications.error?.code === '42501')
     && Boolean(unifiedGlobalNotifications.error?.code === '42501') && !unifiedAnonymousNotifications.ok
     && functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon === false,
@@ -4524,10 +4576,16 @@ record('Unified notification feed merges project and learning events with keyset
     unifiedLearningNotificationsPageTwo.data?.notifications?.[0]?.source],
     sourceCounts: { total: unifiedProjectRows.length, learning: unifiedLearningRowCount,
       travel: unifiedTravelRowsA.length,
+      leave: unifiedLeaveRowsA.length,
       projectReview: unifiedProjectRows.filter(row => row.source === 'project_review').length },
     travelApprovalA: travelApprovalNotificationA?.travel_destination,
     travelRejectionA: travelRejectionNotificationA?.kind,
     travelApprovalB: travelApprovalNotificationB?.travel_destination,
+    leaveApprovalA: leaveApprovalNotificationA?.leave_type_name,
+    leaveRejectionA: leaveRejectionNotificationA?.kind,
+    leaveBrowserApproval: leaveBrowserApprovalNotificationA?.leave_type_name,
+    leaveBrowserRejection: leaveBrowserRejectionNotificationA?.kind,
+    leaveApprovalB: leaveApprovalNotificationB?.leave_type_name,
     taskReviewStatus: unifiedProjectReviewRow?.review_status,
     learningError: unifiedLearningNotifications.error?.code,
     pageTwoError: unifiedLearningNotificationsPageTwo.error?.code,

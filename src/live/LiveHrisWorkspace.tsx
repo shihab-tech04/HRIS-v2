@@ -1877,7 +1877,10 @@ function PersonalLeaveRequests({
   </>;
 }
 
-function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: string; userId: string; tenantName: string }) {
+function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, onFocusHandled }: {
+  tenantId: string; userId: string; tenantName: string;
+  focusRequestId: string | null; onFocusHandled: (requestId: string) => void;
+}) {
   const [leave, setLeave] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1928,7 +1931,26 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
     return Array.from({ length: Math.min(last - first + 1, 20) }, (_, index) => String(first + index));
   });
   const years = Array.from(new Set([defaultYear, ...requestYears])).sort((left, right) => Number(right) - Number(left));
+  const yearListKey = years.join(',');
   const selectedYear = years.includes(historyYear) ? historyYear : defaultYear;
+  const focusedRequest = requests.find(row => String(row.id || '') === focusRequestId);
+  useEffect(() => {
+    if (!focusRequestId || loading || !leave) return;
+    const requestYear = String(focusedRequest?.from_date || '').slice(0, 4);
+    if (years.includes(requestYear) && selectedYear !== requestYear) {
+      setHistoryYear(requestYear);
+      return;
+    }
+    const row = Array.from(document.querySelectorAll<HTMLElement>('[data-leave-request-id]'))
+      .find(candidate => candidate.dataset.leaveRequestId === focusRequestId);
+    if (!row) {
+      onFocusHandled(focusRequestId);
+      return;
+    }
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.focus({ preventScroll: true });
+    onFocusHandled(focusRequestId);
+  }, [focusRequestId, focusedRequest?.from_date, loading, leave, onFocusHandled, selectedYear, yearListKey]);
   const yearNumber = Number(selectedYear);
   const history = requests.filter(row => {
     const first = Number(String(row.from_date || '').slice(0, 4));
@@ -2041,7 +2063,8 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName }: { tenantId: str
               const status = String(row.status || '').toLowerCase();
               const statusClass = status === 'approved' ? 'text-emerald-700'
                 : status === 'rejected' ? 'text-rose-700' : 'text-slate-600';
-              return <tr key={String(row.id || index)}>
+              return <tr key={String(row.id || index)} data-leave-request-id={String(row.id || '')} tabIndex={-1}
+                className="focus:outline focus:outline-2 focus:outline-[#085587]">
                 <td className="whitespace-nowrap px-3 py-3">{displayShortDate(row.from_date)}</td>
                 <td className="whitespace-nowrap px-3 py-3">{displayShortDate(row.to_date)}</td>
                 <td className="px-3 py-3 tabular-nums">{display(row.requested_days)}</td>
@@ -2866,6 +2889,7 @@ export function LiveHrisWorkspace({
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [travelFocusRequestId, setTravelFocusRequestId] = useState<string | null>(null);
+  const [leaveFocusRequestId, setLeaveFocusRequestId] = useState<string | null>(null);
   const nav = useMemo(() => {
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
     if (permissions.dashboard) items.push({ id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" />, group: 'HRIS' });
@@ -2921,6 +2945,8 @@ export function LiveHrisWorkspace({
   const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
   const openTravelRequest = (requestId: string) => { setTravelFocusRequestId(requestId); navigate('my-travel'); };
   const clearTravelRequestFocus = (requestId: string) => setTravelFocusRequestId(currentId => currentId === requestId ? null : currentId);
+  const openLeaveRequest = (requestId: string) => { setLeaveFocusRequestId(requestId); navigate('my-leave'); };
+  const clearLeaveRequestFocus = (requestId: string) => setLeaveFocusRequestId(currentId => currentId === requestId ? null : currentId);
   const current = localizedNav.find(item => item.id === page);
 
   const navigation = <nav aria-label="HRIS modules" className="space-y-1">
@@ -2991,11 +3017,12 @@ export function LiveHrisWorkspace({
           {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
-            onOpenTravel={openTravelRequest} />}
+            onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
-          {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId} />}
+          {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId}
+            focusRequestId={leaveFocusRequestId} onFocusHandled={clearLeaveRequestFocus} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} />}
           {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} locale={locale}
             focusRequestId={travelFocusRequestId} onFocusHandled={clearTravelRequestFocus} />}
