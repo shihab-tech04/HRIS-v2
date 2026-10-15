@@ -136,7 +136,7 @@ test('manager dashboard follows the Figma attendance summary and keeps its contr
 });
 
 test('manager dashboard team report is permission-gated, tenant-scoped, searchable and exportable', () => {
-  assert.match(workspace, /function LiveDashboard\(\{ tenantId, onOpen, canReport \}/);
+  assert.match(workspace, /function LiveDashboard\(\{ tenantId, onOpen, canReport, locale \}/);
   assert.match(workspace, /canReport && <section aria-labelledby="dashboard-team-report-heading"/);
   assert.match(workspace, /Search team report/);
   assert.match(workspace, /min-w-\[790px\]/);

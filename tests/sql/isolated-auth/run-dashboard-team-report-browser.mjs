@@ -46,7 +46,11 @@ try {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let teamRpcCalls = 0;
   let injectOutage = true;
+  let teamDetailCalls = 0;
+  let injectDetailOutage = true;
   const teamReportTenants = [];
+  const teamReportDates = [];
+  const teamDetailRequests = [];
   const directTableReads = [];
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -56,9 +60,22 @@ try {
       teamRpcCalls += 1;
       const body = route.request().postDataJSON();
       if (typeof body?.p_tenant_id === 'string') teamReportTenants.push(body.p_tenant_id);
+      if (typeof body?.p_report_date === 'string') teamReportDates.push(body.p_report_date);
       if (injectOutage) {
         injectOutage = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary team report outage.' }) });
+        return;
+      }
+    }
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+      && url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_dashboard_team_details')
+      && route.request().method() === 'POST') {
+      teamDetailCalls += 1;
+      const body = route.request().postDataJSON();
+      teamDetailRequests.push(body);
+      if (injectDetailOutage) {
+        injectDetailOutage = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic temporary team detail outage.' }) });
         return;
       }
     }
@@ -80,7 +97,7 @@ try {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'Dashboard', exact: true }).click();
   await page.getByRole('heading', { name: 'Managerial Dashboard', exact: true }).waitFor({ state: 'visible' });
-  const teamReport = page.getByRole('region', { name: 'Team Report' });
+  const teamReport = page.locator('section[aria-labelledby="dashboard-team-report-heading"]');
   await teamReport.getByRole('heading', { name: 'Team Report', exact: true }).waitFor({ state: 'visible' });
   await teamReport.getByRole('button', { name: 'Retry', exact: true }).waitFor({ state: 'visible' });
   if (teamRpcCalls !== 1) throw new Error(`Expected one injected Team Report outage, got ${teamRpcCalls} RPC calls.`);
@@ -97,8 +114,32 @@ try {
   await teamSearch.fill('QA A Team');
   await teamReport.getByRole('row', { name: /QA A Team/ }).waitFor({ state: 'visible' });
   if (await teamReport.getByRole('row', { name: /Unassigned/ }).count()) throw new Error('The team search did not filter the visible rows.');
+  await teamReport.getByRole('row', { name: /Filtered total/ }).waitFor({ state: 'visible' });
   await teamSearch.fill('');
   await teamReport.getByRole('row', { name: /Unassigned/ }).waitFor({ state: 'visible' });
+
+  const reportDate = teamReport.getByLabel('Report date');
+  const selectedReportDate = '2026-10-12';
+  await reportDate.fill(selectedReportDate);
+  const selectedDateResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_dashboard_team_report') && response.ok());
+  await teamReport.getByRole('button', { name: 'Apply date', exact: true }).click();
+  await selectedDateResponse;
+  if (!teamReportDates.includes(selectedReportDate)) throw new Error('The selected report date was not sent to the tenant report RPC.');
+
+  const teamDetailButton = teamReport.getByRole('button', { name: 'View attendance details for QA A Team' });
+  await teamDetailButton.click();
+  const detailDialog = page.getByRole('dialog', { name: 'Team report details' });
+  await detailDialog.getByRole('button', { name: 'Retry', exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Mobile Team Report detail error state');
+  await detailDialog.getByRole('button', { name: 'Retry', exact: true }).click();
+  await detailDialog.getByRole('row', { name: /QA-A-001/ }).waitFor({ state: 'visible' });
+  if (await detailDialog.getByText('QA-B-001', { exact: true }).count()) throw new Error('Team details returned an employee from another team.');
+  if (teamDetailRequests.length !== 2 || teamDetailRequests.some(request => request.p_tenant_id !== process.env.HRIS_LOCAL_DASHBOARD_TENANT_ID
+      || request.p_team_id !== 'dddddddd-0000-4000-8000-000000000001'
+      || request.p_unassigned !== false || request.p_report_date !== selectedReportDate)) {
+    throw new Error(`Team detail retry did not retain the selected tenant/team/date scope: ${JSON.stringify(teamDetailRequests)}.`);
+  }
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
 
   const refresh = teamReport.getByRole('button', { name: 'Refresh', exact: true });
   const refreshResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_dashboard_team_report') && response.ok());
@@ -115,15 +156,20 @@ try {
   if (!csv.includes('QA A Team') || !csv.includes('Unassigned') || csv.includes('QA B Team')) {
     throw new Error('Team report export did not preserve the current tenant-scoped aggregate rows.');
   }
+  if (!csv.includes('Filtered total')) throw new Error('CSV export did not include the same filtered total shown in the report.');
+
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await teamReport.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদন' }).waitFor({ state: 'visible' });
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Desktop Team Report');
-  if (teamRpcCalls !== 3 || teamReportTenants.length !== 3
+  if (teamRpcCalls !== 4 || teamReportTenants.length !== 4
       || teamReportTenants.some(id => id !== process.env.HRIS_LOCAL_DASHBOARD_TENANT_ID)) {
     throw new Error(`Expected outage, retry, and refresh to use the active tenant. Calls=${teamRpcCalls}; tenants=${JSON.stringify(teamReportTenants)}.`);
   }
+  if (teamDetailCalls !== 2) throw new Error(`Expected one injected team-detail outage and one retry; got ${teamDetailCalls} calls.`);
   if (directTableReads.length) throw new Error(`Team report bypassed the aggregate RPC with direct table reads: ${directTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres Team Report journey passed: injected outage retry, tenant-bound aggregate rows, search, CSV export, refresh recovery, and 375px mobile/1280px desktop layouts.');
+  console.log('Local Auth-to-Postgres Team Report journey passed: tenant-scoped date selection, filtered totals/CSV parity, team-scoped detail retry, Bengali labels, refresh recovery, and 375px mobile/1280px desktop layouts.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

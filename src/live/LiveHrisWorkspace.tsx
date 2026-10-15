@@ -76,6 +76,17 @@ type DashboardTeamReportRow = {
   work_from_home?: number;
   client_meeting?: number;
 };
+type DashboardTeamReportDetail = {
+  employee_name?: string;
+  employee_number?: string;
+  designation_title?: string;
+  team_name?: string | null;
+  department_name?: string;
+  attendance_days?: number;
+  office_hours?: number;
+  working_hours?: number;
+  deviation?: number;
+};
 type DashboardSummary = {
   dashboard_date?: string;
   employees?: number;
@@ -252,7 +263,8 @@ function AttendanceTrend({ points, range }: { points: DashboardPoint[]; range: '
   </div>;
 }
 
-function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean }) {
+function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -267,6 +279,18 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
   const [teamReportError, setTeamReportError] = useState('');
   const [teamReportSearch, setTeamReportSearch] = useState('');
   const [teamReportRefresh, setTeamReportRefresh] = useState(0);
+  const [teamReportDateDraft, setTeamReportDateDraft] = useState('');
+  const [teamReportDateFilter, setTeamReportDateFilter] = useState('');
+  const [teamReportDetail, setTeamReportDetail] = useState<{ tenantId: string; teamName: string; date: string; teamId: string | null; isUnassigned: boolean } | null>(null);
+  const [teamReportDetailTenantId, setTeamReportDetailTenantId] = useState('');
+  const [teamReportDetailRows, setTeamReportDetailRows] = useState<DashboardTeamReportDetail[]>([]);
+  const [teamReportDetailLoading, setTeamReportDetailLoading] = useState(false);
+  const [teamReportDetailError, setTeamReportDetailError] = useState('');
+  const [teamReportDetailRetry, setTeamReportDetailRetry] = useState(0);
+  const teamReportDetailSequence = useRef(0);
+  const activeDashboardTenantId = useRef(tenantId);
+  const teamReportDetailHeading = useRef<HTMLHeadingElement>(null);
+  activeDashboardTenantId.current = tenantId;
 
   async function load() {
     setLoading(true); setError('');
@@ -287,6 +311,16 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
 
   useEffect(() => { void load(); }, [tenantId]);
   useEffect(() => {
+    setTeamReportDateDraft('');
+    setTeamReportDateFilter('');
+    setTeamReportSearch('');
+    setTeamReportDetail(null);
+    setTeamReportDetailTenantId('');
+    setTeamReportDetailRows([]);
+    setTeamReportDetailError('');
+    teamReportDetailSequence.current += 1;
+  }, [tenantId]);
+  useEffect(() => {
     let active = true;
     if (!canReport) {
       setTeamReportRows([]);
@@ -294,6 +328,11 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
       setTeamReportDate('');
       setTeamReportError('');
       setTeamReportLoading(false);
+      setTeamReportDetail(null);
+      setTeamReportDetailTenantId('');
+      setTeamReportDetailRows([]);
+      setTeamReportDetailError('');
+      teamReportDetailSequence.current += 1;
       return () => { active = false; };
     }
 
@@ -303,13 +342,16 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
       try {
         const { data, error: rpcError } = await supabase.rpc('hris_get_tenant_dashboard_team_report', {
           p_tenant_id: tenantId,
+          p_report_date: teamReportDateFilter || null,
         });
         if (rpcError) throw rpcError;
         const value = asObject(data);
         if (!value || !Array.isArray(value.teams)) throw new Error('Team report service returned an invalid response.');
+        const reportDate = typeof value.dashboard_date === 'string' ? value.dashboard_date : '';
         if (active) {
           setTeamReportRows(asRows(value.teams) as DashboardTeamReportRow[]);
-          setTeamReportDate(typeof value.dashboard_date === 'string' ? value.dashboard_date : '');
+          setTeamReportDate(reportDate);
+          if (reportDate) setTeamReportDateDraft(current => current || reportDate);
           setTeamReportTenantId(tenantId);
         }
       } catch (cause) {
@@ -320,7 +362,54 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
     })();
 
     return () => { active = false; };
-  }, [tenantId, canReport, teamReportRefresh]);
+  }, [tenantId, canReport, teamReportRefresh, teamReportDateFilter]);
+  useEffect(() => {
+    if (!teamReportDetail) return;
+    const requestId = ++teamReportDetailSequence.current;
+    let active = true;
+    setTeamReportDetailLoading(true);
+    setTeamReportDetailError('');
+    setTeamReportDetailRows([]);
+    setTeamReportDetailTenantId('');
+    void (async () => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('hris_get_tenant_dashboard_team_details', {
+          p_tenant_id: teamReportDetail.tenantId,
+          p_team_id: teamReportDetail.isUnassigned ? null : teamReportDetail.teamId,
+          p_unassigned: teamReportDetail.isUnassigned,
+          p_report_date: teamReportDetail.date,
+        });
+        if (rpcError) throw rpcError;
+        const value = asObject(data);
+        if (!value || value.report_date !== teamReportDetail.date || !Array.isArray(value.details)) {
+          throw new Error(tx('Team detail service returned an invalid response.'));
+        }
+        const matchingRows = asRows(value.details) as DashboardTeamReportDetail[];
+        if (active && activeDashboardTenantId.current === teamReportDetail.tenantId && requestId === teamReportDetailSequence.current) {
+          setTeamReportDetailRows(matchingRows);
+          setTeamReportDetailTenantId(teamReportDetail.tenantId);
+        }
+      } catch (cause) {
+        if (active && activeDashboardTenantId.current === teamReportDetail.tenantId && requestId === teamReportDetailSequence.current) {
+          setTeamReportDetailError(cause instanceof Error ? cause.message : tx('Unable to load authorized team details.'));
+        }
+      } finally {
+        if (active && activeDashboardTenantId.current === teamReportDetail.tenantId && requestId === teamReportDetailSequence.current) {
+          setTeamReportDetailLoading(false);
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [teamReportDetail, teamReportDetailRetry]);
+  useEffect(() => {
+    if (!teamReportDetail) return;
+    teamReportDetailHeading.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTeamReportDetail(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [teamReportDetail]);
   useEffect(() => {
     if (summary && (!Array.isArray(summary.attendance_last_30_days) || summary.attendance_last_30_days.length < 30)) {
       setChartRange('7');
@@ -348,6 +437,42 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
     const needle = teamReportSearch.trim().toLocaleLowerCase();
     return currentTeamReportRows.filter(row => !needle || String(row.team_name || '').toLocaleLowerCase().includes(needle));
   }, [currentTeamReportRows, teamReportSearch]);
+  const teamReportTotals = useMemo(() => {
+    const totals = { present_members: 0, absent_members: 0, total_members: 0, work_from_office: 0, work_from_home: 0, client_meeting: 0 };
+    for (const row of visibleTeamReportRows) {
+      totals.present_members += Number(row.present_members) || 0;
+      totals.absent_members += Number(row.absent_members) || 0;
+      totals.total_members += Number(row.total_members) || 0;
+      totals.work_from_office += Number(row.work_from_office) || 0;
+      totals.work_from_home += Number(row.work_from_home) || 0;
+      totals.client_meeting += Number(row.client_meeting) || 0;
+    }
+    return totals;
+  }, [visibleTeamReportRows]);
+  const teamReportErrorMessage = (message: string, onRetry: () => void) => <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900" role="alert">
+    <p>{message}</p><button type="button" className="mt-3 min-h-11 rounded-md border border-rose-400 px-3 font-medium" onClick={onRetry}>{tx('Retry')}</button>
+  </div>;
+
+  function applyTeamReportDate() {
+    if (!teamReportDateDraft) {
+      setTeamReportError(tx('Choose a report date.'));
+      return;
+    }
+    setTeamReportError('');
+    setTeamReportDateFilter(teamReportDateDraft);
+  }
+
+  function openTeamReportDetails(row: DashboardTeamReportRow) {
+    if (!canReport || !currentTeamReportDate) return;
+    if (!row.team_id && String(row.team_name || '') !== 'Unassigned') return;
+    setTeamReportDetail({
+      tenantId,
+      teamName: String(row.team_name || tx('Unassigned')),
+      date: currentTeamReportDate,
+      teamId: row.team_id || null,
+      isUnassigned: !row.team_id,
+    });
+  }
 
   function downloadReport() {
     if (!summary) return;
@@ -360,14 +485,16 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
   }
 
   function downloadTeamReport() {
-    if (!canReport || !currentTeamReportRows.length) return;
+    if (!canReport || !visibleTeamReportRows.length) return;
     const rows = visibleTeamReportRows.map(row => [
-      row.team_name, row.present_members, row.absent_members, row.total_members,
+      teamReportDate, row.team_name, row.present_members, row.absent_members, row.total_members,
       row.work_from_office, row.work_from_home, row.client_meeting,
     ]);
+    rows.push([teamReportDate, tx('Filtered total'), teamReportTotals.present_members, teamReportTotals.absent_members, teamReportTotals.total_members,
+      teamReportTotals.work_from_office, teamReportTotals.work_from_home, teamReportTotals.client_meeting]);
     downloadCsv(`managerial-dashboard-team-report-${teamReportDate || localIsoDate(new Date())}.csv`, [
-      'Team Name', 'Present Member', 'Absent Member', 'Total Member',
-      'Work from office', 'Work from Home', 'Client meeting',
+      tx('Report date'), tx('Team Name'), tx('Present Member'), tx('Absent Member'), tx('Total Member'),
+      tx('Work from office'), tx('Work from Home'), tx('Client meeting'),
     ], rows);
   }
 
@@ -434,54 +561,105 @@ function LiveDashboard({ tenantId, onOpen, canReport }: { tenantId: string; onOp
       {canReport && <section aria-labelledby="dashboard-team-report-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 border-b border-[#E5E5EF] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 id="dashboard-team-report-heading" className="text-base font-semibold text-[#1E1B39]">Team Report</h3>
-            <p className="mt-1 text-xs text-[#86929E]">Attendance totals by organizational team · {currentTeamReportDate ? displayAttendanceDate(currentTeamReportDate) : 'today'}</p>
+            <h3 id="dashboard-team-report-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Team Report')}</h3>
+            <p className="mt-1 text-xs text-[#86929E]">{tx('Attendance totals by organizational team')} · {currentTeamReportDate ? displayAttendanceDate(currentTeamReportDate) : tx('today')}</p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-0 sm:w-40">
+              <label htmlFor="dashboard-team-report-date" className="mb-1 block text-xs font-medium text-slate-600">{tx('Report date')}</label>
+              <input id="dashboard-team-report-date" type="date" value={teamReportDateDraft}
+                onChange={event => setTeamReportDateDraft(event.target.value)}
+                className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm focus:outline-2 focus:outline-[#08558B]" />
+            </div>
+            <button type="button" disabled={teamReportLoading || !teamReportDateDraft} onClick={applyTeamReportDate}
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">{tx('Apply date')}</button>
             <label className="relative block min-w-0 flex-1 sm:w-[280px] sm:flex-none">
               <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input type="search" value={teamReportSearch} onChange={event => setTeamReportSearch(event.target.value)}
-                placeholder="Search teams" aria-label="Search team report"
+                placeholder={tx('Search teams')} aria-label={tx('Search team report')}
                 className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
             </label>
-            <button type="button" disabled={teamReportLoading || !currentTeamReportRows.length} onClick={downloadTeamReport}
+            <button type="button" disabled={teamReportLoading || !visibleTeamReportRows.length} onClick={downloadTeamReport}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
-              <img src={attendanceDownloadIcon} alt="" className="h-4 w-4 shrink-0 object-contain" /> Download Report
+              <img src={attendanceDownloadIcon} alt="" className="h-4 w-4 shrink-0 object-contain" /> {tx('Download Report')}
             </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-          <p className="text-xs text-slate-500" aria-live="polite">{teamReportLoading ? 'Refreshing team report…' : teamReportTenantId === tenantId ? 'Team totals are up to date.' : 'Team totals are not loaded.'}</p>
+          <p className="text-xs text-slate-500" aria-live="polite">{teamReportLoading ? tx('Refreshing team report…') : teamReportError ? tx('The last update failed; showing the previous report if available.') : teamReportTenantId === tenantId ? tx('Team totals are up to date.') : tx('Team totals are not loaded.')}</p>
           <button type="button" disabled={teamReportLoading} onClick={() => setTeamReportRefresh(value => value + 1)}
             className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm text-[#49454F] hover:bg-[#EFF7F8] disabled:opacity-50">
-            <RefreshCw className="h-4 w-4" /> Refresh
+            <RefreshCw className="h-4 w-4" /> {tx('Refresh')}
           </button>
         </div>
-        {teamReportError && <StatusMessage error={teamReportError} onRetry={() => setTeamReportRefresh(value => value + 1)} />}
-        {teamReportLoading && !currentTeamReportRows.length ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized team report…</p>
-          : !teamReportError && !currentTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">No active employees are available for a team report.</p>
-            : !teamReportError && !visibleTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">No teams match “{teamReportSearch}”.</p>
+        {teamReportError && teamReportErrorMessage(teamReportError, () => setTeamReportRefresh(value => value + 1))}
+        {teamReportError && !currentTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">{tx('Team report data is unavailable until the connection recovers.')}</p>
+          : teamReportLoading && !currentTeamReportRows.length ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized team report…')}</p>
+          : !teamReportError && !currentTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">{tx('No active employees are available for a team report.')}</p>
+            : !teamReportError && !visibleTeamReportRows.length ? <p role="status" className="rounded-lg bg-slate-50 p-5 text-sm text-slate-600">{tx('No teams match')} “{teamReportSearch}”.</p>
               : <div className="overflow-x-auto rounded-lg border border-[#E6EEF3]">
-                <table className="w-full min-w-[790px] border-collapse text-left text-sm">
+                <table aria-label={tx('Team report totals')} className="w-full min-w-[790px] border-collapse text-left text-sm">
                   <thead className="bg-[#F4F8FA] text-xs font-semibold text-[#49454F]">
-                    <tr>{['Team Name', 'Present Member', 'Absent Member', 'Total Member', 'Work from office', 'Work from Home', 'Client meeting'].map(label =>
-                      <th key={label} scope="col" className="whitespace-nowrap px-3 py-3">{label}</th>)}</tr>
+                    <tr>{['Team Name', 'Present Member', 'Absent Member', 'Total Member', 'Work from office', 'Work from Home', 'Client meeting', 'Details'].map(label =>
+                      <th key={label} scope="col" className="whitespace-nowrap px-3 py-3">{tx(label)}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-[#E6EEF3] text-[#1E1B39]">
                     {visibleTeamReportRows.map((row, index) => <tr key={row.team_id || `unassigned-${index}`} className="hover:bg-[#FAFCFD]">
-                      <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium">{display(row.team_name)}</th>
+                      <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium">{display(tx(String(row.team_name || 'Unassigned')))}</th>
                       <td className="px-3 py-3 tabular-nums">{display(row.present_members)}</td>
                       <td className="px-3 py-3 tabular-nums">{display(row.absent_members)}</td>
                       <td className="px-3 py-3 tabular-nums">{display(row.total_members)}</td>
                       <td className="px-3 py-3 tabular-nums">{display(row.work_from_office)}</td>
                       <td className="px-3 py-3 tabular-nums">{display(row.work_from_home)}</td>
                       <td className="px-3 py-3 tabular-nums">{display(row.client_meeting)}</td>
+                      <td className="px-3 py-3"><button type="button" onClick={() => openTeamReportDetails(row)}
+                        aria-label={`${tx('View attendance details for')} ${display(tx(String(row.team_name || 'Unassigned')))}`}
+                        className="min-h-10 rounded-md border border-[#DEE0E3] px-3 text-xs font-medium text-[#08558B] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">{tx('View details')}</button></td>
                     </tr>)}
                   </tbody>
+                  <tfoot className="border-t-2 border-[#D1DEE5] bg-[#F4F8FA] font-semibold text-[#1E1B39]">
+                    <tr><th scope="row" className="whitespace-nowrap px-3 py-3">{tx('Filtered total')}</th>
+                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.present_members.toLocaleString()}</td>
+                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.absent_members.toLocaleString()}</td>
+                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.total_members.toLocaleString()}</td>
+                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.work_from_office.toLocaleString()}</td>
+                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.work_from_home.toLocaleString()}</td>
+                      <td className="px-3 py-3 tabular-nums">{teamReportTotals.client_meeting.toLocaleString()}</td><td className="px-3 py-3">—</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>}
-        <p className="mt-3 text-xs text-slate-500">Only aggregate counts are shown. Employees with no same-tenant team assignment appear as Unassigned.</p>
+        <p className="mt-3 text-xs text-slate-500">{tx('Only aggregate counts are shown. Employees with no same-tenant team assignment appear as Unassigned.')}</p>
+        <p className="mt-1 text-xs text-slate-500">{tx('Team membership totals reflect current active employee records; attendance counts use the selected report date.')}</p>
       </section>}
+      {teamReportDetail && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
+        onMouseDown={event => { if (event.target === event.currentTarget) setTeamReportDetail(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="team-report-detail-heading" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+          <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-5">
+            <div><h3 ref={teamReportDetailHeading} id="team-report-detail-heading" tabIndex={-1} className="font-semibold text-slate-900">{tx('Team report details')}</h3>
+              <p className="mt-1 text-sm text-slate-600">{display(tx(teamReportDetail.teamName))} · {displayAttendanceDate(teamReportDetail.date)}</p>
+              <p className="mt-1 text-xs text-slate-500">{tx('Authorized employee-level attendance aggregates for the selected date.')}</p></div>
+            <button type="button" onClick={() => setTeamReportDetail(null)} className="min-h-10 shrink-0 rounded-md border border-slate-300 px-3 text-sm">{tx('Close')}</button>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+            {teamReportDetailError && teamReportErrorMessage(teamReportDetailError, () => setTeamReportDetailRetry(value => value + 1))}
+            {teamReportDetailLoading ? <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm">{tx('Loading team details…')}</p>
+              : !teamReportDetailError && teamReportDetailTenantId === tenantId && !teamReportDetailRows.length
+                ? <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No attendance report details are available for this team and date.')}</p>
+                : !teamReportDetailError && teamReportDetailTenantId === tenantId && <div role="region" aria-label={tx('Scrollable team report details')} tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#08558B]">
+                  <table className="w-full min-w-[980px] text-left text-sm">
+                    <thead className="bg-[#F4F8FA] text-xs text-slate-600"><tr>{['Employee', 'Employee number', 'Designation', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation'].map(label => <th key={label} scope="col" className="whitespace-nowrap px-3 py-3">{tx(label)}</th>)}</tr></thead>
+                    <tbody className="divide-y divide-slate-100">{teamReportDetailRows.map((row, index) => <tr key={`${row.employee_number || 'employee'}-${index}`}>
+                      <th scope="row" className="px-3 py-3 font-medium">{display(row.employee_name)}</th>
+                      <td className="px-3 py-3">{display(row.employee_number)}</td><td className="px-3 py-3">{display(row.designation_title)}</td>
+                      <td className="px-3 py-3">{display(row.department_name)}</td><td className="px-3 py-3 tabular-nums">{display(row.attendance_days)}</td>
+                      <td className="px-3 py-3 tabular-nums">{display(row.office_hours)}</td><td className="px-3 py-3 tabular-nums">{display(row.working_hours)}</td><td className="px-3 py-3 tabular-nums">{display(row.deviation)}</td>
+                    </tr>)}</tbody>
+                  </table>
+                </div>}
+          </div>
+        </section>
+      </div>}
       <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
         Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.
       </p>
@@ -2706,7 +2884,7 @@ export function LiveHrisWorkspace({
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-[1600px]">
           {current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
-          {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} />}
+          {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
           />}
