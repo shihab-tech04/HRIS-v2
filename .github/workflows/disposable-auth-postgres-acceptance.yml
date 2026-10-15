@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hris-disposable-acceptance-${{ github.ref }}
+  group: hris-disposable-acceptance-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

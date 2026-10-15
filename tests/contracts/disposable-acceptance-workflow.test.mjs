@@ -11,6 +11,8 @@ test('disposable Auth/Postgres/browser acceptance uses trusted standard runners 
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /timeout-minutes: 60/);
   assert.match(workflow, /permissions:\s+contents: read/);
+  assert.match(workflow, /group: hris-disposable-acceptance-\$\{\{ github\.ref \}\}-\$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /supabase start --workdir/);
   assert.match(workflow, /HRIS_SUPABASE_TEST_WORKDIR: \/tmp\/synesis-local-hris-test/);
   assert.match(localRunner, /allowedTestWorkdirs = new Set\(\[/);
