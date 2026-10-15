@@ -349,6 +349,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013073243_hris_tenant_employee_directory.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014171952_employee_contact_details_editing.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261015173616_prevent_direct_employee_row_updates.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
