@@ -78,3 +78,20 @@ test('isolated acceptance covers selected dates, role denials, team scoping, ret
     assert.ok(locale.includes(`'${phrase}'`), `missing EN/BN translation: ${phrase}`);
   }
 });
+
+test('manager dashboard controls, data labels, accessibility text, and CSV labels follow the selected EN/BN locale', () => {
+  for (const phrase of [
+    'Managerial Dashboard', 'Today’s workforce attendance for this organization', 'Managerial dashboard actions',
+    'Search metrics', 'Search dashboard metrics', 'Filter attendance chart', 'Attendance chart range',
+    'Last 7 days', 'Last 30 days', 'Today’s Attendance Summary', 'Daily Attendance Chart',
+    'Recorded attendance by day', 'Needs attention', 'Pending attendance corrections', 'Pending leave requests',
+    'Today', 'Attendance trend', 'Section', 'Metric', 'Value',
+  ]) assert.ok(locale.includes(`'${phrase}'`), `missing dashboard translation: ${phrase}`);
+  assert.match(workspace, /label=\{tx\(metric\.label\)\}/);
+  assert.match(workspace, /locale === 'bn' \? 'bn-BD' : 'en-US'/);
+  assert.match(workspace, /\[tx\('Section'\), tx\('Metric'\), tx\('Value'\)\]/);
+  assert.match(browserSpec, /ব্যবস্থাপক ড্যাশবোর্ড/);
+  assert.match(browserSpec, /আজকের উপস্থিতির সারসংক্ষেপ/);
+  assert.match(browserRunner, /ব্যবস্থাপক ড্যাশবোর্ড/);
+  assert.match(browserRunner, /Dashboard CSV did not use the Bengali labels/);
+});

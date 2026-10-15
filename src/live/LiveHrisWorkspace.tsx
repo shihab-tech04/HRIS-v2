@@ -199,12 +199,10 @@ function endOfUpcomingWeek(): string {
   return localIsoDate(date);
 }
 
-function StatusMessage({ error, onRetry }: { error: string; onRetry: () => void }) {
+function StatusMessage({ error, onRetry, retryLabel = 'Retry' }: { error: string; onRetry: () => void; retryLabel?: string }) {
   return <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900" role="alert">
     <p>{error}</p>
-    <button type="button" className="mt-3 min-h-11 rounded-md border border-rose-400 px-3 font-medium" onClick={onRetry}>
-      Retry
-    </button>
+    <button type="button" className="mt-3 min-h-11 rounded-md border border-rose-400 px-3 font-medium" onClick={onRetry}>{retryLabel}</button>
   </div>;
 }
 
@@ -225,9 +223,10 @@ function Metric({ label, value, icon, onOpen, compact = false, emphasized = fals
     : <div className={className}>{content}</div>;
 }
 
-function AttendanceTrend({ points, range }: { points: DashboardPoint[]; range: '7' | '30' }) {
+function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; range: '7' | '30'; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
   const safePoints = points.filter(point => typeof point.date === 'string' && Number.isFinite(Number(point.records)));
-  if (!safePoints.length) return <p className="p-5 text-sm text-slate-600">No attendance summary is available for the recent date range.</p>;
+  if (!safePoints.length) return <p className="p-5 text-sm text-slate-600">{tx('No attendance summary is available for the recent date range.')}</p>;
   const maxRecords = Math.max(0, ...safePoints.map(point => Number(point.records)));
   const max = Math.max(4, Math.ceil(maxRecords / 4) * 4);
   const coords = safePoints.map((point, index) => ({
@@ -239,8 +238,8 @@ function AttendanceTrend({ points, range }: { points: DashboardPoint[]; range: '
   const areaPath = coords.length ? `${path} L ${coords.at(-1)!.x} 176 L ${coords[0].x} 176 Z` : '';
   return <div className="overflow-x-auto p-3">
     <svg viewBox="0 0 650 220" role="img" aria-labelledby="attendance-trend-title attendance-trend-description" className="min-w-[600px] w-full">
-      <title id="attendance-trend-title">Attendance records over the last {range} days</title>
-      <desc id="attendance-trend-description">Daily attendance record counts returned by the tenant-scoped HRIS dashboard service.</desc>
+      <title id="attendance-trend-title">{locale === 'bn' ? `${tx('Attendance records over the last')} ${range} ${tx('days')}` : `Attendance records over the last ${range} days`}</title>
+      <desc id="attendance-trend-description">{tx('Daily attendance record counts returned by the tenant-scoped HRIS dashboard service.')}</desc>
       <defs><linearGradient id="attendance-trend-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#08558B" stopOpacity="0.22" /><stop offset="100%" stopColor="#08558B" stopOpacity="0.02" /></linearGradient></defs>
       {[0, 1, 2, 3, 4].map(i => {
         const y = 44 + i * 33;
@@ -256,7 +255,7 @@ function AttendanceTrend({ points, range }: { points: DashboardPoint[]; range: '
         <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#08558B" strokeWidth="2" />
         {(safePoints.length <= 7 || index % 5 === 0 || index === safePoints.length - 1) &&
           <text x={point.x} y="202" textAnchor="middle" fontSize="10" fill="#615E83">
-            {new Date(`${point.point.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {new Date(`${point.point.date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'short', day: 'numeric' })}
           </text>}
       </g>)}
     </svg>
@@ -269,7 +268,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   const [summaryTenantId, setSummaryTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [refreshedAt, setRefreshedAt] = useState('');
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [search, setSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [chartRange, setChartRange] = useState<'7' | '30'>('7');
@@ -309,12 +308,12 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
       if (requestId !== dashboardSummarySequence.current || activeDashboardTenantId.current !== tenantId) return;
       setSummary(value as DashboardSummary);
       setSummaryTenantId(tenantId);
-      setRefreshedAt(new Date().toLocaleString());
-    } catch (cause) {
+      setRefreshedAt(new Date());
+    } catch {
       if (requestId === dashboardSummarySequence.current && activeDashboardTenantId.current === tenantId) {
         setSummary(null);
         setSummaryTenantId('');
-        setError(cause instanceof Error ? cause.message : 'Unable to load the authorized dashboard.');
+        setError(tx('Unable to load the authorized dashboard.'));
       }
     } finally {
       if (requestId === dashboardSummarySequence.current && activeDashboardTenantId.current === tenantId) setLoading(false);
@@ -369,8 +368,8 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
           if (reportDate) setTeamReportDateDraft(current => current || reportDate);
           setTeamReportTenantId(tenantId);
         }
-      } catch (cause) {
-        if (active) setTeamReportError(cause instanceof Error ? cause.message : 'Unable to load the authorized team report.');
+      } catch {
+        if (active) setTeamReportError(tx('Unable to load the authorized team report.'));
       } finally {
         if (active) setTeamReportLoading(false);
       }
@@ -404,9 +403,9 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
           setTeamReportDetailRows(matchingRows);
           setTeamReportDetailTenantId(teamReportDetail.tenantId);
         }
-      } catch (cause) {
+      } catch {
         if (active && activeDashboardTenantId.current === teamReportDetail.tenantId && requestId === teamReportDetailSequence.current) {
-          setTeamReportDetailError(cause instanceof Error ? cause.message : tx('Unable to load authorized team details.'));
+          setTeamReportDetailError(tx('Unable to load authorized team details.'));
         }
       } finally {
         if (active && activeDashboardTenantId.current === teamReportDetail.tenantId && requestId === teamReportDetailSequence.current) {
@@ -438,7 +437,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     { label: 'On Leave', value: currentSummary?.on_leave_today, icon: <CalendarDays className="h-4 w-4" />, page: 'leave' as PageId },
     { label: 'Late', value: currentSummary?.late_today, icon: <Clock3 className="h-4 w-4" />, page: 'attendance' as PageId },
   ];
-  const visibleMetrics = metrics.filter(metric => metric.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const visibleMetrics = metrics.filter(metric => `${metric.label} ${tx(metric.label)}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const has30DayTrend = Array.isArray(currentSummary?.attendance_last_30_days) && currentSummary.attendance_last_30_days.length >= 30;
   const activeChartRange = chartRange === '30' && has30DayTrend ? '30' : '7';
   const trendSource = has30DayTrend ? currentSummary?.attendance_last_30_days || [] : currentSummary?.attendance_last_7_days || [];
@@ -535,11 +534,11 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   function downloadReport() {
     if (!currentSummary) return;
     const rows: unknown[][] = [
-      ['Today', 'Team Members', currentSummary.team_members ?? currentSummary.employees],
-      ...metrics.slice(1).map(metric => ['Today', metric.label, metric.value]),
-      ...trendPoints.map(point => ['Attendance trend', point.date, point.records]),
+      [tx('Today'), tx('Team Members'), currentSummary.team_members ?? currentSummary.employees],
+      ...metrics.slice(1).map(metric => [tx('Today'), tx(metric.label), metric.value]),
+      ...trendPoints.map(point => [tx('Attendance trend'), point.date, point.records]),
     ];
-    downloadCsv(`managerial-dashboard-${currentSummary.dashboard_date || localIsoDate(new Date())}.csv`, ['Section', 'Metric', 'Value'], rows);
+    downloadCsv(`managerial-dashboard-${currentSummary.dashboard_date || localIsoDate(new Date())}.csv`, [tx('Section'), tx('Metric'), tx('Value')], rows);
   }
 
   function downloadTeamReport() {
@@ -573,62 +572,62 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
 
   return <section aria-labelledby="live-dashboard-heading" className="space-y-5">
     <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-      <div><h2 id="live-dashboard-heading" className="text-2xl font-semibold text-[#1E1B39]">Managerial Dashboard</h2>
-        <p className="mt-1 text-sm text-[#86929E]">Today’s workforce attendance for this organization</p></div>
-      <div role="group" aria-label="Managerial dashboard actions" className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[540px]">
+      <div><h2 id="live-dashboard-heading" className="text-2xl font-semibold text-[#1E1B39]">{tx('Managerial Dashboard')}</h2>
+        <p className="mt-1 text-sm text-[#86929E]">{tx('Today’s workforce attendance for this organization')}</p></div>
+      <div role="group" aria-label={tx('Managerial dashboard actions')} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[540px]">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86929E]" />
           <input type="search" value={search} onChange={event => setSearch(event.target.value)}
-            placeholder="Search metrics" aria-label="Search dashboard metrics"
+            placeholder={tx('Search metrics')} aria-label={tx('Search dashboard metrics')}
             className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
         </label>
         <button type="button" disabled={loading || !summary} onClick={downloadReport}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
-          <Download className="h-4 w-4" /> Download Report
+          <Download className="h-4 w-4" /> {tx('Download Report')}
         </button>
         <button type="button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen}
-          aria-controls="dashboard-filters" aria-label="Filter attendance chart"
+          aria-controls="dashboard-filters" aria-label={tx('Filter attendance chart')}
           className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-[#49454F] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">
           <SlidersHorizontal className="h-4 w-4" />
         </button>
       </div>
     </div>
     {filtersOpen && <div id="dashboard-filters" className="flex flex-wrap items-end gap-3 rounded-lg border border-[#DEE0E3] bg-white p-4">
-      <div><label htmlFor="dashboard-chart-range" className="mb-1 block text-xs font-medium text-slate-600">Attendance chart range</label>
+      <div><label htmlFor="dashboard-chart-range" className="mb-1 block text-xs font-medium text-slate-600">{tx('Attendance chart range')}</label>
         <select id="dashboard-chart-range" value={chartRange} onChange={event => setChartRange(event.target.value as '7' | '30')}
           className="min-h-11 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm">
-          <option value="7">Last 7 days</option><option value="30" disabled={!has30DayTrend}>Last 30 days</option>
+          <option value="7">{tx('Last 7 days')}</option><option value="30" disabled={!has30DayTrend}>{tx('Last 30 days')}</option>
         </select></div>
-      <p className="pb-2 text-xs text-slate-500">Attendance tiles above always summarize today.</p>
+      <p className="pb-2 text-xs text-slate-500">{tx('Attendance tiles above always summarize today.')}</p>
     </div>}
     <div className="flex flex-wrap items-center justify-between gap-2">
-      {refreshedAt ? <p className="text-xs text-slate-500">Last refreshed {refreshedAt}</p> : <span />}
+      {refreshedAt ? <p className="text-xs text-slate-500">{tx('Last refreshed')} {refreshedAt.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}</p> : <span />}
       <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm text-[#49454F] hover:bg-white disabled:opacity-50">
-        <RefreshCw className="h-4 w-4" /> Refresh
+        <RefreshCw className="h-4 w-4" /> {tx('Refresh')}
       </button>
     </div>
-    {error && <StatusMessage error={error} onRetry={() => void load()} />}
-    {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized dashboard data…</p> : currentSummary && <>
+    {error && <StatusMessage error={error} retryLabel={tx('Retry')} onRetry={() => void load()} />}
+    {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized dashboard data…')}</p> : currentSummary && <>
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
-        <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-base font-semibold text-[#1E1B39]">Today’s Attendance Summary</h3>
-          <p className="mt-1 text-xs text-[#86929E]">Live counts from this organization’s authorized records</p></div>
+        <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Today’s Attendance Summary')}</h3>
+          <p className="mt-1 text-xs text-[#86929E]">{tx('Live counts from this organization’s authorized records')}</p></div>
         {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-          {visibleMetrics.map(metric => <Metric key={metric.label} label={metric.label} value={metric.value} icon={metric.icon}
+          {visibleMetrics.map(metric => <Metric key={metric.label} label={tx(metric.label)} value={metric.value} icon={metric.icon}
             onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
-        </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No dashboard metrics match “{search}”.</p>}
+        </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No dashboard metrics match')} “{search}”.</p>}
       </section>
       <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
-        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-semibold text-[#1E1B39]">Daily Attendance Chart</h3>
-          <p className="mt-1 text-xs text-[#86929E]">Recorded attendance by day · last {activeChartRange} days</p></div>
-          <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString()} records</span></div>
-        <AttendanceTrend points={trendPoints} range={activeChartRange} />
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Daily Attendance Chart')}</h3>
+          <p className="mt-1 text-xs text-[#86929E]">{locale === 'bn' ? `${tx('Recorded attendance by day')} · গত ${activeChartRange} ${tx('days')}` : `${tx('Recorded attendance by day')} · last ${activeChartRange} days`}</p></div>
+          <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {tx('records')}</span></div>
+        <AttendanceTrend points={trendPoints} range={activeChartRange} locale={locale} />
       </section>
       <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">Needs attention</h3>
-          <p className="mt-1 text-xs text-[#86929E]">Open a work queue to review pending items.</p></div>
+        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Needs attention')}</h3>
+          <p className="mt-1 text-xs text-[#86929E]">{tx('Open a work queue to review pending items.')}</p></div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Metric label="Pending attendance corrections" value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
-          <Metric label="Pending leave requests" value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
+          <Metric label={tx('Pending attendance corrections')} value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
+          <Metric label={tx('Pending leave requests')} value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
         </div>
       </section>
       {canReport && <section aria-labelledby="dashboard-team-report-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">

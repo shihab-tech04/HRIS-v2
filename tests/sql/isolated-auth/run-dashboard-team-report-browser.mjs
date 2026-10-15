@@ -222,6 +222,21 @@ try {
   if (!csv.includes('Filtered total')) throw new Error('CSV export did not include the same filtered total shown in the report.');
 
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await page.getByRole('heading', { name: 'ব্যবস্থাপক ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'আজকের উপস্থিতির সারসংক্ষেপ', exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('দলের সদস্য', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'উপস্থিতির চার্ট ফিল্টার করুন' }).waitFor({ state: 'visible' });
+  const dashboardActions = page.getByRole('group', { name: 'ব্যবস্থাপক ড্যাশবোর্ডের কার্যক্রম' });
+  const dashboardDownloadWait = page.waitForEvent('download');
+  await dashboardActions.getByRole('button', { name: 'প্রতিবেদন ডাউনলোড করুন', exact: true }).click();
+  const dashboardDownload = await dashboardDownloadWait;
+  const dashboardStream = await dashboardDownload.createReadStream();
+  const dashboardChunks = [];
+  for await (const chunk of dashboardStream) dashboardChunks.push(chunk);
+  const dashboardCsv = Buffer.concat(dashboardChunks).toString('utf8');
+  if (!dashboardCsv.includes('"বিভাগ","পরিমাপক","মান"') || !dashboardCsv.includes('"আজ","দলের সদস্য"')) {
+    throw new Error('Dashboard CSV did not use the Bengali labels selected in the interface.');
+  }
   await teamReport.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদন' }).waitFor({ state: 'visible' });
 
   await page.setViewportSize({ width: 1280, height: 900 });

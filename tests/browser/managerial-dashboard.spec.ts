@@ -303,6 +303,11 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await expect(totalsRegion).toBeFocused();
 
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'ব্যবস্থাপক ড্যাশবোর্ড' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'আজকের উপস্থিতির সারসংক্ষেপ' })).toBeVisible();
+  await expect(page.getByText('দলের সদস্য', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'উপস্থিতির চার্ট ফিল্টার করুন' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'প্রতিবেদন ডাউনলোড করুন', exact: true })).toBeVisible();
   await expect(teamReport.getByRole('heading', { name: 'দলভিত্তিক প্রতিবেদন' })).toBeVisible();
   await expect(teamReport.getByRole('region', { name: 'স্ক্রলযোগ্য দলভিত্তিক প্রতিবেদনের মোট হিসাব' })).toBeVisible();
   await expect(teamReport.getByLabel('প্রতিবেদনের তারিখ')).toBeVisible();
