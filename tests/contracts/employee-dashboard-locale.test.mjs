@@ -37,6 +37,7 @@ test('Employee Dashboard shares the active locale with date, number, leave, and 
   assert.ok(workspace.includes('onRefresh={() => load(false)} locale={locale} />'));
   assert.match(workspace, /toLocaleString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
   assert.match(workspace, /toLocaleDateString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
+  assert.match(workspace, /const noticeDate = \(value: string\) => locale === 'bn' \? employeeDate\(value\) : value;/);
 });
 
 test('real Auth/Postgres browser journey checks Bengali persistence, validation, cancellation, and both viewport sizes', () => {

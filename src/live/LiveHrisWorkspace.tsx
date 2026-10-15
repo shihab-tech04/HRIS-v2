@@ -1672,6 +1672,7 @@ function PersonalLeaveRequests({
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
+  const noticeDate = (value: string) => locale === 'bn' ? employeeDate(value) : value;
   const [requestOpen, setRequestOpen] = useState(false);
   const [leaveTypeId, setLeaveTypeId] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -1732,7 +1733,7 @@ function PersonalLeaveRequests({
     if (!selected) { setFormError(tx('Choose a leave type.')); return; }
     if (fromDate > toDate) { setFormError(tx('The end date must be on or after the start date.')); return; }
     if (earliestStartDate && fromDate < earliestStartDate) {
-      setFormError(txf('Choose a start date on or after {date} to meet the {days}-day advance notice.', { date: employeeDate(earliestStartDate), days: localizedEmployeeNumber(noticeDays, locale) }));
+      setFormError(txf('Choose a start date on or after {date} to meet the {days}-day advance notice.', { date: noticeDate(earliestStartDate), days: localizedEmployeeNumber(noticeDays, locale) }));
       return;
     }
     if (dayPortion !== 'full' && fromDate !== toDate) {
@@ -1871,7 +1872,7 @@ function PersonalLeaveRequests({
                 <option value="">{tx('Choose a leave type')}</option>{leaveTypes.map(item => <option key={String(item.id)} value={String(item.id)}>{display(item.name)}</option>)}
               </select>
               {selectedLeaveType?.min_days_notice != null && Number(selectedLeaveType.min_days_notice) > 0 &&
-                <p className="mt-1 text-xs text-slate-600">{txf('This leave type requires {days} days’ advance notice', { days: localizedEmployeeNumber(selectedLeaveType.min_days_notice, locale) })}{earliestStartDate ? ` · ${txf('Earliest start date: {date}', { date: employeeDate(earliestStartDate) })}` : ''}.</p>}
+                <p className="mt-1 text-xs text-slate-600">{txf('This leave type requires {days} days’ advance notice', { days: localizedEmployeeNumber(selectedLeaveType.min_days_notice, locale) })}{earliestStartDate ? ` · ${txf('Earliest start date: {date}', { date: noticeDate(earliestStartDate) })}` : ''}.</p>}
               {selectedLeaveType?.requires_document_proof === true && <p className="mt-1 text-xs text-slate-600">{tx('Supporting evidence is required for this leave type.')}</p>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
