@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
+// The fixture values represent the tenant's Asia/Dhaka timezone. Keep this
+// browser journey deterministic on hosted runners whose default timezone is UTC.
+test.use({ timezoneId: 'Asia/Dhaka' });
+
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
 const user = {

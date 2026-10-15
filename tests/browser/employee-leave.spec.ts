@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
+import os from 'os';
 
 const userId = 'f2222222-2222-4222-8222-222222222222';
 const tenantId = 'f3333333-3333-4333-8333-333333333333';
@@ -274,7 +275,7 @@ test('linked employee can complete the private evidence leave request on mobile'
   });
   expect(evidenceClearsFooter).toBe(true);
   await expect(page.getByRole('button', { name: 'Send request' })).toBeEnabled();
-  await page.screenshot({ path: '/private/tmp/hris-employee-leave-mobile.png', fullPage: false });
+  await page.screenshot({ path: path.join(os.tmpdir(), 'hris-employee-leave-mobile.png'), fullPage: false });
   await page.getByRole('button', { name: 'Send request' }).click();
   await expect(page.getByText('Leave request submitted. You can follow its status in your history.')).toBeVisible();
   expect(evidenceUploadPaths).toHaveLength(1);
