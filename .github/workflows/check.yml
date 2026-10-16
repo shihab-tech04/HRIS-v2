@@ -39,6 +39,8 @@ jobs:
           NODE
       - name: Production bundle
         run: npm run build
+      - name: Verify the branch-served Pages entry matches the production build
+        run: git diff --exit-code -- index.html assets .nojekyll
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Actual browser responsive/sign-in smoke
