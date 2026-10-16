@@ -123,10 +123,23 @@ try {
   await employeePage.getByRole('heading', { name: 'আমার ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
   await employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
 
-  await employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true }).click();
-  await employeePage.getByRole('button', { name: 'বাতিল', exact: true }).click();
-  await employeePage.getByRole('dialog').waitFor({ state: 'detached' });
-  await employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true }).click();
+  const newTravelRequestButton = employeePage.getByRole('button', { name: 'নতুন ভ্রমণ অনুরোধ', exact: true });
+  await newTravelRequestButton.click();
+  const travelEditor = employeePage.getByRole('dialog');
+  const travelDestination = travelEditor.getByLabel('গন্তব্য');
+  if (!(await travelDestination.evaluate(element => element === document.activeElement))) throw new Error('Travel request editor did not focus the first required field.');
+  const closeTravelEditor = travelEditor.getByRole('button', { name: 'ভ্রমণ অনুরোধ সম্পাদনা বন্ধ করুন', exact: true });
+  const saveTravelDraft = travelEditor.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true });
+  await employeePage.keyboard.press('Shift+Tab');
+  if (!(await closeTravelEditor.evaluate(element => element === document.activeElement))) throw new Error('Travel editor focus moved outside instead of to its close control.');
+  await employeePage.keyboard.press('Shift+Tab');
+  if (!(await saveTravelDraft.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the travel editor.');
+  await employeePage.keyboard.press('Tab');
+  if (!(await closeTravelEditor.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the travel editor.');
+  await employeePage.keyboard.press('Escape');
+  await travelEditor.waitFor({ state: 'detached' });
+  if (!(await newTravelRequestButton.evaluate(element => element === document.activeElement))) throw new Error('Closing the travel editor did not restore focus to its trigger.');
+  await newTravelRequestButton.click();
   const destination = `Local QA visit ${Date.now()}`;
   await employeePage.getByLabel('গন্তব্য').fill(destination);
   await employeePage.getByLabel('যাত্রার তারিখ').fill('2026-12-10');
@@ -140,6 +153,7 @@ try {
   const employeeCard = employeePage.locator(`[data-travel-request="${requestId}"]`);
   await employeeCard.waitFor({ state: 'visible' });
   await employeeCard.getByText('খসড়া', { exact: true }).waitFor({ state: 'visible' });
+  if (!(await newTravelRequestButton.evaluate(element => element === document.activeElement))) throw new Error('Saving a travel draft did not restore focus to its trigger.');
   await employeeCard.getByText(/৮২৫ BDT/).waitFor({ state: 'visible' });
   await assertNoOverflow(employeePage, 'Travel draft mobile');
 

@@ -80,17 +80,6 @@ function statusLabel(status: string, tx: (text: string) => string): string {
 
 type TravelLocaleProps = { locale: Locale };
 
-function useEscapeToClose(open: boolean, close: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, close]);
-}
-
 export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHandled }: {
   tenantId: string;
   focusRequestId?: string | null;
@@ -112,13 +101,23 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
   const [revision, setRevision] = useState(0);
   const requestSequence = useRef(0);
   const requestCards = useRef(new Map<string, HTMLElement>());
+  const editorDialogRef = useRef<HTMLDivElement>(null);
+  const destinationInputRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(saving);
   const focusHandled = useRef(onFocusHandled);
   focusHandled.current = onFocusHandled;
+  savingRef.current = saving;
   const activeTenantId = useRef(tenantId);
   const previousTenantId = useRef(tenantId);
   activeTenantId.current = tenantId;
   const closeEditor = () => { if (!saving) { setEditorOpen(false); setDraft(emptyDraft()); setActionError(''); } };
-  useEscapeToClose(editorOpen, closeEditor);
+  useEffect(() => {
+    if (!editorOpen) return;
+    return activateModalFocusTrap(editorDialogRef.current, {
+      initialFocus: destinationInputRef.current,
+      onEscape: () => { if (!savingRef.current) closeEditor(); },
+    });
+  }, [editorOpen]);
 
   useEffect(() => {
     if (previousTenantId.current !== tenantId) setMessage('');
@@ -262,11 +261,11 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
         {(request.status === 'draft' || request.status === 'rejected') && <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={saving} onClick={() => startDraft(request)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-medium disabled:opacity-50">{tx(request.status === 'rejected' ? 'Revise request' : 'Edit draft')}</button><button type="button" disabled={saving} onClick={() => void submitRequest(request)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true"/>{tx(saving ? 'Submitting…' : 'Submit for review')}</button></div>}
       </article>)}</div>}
 
-    {editorOpen && <div role="dialog" aria-modal="true" aria-labelledby="travel-editor-heading" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/40 p-3 sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget) closeEditor(); }}>
+    {editorOpen && <div ref={editorDialogRef} role="dialog" aria-modal="true" aria-labelledby="travel-editor-heading" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/40 p-3 sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget) closeEditor(); }}>
       <form onSubmit={saveDraft} className="my-auto w-full max-w-2xl rounded-xl bg-white shadow-xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 sm:p-5"><div><h3 id="travel-editor-heading" className="text-lg font-semibold text-slate-900">{tx(draft.id ? 'Edit travel request' : 'New travel request')}</h3><p className="mt-1 text-sm text-slate-600">{tx('Save partial details as a draft. A destination, dates, and purpose are required before submission.')}</p></div><button type="button" onClick={closeEditor} disabled={saving} aria-label={tx('Close travel request editor')} className="min-h-11 min-w-11 rounded-lg border border-slate-300 disabled:opacity-50"><X className="mx-auto h-4 w-4" aria-hidden="true"/></button></header>
         <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
-          <div className="sm:col-span-2"><label htmlFor="travel-destination" className="mb-1 block text-sm font-medium text-slate-700">{tx('Destination')}</label><input id="travel-destination" maxLength={300} value={draft.destination} onChange={event => setDraft(value => ({ ...value, destination: event.target.value }))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" /></div>
+          <div className="sm:col-span-2"><label htmlFor="travel-destination" className="mb-1 block text-sm font-medium text-slate-700">{tx('Destination')}</label><input ref={destinationInputRef} id="travel-destination" maxLength={300} value={draft.destination} onChange={event => setDraft(value => ({ ...value, destination: event.target.value }))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" /></div>
           <div><label htmlFor="travel-from-date" className="mb-1 block text-sm font-medium text-slate-700">{tx('Departure date')}</label><input id="travel-from-date" type="date" value={draft.fromDate} onChange={event => setDraft(value => ({ ...value, fromDate: event.target.value }))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" /></div>
           <div><label htmlFor="travel-to-date" className="mb-1 block text-sm font-medium text-slate-700">{tx('Return date')}</label><input id="travel-to-date" type="date" min={draft.fromDate || undefined} value={draft.toDate} onChange={event => setDraft(value => ({ ...value, toDate: event.target.value }))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" /></div>
           <div className="sm:col-span-2"><label htmlFor="travel-purpose" className="mb-1 block text-sm font-medium text-slate-700">{tx('Purpose')}</label><textarea id="travel-purpose" maxLength={2000} rows={3} value={draft.purpose} onChange={event => setDraft(value => ({ ...value, purpose: event.target.value }))} className="min-h-24 w-full resize-y rounded-lg border border-slate-300 p-3 text-sm focus-visible:outline-2 focus-visible:outline-[#085587]" /></div>
