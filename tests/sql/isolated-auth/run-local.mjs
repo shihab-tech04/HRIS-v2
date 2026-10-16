@@ -426,6 +426,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016230201_hris_employee_roster_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017030000_hris_employee_announcement_audience.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -3036,6 +3037,54 @@ record('Tenant viewer retains own attendance, leave, holiday and notice reads wi
     && tenantViewerVisibleTables.performance_cycles.length === 0
     && !tenantViewerVisibleTables.attendance_records.includes(ids.tenantA)
     && !tenantViewerVisibleTables.holidays.includes(ids.tenantA));
+
+const employeeANotices = await employeeA.client.from('notices')
+  .select('id,title,audience_type,audience_id,attachment_url,pinned').eq('tenant_id', ids.tenantA).order('id');
+const employeeBNotices = await employeeB.client.from('notices')
+  .select('id,title,audience_type,audience_id').eq('tenant_id', ids.tenantB);
+const managerANotices = await managerA.client.from('notices')
+  .select('id,title,audience_type').eq('tenant_id', ids.tenantA);
+const employeeANoticeIds = (employeeANotices.data || []).map(row => row.id).sort();
+const managerANoticeIds = (managerANotices.data || []).map(row => row.id).sort();
+record('Employee announcements are filtered by tenant and existing all/department audiences; unsupported location audiences remain private',
+  !employeeANotices.error
+    && JSON.stringify(employeeANoticeIds) === JSON.stringify([
+      'b1111111-1111-4111-8111-111111111111',
+      'b1111111-1111-4111-8111-111111111112',
+    ])
+    && employeeANotices.data?.find(row => row.id === 'b1111111-1111-4111-8111-111111111112')?.attachment_url === 'https://example.test/qa-notice.pdf'
+    && employeeANotices.data?.find(row => row.id === 'b1111111-1111-4111-8111-111111111111')?.pinned === true
+    && !employeeBNotices.error && employeeBNotices.data?.length === 1
+    && employeeBNotices.data?.[0].id === 'b2222222-2222-4222-8222-222222222221'
+    && !managerANotices.error && JSON.stringify(managerANoticeIds) === JSON.stringify([
+      'b1111111-1111-4111-8111-111111111111',
+      'b1111111-1111-4111-8111-111111111112',
+      'b1111111-1111-4111-8111-111111111113',
+      'b1111111-1111-4111-8111-111111111114',
+    ]),
+  JSON.stringify({ employeeA: employeeANoticeIds, employeeB: employeeBNotices.data?.map(row => row.id), managerA: managerANoticeIds,
+    employeeError: employeeANotices.error?.message || null, managerError: managerANotices.error?.message || null }));
+let employeeAnnouncementsBrowserOutput = '';
+let employeeAnnouncementsBrowserError = '';
+try {
+  employeeAnnouncementsBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-announcements-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_ANNOUNCEMENT_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  employeeAnnouncementsBrowserError = String(error.stderr || error.message || 'local announcement browser run failed').slice(-1400);
+}
+record('Employee announcement journey uses Auth/RLS records, retries read failure, preserves refresh, and adapts to EN/BN mobile/desktop',
+  employeeAnnouncementsBrowserOutput.includes('Local Auth-to-Postgres employee announcements journey passed at 375px mobile and 1280px desktop, EN/BN, retry, refresh, empty, audience and attachment states.'),
+  employeeAnnouncementsBrowserError);
 
 const authStatus = queryAs(managerA, `SELECT jsonb_build_object(
   'uid',auth.uid(),'session_id',auth.jwt()->>'session_id',

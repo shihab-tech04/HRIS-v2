@@ -24,9 +24,10 @@ test('recovered E04 story source remains verified and unchanged', () => {
   assert.match(stories[4].verbatim_requirement, /expired or inactive employment status/);
 });
 
-test('identity-card RPC is read-only, tenant-member scoped, and limited to the authenticated employee', () => {
+test('identity-card RPC is read-only, active-tenant scoped, and limited to the authenticated linked employee', () => {
   assert.match(migration, /SECURITY DEFINER[\s\S]+?SET search_path = ''/);
-  assert.match(migration, /JOIN public\.tenant_memberships[\s\S]+?m\.user_id=auth\.uid\(\)[\s\S]+?lower\(m\.status\)='active'/);
+  assert.match(migration, /IF p_tenant_id IS NULL OR NOT EXISTS \([\s\S]+?t\.id=p_tenant_id AND t\.is_active IS TRUE/);
+  assert.doesNotMatch(migration, /JOIN public\.tenant_memberships/);
   assert.match(migration, /t\.id=p_tenant_id AND t\.is_active IS TRUE/);
   assert.match(migration, /public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
   assert.match(migration, /'employment_status',e\.employment_status/);

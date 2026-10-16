@@ -500,7 +500,18 @@ CREATE TABLE public.manpower_requisitions (
 );
 CREATE TABLE public.notices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
-  active boolean NOT NULL DEFAULT true
+  title text NOT NULL DEFAULT 'Synthetic notice',
+  category text NOT NULL DEFAULT 'general',
+  body text NOT NULL DEFAULT 'Synthetic notice body',
+  audience_type text NOT NULL DEFAULT 'all' CHECK (audience_type IN ('all','department','location')),
+  audience_id uuid,
+  attachment_url text,
+  pinned boolean NOT NULL DEFAULT false,
+  active boolean NOT NULL DEFAULT true,
+  published_at timestamptz DEFAULT now(),
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.org_locations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
@@ -1182,7 +1193,8 @@ INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minut
   ('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222','Synthetic Tenant B Shift','QA-B','10:00','18:00',5,45,ARRAY[0,6],8,true);
 INSERT INTO public.departments(id,tenant_id,name,code) VALUES
   ('eeeeeeee-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','QA A department','QA-A'),
-  ('eeeeeeee-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','QA B department','QA-B');
+  ('eeeeeeee-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','QA B department','QA-B'),
+  ('eeeeeeee-0000-4000-8000-000000000003','11111111-1111-4111-8111-111111111111','QA A Other department','QA-A-OTHER');
 INSERT INTO public.teams(id,tenant_id,department_id,name,code) VALUES
   ('dddddddd-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','eeeeeeee-0000-4000-8000-000000000001','QA A Team','QA-A-T'),
   ('dddddddd-0000-4000-8000-000000000002','22222222-2222-4222-8222-222222222222','eeeeeeee-0000-4000-8000-000000000002','QA B Team','QA-B-T');
@@ -1276,8 +1288,12 @@ INSERT INTO public.hr_policies(tenant_id,active) VALUES
   ('11111111-1111-4111-8111-111111111111',true),('22222222-2222-4222-8222-222222222222',true);
 INSERT INTO public.manpower_requisitions(tenant_id) VALUES
   ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
-INSERT INTO public.notices(tenant_id,active) VALUES
-  ('11111111-1111-4111-8111-111111111111',true),('22222222-2222-4222-8222-222222222222',true);
+INSERT INTO public.notices(id,tenant_id,title,body,audience_type,audience_id,attachment_url,pinned,active) VALUES
+  ('b1111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111','QA A all notice','Synthetic notice visible to all tenant members.','all',NULL,NULL,true,true),
+  ('b1111111-1111-4111-8111-111111111112','11111111-1111-4111-8111-111111111111','QA A department notice','Synthetic matching department notice.','department','eeeeeeee-0000-4000-8000-000000000001','https://example.test/qa-notice.pdf',false,true),
+  ('b1111111-1111-4111-8111-111111111113','11111111-1111-4111-8111-111111111111','QA A other department notice','Synthetic non-matching department notice.','department','eeeeeeee-0000-4000-8000-000000000003',NULL,false,true),
+  ('b1111111-1111-4111-8111-111111111114','11111111-1111-4111-8111-111111111111','QA A location notice','Synthetic location-targeted notice.','location','bbbbbbbb-0000-4000-8000-000000000001',NULL,false,true),
+  ('b2222222-2222-4222-8222-222222222221','22222222-2222-4222-8222-222222222222','QA B all notice','Synthetic tenant B notice.','all',NULL,NULL,false,true);
 INSERT INTO public.org_locations(tenant_id) VALUES
   ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
 INSERT INTO public.pay_periods(id,tenant_id,name,start_date,end_date,pay_date,status,currency) VALUES

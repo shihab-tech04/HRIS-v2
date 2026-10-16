@@ -9,6 +9,7 @@ import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { ProjectNotifications } from './ProjectNotifications';
 import { MyEmployeeRoster } from './MyEmployeeRoster';
+import { MyEmployeeAnnouncements } from './MyEmployeeAnnouncements';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
@@ -35,7 +36,7 @@ import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
-  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText,
+  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -70,7 +71,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -3392,6 +3393,7 @@ export function LiveHrisWorkspace({
     if (permissions.payroll) items.push({ id: 'payroll-register', label: 'Payroll register', icon: <Receipt className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-announcements', label: 'Announcements', icon: <Megaphone className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-roster', label: 'My Roster', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-notifications', label: 'Notifications', icon: <Bell className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
@@ -3504,6 +3506,7 @@ export function LiveHrisWorkspace({
             <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />
           </>}
           {page === 'my-roster' && isEmployee && <MyEmployeeRoster tenantId={tenantId} locale={locale} focusDate={rosterFocusDate} />}
+          {page === 'my-announcements' && isEmployee && <MyEmployeeAnnouncements tenantId={tenantId} locale={locale} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
             onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} onOpenServiceRequest={openServiceRequest}

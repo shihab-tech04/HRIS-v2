@@ -1,6 +1,8 @@
 -- Employee self-service identity card. The linked employee helper already
 -- excludes resigned and terminated employment records; this read-only RPC
--- additionally requires an active membership in the requested active tenant.
+-- uses the same linked employee identity as the existing employee
+-- self-service dashboard. Employee Auth links do not require an admin
+-- membership row; the tenant itself must still be active.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.hris_get_my_employee_identity_card(p_tenant_id uuid)
@@ -16,15 +18,10 @@ BEGIN
   END IF;
 
   IF p_tenant_id IS NULL OR NOT EXISTS (
-    SELECT 1
-    FROM public.tenants t
-    JOIN public.tenant_memberships m
-      ON m.tenant_id=t.id
-     AND m.user_id=auth.uid()
-     AND lower(m.status)='active'
+    SELECT 1 FROM public.tenants t
     WHERE t.id=p_tenant_id AND t.is_active IS TRUE
   ) THEN
-    RAISE EXCEPTION 'Active employee organization membership required.' USING errcode='42501';
+    RAISE EXCEPTION 'Active employee organization required.' USING errcode='42501';
   END IF;
 
   v_employee_id := public.hris_own_employee_for_tenant(p_tenant_id);
