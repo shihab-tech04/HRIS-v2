@@ -46,7 +46,7 @@ jobs:
         with:
           version: 2.120.0
       - name: Install repository dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --include=optional --no-audit --no-fund
       - name: Create a fresh local-only Supabase configuration
         run: |
           set -euo pipefail

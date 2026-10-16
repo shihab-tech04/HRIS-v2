@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: '24.21.0'
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --include=optional --no-audit --no-fund
       - name: TypeScript and static contract checks
         run: npm run lint && npm run test:contracts
       - name: Build GitHub Pages application
@@ -78,7 +78,7 @@ jobs:
         with:
           node-version: '24.21.0'
       - name: Install live browser verification dependencies
-        run: npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
+        run: npm install --include=optional --no-audit --no-fund && npx playwright install --with-deps chromium
       - name: Verify published login and recovery screen with Chromium
         run: |
           node --input-type=module <<'NODE'

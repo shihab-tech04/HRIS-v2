@@ -64,6 +64,8 @@ DROP FUNCTION IF EXISTS public.hris_can_read_learning_catalog(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_admin_can_read_tenant(uuid,text) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_is_active_tenant_member(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_own_employee_for_tenant(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_employee_family_own_row(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_employee_family_admin_can_read(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_test_expense_claim_status_history() CASCADE;
 DROP FUNCTION IF EXISTS public.employee_for_auth_user() CASCADE;
 DROP FUNCTION IF EXISTS public.has_tenant_permission(uuid,text) CASCADE;

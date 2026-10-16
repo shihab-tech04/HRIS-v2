@@ -602,13 +602,14 @@ const familyPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'update_grant',has_table_privilege('authenticated','public.employee_family_members','UPDATE'),
   'delete_grant',has_table_privilege('authenticated','public.employee_family_members','DELETE')
 ) FROM pg_class c WHERE c.oid='public.employee_family_members'::regclass`);
-record('Family RLS replaces global permission reads with tenant-scoped admin and own-row policies',
+record('Family RLS uses active tenant membership roles and own-row policies',
   familyPolicyState.rls_enabled === true
-    && String(familyPolicyState.admin_policy).includes('hris_admin_can_read_tenant')
+    && String(familyPolicyState.admin_policy).includes('hris_employee_family_admin_can_read')
     && !String(familyPolicyState.admin_policy).includes('has_permission')
-    && String(familyPolicyState.self_policy).includes('hris_own_employee_for_tenant')
+    && String(familyPolicyState.self_policy).includes('hris_employee_family_own_row')
     && familyPolicyState.tenant_guard?.permissive === 'RESTRICTIVE'
-    && String(familyPolicyState.tenant_guard?.qual).includes('hris_admin_can_read_tenant')
+    && String(familyPolicyState.tenant_guard?.qual).includes('hris_employee_family_admin_can_read')
+    && String(familyPolicyState.tenant_guard?.qual).includes('hris_employee_family_own_row')
     && familyPolicyState.anon_privileges?.length === 0
     && familyPolicyState.anon_select === false
     && JSON.stringify(familyPolicyState.authenticated_privileges) === '["SELECT"]'
