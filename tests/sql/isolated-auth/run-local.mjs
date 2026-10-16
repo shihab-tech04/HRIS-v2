@@ -2120,6 +2120,10 @@ const completionAnonDenied = await completionAnonymous.rpc('hris_complete_candid
 });
 const completionDirectWriteDenied = await recruitmentManagerA.client.from('interviews')
   .update({ status: 'completed' }).eq('id', completionInterviewId);
+const completionStateBeforeBrowser = queryAdmin(`SELECT jsonb_build_object(
+    'interview_status',i.status,'candidate_response',i.candidate_response,'application_stage',a.stage
+  ) FROM public.interviews i JOIN public.job_applications a ON a.id=i.application_id
+  WHERE i.id=${sqlLiteral(completionInterviewId)}::uuid`);
 record('Interview completion setup uses a confirmed synthetic invitation and denies unprivileged, cross-tenant, anonymous, invalid-state, and direct-table writes',
   !completionInterviewSchedule.error && Boolean(completionInterviewId)
     && !candidateCompletionConfirmation.error && candidateCompletionConfirmation.data?.response === 'confirmed'
@@ -2129,7 +2133,11 @@ record('Interview completion setup uses a confirmed synthetic invitation and den
     && Boolean(completionCandidateDenied.error?.code === '42501')
     && Boolean(completionWrongState.error?.code === '22023')
     && Boolean(completionAnonDenied.error)
-    && Boolean(completionDirectWriteDenied.error));
+    && Boolean(completionDirectWriteDenied.error)
+    && completionStateBeforeBrowser.interview_status === 'scheduled'
+    && completionStateBeforeBrowser.candidate_response === 'confirmed'
+    && completionStateBeforeBrowser.application_stage === 'interview_scheduled',
+  JSON.stringify(completionStateBeforeBrowser));
 
 let completionBrowserOutput = '';
 let completionBrowserError = '';

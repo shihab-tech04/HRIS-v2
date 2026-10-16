@@ -80,7 +80,10 @@ try {
   completionResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_complete_candidate_interview'));
   await card.getByRole('button', { name: 'Mark interview complete', exact: true }).click();
   const savedResponse = await completionResponse;
-  if (!savedResponse.ok()) throw new Error(`Interview completion RPC failed with HTTP ${savedResponse.status()}.`);
+  if (!savedResponse.ok()) {
+    const errorBody = (await savedResponse.text()).slice(0, 500);
+    throw new Error(`Interview completion RPC failed with HTTP ${savedResponse.status()}: ${errorBody}`);
+  }
   await card.getByText('Interview completed. The application is under evaluation.', { exact: true }).waitFor({ state: 'visible' });
   await card.getByText('Interview completed', { exact: true }).waitFor({ state: 'visible' });
   if (await card.getByRole('button', { name: 'Mark interview complete', exact: true }).count()) throw new Error('Completed interview still offers the completion action.');
