@@ -2205,7 +2205,14 @@ const completionAcceptance = {
       WHERE h.application_id=${sqlLiteral(recruitmentIds.applicationA1)}::uuid AND h.stage='interview_completed'`) === 1,
 };
 record('Interview completion persists one recruiter-attributed history event, remains idempotent, and exposes only the candidate-safe stage',
-  Object.values(completionAcceptance).every(Boolean), JSON.stringify(completionAcceptance));
+  Object.values(completionAcceptance).every(Boolean), JSON.stringify({
+    ...completionAcceptance,
+    candidateContextError: candidateContextAfterInterview.error?.code || null,
+    candidateApplicationFound: Boolean(completedCandidateApplication),
+    candidateApplicationStage: completedCandidateApplication?.stage || null,
+    candidateHistoryStages: completedCandidateApplication?.stage_history?.map(row => row.stage) || [],
+    candidateInterviewEventKeys: completedCandidateInterviewEvent ? Object.keys(completedCandidateInterviewEvent) : [],
+  }));
 const assessmentAfterBrowser = queryAdmin(`SELECT jsonb_build_object('status',status,'note',review_note,'reviewer',reviewed_by,'reviewed_at',reviewed_at)
   FROM public.candidate_assessments WHERE id=${sqlLiteral(assessmentId)}::uuid`);
 const assessmentManagerReadAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
