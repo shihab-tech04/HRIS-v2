@@ -2195,8 +2195,8 @@ const completionAcceptance = {
   singleRecruiterHistoryEvent: completionAfterBrowser.event_count === 1
     && completionAfterBrowser.event_actor === recruitmentManagerA.userId,
   managerProjectionShowsCompleted: !completedManagerRows.error && completedManagerRow?.interview_status === 'completed',
-  candidateProjectionShowsCompleted: completedCandidateApplication?.stage === 'interview_completed'
-    && completedCandidateInterviewEvent?.stage === 'interview_completed',
+  candidateProjectionApplicationStageMatches: completedCandidateApplication?.stage === 'interview_completed',
+  candidateProjectionEventStageMatches: completedCandidateInterviewEvent?.stage === 'interview_completed',
   candidateProjectionOmitsPrivateHistoryFields: !Object.hasOwn(completedCandidateInterviewEvent || {}, 'actor_user_id')
     && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'note'),
   candidateProjectionOmitsPanelDebrief: !JSON.stringify(candidateContextAfterInterview.data || {}).includes('Panel debrief: clear examples'),
@@ -2297,7 +2297,7 @@ const candidateA1Milestones = sanitizedStageHistory.data?.applications?.find(row
 const candidateA1MilestonesText = JSON.stringify(candidateA1Milestones);
 record('Recruiter stage transitions persist one sanitized history event per accepted change',
   stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
-    && !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
+    && !persistedStageA1.error && persistedStageA1.data.stage === 'interview_completed'
     && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
     && !transitionHistoryA1.error && acceptedTransitionHistoryA1.length === 4
     && acceptedTransitionHistoryA1.map(row => row.stage).sort().join(',') === 'interview_completed,interview_scheduled,screening,under_review'
@@ -2306,9 +2306,10 @@ record('Recruiter stage transitions persist one sanitized history event per acce
     && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 2
     && transitionHistoryA2.data.filter(row => row.stage === 'rejected').length === 1
     && transitionHistoryA2.data.every(row => row.actor_user_id === recruitmentManagerA.userId)
-    && repeatedStage.data?.changed === false
+    && repeatedStage.error?.code === '22023'
     && candidateA1Milestones.some(row => row.stage === 'under_review')
     && candidateA1Milestones.some(row => row.stage === 'screening')
+    && candidateA1Milestones.some(row => row.stage === 'interview_completed')
     && !candidateA1MilestonesText.includes('actor_user_id')
     && !candidateA1MilestonesText.includes('Application moved to screening.'),
   JSON.stringify({ browserCompleted: stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.'),

@@ -2,6 +2,8 @@
 // Auth and Postgres stack established by run-local.mjs.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
+import { resolve } from 'node:path';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
@@ -10,9 +12,21 @@ const required = [
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
 const repo = process.cwd();
-const port = '48378';
+const port = await new Promise((resolvePort, reject) => {
+  const probe = createServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close();
+      reject(new Error('Unable to reserve a loopback port for the payslip browser test.'));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolvePort(String(address.port)));
+  });
+});
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
   env: {
     ...process.env,
