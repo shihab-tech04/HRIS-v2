@@ -3,7 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { tenantAttendanceDate } from './attendanceDate.mjs';
+import { tenantAttendanceDate, tenantAttendanceTime } from './attendanceDate.mjs';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 
@@ -448,10 +448,16 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                 <h2 className="font-semibold">Today's attendance</h2>
                 <p className="text-xs text-slate-500">{attendanceDateLabel(new Date(), current.timezone)}</p>
               </div>
-              {records.attendanceToday ? <div className="p-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-medium" role="status">{attendanceStatusLabel(records.attendanceToday.status)}</p>
-                {['present', 'late', 'partial'].includes(records.attendanceToday.status) && attendanceWorkModeLabel(records.attendanceToday.work_mode) &&
-                  <p className="text-sm text-slate-600">{attendanceWorkModeLabel(records.attendanceToday.work_mode)}</p>}
+              {records.attendanceToday ? <div className="p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-medium" role="status">{attendanceStatusLabel(records.attendanceToday.status)}</p>
+                  {['present', 'late', 'partial'].includes(records.attendanceToday.status) && attendanceWorkModeLabel(records.attendanceToday.work_mode) &&
+                    <p className="text-sm text-slate-600">{attendanceWorkModeLabel(records.attendanceToday.work_mode)}</p>}
+                </div>
+                <dl className="grid grid-cols-2 gap-3 text-sm">
+                  <div><dt className="text-xs text-slate-500">Check-in</dt><dd className="font-medium">{tenantAttendanceTime(records.attendanceToday.check_in, current.timezone || 'UTC') || 'Not recorded'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Check-out</dt><dd className="font-medium">{tenantAttendanceTime(records.attendanceToday.check_out, current.timezone || 'UTC') || (records.attendanceToday.check_in ? 'Not checked out' : 'Not recorded')}</dd></div>
+                </dl>
               </div> : <p className="p-4 text-sm text-slate-600">No attendance record is available for today.</p>}
             </section>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
