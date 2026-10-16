@@ -34,6 +34,8 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   let expenseContextMethod = '';
   let travelContextMethod = '';
   let selfServiceContextMethod = '';
+  let payslipMethod = '';
+  let employeeProfileFilter: Record<string, string> = {};
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -103,10 +105,18 @@ test('employee sees own attendance, pending requests and dashboard records', asy
         { id: 'ec666666-6666-4666-8666-666666666666', request_type: 'noc_letter', status: 'completed', submitted_at: '2026-10-10T12:00:00.000Z' },
       ] };
     }
+    else if (path.endsWith('/rpc/employee_get_my_payslips')) {
+      payslipMethod = route.request().method();
+      data = [
+        { id: 'ed111111-1111-4111-8111-111111111111', pay_period_name: 'October 2026', pay_date: '2026-10-31', currency: 'BDT', basic_salary: 20000, house_rent_allowance: 6000, medical_allowance: 1000, transport_allowance: 500, special_allowance: 0, overtime_pay: 0, bonus: 0, tax_deduction: 500, provident_fund_deduction: 1000, leave_without_pay_deduction: 0, other_deductions: 0, gross_earnings: 27500, total_deductions: 1500, net_salary: 26000, status: 'released' },
+        { id: 'ed222222-2222-4222-8222-222222222222', pay_period_name: 'November 2026', pay_date: '2026-11-30', currency: 'BDT', net_salary: 99999, status: 'draft' },
+      ];
+    }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
+      employeeProfileFilter = Object.fromEntries(url.searchParams.entries());
       data = url.searchParams.get('user_id') === `eq.${userId}`
-        ? [{ id: employeeId, tenant_id: tenantId, employment_status: 'active' }]
+        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', employment_status: 'active' }]
         : [];
     } else if (table === 'admin_users') data = { active: false, is_super_admin: false };
     else if (table === 'tenants') data = [{ id: tenantId, name: 'Test tenant', slug: 'test-tenant', timezone: 'Asia/Dhaka' }];
@@ -153,6 +163,12 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   expect(expenseContextMethod).toBe('POST');
   expect(travelContextMethod).toBe('POST');
   expect(selfServiceContextMethod).toBe('POST');
+  expect(payslipMethod).toBe('POST');
+  expect(employeeProfileFilter).toMatchObject({
+    select: 'id,full_name,employee_number,official_email,employment_status',
+    tenant_id: `eq.${tenantId}`,
+    user_id: `eq.${userId}`,
+  });
   const balances = page.getByRole('region', { name: 'Remaining leave balances' });
   await expect(balances.getByText('Annual Leave')).toBeVisible();
   await expect(balances.getByText('15 days available')).toBeVisible();
@@ -203,4 +219,31 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(requests.getByText('employment certificate request')).toBeVisible();
   await expect(requests.getByText('work from home request')).toBeVisible();
   await expect(requests.getByText('noc letter request')).toHaveCount(0);
+
+  const quickAccess = page.getByRole('navigation', { name: 'Employee quick access' });
+  const expectedLinks = [
+    ['Attendance', '#today-attendance'],
+    ['Leave', '#leave-balances'],
+    ['Payslips', '#my-payslips'],
+    ['Profile', '#employee-profile'],
+    ['Requests', '#pending-requests'],
+  ];
+  for (const [label, href] of expectedLinks) {
+    await expect(quickAccess.getByRole('link', { name: label })).toHaveAttribute('href', href);
+  }
+  await quickAccess.getByRole('link', { name: 'Payslips' }).click();
+  await expect(page).toHaveURL(/#my-payslips$/);
+  const payslips = page.getByRole('region', { name: 'My payslips' });
+  await expect(payslips.getByText('October 2026')).toBeVisible();
+  await expect(payslips.getByText('Pay date: 2026-10-31')).toBeVisible();
+  await expect(payslips.getByText('Net pay: BDT 26,000.00')).toBeVisible();
+  await expect(payslips.getByText('November 2026')).toHaveCount(0);
+  await payslips.getByText('View pay details').click();
+  await expect(payslips.getByText('Basic salary')).toBeVisible();
+  await expect(payslips.getByText('BDT 20,000.00')).toBeVisible();
+  const profile = page.getByRole('region', { name: 'My profile' });
+  await expect(profile.getByText('Synthetic Employee')).toBeVisible();
+  await expect(profile.getByText('SYN-001')).toBeVisible();
+  await expect(profile.getByText('synthetic.employee@example.org')).toBeVisible();
+  await expect(profile.getByText('active')).toBeVisible();
 });
