@@ -9,6 +9,7 @@ const projects = readFileSync(new URL('../../src/live/OrganizationProjects.tsx',
 const myProjects = readFileSync(new URL('../../src/live/MyProjects.tsx', import.meta.url), 'utf8');
 const projectPermissionMigration = readFileSync(new URL('../../supabase/migrations/20261013100000_hris_project_superadmin_and_project_manager_permissions.sql', import.meta.url), 'utf8');
 const projectDataMigration = readFileSync(new URL('../../supabase/migrations/20261013090000_hris_projects_and_allocations_tenant_scope.sql', import.meta.url), 'utf8');
+const projectTimesheetMigration = readFileSync(new URL('../../supabase/migrations/20261016033936_hris_project_scoped_timesheet_review.sql', import.meta.url), 'utf8');
 const dashboardTeamReportMigration = readFileSync(new URL('../../supabase/migrations/20261014030722_hris_dashboard_team_report.sql', import.meta.url), 'utf8');
 const dashboardTeamReportBrowser = readFileSync(new URL('../sql/isolated-auth/run-dashboard-team-report-browser.mjs', import.meta.url), 'utf8');
 const isolatedRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
@@ -59,9 +60,11 @@ test('organization team directory is permission-gated and queries tenant-filtere
 
 test('project workspace and employee allocations use tenant-bound audited RPCs', () => {
   assert.match(app, /organizationManage: grants\.get\('organization\.manage'\) === true/);
-  assert.match(workspace, /page === 'projects' && \(permissions\.organization \|\| isSuperAdmin \|\| isEmployee\) && <OrganizationProjects tenantId=\{tenantId\} locale=\{locale\} \/>/);
+  assert.match(workspace, /page === 'projects' && \(permissions\.organization \|\| isSuperAdmin \|\| isEmployee\) && <>\s*<OrganizationProjects tenantId=\{tenantId\} locale=\{locale\} \/>/);
+  assert.match(workspace, /<ProjectTimesheetReviewQueue tenantId=\{tenantId\} locale=\{locale\} \/>/);
+  assert.match(workspace, /page === 'my-projects' && isEmployee && <>[\s\S]*?<ProjectTimesheetReviewQueue/);
   assert.match(workspace, /else if \(isEmployee\) items\.push\(\{ id: 'projects', label: 'Project Workspace'/);
-  assert.match(workspace, /page === 'my-projects' && isEmployee && <MyProjects tenantId=\{tenantId\} locale=\{locale\}/);
+  assert.match(workspace, /page === 'my-projects' && isEmployee && <>\s*<MyProjects tenantId=\{tenantId\} locale=\{locale\}/);
   assert.match(workspace, /synesis-hris-locale/);
   assert.match(workspace, /Switch language to Bengali/);
   assert.match(workspace, /document\.documentElement\.lang = locale/);
@@ -188,10 +191,39 @@ test('employee timesheets use tenant-bound RPCs, row-level security, and accessi
   assert.match(workspace, /rpc\('hris_get_my_timesheet_context',[\s\S]*?p_tenant_id: requestedTenant/);
   assert.match(workspace, /rpc\('hris_save_my_timesheet',[\s\S]*?p_tenant_id: tenantId/);
   assert.match(workspace, /rpc\('hris_submit_my_timesheet',[\s\S]*?p_tenant_id: tenantId/);
+  assert.match(workspace, /project_allocation_id: entry\.project_allocation_id/);
+  assert.match(workspace, /p_expected_version: editingVersion/);
+  assert.match(workspace, /hris_resubmit_rejected_project_timesheet/);
+  assert.match(workspace, /Project review status/);
   assert.match(workspace, /activeTenantId\.current !== requestedTenant/);
   assert.match(workspace, /A day cannot contain more than 24 total hours/);
   assert.match(workspace, /Submit timesheet/);
   assert.doesNotMatch(workspace, /rpc\('employee_get_timesheet_context'/);
   assert.doesNotMatch(workspace, /rpc\('employee_save_timesheet'/);
   assert.doesNotMatch(workspace, /rpc\('employee_submit_timesheet'/);
+});
+
+test('project-scoped timesheet review enforces allocation ownership, project-manager authority, scoped correction, and audit history', () => {
+  assert.match(projectTimesheetMigration, /ADD COLUMN IF NOT EXISTS project_allocation_id uuid/);
+  assert.match(projectTimesheetMigration, /ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1/);
+  assert.match(projectTimesheetMigration, /CREATE TABLE IF NOT EXISTS public\.timesheet_project_reviews/);
+  assert.match(projectTimesheetMigration, /CREATE TABLE IF NOT EXISTS public\.timesheet_project_review_events/);
+  assert.match(projectTimesheetMigration, /ALTER TABLE public\.timesheet_project_reviews ENABLE ROW LEVEL SECURITY/);
+  assert.match(projectTimesheetMigration, /REVOKE ALL ON public\.timesheet_project_reviews, public\.timesheet_project_review_events\s+FROM PUBLIC, anon, authenticated/);
+  assert.match(projectTimesheetMigration, /REVOKE ALL ON public\.timesheets, public\.timesheet_entries FROM PUBLIC, anon, authenticated/);
+  assert.match(projectTimesheetMigration, /a\.employee_id=v_employee_id\s+AND a\.assigned_date <= v_work_date/);
+  assert.match(projectTimesheetMigration, /p\.project_lead_id=v_employee_id/);
+  assert.match(projectTimesheetMigration, /p_decision='rejected'[\s\S]*?A rejection reason is required/);
+  assert.match(projectTimesheetMigration, /v_review\.revision <> p_expected_revision/);
+  assert.match(projectTimesheetMigration, /e\.timesheet_id=p_timesheet_id AND \(a\.project_id IS NULL OR a\.project_id<>p_project_id\)/);
+  assert.match(projectTimesheetMigration, /timesheet\.project\.corrected_resubmitted/);
+  assert.match(projectTimesheetMigration, /e\.project_allocation_id IS NULL\) THEN 'submitted'/);
+  assert.match(workspace, /Choose an allocation that covers this employee and work date\./);
+  assert.match(workspace, /Project allocation \(required\)/);
+  assert.match(workspace, /Project allocation \(optional\)/);
+  assert.match(isolatedRunner, /Concurrent project approval attempts commit one decision, one history event, and one audit record/);
+  for (const rpc of ['hris_get_my_project_timesheet_reviews', 'hris_resolve_project_timesheet', 'hris_resubmit_rejected_project_timesheet']) {
+    assert.match(projectTimesheetMigration, new RegExp(`REVOKE ALL ON FUNCTION public\\.${rpc}\\(`));
+    assert.match(projectTimesheetMigration, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${rpc}\\(`));
+  }
 });

@@ -204,6 +204,18 @@ function submitTimesheet(session, tenantId, id) {
     ${sqlLiteral(tenantId)}::uuid, ${sqlLiteral(id)}::uuid))`);
 }
 
+function resolveProjectTimesheet(session, tenantId, timesheetId, projectId, revision, decision, reason = null) {
+  return queryAs(session, `SELECT public.hris_resolve_project_timesheet(
+    ${sqlLiteral(tenantId)}::uuid,${sqlLiteral(timesheetId)}::uuid,${sqlLiteral(projectId)}::uuid,
+    ${revision},${sqlLiteral(decision)},${quoteNote(reason)})::jsonb`);
+}
+
+function resubmitRejectedProjectTimesheet(session, tenantId, timesheetId, projectId, revision, entries) {
+  return queryAs(session, `SELECT public.hris_resubmit_rejected_project_timesheet(
+    ${sqlLiteral(tenantId)}::uuid,${sqlLiteral(timesheetId)}::uuid,${sqlLiteral(projectId)}::uuid,
+    ${revision},${sqlLiteral(JSON.stringify(entries))}::jsonb)::jsonb`);
+}
+
 function tableRow(table, id) {
   const allowed = new Set(['leave_requests', 'attendance_records', 'attendance_corrections', 'employee_shift_assignments']);
   if (!allowed.has(table)) throw new Error(`Unexpected local fixture table: ${table}`);
@@ -367,6 +379,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013174500_hris_learning_program_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013184000_hris_peer_review_eligibility_enforcement.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013222433_hris_peer_review_in_app_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016033936_hris_project_scoped_timesheet_review.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013224251_hris_project_task_edit_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013225608_hris_project_manager_task_portfolio.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013190000_hris_learning_session_roster.sql'),
@@ -2712,7 +2725,11 @@ FROM (VALUES
   ('public.hris_employee_submit_leave_request(uuid,jsonb)'),
   ('public.hris_get_my_timesheet_context(uuid)'),
   ('public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)'),
+  ('public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb,integer)'),
   ('public.hris_submit_my_timesheet(uuid,uuid)'),
+  ('public.hris_get_my_project_timesheet_reviews(uuid)'),
+  ('public.hris_resolve_project_timesheet(uuid,uuid,uuid,integer,text,text)'),
+  ('public.hris_resubmit_rejected_project_timesheet(uuid,uuid,uuid,integer,jsonb)'),
   ('public.hris_get_my_travel_context(uuid)'),
   ('public.hris_save_my_travel_request(uuid,uuid,text,date,date,text,numeric,text)'),
   ('public.hris_submit_my_travel_request(uuid,uuid)'),
@@ -4370,6 +4387,215 @@ record('Assigned Project Manager can add members across projects within the shar
     && Boolean(allocationAOver.error) && Boolean(foreignEmployeeAllocation.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.assigned') === 1
     && auditCount(allocationA40.data?.id, 'project.allocation.assigned') === 1);
+
+// Project-scoped timesheet acceptance: one employee, two projects, two assigned
+// Project Managers. All test identities and records exist only in local Postgres.
+psqlSync(`INSERT INTO public.timesheet_activities(id,tenant_id,activity_type,name,code,active) VALUES
+  ('88888888-8888-4888-8888-888888888904','${ids.tenantA}'::uuid,'project','QA Project Work','QA-PROJECT',true)
+  ON CONFLICT (tenant_id,code) DO UPDATE SET activity_type='project',active=true;`);
+const submitterProjectAllocationA = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_employee_id: '55555555-5555-4555-8555-555555555556',
+  p_role_on_project: 'QA contributor', p_allocation_percentage: 50,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const submitterProjectAllocationB = await employeeClock.client.rpc('hris_assign_tenant_project_allocation', {
+  p_tenant_id: ids.tenantA, p_project_id: otherProjectManagerProject.id, p_employee_id: '55555555-5555-4555-8555-555555555556',
+  p_role_on_project: 'QA contributor', p_allocation_percentage: 50,
+  p_assigned_date: localCurrentDate, p_release_date: null,
+});
+const projectHourEntries = [
+  { activity_id: '88888888-8888-4888-8888-888888888904', project_allocation_id: submitterProjectAllocationA.data?.id,
+    work_date: localCurrentDate, hours: 2, note: 'Synthetic project A hours' },
+  { activity_id: '88888888-8888-4888-8888-888888888904', project_allocation_id: submitterProjectAllocationB.data?.id,
+    work_date: localCurrentDate, hours: 3, note: 'Synthetic project B hours' },
+];
+const projectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'daily', localCurrentDate, localCurrentDate, projectHourEntries);
+const draftVersionedUpdate = queryAs(managerA2, `SELECT jsonb_build_object('id',public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'daily','${localCurrentDate}'::date,'${localCurrentDate}'::date,
+  '${JSON.stringify(projectHourEntries)}'::jsonb,1))`);
+const staleDraftUpdate = attemptAs(managerA2, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'daily','${localCurrentDate}'::date,'${localCurrentDate}'::date,
+  '${JSON.stringify(projectHourEntries)}'::jsonb,1)`);
+const invalidNoAllocation = attemptAs(managerA2, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'daily','${localCurrentDate}'::date,'${localCurrentDate}'::date,
+  '[{"activity_id":"88888888-8888-4888-8888-888888888904","work_date":"${localCurrentDate}","hours":1}]'::jsonb)`);
+const invalidForeignAllocation = attemptAs(managerA2, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'daily','${localCurrentDate}'::date,'${localCurrentDate}'::date,
+  '${JSON.stringify([{ ...projectHourEntries[0], project_allocation_id: allocationA60.data?.id }])}'::jsonb)`);
+const previousWorkDate = addCalendarDays(localCurrentDate, -1);
+const invalidAllocationDate = attemptAs(managerA2, `SELECT public.hris_save_my_timesheet(
+  '${ids.tenantA}'::uuid,NULL,'daily','${previousWorkDate}'::date,'${previousWorkDate}'::date,
+  '${JSON.stringify([{ ...projectHourEntries[0], work_date: previousWorkDate }])}'::jsonb)`);
+const projectSubmission = submitTimesheet(managerA2, ids.tenantA, projectTimesheet.id);
+const projectReviewRows = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
+  FROM public.timesheet_project_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND timesheet_id='${projectTimesheet.id}'::uuid`);
+record('New project hours require a verified employee allocation and optimistic draft version; submit creates two independent reviews',
+  !submitterProjectAllocationA.error && !submitterProjectAllocationB.error
+    && draftVersionedUpdate.id === projectTimesheet.id && !staleDraftUpdate.ok
+    && !invalidNoAllocation.ok && !invalidForeignAllocation.ok && !invalidAllocationDate.ok
+    && projectSubmission.id === projectTimesheet.id && projectReviewRows.count === 2);
+
+const projectInboxA = await employeeA.client.rpc('hris_get_my_project_timesheet_reviews', { p_tenant_id: ids.tenantA });
+const projectInboxB = await employeeClock.client.rpc('hris_get_my_project_timesheet_reviews', { p_tenant_id: ids.tenantA });
+const projectInboxCrossTenant = await employeeA.client.rpc('hris_get_my_project_timesheet_reviews', { p_tenant_id: ids.tenantB });
+const projectInboxOrdinaryAdmin = await managerA.client.rpc('hris_get_my_project_timesheet_reviews', { p_tenant_id: ids.tenantA });
+const directProjectReviewRead = attemptAs(employeeA, `SELECT count(*) FROM public.timesheet_project_reviews`);
+const directTimesheetRead = attemptAs(employeeA, `SELECT count(*) FROM public.timesheets`);
+const directTimesheetEntryWrite = attemptAs(employeeA, `INSERT INTO public.timesheet_entries(timesheet_id,activity_id,work_date,hours)
+  VALUES ('${projectTimesheet.id}'::uuid,'88888888-8888-4888-8888-888888888904'::uuid,'${localCurrentDate}'::date,1)`);
+record('Project review inbox is visible only through active-tenant Project Manager RPCs and table reads remain denied',
+  !projectInboxA.error && !projectInboxB.error && projectInboxA.data.reviews.length === 1
+    && projectInboxA.data.reviews[0].project_id === projectA.id
+    && projectInboxB.data.reviews.length === 1 && projectInboxB.data.reviews[0].project_id === otherProjectManagerProject.id
+    && Boolean(projectInboxCrossTenant.error) && Boolean(projectInboxOrdinaryAdmin.error)
+    && !directProjectReviewRead.ok && !directTimesheetRead.ok && !directTimesheetEntryWrite.ok);
+
+const rejectWithoutReason = attemptAs(employeeClock, `SELECT public.hris_resolve_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${otherProjectManagerProject.id}'::uuid,1,'rejected',NULL)`);
+const nonManagerReview = attemptAs(managerA2, `SELECT public.hris_resolve_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,'approved',NULL)`);
+const missingRevisionReview = attemptAs(employeeA, `SELECT public.hris_resolve_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${projectA.id}'::uuid,NULL,'approved',NULL)`);
+const crossProjectReview = attemptAs(employeeA, `SELECT public.hris_resolve_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${otherProjectManagerProject.id}'::uuid,1,'approved',NULL)`);
+const crossTenantReview = attemptAs(employeeA, `SELECT public.hris_resolve_project_timesheet(
+  '${ids.tenantB}'::uuid,'${projectTimesheet.id}'::uuid,'${projectB.id}'::uuid,1,'approved',NULL)`);
+const approveProjectA = resolveProjectTimesheet(employeeA, ids.tenantA, projectTimesheet.id, projectA.id, 1, 'approved');
+const duplicateProjectDecision = attemptAs(employeeA, `SELECT public.hris_resolve_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,'approved',NULL)`);
+const statusAfterFirstDecision = queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${projectTimesheet.id}'::uuid`).status;
+const projectAEntryBeforeCorrection = queryAdmin(`SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) AS rows FROM public.timesheet_entries e
+  JOIN public.project_allocations a ON a.id=e.project_allocation_id
+  WHERE e.timesheet_id='${projectTimesheet.id}'::uuid AND a.project_id='${projectA.id}'::uuid`).rows;
+record('Only each appointed Project Manager may decide their own project portion; rejection reason and duplicate-decision rules hold',
+  !approveProjectA.error && approveProjectA.status === 'approved' && statusAfterFirstDecision === 'submitted'
+    && Boolean(rejectWithoutReason.error) && Boolean(nonManagerReview.error) && Boolean(missingRevisionReview.error)
+    && Boolean(crossProjectReview.error) && Boolean(crossTenantReview.error)
+    && !duplicateProjectDecision.ok && projectAEntryBeforeCorrection.length === 1);
+
+const rejectProjectB = resolveProjectTimesheet(employeeClock, ids.tenantA, projectTimesheet.id,
+  otherProjectManagerProject.id, 1, 'rejected', 'Correct project B hours.');
+const overallRejected = queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${projectTimesheet.id}'::uuid`).status;
+const rejectedProjectBEntries = [{ ...projectHourEntries[1], hours: 4, note: 'Synthetic corrected project B hours' }];
+const resubmittedProjectB = resubmitRejectedProjectTimesheet(managerA2, ids.tenantA, projectTimesheet.id,
+  otherProjectManagerProject.id, 1, rejectedProjectBEntries);
+const staleProjectBResubmit = attemptAs(managerA2, `SELECT public.hris_resubmit_rejected_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${otherProjectManagerProject.id}'::uuid,1,
+  '${JSON.stringify(rejectedProjectBEntries)}'::jsonb)`);
+const approvedProjectEdit = attemptAs(managerA2, `SELECT public.hris_resubmit_rejected_project_timesheet(
+  '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,
+  '${JSON.stringify([projectHourEntries[0]])}'::jsonb)`);
+const projectAEntryAfterCorrection = queryAdmin(`SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) AS rows FROM public.timesheet_entries e
+  JOIN public.project_allocations a ON a.id=e.project_allocation_id
+  WHERE e.timesheet_id='${projectTimesheet.id}'::uuid AND a.project_id='${projectA.id}'::uuid`).rows;
+const projectBReviewAfterCorrection = queryAdmin(`SELECT jsonb_build_object('status',status,'revision',revision)
+  FROM public.timesheet_project_reviews WHERE tenant_id='${ids.tenantA}'::uuid
+    AND timesheet_id='${projectTimesheet.id}'::uuid AND project_id='${otherProjectManagerProject.id}'::uuid`);
+record('Rejected resubmission changes only that project, preserves approved rows, increments revision, and rejects stale/approved edits',
+  !rejectProjectB.error && overallRejected === 'rejected' && !resubmittedProjectB.error
+    && !staleProjectBResubmit.ok && !approvedProjectEdit.ok
+    && JSON.stringify(projectAEntryAfterCorrection) === JSON.stringify(projectAEntryBeforeCorrection)
+    && projectBReviewAfterCorrection.status === 'pending' && projectBReviewAfterCorrection.revision === 2
+    && queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${projectTimesheet.id}'::uuid`).status === 'submitted');
+const approveProjectBRevision2 = resolveProjectTimesheet(employeeClock, ids.tenantA, projectTimesheet.id,
+  otherProjectManagerProject.id, 2, 'approved');
+const finalProjectTimesheetState = queryAdmin(`SELECT jsonb_build_object(
+  'status',t.status,
+  'project_a',(SELECT status FROM public.timesheet_project_reviews WHERE timesheet_id=t.id AND project_id='${projectA.id}'::uuid),
+  'project_b',(SELECT status FROM public.timesheet_project_reviews WHERE timesheet_id=t.id AND project_id='${otherProjectManagerProject.id}'::uuid),
+  'events',(SELECT count(*)::integer FROM public.timesheet_project_review_events WHERE timesheet_id=t.id),
+  'review_audit',(SELECT count(*)::integer FROM public.admin_audit_logs WHERE target_type='timesheet_project_review'
+    AND details->>'timesheet_id'=t.id::text)) FROM public.timesheets t WHERE t.id='${projectTimesheet.id}'::uuid`);
+record('All project portions must pass before overall approval, with append-only decision and correction audit history',
+  !approveProjectBRevision2.error && finalProjectTimesheetState.status === 'approved'
+    && finalProjectTimesheetState.project_a === 'approved' && finalProjectTimesheetState.project_b === 'approved'
+    && finalProjectTimesheetState.events === 6 && finalProjectTimesheetState.review_audit === 4);
+
+const mixedProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'daily', localCurrentDate, localCurrentDate, [
+  projectHourEntries[0], { activity_id: '88888888-8888-4888-8888-888888888901', work_date: localCurrentDate, hours: 1,
+    note: 'Synthetic unlinked non-project work' },
+]);
+submitTimesheet(managerA2, ids.tenantA, mixedProjectTimesheet.id);
+const mixedProjectReview = queryAdmin(`SELECT project_id::text AS id FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).id;
+resolveProjectTimesheet(employeeA, ids.tenantA, mixedProjectTimesheet.id, mixedProjectReview, 1, 'approved');
+record('Non-project hours remain submitted after project approval because no non-project approval authority is defined',
+  queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${mixedProjectTimesheet.id}'::uuid`).status === 'submitted'
+    && queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).count === 1);
+
+const concurrentProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'daily', localCurrentDate, localCurrentDate,
+  [projectHourEntries[0]]);
+submitTimesheet(managerA2, ids.tenantA, concurrentProjectTimesheet.id);
+const concurrentProjectDecisions = await Promise.allSettled([
+  psqlAsync(sessionSql(employeeA, `SELECT public.hris_resolve_project_timesheet(
+    '${ids.tenantA}'::uuid,'${concurrentProjectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,'approved',NULL)::jsonb`)),
+  psqlAsync(sessionSql(employeeA, `SELECT public.hris_resolve_project_timesheet(
+    '${ids.tenantA}'::uuid,'${concurrentProjectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,'approved',NULL)::jsonb`)),
+]);
+const concurrentProjectState = queryAdmin(`SELECT jsonb_build_object(
+  'timesheet_status',t.status,
+  'review_status',(SELECT r.status FROM public.timesheet_project_reviews r WHERE r.tenant_id=t.tenant_id AND r.timesheet_id=t.id AND r.project_id='${projectA.id}'::uuid),
+  'events',(SELECT count(*)::integer FROM public.timesheet_project_review_events ev WHERE ev.tenant_id=t.tenant_id AND ev.timesheet_id=t.id),
+  'audit',(SELECT count(*)::integer FROM public.admin_audit_logs a WHERE a.target_type='timesheet_project_review'
+    AND a.details->>'timesheet_id'=t.id::text AND a.action='timesheet.project.approved'))
+  FROM public.timesheets t WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.id='${concurrentProjectTimesheet.id}'::uuid`);
+record('Concurrent project approval attempts commit one decision, one history event, and one audit record',
+  concurrentProjectDecisions.filter(result => result.status === 'fulfilled').length === 1
+    && concurrentProjectState.timesheet_status === 'approved' && concurrentProjectState.review_status === 'approved'
+    && concurrentProjectState.events === 2 && concurrentProjectState.audit === 1,
+  concurrentProjectDecisions.map(result => result.status === 'fulfilled' ? 'resolved' : 'denied').join('/'));
+
+let projectTimesheetBrowserOutput = '';
+let projectTimesheetBrowserError = '';
+try {
+  projectTimesheetBrowserOutput = execFileSync('node', [path.join(here, 'run-project-timesheets-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_TIMESHEET_EMPLOYEE_EMAIL: emails[7],
+      HRIS_LOCAL_TIMESHEET_MANAGER_EMAIL: emails[5],
+      HRIS_LOCAL_TIMESHEET_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_TIMESHEET_ALLOCATION_ID: submitterProjectAllocationA.data?.id,
+      HRIS_LOCAL_TIMESHEET_PROJECT_NAME: projectA.name,
+      HRIS_LOCAL_TIMESHEET_WORK_DATE: localCurrentDate,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  projectTimesheetBrowserError = String(error.stderr || error.message || 'local project timesheet browser journey failed')
+    .replaceAll(password, '[REDACTED]').slice(-1800);
+}
+const projectTimesheetBrowserRow = queryAdmin(`SELECT COALESCE((
+  SELECT jsonb_build_object('id',t.id::text,'status',t.status,'review_status',r.status,
+    'entry_count',(SELECT count(*)::integer FROM public.timesheet_entries e WHERE e.timesheet_id=t.id),
+    'corrected_note',(SELECT note FROM public.timesheet_entries e WHERE e.timesheet_id=t.id ORDER BY e.id LIMIT 1),
+    'history',(SELECT count(*)::integer FROM public.timesheet_project_review_events ev WHERE ev.timesheet_id=t.id))
+  FROM public.timesheets t JOIN public.timesheet_project_reviews r ON r.tenant_id=t.tenant_id AND r.timesheet_id=t.id
+  WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.employee_id='55555555-5555-4555-8555-555555555556'::uuid
+    AND EXISTS(SELECT 1 FROM public.timesheet_entries e WHERE e.timesheet_id=t.id
+      AND e.note LIKE 'Synthetic project timesheet browser acceptance%')
+  ORDER BY t.created_at DESC LIMIT 1),
+  jsonb_build_object('id',NULL,'status',NULL,'review_status',NULL,'entry_count',0,'corrected_note',NULL,'history',0))`);
+record('Real Auth-to-Postgres project timesheet browser journey completes allocation, rejection, scoped correction, approval, retry, refresh, EN/BN, and mobile/desktop states',
+  projectTimesheetBrowserOutput.includes('Real Auth/Postgres project timesheet journey passed: allocation-bound submission, PM-only rejection/approval, scoped correction, outage retry, refresh persistence, EN/BN, and 375px/1280px layouts.')
+    && projectTimesheetBrowserRow.status === 'approved' && projectTimesheetBrowserRow.review_status === 'approved'
+    && projectTimesheetBrowserRow.entry_count === 1
+    && projectTimesheetBrowserRow.corrected_note === 'Synthetic project timesheet browser acceptance corrected'
+    && projectTimesheetBrowserRow.history === 4,
+  JSON.stringify({ browserError: projectTimesheetBrowserError, database: projectTimesheetBrowserRow }));
+if (projectTimesheetBrowserRow.id) {
+  psqlSync(`DELETE FROM public.admin_audit_logs WHERE (target_type='timesheet' AND target_id='${projectTimesheetBrowserRow.id}')
+    OR (target_type='timesheet_project_review' AND details->>'timesheet_id'='${projectTimesheetBrowserRow.id}');
+    DELETE FROM public.timesheets WHERE id='${projectTimesheetBrowserRow.id}'::uuid;`);
+}
+record('Real-browser project timesheet acceptance removes only its marked synthetic rows and audit records',
+  queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.timesheets t
+    JOIN public.timesheet_entries e ON e.timesheet_id=t.id
+    WHERE t.tenant_id='${ids.tenantA}'::uuid AND e.note LIKE 'Synthetic project timesheet browser acceptance%'`).count === 0);
+
 const employeeATeamAndProjectMembership = queryAdmin(`SELECT jsonb_build_object(
   'team_id',e.team_id::text,
   'project_count',(SELECT count(DISTINCT a.project_id)::integer FROM public.project_allocations a
@@ -4385,12 +4611,7 @@ record('Employee remains on their organizational team while belonging to multipl
     && Number(employeeATeamAndProjectMembership.allocation_total) === 100,
   JSON.stringify(employeeATeamAndProjectMembership));
 
-const taskMemberAllocation = await employeeA.client.rpc('hris_assign_tenant_project_allocation', {
-  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
-  p_employee_id: '55555555-5555-4555-8555-555555555556',
-  p_role_on_project: 'Collaborator', p_allocation_percentage: 25,
-  p_assigned_date: localCurrentDate, p_release_date: null,
-});
+const taskMemberAllocation = { error: null, data: submitterProjectAllocationA.data };
 const taskAllocationIds = [allocationA60.data?.id, taskMemberAllocation.data?.id];
 const adminTaskCreate = await managerA.client.rpc('hris_create_project_task', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id, p_title: 'Unauthorized task',

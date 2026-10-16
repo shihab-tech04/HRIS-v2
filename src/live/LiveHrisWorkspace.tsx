@@ -2148,7 +2148,7 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
   </section>;
 }
 
-type TimesheetDraftEntry = { activity_id: string; work_date: string; hours: string; note: string };
+type TimesheetDraftEntry = { activity_id: string; project_allocation_id: string; work_date: string; hours: string; note: string };
 
 function addLocalDays(value: string, count: number): string {
   const date = new Date(`${value}T12:00:00`);
@@ -2171,12 +2171,15 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     return locale === 'bn' && translated === source ? tx(fallback) : translated;
   };
   const [activities, setActivities] = useState<Record<string, unknown>[]>([]);
+  const [allocations, setAllocations] = useState<Record<string, unknown>[]>([]);
   const [timesheets, setTimesheets] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingVersion, setEditingVersion] = useState<number | null>(null);
+  const [editingRejectedProject, setEditingRejectedProject] = useState<{ project_id: string; revision: number } | null>(null);
   const [periodType, setPeriodType] = useState<'daily' | 'weekly'>('weekly');
   const [periodStart, setPeriodStart] = useState(() => startOfRecentWeek());
   const [periodEnd, setPeriodEnd] = useState(() => localIsoDate(new Date()));
@@ -2198,11 +2201,12 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
       });
       if (rpcError) throw rpcError;
       const context = asObject(data);
-      if (!context || !Array.isArray(context.activities) || !Array.isArray(context.timesheets)) {
+      if (!context || !Array.isArray(context.activities) || !Array.isArray(context.allocations) || !Array.isArray(context.timesheets)) {
         throw new Error('Timesheet service returned an invalid response.');
       }
       if (sequence !== loadSequence.current || activeTenantId.current !== requestedTenant) return;
       setActivities(asRows(context.activities));
+      setAllocations(asRows(context.allocations));
       setTimesheets(asRows(context.timesheets));
     } catch (cause) {
       if (sequence !== loadSequence.current || activeTenantId.current !== requestedTenant) return;
@@ -2215,6 +2219,7 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
   useEffect(() => {
     activeTenantId.current = tenantId;
     setActivities([]);
+    setAllocations([]);
     setTimesheets([]);
     setEditorOpen(false);
     setError('');
@@ -2226,6 +2231,8 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
   function openNewTimesheet() {
     const end = localIsoDate(new Date());
     setEditingId(null);
+    setEditingVersion(null);
+    setEditingRejectedProject(null);
     setPeriodType('weekly');
     setPeriodStart(addLocalDays(end, -6));
     setPeriodEnd(end);
@@ -2237,11 +2244,14 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
 
   function editTimesheet(row: Record<string, unknown>) {
     setEditingId(String(row.id));
+    setEditingVersion(Number(row.version));
+    setEditingRejectedProject(null);
     setPeriodType(row.period_type === 'daily' ? 'daily' : 'weekly');
     setPeriodStart(String(row.period_start || ''));
     setPeriodEnd(String(row.period_end || ''));
     setEntries(asRows(row.entries).map(entry => ({
       activity_id: String(entry.activity_id || ''),
+      project_allocation_id: String(entry.project_allocation_id || ''),
       work_date: String(entry.work_date || ''),
       hours: entry.hours === null || entry.hours === undefined ? '' : String(entry.hours),
       note: String(entry.note || ''),
@@ -2249,6 +2259,24 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     setFormError('');
     setSuccess('');
     setEditorOpen(true);
+  }
+
+  function editRejectedProject(row: Record<string, unknown>, review: Record<string, unknown>) {
+    const projectId = String(review.project_id || '');
+    setEditingId(String(row.id));
+    setEditingVersion(Number(row.version));
+    setEditingRejectedProject({ project_id: projectId, revision: Number(review.revision) });
+    setPeriodType(row.period_type === 'daily' ? 'daily' : 'weekly');
+    setPeriodStart(String(row.period_start || ''));
+    setPeriodEnd(String(row.period_end || ''));
+    setEntries(asRows(row.entries).filter(entry => String(entry.project_id || '') === projectId).map(entry => ({
+      activity_id: String(entry.activity_id || ''),
+      project_allocation_id: String(entry.project_allocation_id || ''),
+      work_date: String(entry.work_date || ''),
+      hours: entry.hours === null || entry.hours === undefined ? '' : String(entry.hours),
+      note: String(entry.note || ''),
+    })));
+    setFormError(''); setSuccess(''); setEditorOpen(true);
   }
 
   function changePeriodType(next: 'daily' | 'weekly') {
@@ -2260,7 +2288,7 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     setEntries(current => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, ...patch } : entry));
   }
 
-  function validateEntries(): { activity_id: string; work_date: string; hours: number; note: string | null }[] | null {
+  function validateEntries(): { activity_id: string; project_allocation_id: string | null; work_date: string; hours: number; note: string | null }[] | null {
     if (!periodStart || !periodEnd || periodStart > periodEnd) {
       setFormError(tx('The period end date must be on or after its start date.')); return null;
     }
@@ -2274,8 +2302,21 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     if (entries.some(entry => !entry.activity_id || !entry.work_date || !entry.hours.trim())) {
       setFormError(tx('Complete the activity, work date, and hours for each entry.')); return null;
     }
+    if (entries.some(entry => activities.find(activity => String(activity.id) === entry.activity_id)?.activity_type === 'project' && !entry.project_allocation_id)) {
+      setFormError(tx('Choose a project allocation for each project entry.')); return null;
+    }
+    if (entries.some(entry => {
+      const activity = activities.find(item => String(item.id) === entry.activity_id);
+      if (activity?.activity_type !== 'project') return false;
+      const allocation = allocations.find(item => String(item.id) === entry.project_allocation_id);
+      return !allocation || String(allocation.assigned_date || '') > entry.work_date
+        || Boolean(allocation.release_date && String(allocation.release_date) < entry.work_date);
+    })) {
+      setFormError(tx('Choose an allocation that covers this employee and work date.')); return null;
+    }
     const normalized = entries.map(entry => ({
       activity_id: entry.activity_id,
+      project_allocation_id: entry.project_allocation_id || null,
       work_date: entry.work_date,
       hours: Number(entry.hours),
       note: entry.note.trim() || null,
@@ -2302,20 +2343,22 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     if (!normalized) return;
     setActionBusy(true); setFormError(''); setError(''); setSuccess('');
     try {
-      const { data, error: rpcError } = await supabase.rpc('hris_save_my_timesheet', {
-        p_tenant_id: tenantId,
-        p_id: editingId,
-        p_period_type: periodType,
-        p_start: periodStart,
-        p_end: periodEnd,
-        p_entries: normalized,
-      });
+      const { data, error: rpcError } = editingRejectedProject
+        ? await supabase.rpc('hris_resubmit_rejected_project_timesheet', {
+          p_tenant_id: tenantId, p_timesheet_id: editingId, p_project_id: editingRejectedProject.project_id,
+          p_expected_revision: editingRejectedProject.revision, p_entries: normalized,
+        })
+        : await supabase.rpc('hris_save_my_timesheet', {
+          p_tenant_id: tenantId, p_id: editingId, p_period_type: periodType,
+          p_start: periodStart, p_end: periodEnd, p_entries: normalized,
+          p_expected_version: editingVersion,
+        });
       if (rpcError) throw rpcError;
       if (!data) throw new Error('The draft was not confirmed. Refresh your timesheet list and try again.');
       setEditorOpen(false);
       setEditingId(null);
       await load(false);
-      setSuccess(tx('Timesheet draft saved.'));
+      setSuccess(tx(editingRejectedProject ? 'Project hours corrected and resubmitted.' : 'Timesheet draft saved.'));
     } catch (cause) {
       setFormError(failureText(cause, 'Unable to save this timesheet.'));
     } finally {
@@ -2373,30 +2416,34 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
       {activities.length === 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{tx('Your organization has no active timesheet activities yet. Ask an administrator to configure them before recording hours.')}</p>}
       {editorOpen && <section aria-labelledby="timesheet-editor-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div><h3 id="timesheet-editor-heading" className="font-semibold text-[#08263D]">{tx(editingId ? 'Edit timesheet draft' : 'New timesheet draft')}</h3>
-            <p className="mt-1 text-xs text-slate-500">{tx('Drafts can be changed until they are submitted.')}</p></div>
+          <div><h3 id="timesheet-editor-heading" className="font-semibold text-[#08263D]">{tx(editingRejectedProject ? 'Correct rejected project hours' : editingId ? 'Edit timesheet draft' : 'New timesheet draft')}</h3>
+            <p className="mt-1 text-xs text-slate-500">{tx(editingRejectedProject ? 'Only this rejected project portion will be changed; other project decisions remain unchanged.' : 'Drafts can be changed until they are submitted.')}</p></div>
           <button type="button" disabled={actionBusy} onClick={() => { setEditorOpen(false); setFormError(''); }} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{tx('Cancel')}</button>
         </div>
         <form onSubmit={event => void saveDraft(event)} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div><label htmlFor="timesheet-period-type" className="mb-1 block text-xs font-medium text-slate-600">{tx('Period type')}</label>
-              <select id="timesheet-period-type" value={periodType} onChange={event => changePeriodType(event.target.value === 'daily' ? 'daily' : 'weekly')} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+              <select id="timesheet-period-type" disabled={Boolean(editingRejectedProject)} value={periodType} onChange={event => changePeriodType(event.target.value === 'daily' ? 'daily' : 'weekly')} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
                 <option value="weekly">{tx('Weekly')}</option><option value="daily">{tx('Daily')}</option>
               </select></div>
             <div><label htmlFor="timesheet-period-start" className="mb-1 block text-xs font-medium text-slate-600">{tx('Period start')}</label>
-              <input id="timesheet-period-start" type="date" required value={periodStart} onChange={event => { setPeriodStart(event.target.value); if (periodType === 'daily') setPeriodEnd(event.target.value); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <input id="timesheet-period-start" type="date" required disabled={Boolean(editingRejectedProject)} value={periodStart} onChange={event => { setPeriodStart(event.target.value); if (periodType === 'daily') setPeriodEnd(event.target.value); }} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm disabled:bg-slate-100" /></div>
             <div><label htmlFor="timesheet-period-end" className="mb-1 block text-xs font-medium text-slate-600">{tx('Period end')}</label>
-              <input id="timesheet-period-end" type="date" required value={periodEnd} onChange={event => setPeriodEnd(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <input id="timesheet-period-end" type="date" required disabled={Boolean(editingRejectedProject)} value={periodEnd} onChange={event => setPeriodEnd(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm disabled:bg-slate-100" /></div>
           </div>
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-slate-800">{tx('Work entries')}</h4>
-              <button type="button" disabled={actionBusy} onClick={() => setEntries(current => [...current, { activity_id: '', work_date: periodStart, hours: '', note: '' }])} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{tx('Add entry')}</button>
+              <button type="button" disabled={actionBusy} onClick={() => setEntries(current => [...current, { activity_id: '', project_allocation_id: '', work_date: periodStart, hours: '', note: '' }])} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{tx('Add entry')}</button>
             </div>
-            {entries.length === 0 ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No work entries yet. You can save an empty draft and add entries later.')}</p> : entries.map((entry, index) => <div key={index} className="grid min-w-0 gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.4fr)_minmax(140px,0.8fr)_minmax(110px,0.5fr)_minmax(180px,1.2fr)_auto]">
+            {entries.length === 0 ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No work entries yet. You can save an empty draft and add entries later.')}</p> : entries.map((entry, index) => <div key={index} className="grid min-w-0 gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.4fr)_minmax(160px,1fr)_minmax(140px,0.8fr)_minmax(90px,0.5fr)_minmax(160px,1.2fr)_auto]">
               <div className="min-w-0"><label htmlFor={`timesheet-activity-${index}`} className="mb-1 block text-xs font-medium text-slate-600">{tx('Activity')}</label>
                 <select id={`timesheet-activity-${index}`} value={entry.activity_id} onChange={event => updateEntry(index, { activity_id: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
                   <option value="">{tx('Choose activity')}</option>{activities.map((activity, activityIndex) => <option key={String(activity.id || activityIndex)} value={String(activity.id || '')}>{display(activity.name)} · {display(activity.code)}</option>)}
+                </select></div>
+              <div className="min-w-0"><label htmlFor={`timesheet-allocation-${index}`} className="mb-1 block text-xs font-medium text-slate-600">{tx(activities.find(activity => String(activity.id) === entry.activity_id)?.activity_type === 'project' ? 'Project allocation (required)' : 'Project allocation (optional)')}</label>
+                <select id={`timesheet-allocation-${index}`} value={entry.project_allocation_id} onChange={event => updateEntry(index, { project_allocation_id: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                  <option value="">{tx('No project allocation')}</option>{allocations.map((allocation, allocationIndex) => <option key={String(allocation.id || allocationIndex)} value={String(allocation.id || '')}>{display(allocation.project_name)} · {display(allocation.project_code)} ({dateText(allocation.assigned_date)}{allocation.release_date ? `–${dateText(allocation.release_date)}` : ''})</option>)}
                 </select></div>
               <div><label htmlFor={`timesheet-date-${index}`} className="mb-1 block text-xs font-medium text-slate-600">{tx('Work date')}</label>
                 <input id={`timesheet-date-${index}`} type="date" value={entry.work_date} onChange={event => updateEntry(index, { work_date: event.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
@@ -2417,7 +2464,7 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
           {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{formError}</p>}
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
             <button type="button" disabled={actionBusy} onClick={() => setEditorOpen(false)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm disabled:opacity-50">{tx('Cancel')}</button>
-            <button type="submit" disabled={actionBusy} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:opacity-50">{actionBusy ? tx('Saving…') : tx('Save draft')}</button>
+            <button type="submit" disabled={actionBusy} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:opacity-50">{actionBusy ? tx('Saving…') : tx(editingRejectedProject ? 'Save and resubmit project hours' : 'Save draft')}</button>
           </div>
         </form>
       </section>}
@@ -2433,6 +2480,8 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
           const statusLabel = tx(status === 'approved' ? 'Approved' : status === 'rejected' ? 'Rejected'
             : status === 'submitted' ? 'Submitted' : 'Draft');
           const timesheetId = String(row.id || index);
+          const projectReviews = asRows(row.project_reviews);
+          const hasUnlinkedEntries = rowEntries.some(entry => !entry.project_allocation_id);
           return <article key={timesheetId} data-timesheet-id={timesheetId} aria-label={txf('Timesheet {start} to {end}', { start: dateText(row.period_start), end: dateText(row.period_end) })} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold text-slate-900">{tx(row.period_type === 'daily' ? 'Daily' : 'Weekly')} {tx('Period')} · {dateText(row.period_start)} – {dateText(row.period_end)}</h4>
@@ -2441,13 +2490,28 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
                 {Boolean(row.resolution_note) && <p className="mt-2 text-sm text-slate-600">{tx('Reviewer note:')} {display(row.resolution_note)}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
-                {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy} onClick={() => editTimesheet(row)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{tx(status === 'rejected' ? 'Revise timesheet' : 'Edit draft')}</button>}
-                {(status === 'draft' || status === 'rejected') && <button type="button" disabled={actionBusy || rowEntries.length === 0} onClick={() => void submitTimesheet(timesheetId)} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{actionBusy ? tx('Submitting…') : tx('Submit timesheet')}</button>}
+                {status === 'draft' && <button type="button" disabled={actionBusy} onClick={() => editTimesheet(row)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{tx('Edit draft')}</button>}
+                {status === 'draft' && <button type="button" disabled={actionBusy || rowEntries.length === 0} onClick={() => void submitTimesheet(timesheetId)} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{actionBusy ? tx('Submitting…') : tx('Submit timesheet')}</button>}
               </div>
             </div>
+            {projectReviews.length > 0 && <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+              <h5 className="text-sm font-semibold text-slate-800">{tx('Project review status')}</h5>
+              {projectReviews.map((review, reviewIndex) => {
+                const reviewStatus = String(review.status || 'pending');
+                return <div key={`${String(review.project_id)}-${reviewIndex}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#EFF7F8] p-3 text-sm">
+                  <div className="min-w-0"><span className="font-medium text-slate-800">{display(review.project_name)}</span>
+                    <span className="ml-2 capitalize text-slate-600">{tx(reviewStatus === 'pending' ? 'Feedback pending' : reviewStatus === 'approved' ? 'Approved' : 'Rejected')}</span>
+                    {reviewStatus === 'rejected' && Boolean(review.rejection_reason) && <p className="mt-1 break-words text-rose-800">{tx('Rejection reason:')} {display(review.rejection_reason)}</p>}
+                  </div>
+                  {status === 'rejected' && reviewStatus === 'rejected' && <button type="button" disabled={actionBusy} onClick={() => editRejectedProject(row, review)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">{tx('Correct this project portion')}</button>}
+                </div>;
+              })}
+            </div>}
+            {status === 'rejected' && projectReviews.length === 0 && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{tx('This historical timesheet has no project review link, so it is preserved without guessing which project should be corrected.')}</p>}
+            {status === 'submitted' && hasUnlinkedEntries && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{tx('Unlinked hours remain submitted because no project reviewer is assigned to non-project work.')}</p>}
             {rowEntries.length > 0 && <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
               {rowEntries.map((entry, entryIndex) => <div key={String(entry.id || entryIndex)} className="grid min-w-0 gap-1 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-4">
-                <p className="min-w-0 break-words font-medium text-slate-800">{display(entry.activity_name)}{entry.activity_code ? ` · ${String(entry.activity_code)}` : ''}</p>
+                <p className="min-w-0 break-words font-medium text-slate-800">{display(entry.activity_name)}{entry.activity_code ? ` · ${String(entry.activity_code)}` : ''}{entry.project_name ? ` · ${display(entry.project_name)}` : ''}</p>
                 <p className="text-slate-600">{dateText(entry.work_date)}</p><p className="tabular-nums text-slate-700">{hoursText(Number(entry.hours))} {tx('hr')}</p>
                 {Boolean(entry.note) && <p className="text-xs text-slate-500 sm:col-span-3">{display(entry.note)}</p>}
               </div>)}
@@ -2456,6 +2520,103 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
         })}
       </section>
     </>}
+  </section>;
+}
+
+function ProjectTimesheetReviewQueue({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+  const tx = (source: string) => projectText(locale, source);
+  const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
+  const [reviews, setReviews] = useState<Record<string, unknown>[]>([]);
+  const [canReview, setCanReview] = useState(false);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [busyKey, setBusyKey] = useState('');
+  const dateText = (value: unknown) => localizedEmployeeDate(value, locale);
+  const hoursText = (value: unknown) => new Intl.NumberFormat(locale === 'bn' ? 'bn-BD' : 'en-US', { maximumFractionDigits: 2 }).format(Number(value) || 0);
+
+  async function load(showLoading = true) {
+    if (showLoading) setLoading(true);
+    setError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_get_my_project_timesheet_reviews', { p_tenant_id: tenantId });
+      if (rpcError) throw rpcError;
+      const result = asObject(data);
+      if (!result || !Array.isArray(result.reviews)) throw new Error('Timesheet review service returned an invalid response.');
+      setCanReview(result.can_review === true);
+      setReviews(asRows(result.reviews));
+    } catch (cause) {
+      const detail = asObject(cause)?.message;
+      const source = cause instanceof Error ? cause.message : typeof detail === 'string' ? detail : '';
+      const translated = source ? tx(source) : '';
+      setError(locale === 'bn' && translated === source ? tx('Unable to load project timesheet reviews.') : translated || tx('Unable to load project timesheet reviews.'));
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { setReviews([]); setReasons({}); setSuccess(''); setCanReview(false); void load(); }, [tenantId]);
+
+  async function decide(review: Record<string, unknown>, decision: 'approved' | 'rejected') {
+    const key = `${String(review.timesheet_id)}:${String(review.project_id)}`;
+    if (busyKey) return;
+    const reason = (reasons[key] || '').trim();
+    if (decision === 'rejected' && !reason) { setError(tx('A rejection reason is required.')); return; }
+    setBusyKey(key); setError(''); setSuccess('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('hris_resolve_project_timesheet', {
+        p_tenant_id: tenantId, p_timesheet_id: review.timesheet_id, p_project_id: review.project_id,
+        p_expected_revision: review.revision, p_decision: decision, p_reason: decision === 'rejected' ? reason : null,
+      });
+      if (rpcError) throw rpcError;
+      if (!data) throw new Error('The project review was not confirmed. Refresh and check its status.');
+      await load(false);
+      setSuccess(tx(decision === 'approved' ? 'Project hours approved.' : 'Project hours rejected with a reason.'));
+      setReasons(current => ({ ...current, [key]: '' }));
+    } catch (cause) {
+      const detail = asObject(cause)?.message;
+      const source = cause instanceof Error ? cause.message : typeof detail === 'string' ? detail : '';
+      const translated = source ? tx(source) : '';
+      setError(locale === 'bn' && translated === source ? tx('Unable to save the project review. Refresh and try again.') : translated || tx('Unable to save the project review. Refresh and try again.'));
+    } finally { setBusyKey(''); }
+  }
+
+  if (!loading && !error && !canReview) return null;
+  return <section aria-labelledby="project-timesheet-reviews-heading" className="mt-6 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div><h2 id="project-timesheet-reviews-heading" className="text-xl font-semibold text-[#08263D]">{tx('Project timesheet reviews')}</h2>
+        <p className="mt-1 text-sm text-slate-500">{tx('Review only the hours for projects assigned to you as Project Manager.')}</p></div>
+      <button type="button" disabled={loading || Boolean(busyKey)} onClick={() => void load()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50"><RefreshCw className="mr-2 inline h-4 w-4" />{tx('Refresh')}</button>
+    </div>
+    {success && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
+    {error && <StatusMessage error={error} retryLabel={tx('Retry')} onRetry={() => void load()} />}
+    {loading ? <p role="status" className="rounded-lg bg-[#EFF7F8] p-4 text-sm">{tx('Loading project reviews…')}</p>
+      : reviews.length === 0 ? <p role="status" className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No timesheet portions are assigned to your projects yet.')}</p>
+        : <div className="space-y-3">{reviews.map((review, index) => {
+          const key = `${String(review.timesheet_id)}:${String(review.project_id)}`;
+          const status = String(review.status || 'pending');
+          const entries = asRows(review.entries);
+          return <article key={key || index} className="rounded-lg border border-slate-200 p-3 sm:p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div><h3 className="font-semibold text-slate-900">{display(review.project_name)}</h3>
+                <p className="mt-1 text-sm text-slate-600">{display(review.employee_name)} · {dateText(review.period_start)} – {dateText(review.period_end)}</p></div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${status === 'pending' ? 'bg-amber-50 text-amber-800' : status === 'approved' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>{tx(status === 'pending' ? 'Feedback pending' : status === 'approved' ? 'Approved' : 'Rejected')}</span>
+            </div>
+            <div className="mt-3 divide-y divide-slate-100 rounded-lg bg-[#EFF7F8] px-3">{entries.map((entry, entryIndex) => <div key={String(entry.id || entryIndex)} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <span className="min-w-0 break-words font-medium text-slate-800">{display(entry.activity_name)}{entry.activity_code ? ` · ${String(entry.activity_code)}` : ''} · {dateText(entry.work_date)}</span>
+              <span className="tabular-nums text-slate-700">{txf('{hours} hr', { hours: hoursText(entry.hours) })}</span>
+              {Boolean(entry.note) && <p className="basis-full break-words text-xs text-slate-500">{display(entry.note)}</p>}
+            </div>)}</div>
+            {status === 'rejected' && Boolean(review.rejection_reason) && <p className="mt-3 break-words text-sm text-rose-800">{tx('Rejection reason:')} {display(review.rejection_reason)}</p>}
+            {status === 'pending' && <div className="mt-3 space-y-2">
+              <label htmlFor={`timesheet-review-reason-${index}`} className="block text-xs font-medium text-slate-600">{tx('Rejection reason (required when rejecting)')}</label>
+              <textarea id={`timesheet-review-reason-${index}`} maxLength={1000} rows={2} value={reasons[key] || ''} onChange={event => setReasons(current => ({ ...current, [key]: event.target.value }))} className="w-full rounded-lg border border-slate-300 p-3 text-sm" />
+              <div className="flex flex-wrap justify-end gap-2">
+                <button type="button" disabled={Boolean(busyKey)} onClick={() => void decide(review, 'rejected')} className="min-h-11 rounded-lg border border-rose-300 px-4 text-sm text-rose-800 disabled:opacity-50">{busyKey === key ? tx('Saving…') : tx('Reject project hours')}</button>
+                <button type="button" disabled={Boolean(busyKey)} onClick={() => void decide(review, 'approved')} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{busyKey === key ? tx('Saving…') : tx('Approve project hours')}</button>
+              </div>
+            </div>}
+          </article>;
+        })}</div>}
   </section>;
 }
 
@@ -3093,7 +3254,10 @@ export function LiveHrisWorkspace({
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
-          {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <OrganizationProjects tenantId={tenantId} locale={locale} />}
+          {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <>
+            <OrganizationProjects tenantId={tenantId} locale={locale} />
+            {isEmployee && <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />}
+          </>}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} employeesManage={permissions.employeesManage} />}
           {page === 'onboarding' && permissions.employeesManage && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} />}
@@ -3109,7 +3273,10 @@ export function LiveHrisWorkspace({
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale} />}
-          {page === 'my-projects' && isEmployee && <MyProjects tenantId={tenantId} locale={locale} />}
+          {page === 'my-projects' && isEmployee && <>
+            <MyProjects tenantId={tenantId} locale={locale} />
+            <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />
+          </>}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
             onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} />}
