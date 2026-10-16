@@ -463,7 +463,7 @@ try {
   const refreshedEmployee = await refreshedEmployeeContext.newPage();
   await signIn(refreshedEmployee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
   await navigateTo(refreshedEmployee, 'My Leave');
-  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('heading', { name: 'ব্যক্তিগত ছুটি' }).waitFor({ state: 'visible' });
   const personalCalendarDate = process.env.HRIS_LOCAL_LEAVE_REQUEST_DATE;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(personalCalendarDate || '')) {
     throw new Error('The isolated leave calendar fixture has no valid approved request date.');
