@@ -35,7 +35,7 @@ jobs:
         with:
           version: 2.120.0
       - name: Install repository dependencies
-        run: npm install --no-package-lock --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Install Chromium for the real browser journey
         run: npx playwright install --with-deps chromium
       - name: Create a fresh disposable Supabase configuration
