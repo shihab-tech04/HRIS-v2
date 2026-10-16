@@ -232,6 +232,12 @@ test('linked employee can complete the private evidence leave request on mobile'
   await correctionDialog.getByRole('button', { name: 'Send request', exact: true }).click();
   await expect(page.getByText('Attendance correction submitted for review.', { exact: true })).toBeVisible();
   await expect(page.getByRole('row', { name: /Synthetic missed punch correction/ })).toBeVisible();
+  const correctionHistoryRegion = page.getByRole('region', { name: 'My attendance correction requests', exact: true });
+  await expect(correctionHistoryRegion).toHaveAttribute('tabindex', '0');
+  expect(await correctionHistoryRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await correctionHistoryRegion.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => correctionHistoryRegion.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
   expect(correctionPayload).toEqual({
     p_tenant_id: tenantId,
     p_payload: {
@@ -280,6 +286,12 @@ test('linked employee can complete the private evidence leave request on mobile'
   await expect(page.getByText('Leave request submitted. You can follow its status in your history.')).toBeVisible();
   expect(evidenceUploadPaths).toHaveLength(1);
   await expect(page.getByText('Synthetic mobile leave request')).toBeVisible();
+  const dashboardLeaveHistory = page.getByRole('region', { name: 'My leave requests', exact: true });
+  await expect(dashboardLeaveHistory).toHaveAttribute('tabindex', '0');
+  expect(await dashboardLeaveHistory.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await dashboardLeaveHistory.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => dashboardLeaveHistory.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await page.getByRole('button', { name: 'Request for leave' }).click();
   await expect(page.getByLabel('Supporting evidence')).toHaveValue('');
