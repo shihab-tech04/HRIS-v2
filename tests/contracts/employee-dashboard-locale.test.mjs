@@ -61,6 +61,9 @@ test('employee attendance chart exposes its computed weekly values as an accessi
   assert.match(employeeOverview, /weekBuckets\.map\(\(bucket, index\) => <tr key=\{bucket\.label\}>/);
   assert.match(employeeOverview, /employeeNumber\(bucket\.hours, 1\)/);
   assert.match(employeeOverview, /employeeNumber\(bucket\.count\)/);
+  assert.match(employeeOverview, /grid grid-cols-5 items-end/);
+  assert.doesNotMatch(employeeOverview, /grid-cols-4[\s\S]{0,160}sm:grid-cols-5/);
+  assert.match(employeeOverview, /data-work-hours-week=\{index \+ 1\}/);
   assert.match(browser, /getByRole\('table', \{ name: 'Weekly work-hours data', exact: true \}\)/);
   assert.match(browser, /getByRole\('table', \{ name: 'সাপ্তাহিক কাজের সময়ের তথ্য', exact: true \}\)/);
 });

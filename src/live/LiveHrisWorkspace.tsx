@@ -12,6 +12,7 @@ import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
 import { EmployeeDocumentVault } from './EmployeeDocumentVault';
+import { EmployeeIdentityCard } from './EmployeeIdentityCard';
 import { EmployeeLeaveCalendar } from './EmployeeLeaveCalendar';
 import { PayrollRegister } from './PayrollRegister';
 import { LearningRequests } from './LearningRequests';
@@ -3182,6 +3183,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
             <p className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.department_name)}</span></p>
             <p className="flex items-start gap-2 break-all text-xs text-slate-600"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.official_email)}</span></p>
           </div>
+          <EmployeeIdentityCard tenantId={tenantId} tenantName={tenantName} locale={locale} />
         </section>
 
         <div className="min-w-0 space-y-4">
@@ -3239,8 +3241,8 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
                   </div>
                   <p className="text-right"><span className="block text-xl font-semibold tabular-nums text-[#08558B]">{attendanceMonthReady ? employeeNumber(recordedHours, 1) : '—'} {tx('hr')}</span><span className="text-xs text-slate-500">{txf('{month} · complete check-in pairs', { month: attendanceMonthLabel })}</span></p>
                 </div>
-                {attendanceMonthReady && (workHours.some(item => item.hours !== null) ? <div role="img" aria-label={txf('Recorded work hours for {month} by week', { month: attendanceMonthLabel })} className="mt-5 grid grid-cols-4 items-end gap-2 border-b border-slate-200 pb-2 sm:grid-cols-5">
-                  {weekBuckets.map((bucket, index) => <div key={bucket.label} className="min-w-0 text-center">
+                {attendanceMonthReady && (workHours.some(item => item.hours !== null) ? <div role="img" aria-label={txf('Recorded work hours for {month} by week', { month: attendanceMonthLabel })} className="mt-5 grid grid-cols-5 items-end gap-2 border-b border-slate-200 pb-2">
+                  {weekBuckets.map((bucket, index) => <div key={bucket.label} data-work-hours-week={index + 1} className="min-w-0 text-center">
                     <div className="flex h-28 items-end justify-center"><div title={txf('{hours} recorded hours', { hours: employeeNumber(bucket.hours, 1) })} className="w-full max-w-10 rounded-t bg-[#08558B]" style={{ height: `${maxWeekHours > 0 && bucket.hours ? Math.max(6, (bucket.hours / maxWeekHours) * 100) : 0}%` }} /></div>
                     <span className="mt-2 block truncate text-[10px] text-slate-500">{txf('Week {week} · {range}', { week: employeeNumber(index + 1), range: bucket.label.replace(/\d+/g, digits => employeeNumber(Number(digits))) })}</span>
                     <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{bucket.count ? `${employeeNumber(bucket.hours, 1)}${tx('h')}` : '—'}</span>

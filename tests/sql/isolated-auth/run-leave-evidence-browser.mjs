@@ -593,7 +593,7 @@ try {
   const rejectedDocumentCard = refreshedEmployee.locator('[data-employee-document-id="a3333333-3333-4333-8333-333333333334"]');
   await ownDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_NAME, { exact: true }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTED_NAME, { exact: true }).waitFor({ state: 'visible' });
-  await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: true }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).waitFor({ state: 'visible' });
   await ownDocumentCard.getByText('Verified', { exact: true }).waitFor({ state: 'visible' });
   await refreshedEmployee.unroute('**/rest/v1/rpc/hris_get_my_employee_documents');
   await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();

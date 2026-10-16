@@ -46,6 +46,8 @@ try {
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let failInitialPeriodRead = true;
+  let failInitialIdentityCardRead = true;
+  const identityCardRequests = [];
   const periodRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
@@ -61,6 +63,18 @@ try {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_employee_identity_card')
+          && route.request().method() === 'POST') {
+        const body = route.request().postDataJSON();
+        identityCardRequests.push(body?.p_tenant_id);
+        if (failInitialIdentityCardRead) {
+          failInitialIdentityCardRead = false;
+          await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+            code: 'XX000', message: 'Synthetic temporary identity-card outage.',
+          }) });
+          return;
+        }
+      }
       if (failInitialPeriodRead && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_attendance_period')
           && route.request().method() === 'POST') {
         failInitialPeriodRead = false;
@@ -89,8 +103,26 @@ try {
   await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'visible' });
   if (failInitialPeriodRead) throw new Error('The injected monthly attendance outage was not observed.');
 
+  await page.getByRole('button', { name: 'View digital employee ID', exact: true }).click();
+  const identityDialog = page.getByRole('dialog', { name: 'Digital employee ID', exact: true });
+  await identityDialog.getByRole('alert').filter({ hasText: 'Unable to load your employee ID card.' }).waitFor({ state: 'visible' });
+  await identityDialog.getByRole('button', { name: 'Retry', exact: true }).click();
+  await identityDialog.locator('[data-employee-id-card][data-employment-status="active"]').waitFor({ state: 'visible' });
+  for (const value of ['QA-A-001', 'Synthetic Employee A', 'QA A designation', 'QA A department', 'Active']) {
+    await identityDialog.getByText(value, { exact: true }).waitFor({ state: 'visible' });
+  }
+  if (failInitialIdentityCardRead) throw new Error('The injected identity-card outage was not observed.');
+  await assertNoOverflow(page, 'Employee digital ID mobile');
+  await identityDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await identityDialog.waitFor({ state: 'detached' });
+
   await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'ডিজিটাল কর্মচারী পরিচয়পত্র দেখুন', exact: true }).click();
+  const bengaliIdentityDialog = page.getByRole('dialog', { name: 'ডিজিটাল কর্মচারী পরিচয়পত্র', exact: true });
+  await bengaliIdentityDialog.getByText('সক্রিয়', { exact: true }).waitFor({ state: 'visible' });
+  await bengaliIdentityDialog.getByRole('button', { name: 'বন্ধ করুন', exact: true }).click();
+  await bengaliIdentityDialog.waitFor({ state: 'detached' });
   await page.getByLabel('উপস্থিতির মাস', { exact: true }).waitFor({ state: 'visible' });
   if (await page.locator('html').getAttribute('lang') !== 'bn'
       || await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
@@ -136,6 +168,10 @@ try {
   await page.getByRole('img', { name: /Recorded work hours for .* by week/ }).waitFor({ state: 'visible' });
   await page.locator('[title="8.0 recorded hours"]').waitFor({ state: 'visible' });
   const previousMonth = process.env.HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH;
+  const weekBuckets = page.locator('[data-work-hours-week]');
+  if (await weekBuckets.count() !== 5) throw new Error('The synthetic previous month must render all five weekly buckets.');
+  const chartRows = await weekBuckets.evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));
+  if (new Set(chartRows).size !== 1) throw new Error(`The five weekly chart bars wrapped into multiple mobile rows: ${JSON.stringify(chartRows)}.`);
   const [year, month] = previousMonth.split('-').map(Number);
   const label = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(Date.UTC(year, month - 1, 1)));
@@ -179,6 +215,12 @@ try {
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Employee attendance month desktop');
+  await page.getByRole('button', { name: 'View digital employee ID', exact: true }).click();
+  const desktopIdentityDialog = page.getByRole('dialog', { name: 'Digital employee ID', exact: true });
+  await desktopIdentityDialog.locator('[data-employee-id-card]').waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee digital ID desktop');
+  await desktopIdentityDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await desktopIdentityDialog.waitFor({ state: 'detached' });
   if (periodRequests.length < 5 || periodRequests.some(request => request.tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
     throw new Error(`Attendance period RPC requests were missing or not tenant-bound: ${JSON.stringify(periodRequests)}.`);
   }
@@ -188,6 +230,9 @@ try {
   }
   if (directAttendanceTableRequests.length) {
     throw new Error(`Employee attendance history bypassed the secured period RPC: ${JSON.stringify(directAttendanceTableRequests)}.`);
+  }
+  if (identityCardRequests.length < 3 || identityCardRequests.some(requestedTenant => requestedTenant !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
+    throw new Error(`Employee identity-card RPC requests were missing or not tenant-bound: ${JSON.stringify(identityCardRequests)}.`);
   }
   await page.setViewportSize({ width: 375, height: 812 });
   await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
@@ -205,7 +250,8 @@ try {
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Employee attendance month Bengali desktop');
-  console.log('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
+  console.log('EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS');
+  console.log('Local Auth/Postgres employee attendance and identity-card journeys passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outages with retry, own identity card fields, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');

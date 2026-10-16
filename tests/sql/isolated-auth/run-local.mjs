@@ -424,6 +424,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -3478,6 +3479,54 @@ record('Employee dashboard profile and date belong to the linked tenant-local em
   && employeeSummaryB.employee.designation_title === 'QA B designation',
   JSON.stringify({ employeeA: employeeSummaryA.employee, employeeB: employeeSummaryB.employee,
     dateA: employeeSummaryA.dashboard_date, dateB: employeeSummaryB.dashboard_date }));
+
+const employeeIdentityCardA = await employeeA.client.rpc('hris_get_my_employee_identity_card', { p_tenant_id: ids.tenantA });
+const employeeIdentityCardWrongTenant = await employeeA.client.rpc('hris_get_my_employee_identity_card', { p_tenant_id: ids.tenantB });
+const employeeIdentityCardOtherEmployee = await employeeB.client.rpc('hris_get_my_employee_identity_card', { p_tenant_id: ids.tenantA });
+const employeeIdentityCardManager = await managerA.client.rpc('hris_get_my_employee_identity_card', { p_tenant_id: ids.tenantA });
+const employeeIdentityCardAnon = attemptAs(null,
+  `SELECT public.hris_get_my_employee_identity_card('${ids.tenantA}'::uuid)`, 'anon');
+const employeeIdentityCard = employeeIdentityCardA.data;
+record('Employee identity card returns only current employee identity and employment fields in the active tenant',
+  !employeeIdentityCardA.error && employeeIdentityCard?.tenant_id === ids.tenantA
+    && employeeIdentityCard.full_name === 'Synthetic Employee A'
+    && employeeIdentityCard.employee_number === 'QA-A-001'
+    && employeeIdentityCard.designation_title === 'QA A designation'
+    && employeeIdentityCard.department_name === 'QA A department'
+    && employeeIdentityCard.employment_status === 'active'
+    && !('official_email' in employeeIdentityCard) && !('phone' in employeeIdentityCard)
+    && !('address' in employeeIdentityCard),
+  JSON.stringify({ tenant: employeeIdentityCard?.tenant_id, employee: employeeIdentityCard?.employee_number,
+    status: employeeIdentityCard?.employment_status, excludedContactFields: !('official_email' in (employeeIdentityCard || {}))
+      && !('phone' in (employeeIdentityCard || {})) && !('address' in (employeeIdentityCard || {})) }));
+record('Employee identity card denies tenant mismatch, cross-tenant identity, manager without employee link, and anonymous access',
+  Boolean(employeeIdentityCardWrongTenant.error) && Boolean(employeeIdentityCardOtherEmployee.error)
+    && Boolean(employeeIdentityCardManager.error) && !employeeIdentityCardAnon.ok,
+  JSON.stringify({ wrongTenant: employeeIdentityCardWrongTenant.error?.code,
+    crossTenant: employeeIdentityCardOtherEmployee.error?.code, manager: employeeIdentityCardManager.error?.code,
+    anonymousDenied: !employeeIdentityCardAnon.ok }));
+psqlSync(`UPDATE public.employees SET employment_status='inactive'
+  WHERE id='55555555-5555-4555-8555-555555555555' AND tenant_id='${ids.tenantA}'::uuid;`);
+const inactiveEmployeeIdentityCard = await employeeA.client.rpc('hris_get_my_employee_identity_card', { p_tenant_id: ids.tenantA });
+psqlSync(`UPDATE public.employees SET employment_status='active'
+  WHERE id='55555555-5555-4555-8555-555555555555' AND tenant_id='${ids.tenantA}'::uuid;`);
+record('Inactive employment status is accurately returned by the employee identity-card RPC',
+  !inactiveEmployeeIdentityCard.error && inactiveEmployeeIdentityCard.data?.employment_status === 'inactive',
+  JSON.stringify({ status: inactiveEmployeeIdentityCard.data?.employment_status }));
+psqlSync(`UPDATE public.employees SET employment_status='terminated'
+  WHERE id='55555555-5555-4555-8555-555555555555' AND tenant_id='${ids.tenantA}'::uuid;`);
+const terminatedEmployeeIdentityCard = await employeeA.client.rpc('hris_get_my_employee_identity_card', { p_tenant_id: ids.tenantA });
+psqlSync(`UPDATE public.employees SET employment_status='active'
+  WHERE id='55555555-5555-4555-8555-555555555555' AND tenant_id='${ids.tenantA}'::uuid;`);
+const identityCardGrantState = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_employee_identity_card(uuid)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_employee_identity_card(uuid)','EXECUTE'),
+  'service_role',has_function_privilege('service_role','public.hris_get_my_employee_identity_card(uuid)','EXECUTE'))`);
+record('Employee identity card excludes terminated employment and grants execution only to authenticated users',
+  Boolean(terminatedEmployeeIdentityCard.error)
+    && identityCardGrantState.anon === false && identityCardGrantState.authenticated === true
+    && identityCardGrantState.service_role === false,
+  JSON.stringify({ terminatedDenied: Boolean(terminatedEmployeeIdentityCard.error), grants: identityCardGrantState }));
 
 const employeeAttendanceMonthA = await employeeA.client.rpc('hris_get_my_attendance_period', {
   p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth,

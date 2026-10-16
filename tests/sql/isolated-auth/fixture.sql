@@ -27,6 +27,7 @@ DROP FUNCTION IF EXISTS public.admin_resolve_attendance_correction(uuid,text,tex
 DROP FUNCTION IF EXISTS public.admin_resolve_leave_request(uuid,text,text) CASCADE;
 DROP FUNCTION IF EXISTS public.admin_save_attendance(uuid,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_timesheet_context(uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.hris_get_my_employee_identity_card(uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_submit_my_timesheet(uuid,uuid) CASCADE;
 DROP FUNCTION IF EXISTS public.hris_get_my_travel_context(uuid) CASCADE;
