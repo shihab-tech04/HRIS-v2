@@ -43,6 +43,18 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   let profileChangeMethod = '';
   let profileChangePayload: Record<string, unknown> = {};
   let profileChangeHistory: Array<Record<string, unknown>> = [];
+  let addressGetMethods: string[] = [];
+  let addressSaveMethod = '';
+  let addressSavePayload: { p_rows?: Array<Record<string, unknown>> } = {};
+  let employeeAddresses: Array<Record<string, unknown>> = [{
+    id: 'ed111111-1111-4111-8111-111111111112',
+    address_type: 'Present',
+    district: 'Dhaka',
+    thana: 'Dhanmondi',
+    post_code: '1209',
+    city_village: 'Dhanmondi',
+    road_block_house: 'Road 27',
+  }];
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -69,6 +81,19 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     let data: unknown = [];
     if (path.endsWith('/rpc/has_permission')) data = false;
     else if (path.endsWith('/rpc/employee_get_my_profile_change_requests')) data = profileChangeHistory;
+    else if (path.endsWith('/rpc/employee_get_my_addresses_v2')) {
+      addressGetMethods.push(route.request().method());
+      data = employeeAddresses;
+    }
+    else if (path.endsWith('/rpc/employee_save_my_addresses_v2')) {
+      addressSaveMethod = route.request().method();
+      addressSavePayload = JSON.parse(route.request().postData() || '{}');
+      employeeAddresses = (addressSavePayload.p_rows || []).map((row, index) => ({
+        ...row,
+        id: typeof row.id === 'string' ? row.id : `ed222222-2222-4222-8222-${String(index + 1).padStart(12, '0')}`,
+      }));
+      data = employeeAddresses.length;
+    }
     else if (path.endsWith('/rpc/employee_submit_profile_change_request')) {
       profileChangeMethod = route.request().method();
       profileChangePayload = JSON.parse(route.request().postData() || '{}');
@@ -307,6 +332,46 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     nationality: 'Bangladeshi',
     marital_status: 'Single',
   } });
+
+  const addresses = profile.getByRole('region', { name: 'Present and permanent addresses' });
+  await expect(addresses.getByText('Present address')).toBeVisible();
+  await expect(addresses.getByText('Road 27, Dhanmondi, Dhanmondi, Dhaka, 1209')).toBeVisible();
+  await addresses.getByRole('button', { name: 'Edit addresses' }).click();
+  await addresses.getByLabel('Present address 1 district').fill('Gazipur');
+  await addresses.getByLabel('Present address 1 city or village').fill('Tongi');
+  await addresses.getByRole('button', { name: 'Add permanent address' }).click();
+  await addresses.getByLabel('Permanent address 2 district').fill('Cumilla');
+  await addresses.getByLabel('Permanent address 2 thana').fill('Burichang');
+  await addresses.getByLabel('Permanent address 2 post code').fill('3520');
+  await addresses.getByLabel('Permanent address 2 city or village').fill('Madhabpur');
+  await addresses.getByLabel('Permanent address 2 road, block or house').fill('House 6');
+  await addresses.getByRole('button', { name: 'Save addresses' }).click();
+  await expect(addresses.getByText('Road 27, Tongi, Dhanmondi, Gazipur, 1209')).toBeVisible();
+  await expect(addresses.getByText('House 6, Madhabpur, Burichang, Cumilla, 3520')).toBeVisible();
+  await expect(profile.getByText('Present and permanent addresses saved.')).toBeVisible();
+  expect(addressGetMethods.length).toBeGreaterThanOrEqual(2);
+  expect(addressGetMethods.every(method => method === 'POST')).toBe(true);
+  expect(addressSaveMethod).toBe('POST');
+  expect(addressSavePayload).toEqual({ p_rows: [
+    {
+      id: 'ed111111-1111-4111-8111-111111111112',
+      address_type: 'Present',
+      district: 'Gazipur',
+      thana: 'Dhanmondi',
+      post_code: '1209',
+      city_village: 'Tongi',
+      road_block_house: 'Road 27',
+    },
+    {
+      address_type: 'Permanent',
+      district: 'Cumilla',
+      thana: 'Burichang',
+      post_code: '3520',
+      city_village: 'Madhabpur',
+      road_block_house: 'House 6',
+    },
+  ] });
+  expect(broadProfileRpcCalled).toBe(false);
 
   await profile.getByText('Request a protected profile change').click();
   await profile.getByLabel('Profile field').selectOption('official_email');
