@@ -4461,7 +4461,8 @@ const approveProjectA = resolveProjectTimesheet(employeeA, ids.tenantA, projectT
 const duplicateProjectDecision = attemptAs(employeeA, `SELECT public.hris_resolve_project_timesheet(
   '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,'approved',NULL)`);
 const statusAfterFirstDecision = queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${projectTimesheet.id}'::uuid`).status;
-const projectAEntryBeforeCorrection = queryAdmin(`SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) AS rows FROM public.timesheet_entries e
+const projectAEntryBeforeCorrection = queryAdmin(`SELECT jsonb_build_object('rows',coalesce(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]'::jsonb))
+  FROM public.timesheet_entries e
   JOIN public.project_allocations a ON a.id=e.project_allocation_id
   WHERE e.timesheet_id='${projectTimesheet.id}'::uuid AND a.project_id='${projectA.id}'::uuid`).rows;
 record('Only each appointed Project Manager may decide their own project portion; rejection reason and duplicate-decision rules hold',
@@ -4482,7 +4483,8 @@ const staleProjectBResubmit = attemptAs(managerA2, `SELECT public.hris_resubmit_
 const approvedProjectEdit = attemptAs(managerA2, `SELECT public.hris_resubmit_rejected_project_timesheet(
   '${ids.tenantA}'::uuid,'${projectTimesheet.id}'::uuid,'${projectA.id}'::uuid,1,
   '${JSON.stringify([projectHourEntries[0]])}'::jsonb)`);
-const projectAEntryAfterCorrection = queryAdmin(`SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) AS rows FROM public.timesheet_entries e
+const projectAEntryAfterCorrection = queryAdmin(`SELECT jsonb_build_object('rows',coalesce(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]'::jsonb))
+  FROM public.timesheet_entries e
   JOIN public.project_allocations a ON a.id=e.project_allocation_id
   WHERE e.timesheet_id='${projectTimesheet.id}'::uuid AND a.project_id='${projectA.id}'::uuid`).rows;
 const projectBReviewAfterCorrection = queryAdmin(`SELECT jsonb_build_object('status',status,'revision',revision)
