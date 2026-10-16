@@ -23,7 +23,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   let failAbsenceUntilRetry = false;
   const decisions: Record<string, unknown>[] = [];
   const evidenceDownloads: string[] = [];
-  const absenceWindows: Array<{ p_start?: string | null; p_end?: string | null }> = [];
+  const absenceWindows: Array<{ p_tenant_id?: string | null; p_start?: string | null; p_end?: string | null }> = [];
   const failedAbsenceWindows: string[] = [];
   const requests = [
     { id: 'e3333333-3333-4333-8333-333333333331', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Medical leave', leave_type_code: 'MED', from_date: '2026-10-20', to_date: '2026-10-20', requested_days: 1, status: 'pending', attachment_url: `${userId}/${tenantId}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf` },
@@ -152,7 +152,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('heading', { name: /Approved absences on/ }).locator('..')).toContainText('Amira Rahman');
   await octoberCalendar.getByRole('button', { name: /October 3, 2026.*Synthetic holiday/ }).click();
   await expect(page.getByRole('heading', { name: /Organization holidays on/ }).locator('..')).toContainText('Synthetic holiday');
-  expect(absenceWindows).toContainEqual({ p_start: '2026-10-01', p_end: '2026-10-31' });
+  expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-31' });
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(page.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
@@ -168,7 +168,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
   await expect(table.locator('tbody tr')).toHaveCount(1);
   await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('approved');
-  expect(absenceWindows).toContainEqual({ p_start: '2026-10-01', p_end: '2026-10-01' });
+  expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-01' });
 
   await requestFrom.fill('2026-10-22');
   await requestTo.fill('2026-10-21');
