@@ -3,7 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { tenantAttendanceDate, tenantAttendanceTime } from './attendanceDate.mjs';
+import { tenantAttendanceDate, tenantAttendanceDateTime, tenantAttendanceTime } from './attendanceDate.mjs';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 
@@ -15,10 +15,25 @@ type Leave = { id: string; from_date: string; to_date: string; requested_days: n
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
 type LeaveBalance = { leave_type_id: string; leave_type_name: string; balance_year: number; available_days: number; used_days: number; pending_days: number };
 type Holiday = { id: string; name: string; start_date: string; end_date: string; holiday_type: string | null; description: string | null };
+type DashboardTraining = { id: string; title: string; institute_name: string | null; start_date: string | null; end_date: string | null };
+type DashboardCycle = { id: string; name: string; start_date: string; end_date: string; self_review_deadline: string | null; manager_review_deadline: string | null; status: string };
+type DashboardLearningSession = { id: string; title: string; start_at: string; end_at: string | null; location: string | null };
+type DashboardInterview = { id: string; job_title: string; interview_type: string; scheduled_at: string; location_or_link: string | null };
+type DashboardSchedule = { training: DashboardTraining[]; performance_cycles: DashboardCycle[]; learning_sessions: DashboardLearningSession[]; interviews: DashboardInterview[] };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; attendanceToday: AttendanceToday | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], attendanceToday: null });
+const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
+function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
+  const schedule = value && typeof value === 'object' ? value as Partial<DashboardSchedule> : {};
+  return {
+    training: Array.isArray(schedule.training) ? schedule.training : [],
+    performance_cycles: Array.isArray(schedule.performance_cycles) ? schedule.performance_cycles : [],
+    learning_sessions: Array.isArray(schedule.learning_sessions) ? schedule.learning_sessions : [],
+    interviews: Array.isArray(schedule.interviews) ? schedule.interviews : [],
+  };
+}
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, attendanceToday: null });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -342,6 +357,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const leaveContext = currentView === 'employee'
           ? supabase.rpc('employee_get_leave_context')
           : Promise.resolve({ data: null, error: null });
+        const scheduleContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_dashboard_schedule')
+          : Promise.resolve({ data: null, error: null });
         const attendance = (async () => {
           // Resolve only the authenticated user's employee record. RLS applies to
           // both reads; the attendance query is additionally constrained by this
@@ -357,13 +375,14 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             .eq('attendance_date', attendanceDate)
             .maybeSingle();
         })();
-        const [leaves, types, employees, departments, attendanceResult, leaveContextResult] = await Promise.all([
+        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
           canAdminSelectedTenant ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
           attendance,
           leaveContext,
+          scheduleContext,
         ]);
         const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -372,6 +391,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           leaveTypes: (types.data || []) as LeaveType[],
           leaveBalances: ((leaveContextResult.data as { balances?: LeaveBalance[] } | null)?.balances || []),
           holidays: ((leaveContextResult.data as { holidays?: Holiday[] } | null)?.holidays || []),
+          dashboardSchedule: normalizeDashboardSchedule(scheduleContextResult.data),
+          scheduleError: Boolean(scheduleContextResult.error),
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
@@ -474,6 +495,30 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <section aria-label="Remaining leave balances" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Remaining leave balances</h2><p className="text-xs text-slate-500">Available days after used and pending leave</p></div>{records.leaveBalances.length ? <ul className="divide-y">{records.leaveBalances.map(item => <li key={item.leave_type_id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{item.leave_type_name}</p><p className="text-xs text-slate-500">{item.balance_year} · {item.used_days} used · {item.pending_days} pending</p></div><p className="text-sm font-semibold">{item.available_days} days available</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No leave balances are available for this year.</p>}</section>
             <section aria-label="Upcoming holidays" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Upcoming holidays</h2><p className="text-xs text-slate-500">Current tenant calendar</p></div>{records.holidays.length ? <ul className="divide-y">{records.holidays.map(item => <li key={item.id} className="p-4"><p className="text-sm font-medium">{item.name}</p><p className="text-xs text-slate-600">{item.start_date === item.end_date ? item.start_date : `${item.start_date} – ${item.end_date}`}{item.holiday_type ? ` · ${item.holiday_type}` : ''}</p>{item.description && <p className="text-xs text-slate-500 mt-1">{item.description}</p>}</li>)}</ul> : <p className="p-4 text-sm text-slate-500">No upcoming holidays are scheduled.</p>}</section>
             </div>
+            <section aria-label="Upcoming schedule" className="bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4"><h2 className="font-semibold">Upcoming schedule</h2><p className="text-xs text-slate-500">Assigned interviews, training, and review dates</p></div>
+              {records.scheduleError ? <p role="status" className="p-4 text-sm text-slate-600">Schedule information is temporarily unavailable. Refresh to try again.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+                <section aria-label="Upcoming interviews" className="rounded-md border p-3">
+                  <h3 className="text-sm font-semibold">Interviews</h3>
+                  {records.dashboardSchedule.interviews.length ? <ul className="mt-2 divide-y">{records.dashboardSchedule.interviews.map(item => <li key={item.id} className="py-2"><p className="text-sm font-medium">{item.job_title} · {item.interview_type}</p><p className="text-xs text-slate-600">{tenantAttendanceDateTime(item.scheduled_at, current.timezone || 'UTC') || 'Date not available'}</p>{item.location_or_link && <p className="text-xs text-slate-500">{item.location_or_link}</p>}</li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No assigned interviews are scheduled.</p>}
+                </section>
+                <section aria-label="Upcoming training" className="rounded-md border p-3">
+                  <h3 className="text-sm font-semibold">Training</h3>
+                  {records.dashboardSchedule.learning_sessions.length || records.dashboardSchedule.training.length ? <ul className="mt-2 divide-y">
+                    {records.dashboardSchedule.learning_sessions.map(item => <li key={`session-${item.id}`} className="py-2"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-slate-600">{tenantAttendanceDateTime(item.start_at, current.timezone || 'UTC') || 'Date not available'}{item.end_at ? ` – ${tenantAttendanceDateTime(item.end_at, current.timezone || 'UTC') || ''}` : ''}</p>{item.location && <p className="text-xs text-slate-500">{item.location}</p>}</li>)}
+                    {records.dashboardSchedule.training.map(item => <li key={`training-${item.id}`} className="py-2"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-slate-600">{item.start_date || item.end_date ? `${item.start_date || ''}${item.start_date && item.end_date && item.start_date !== item.end_date ? ' – ' : ''}${item.end_date || ''}` : 'Dates not listed'}</p>{item.institute_name && <p className="text-xs text-slate-500">{item.institute_name}</p>}</li>)}
+                  </ul> : <p className="mt-2 text-sm text-slate-500">No upcoming or in-progress training is scheduled.</p>}
+                </section>
+                <section aria-label="Upcoming reviews" className="rounded-md border p-3">
+                  <h3 className="text-sm font-semibold">Reviews</h3>
+                  {records.dashboardSchedule.performance_cycles.length ? <ul className="mt-2 divide-y">{records.dashboardSchedule.performance_cycles.map(item => <li key={item.id} className="py-2"><p className="text-sm font-medium">{item.name}</p><p className="text-xs text-slate-600">{item.start_date} – {item.end_date}</p>{item.self_review_deadline && <p className="text-xs text-slate-500">Self review due {item.self_review_deadline}</p>}{item.manager_review_deadline && <p className="text-xs text-slate-500">Manager review due {item.manager_review_deadline}</p>}</li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No review dates are currently scheduled.</p>}
+                </section>
+                <section aria-label="Company events" className="rounded-md border p-3">
+                  <h3 className="text-sm font-semibold">Company events</h3>
+                  <p className="mt-2 text-sm text-slate-500">Company event dates are not available in this workspace calendar.</p>
+                </section>
+              </div>}
+            </section>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized departments</h2></div>{records.departments.length ? <ul className="divide-y">{records.departments.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.name}</p><p className="text-xs text-slate-500">{item.code}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No departments visible.</p>}</section>

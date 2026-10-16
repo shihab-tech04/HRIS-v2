@@ -24,9 +24,10 @@ const jwtPayload = Buffer.from(JSON.stringify({
 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-test('employee sees only their own tenant-local attendance and leave balance data', async ({ page }) => {
+test('employee sees own tenant-local attendance, leave, holidays and upcoming schedule', async ({ page }) => {
   let attendanceFilter: Record<string, string> = {};
   let leaveContextMethod = '';
+  let scheduleMethod = '';
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -55,6 +56,15 @@ test('employee sees only their own tenant-local attendance and leave balance dat
     else if (path.endsWith('/rpc/employee_get_leave_context')) {
       leaveContextMethod = route.request().method();
       data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }], holidays: [{ id: 'e5555555-5555-4555-8555-555555555555', name: 'National Day', start_date: '2026-12-16', end_date: '2026-12-16', holiday_type: 'Public', description: null }] };
+    }
+    else if (path.endsWith('/rpc/employee_get_dashboard_schedule')) {
+      scheduleMethod = route.request().method();
+      data = {
+        interviews: [{ id: 'e6666666-6666-4666-8666-666666666666', job_title: 'Data Analyst', interview_type: 'Panel interview', scheduled_at: '2026-11-16T03:00:00.000Z', location_or_link: 'North Room' }],
+        learning_sessions: [{ id: 'e7777777-7777-4777-8777-777777777777', title: 'Secure coding', start_at: '2026-11-18T02:00:00.000Z', end_at: '2026-11-18T03:30:00.000Z', location: 'Training room 2' }],
+        training: [{ id: 'e8888888-8888-4888-8888-888888888888', title: 'Leadership workshop', institute_name: 'People Academy', start_date: '2026-11-20', end_date: '2026-11-21' }],
+        performance_cycles: [{ id: 'e9999999-9999-4999-8999-999999999999', name: '2026 Annual Review', start_date: '2026-11-01', end_date: '2026-12-31', self_review_deadline: '2026-11-30', manager_review_deadline: '2026-12-15', status: 'active' }],
+      };
     }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
@@ -91,6 +101,7 @@ test('employee sees only their own tenant-local attendance and leave balance dat
   });
   expect(attendanceFilter.attendance_date).toMatch(/^eq\.\d{4}-\d{2}-\d{2}$/);
   expect(leaveContextMethod).toBe('POST');
+  expect(scheduleMethod).toBe('POST');
   const balances = page.getByRole('region', { name: 'Remaining leave balances' });
   await expect(balances.getByText('Annual Leave')).toBeVisible();
   await expect(balances.getByText('15 days available')).toBeVisible();
@@ -98,4 +109,18 @@ test('employee sees only their own tenant-local attendance and leave balance dat
   const holidays = page.getByRole('region', { name: 'Upcoming holidays' });
   await expect(holidays.getByText('National Day')).toBeVisible();
   await expect(holidays.getByText('2026-12-16 · Public')).toBeVisible();
+
+  const schedule = page.getByRole('region', { name: 'Upcoming schedule' });
+  const interviews = schedule.getByRole('region', { name: 'Upcoming interviews' });
+  await expect(interviews.getByText('Data Analyst · Panel interview')).toBeVisible();
+  await expect(interviews.getByText('16 Nov 2026, 09:00')).toBeVisible();
+  const training = schedule.getByRole('region', { name: 'Upcoming training' });
+  await expect(training.getByText('Secure coding')).toBeVisible();
+  await expect(training.getByText('18 Nov 2026, 08:00 – 18 Nov 2026, 09:30')).toBeVisible();
+  await expect(training.getByText('Leadership workshop')).toBeVisible();
+  const reviews = schedule.getByRole('region', { name: 'Upcoming reviews' });
+  await expect(reviews.getByText('2026 Annual Review')).toBeVisible();
+  await expect(reviews.getByText('Self review due 2026-11-30')).toBeVisible();
+  const events = schedule.getByRole('region', { name: 'Company events' });
+  await expect(events.getByText('Company event dates are not available in this workspace calendar.')).toBeVisible();
 });
