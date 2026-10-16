@@ -130,7 +130,7 @@ test('tenant recruiter moves an application through the privacy-safe pipeline', 
   await pipeline.getByLabel('Next application stage for Synthetic Candidate').selectOption('under_review');
   await pipeline.getByRole('button', { name: 'Save stage' }).click();
   await expect(pipeline.getByText('Application progress updated.')).toBeVisible();
-  await expect(pipeline.getByText('Under Review', { exact: true })).toBeVisible();
+  await expect(pipeline.locator(`[data-application-id="${applicationId}"] article`).getByText('Under Review', { exact: true })).toBeVisible();
   expect(stageWrites).toBe(1);
   expect(stagePayload).toEqual({
     p_tenant_id: tenantId,

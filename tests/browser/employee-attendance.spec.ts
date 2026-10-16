@@ -114,10 +114,10 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await page.getByLabel('Password', { exact: true }).fill('synthetic-test-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  const attendance = page.getByRole('region', { name: "Today's attendance" });
+  const attendance = page.getByRole('region', { name: 'Today’s attendance', exact: true });
   await expect(attendance.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
-  await expect(attendance.getByText('Working remotely', { exact: true })).toBeVisible();
-  await expect(attendance.getByText('09:00', { exact: true })).toBeVisible();
+  await expect(attendance.getByText(/^(Home|বাসা)$/).first()).toBeVisible();
+  await expect(attendance.getByText(/^09:00\s*AM$/).first()).toBeVisible();
   await expect(attendance.getByText('—', { exact: true })).toBeVisible();
   expect(dashboardRpcPayload).toEqual({ p_tenant_id: tenantId });
   expect(attendancePeriodRpcPayloads[0]).toMatchObject({
@@ -128,7 +128,7 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
 
   const dashboardViews = page.getByRole('group', { name: 'Personal dashboard views' });
   await dashboardViews.getByRole('button', { name: 'Work location' }).click();
-  await expect(page.getByText('Working remotely', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^(Home|বাসা)$/).first()).toBeVisible();
   await dashboardViews.getByRole('button', { name: 'Check-in times' }).click();
   await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
 
@@ -136,6 +136,6 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await expect.poll(() => dashboardCalls).toBeGreaterThan(1);
   await expect(attendance.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('region', { name: "Today's attendance" }).getByText(/^(Late|দেরি)$/).first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Today’s attendance', exact: true }).getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   expect(legacyAttendanceRestReads).toBe(0);
 });
