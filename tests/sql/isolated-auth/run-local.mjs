@@ -428,6 +428,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017030000_hris_employee_announcement_audience.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017040000_hris_employee_dashboard_work_identity.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -863,8 +864,6 @@ const learningIds = {
   approvalCapacitySession: '91000000-0000-4000-8000-000000000006',
   mandatoryEnrollment: '92000000-0000-4000-8000-000000000003',
   completionBrowserEnrollment: '92000000-0000-4000-8000-000000000008',
-  dashboardTrainingEnrollment: '92000000-0000-4000-8000-000000000010',
-  dashboardTrainingRequest: '92000000-0000-4000-8000-000000000011',
   managerApprovalRequest: '92000000-0000-4000-8000-000000000004',
   managerRejectionRequest: '92000000-0000-4000-8000-000000000005',
   capacityRequestOne: '92000000-0000-4000-8000-000000000006',
@@ -6358,19 +6357,18 @@ record('Peer-review submission rechecks assignment overlap in the backend',
     persistedStatus: injectedReviewState.status }));
 
 const browserTaskTitle = `Local browser integration ${Date.now()}`;
+const employeeDashboardTaskTitle = `QA Dashboard assignment ${Date.now()}`;
+const employeeDashboardTask = await employeeA.client.rpc('hris_create_project_task', {
+  p_tenant_id: ids.tenantA, p_project_id: projectA.id,
+  p_title: employeeDashboardTaskTitle, p_description: 'Synthetic dashboard acceptance task.',
+  p_due_date: null, p_project_allocation_ids: [allocationA60.data?.id],
+});
+const employeeDashboardGoalDueDate = queryAdmin(`SELECT jsonb_build_object('due_date',due_date::text)
+  FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`).due_date;
+psqlSync(`UPDATE public.performance_goals SET due_date='${addCalendarDays(localCurrentDate, -1)}'::date
+  WHERE id='${employeeAGoalId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 let employeeAttendanceBrowserOutput = '';
 let employeeAttendanceBrowserError = '';
-psqlSync(`INSERT INTO public.learning_enrollments(
-  id,tenant_id,employee_id,program_id,session_id,source,status,mandatory,created_by
-) VALUES (
-  '${learningIds.dashboardTrainingEnrollment}','${ids.tenantA}',
-  '55555555-5555-4555-8555-555555555555','${learningIds.directProgram}',
-  '${learningIds.directSession}','admin_assignment','enrolled',true,NULL
-),(
-  '${learningIds.dashboardTrainingRequest}','${ids.tenantA}',
-  '55555555-5555-4555-8555-555555555555','${learningIds.approvalProgram}',
-  '${learningIds.approvalSession}','employee_request','requested',false,NULL
-);`);
 try {
   employeeAttendanceBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-dashboard-attendance-browser.mjs')], {
     cwd: mainRoot,
@@ -6389,6 +6387,9 @@ try {
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
       HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE: 'QA A Direct Learning',
+      HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID: '55555555-5555-4555-8555-555555555555',
+      HRIS_LOCAL_DASHBOARD_TASK_TITLE: employeeDashboardTaskTitle,
+      HRIS_LOCAL_DASHBOARD_GOAL_TITLE: 'QA A goal',
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -6397,14 +6398,32 @@ try {
   employeeAttendanceBrowserError = String(error.stderr || error.message || 'local employee attendance browser run failed').slice(-1800);
   employeeAttendanceBrowserOutput = String(error.stdout || '');
 }
-psqlSync(`DELETE FROM public.learning_enrollments WHERE id IN (
-  '${learningIds.dashboardTrainingEnrollment}'::uuid,'${learningIds.dashboardTrainingRequest}'::uuid
-);`);
+psqlSync(`UPDATE public.performance_goals SET due_date=${employeeDashboardGoalDueDate ? `'${employeeDashboardGoalDueDate}'::date` : 'NULL'}
+  WHERE id='${employeeAGoalId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+if (employeeDashboardTask.data?.id) psqlSync(`DELETE FROM public.project_task_peer_reviews
+  WHERE tenant_id='${ids.tenantA}'::uuid AND task_id='${employeeDashboardTask.data.id}'::uuid;
+  DELETE FROM public.project_task_assignments WHERE tenant_id='${ids.tenantA}'::uuid
+    AND task_id='${employeeDashboardTask.data.id}'::uuid;
+  DELETE FROM public.project_tasks WHERE tenant_id='${ids.tenantA}'::uuid
+    AND id='${employeeDashboardTask.data.id}'::uuid;`);
+const employeeDashboardFixtureCleanup = queryAdmin(`SELECT jsonb_build_object(
+  'synthetic_task_count',(SELECT count(*)::integer FROM public.project_tasks
+    WHERE tenant_id='${ids.tenantA}'::uuid AND title=${sqlLiteral(employeeDashboardTaskTitle)}),
+  'goal_due_date',(SELECT due_date::text FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid))`);
+record('Employee dashboard acceptance restores its overdue-goal fixture and removes its synthetic task',
+  employeeDashboardFixtureCleanup.synthetic_task_count === 0
+    && employeeDashboardFixtureCleanup.goal_due_date === employeeDashboardGoalDueDate,
+  JSON.stringify(employeeDashboardFixtureCleanup));
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
   employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
   employeeAttendanceBrowserError);
 record('E01-06 training visibility is partially implemented: only confirmed upcoming sessions link to My Learning in the active tenant',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
+record('E01-07 assigned tasks, own goals, and overdue work open their existing project and performance journeys',
+  !employeeDashboardTask.error
+    && employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_WORK_BROWSER_ACCEPTANCE=PASS'),
+  JSON.stringify({ taskError: employeeDashboardTask.error?.message,
+    browserError: employeeAttendanceBrowserError }));
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';

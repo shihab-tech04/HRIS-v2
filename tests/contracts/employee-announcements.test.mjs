@@ -54,5 +54,5 @@ test('employee announcement UI supports pinned items, attachment links, recovery
 test('announcement outage injection starts only after the employee opens the announcement page', () => {
   assert.match(browser, /let armInitialReadFailure = false/);
   assert.match(browser, /if \(failInitialRead && armInitialReadFailure\)/);
-  assert.match(browser, /armInitialReadFailure = true;\s+await navigation\.getByRole\('button', \{ name: 'Announcements', exact: true \}\)\.click\(\)/);
+  assert.match(browser, /await navigation\.getByRole\('button', \{ name: 'Announcements', exact: true \}\)\.click\(\)[\s\S]*?await pinnedNotice\.waitFor\(\{ state: 'visible' \}\)[\s\S]*?armInitialReadFailure = true;\s+await page\.getByRole\('button', \{ name: 'Refresh announcements', exact: true \}\)\.click\(\)/);
 });

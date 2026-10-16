@@ -98,16 +98,19 @@ try {
   await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
   const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
-  armInitialReadFailure = true;
   await navigation.getByRole('button', { name: 'Announcements', exact: true }).click();
   await page.getByRole('heading', { name: 'Announcements', exact: true }).waitFor({ state: 'visible' });
+  const pinnedNotice = page.locator('[data-announcement-id="b1111111-1111-4111-8111-111111111111"]');
+  const departmentNotice = page.locator('[data-announcement-id="b1111111-1111-4111-8111-111111111112"]');
+  await pinnedNotice.waitFor({ state: 'visible' });
+  await departmentNotice.waitFor({ state: 'visible' });
+  armInitialReadFailure = true;
+  await page.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
   if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
   await page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ }).waitFor({ state: 'visible' });
   if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
   await page.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
 
-  const pinnedNotice = page.locator('[data-announcement-id="b1111111-1111-4111-8111-111111111111"]');
-  const departmentNotice = page.locator('[data-announcement-id="b1111111-1111-4111-8111-111111111112"]');
   await pinnedNotice.waitFor({ state: 'visible' });
   await departmentNotice.waitFor({ state: 'visible' });
   if (await page.locator('[data-announcement-id]').count() !== 2) throw new Error('Audience filtering exposed an unexpected announcement count.');

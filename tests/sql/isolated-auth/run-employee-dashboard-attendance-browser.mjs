@@ -12,6 +12,7 @@ const required = [
   'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
   'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
+  'HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID', 'HRIS_LOCAL_DASHBOARD_TASK_TITLE', 'HRIS_LOCAL_DASHBOARD_GOAL_TITLE',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -65,10 +66,13 @@ try {
   let failInitialIdentityCardRead = true;
   let failInitialRosterRead = true;
   let failInitialUpcomingTrainingRead = true;
+  let failInitialDashboardTaskRead = true;
   const identityCardRequests = [];
   const periodRequests = [];
   const rosterRequests = [];
   const upcomingTrainingRequests = [];
+  const dashboardTaskRequests = [];
+  const dashboardGoalRequests = [];
   const directRosterTableRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
@@ -84,6 +88,12 @@ try {
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context') && request.method() === 'POST') {
       const body = request.postDataJSON();
       upcomingTrainingRequests.push(body?.p_tenant_id);
+    }
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_tasks') && request.method() === 'POST') {
+      dashboardTaskRequests.push(request.postDataJSON()?.p_tenant_id);
+    }
+    if (url.pathname.endsWith('/rest/v1/performance_goals') && request.method() === 'GET') {
+      dashboardGoalRequests.push({ tenantId: url.searchParams.get('tenant_id'), employeeId: url.searchParams.get('employee_id') });
     }
     if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
       directRosterTableRequests.push(url.pathname);
@@ -113,6 +123,15 @@ try {
         failInitialUpcomingTrainingRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary learning-context outage.',
+        }) });
+        return;
+      }
+      if (failInitialDashboardTaskRead
+          && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_tasks')
+          && route.request().method() === 'POST') {
+        failInitialDashboardTaskRead = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+          code: 'XX000', message: 'Synthetic temporary project task outage.',
         }) });
         return;
       }
@@ -148,6 +167,37 @@ try {
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
+  const dashboardWork = page.locator('section[aria-labelledby="employee-dashboard-work-heading"]');
+  await dashboardWork.getByRole('alert').filter({ hasText: 'Unable to load your assigned work.' }).waitFor({ state: 'visible' });
+  if (failInitialDashboardTaskRead) throw new Error('The injected dashboard project-task outage was not observed.');
+  await dashboardWork.getByRole('button', { name: 'Retry', exact: true }).click();
+  await dashboardWork.locator('[data-employee-dashboard-work="task"]')
+    .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_TASK_TITLE }).waitFor({ state: 'visible' });
+  const overdueGoal = dashboardWork.locator('[data-employee-dashboard-work="goal"][data-overdue="true"]')
+    .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_GOAL_TITLE });
+  await overdueGoal.waitFor({ state: 'visible' });
+  if (dashboardTaskRequests.length < 2
+      || dashboardTaskRequests.some(tenantId => tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)
+      || !dashboardGoalRequests.length
+      || dashboardGoalRequests.some(request => request.tenantId !== `eq.${process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID}`
+        || request.employeeId !== `eq.${process.env.HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID}`)) {
+    throw new Error(`Dashboard task/goal reads were missing or not bound to the active tenant and employee: ${JSON.stringify({ dashboardTaskRequests, dashboardGoalRequests })}.`);
+  }
+  await dashboardWork.getByRole('button', { name: 'Refresh assigned work', exact: true }).click();
+  await dashboardWork.locator('[data-employee-dashboard-work="task"]')
+    .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_TASK_TITLE }).waitFor({ state: 'visible' });
+  await dashboardWork.getByRole('button', { name: 'Open My Projects', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Projects & Allocations', exact: true }).waitFor({ state: 'visible' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  await dashboardWork.getByRole('button', { name: 'Open My Performance', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Performance', exact: true }).waitFor({ state: 'visible' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  await dashboardWork.locator('[data-employee-dashboard-work="goal"][data-overdue="true"]')
+    .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_GOAL_TITLE }).waitFor({ state: 'visible' });
   const upcomingTraining = page.locator('section[aria-labelledby="employee-upcoming-training-heading"]');
   await upcomingTraining.getByRole('alert').filter({ hasText: 'Unable to load upcoming training.' }).waitFor({ state: 'visible' });
   if (failInitialUpcomingTrainingRead) throw new Error('The injected learning-context outage was not observed.');
@@ -232,6 +282,8 @@ try {
   await employeeRosterCard.waitFor({ state: 'visible' });
   await page.reload();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'আমার কাজ ও লক্ষ্যসমূহ', exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('মেয়াদোত্তীর্ণ', { exact: true }).first().waitFor({ state: 'visible' });
   await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
   if (await page.locator('html').getAttribute('lang') !== 'bn') throw new Error('Roster navigation lost Bengali locale on refresh.');
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
@@ -393,8 +445,9 @@ try {
   await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
   console.log('EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS');
+  console.log('EMPLOYEE_DASHBOARD_WORK_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
-  console.log('Local Auth/Postgres employee dashboard journeys passed: upcoming confirmed training from an employee-specific enrollment, My Learning navigation, English/Bengali, injected training and attendance/identity/roster outages with retry, refresh and routing recovery, own contact fields, tenant-bound RPCs, and 375px/1280px layouts.');
+  console.log('Local Auth/Postgres employee dashboard journeys passed: own assigned tasks and goals, overdue status, retry, task/performance navigation, upcoming confirmed training, My Learning navigation, English/Bengali, refresh and routing recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
 } finally {
   await browser?.close();
   await stopChildProcess(server);
