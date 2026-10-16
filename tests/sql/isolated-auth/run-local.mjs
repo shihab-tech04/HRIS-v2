@@ -1447,6 +1447,20 @@ try {
 record('Real local Auth-to-Postgres learning and timesheet workflows persist with tenant scope, EN/BN state, and responsive recovery',
   learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed; employee timesheet draft creation, full reload persistence, tenant-scoped save/submit RPCs, Bengali validation, and 375px/1280px layouts also passed.'),
   learningBrowserError);
+const browserTimesheetRows = queryAdmin(`SELECT COALESCE(jsonb_agg(DISTINCT t.id::text),'[]'::jsonb) FROM public.timesheets t
+  JOIN public.timesheet_entries e ON e.timesheet_id=t.id
+  WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+    AND e.note='Synthetic browser-to-database timesheet acceptance marker'`);
+if (browserTimesheetRows.length) {
+  const browserTimesheetIdsSql = browserTimesheetRows.map(sqlLiteral).join(',');
+  psqlSync(`DELETE FROM public.admin_audit_logs WHERE target_type='timesheet' AND target_id IN (${browserTimesheetIdsSql});
+    DELETE FROM public.timesheets WHERE id IN (${browserTimesheetIdsSql});`);
+}
+record('Real-browser timesheet acceptance removes only its marked synthetic row before isolated SQL assertions',
+  queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.timesheets t
+    JOIN public.timesheet_entries e ON e.timesheet_id=t.id
+    WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+      AND e.note='Synthetic browser-to-database timesheet acceptance marker'`).count === 0);
 let payslipBrowserOutput = '';
 let payslipBrowserError = '';
 try {

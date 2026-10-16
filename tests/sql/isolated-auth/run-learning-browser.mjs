@@ -662,7 +662,7 @@ try {
   await page.getByLabel('কাজের তারিখ', { exact: true }).fill(localToday);
   await page.getByLabel('কার্যক্রম', { exact: true }).selectOption('88888888-8888-4888-8888-888888888901');
   await page.getByLabel('ঘণ্টা', { exact: true }).fill('2.5');
-  await page.getByLabel('নোট (ঐচ্ছিক)', { exact: true }).fill('Synthetic browser-to-database timesheet.');
+  await page.getByLabel('নোট (ঐচ্ছিক)', { exact: true }).fill('Synthetic browser-to-database timesheet acceptance marker');
   await page.setViewportSize({ width: 375, height: 812 });
   await assertNoOverflow(page, 'Bengali timesheet editor mobile');
   const saveTimesheetResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_save_my_timesheet') && response.status() === 200);
@@ -670,7 +670,7 @@ try {
   const savedTimesheetId = await (await saveTimesheetResponse).json();
   if (typeof savedTimesheetId !== 'string') throw new Error('Local Auth/Postgres timesheet save did not return its persisted ID.');
   const timesheetCard = page.locator(`[data-timesheet-id="${savedTimesheetId}"]`);
-  await timesheetCard.getByText('QA A Delivery', { exact: true }).waitFor({ state: 'visible' });
+  await timesheetCard.getByText('QA A Delivery · QA-A-DELIVERY', { exact: true }).waitFor({ state: 'visible' });
   await timesheetCard.getByText('মোট ২.৫ ঘণ্টা · ১ এন্ট্রি', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Bengali persisted timesheet mobile');
 
@@ -678,7 +678,7 @@ try {
   await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
   await openMyTimesheets(page, 'bn');
   const persistedTimesheet = page.locator(`[data-timesheet-id="${savedTimesheetId}"]`);
-  await persistedTimesheet.getByText('QA A Delivery', { exact: true }).waitFor({ state: 'visible' });
+  await persistedTimesheet.getByText('QA A Delivery · QA-A-DELIVERY', { exact: true }).waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Bengali persisted timesheet desktop');
   await page.setViewportSize({ width: 375, height: 812 });
