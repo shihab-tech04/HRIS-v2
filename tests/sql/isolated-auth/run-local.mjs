@@ -3273,11 +3273,10 @@ const timesheetContextA = queryAs(employeeA,
   `SELECT public.hris_get_my_timesheet_context('${ids.tenantA}'::uuid)`);
 const timesheetContextB = queryAs(employeeB,
   `SELECT public.hris_get_my_timesheet_context('${ids.tenantB}'::uuid)`);
-const timesheetDirectTableRead = queryAs(employeeA, `SELECT jsonb_build_object(
-  'activities',(SELECT count(*) FROM public.timesheet_activities),
-  'timesheets',(SELECT count(*) FROM public.timesheets),
-  'entries',(SELECT count(*) FROM public.timesheet_entries))`);
-record('Timesheet context returns each linked employee’s own tenant activities and rows while RLS denies direct table reads',
+const timesheetDirectTableReads = ['timesheets', 'timesheet_entries', 'timesheet_project_reviews',
+  'timesheet_project_review_events'].map(table => attemptAs(employeeA,
+  `SELECT count(*) FROM public.${table}`));
+record('Timesheet context returns each linked employee’s own tenant activities and rows while direct table reads are denied',
   timesheetContextA.employee_id === '55555555-5555-4555-8555-555555555555'
     && timesheetContextA.activities.length === 1
     && timesheetContextA.activities[0].id === '88888888-8888-4888-8888-888888888901'
@@ -3288,9 +3287,7 @@ record('Timesheet context returns each linked employee’s own tenant activities
     && timesheetContextB.activities[0].id === '88888888-8888-4888-8888-888888888902'
     && timesheetContextB.timesheets.length === 1
     && timesheetContextB.timesheets[0].id === '77777777-7777-4777-8777-777777777702'
-    && timesheetDirectTableRead.activities === 0
-    && timesheetDirectTableRead.timesheets === 0
-    && timesheetDirectTableRead.entries === 0);
+    && timesheetDirectTableReads.every(result => !result.ok));
 
 const timesheetContextCrossTenant = attemptAs(employeeA,
   `SELECT public.hris_get_my_timesheet_context('${ids.tenantB}'::uuid)`);
