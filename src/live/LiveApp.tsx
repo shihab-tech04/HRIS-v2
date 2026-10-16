@@ -26,6 +26,29 @@ type DashboardNotice = { id: string; title: string; category: string; body: stri
 type DashboardActionRequest = { id: string; category: string; title: string; status: string; requestDate: string | null; submittedAt: string | null };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
 type DashboardPayslip = { id: string; pay_period_name: string; pay_date: string | null; currency: string; net_salary: number; basic_salary: number | null; house_rent_allowance: number | null; medical_allowance: number | null; transport_allowance: number | null; special_allowance: number | null; overtime_pay: number | null; bonus: number | null; tax_deduction: number | null; provident_fund_deduction: number | null; leave_without_pay_deduction: number | null; other_deductions: number | null; gross_earnings: number | null; total_deductions: number | null };
+type ProfileChangeRequest = { id: string; field_key: string; reason: string; status: string; submitted_at: string; reviewed_at: string | null; review_note: string | null };
+const protectedProfileFields = [
+  ['full_name', 'Full name'],
+  ['official_email', 'Official email (HR record only)'],
+  ['personal_email', 'Personal email'],
+  ['official_phone', 'Official phone'],
+  ['address', 'Home address'],
+  ['mailing_address', 'Mailing address'],
+  ['emergency_contact_name', 'Emergency contact name'],
+  ['emergency_contact_phone', 'Emergency contact phone'],
+  ['emergency_contact_relation', 'Emergency contact relationship'],
+  ['father_name', 'Father’s name'],
+  ['mother_name', 'Mother’s name'],
+  ['birthplace', 'Birthplace'],
+  ['blood_group', 'Blood group'],
+  ['religion', 'Religion'],
+  ['nid_number', 'National ID number'],
+  ['passport_number', 'Passport number'],
+  ['etin_number', 'eTIN number'],
+] as const;
+function profileFieldLabel(key: string) {
+  return protectedProfileFields.find(([field]) => field === key)?.[1] || key.replace(/_/g, ' ');
+}
 type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; pendingRequests: DashboardActionRequest[]; pendingRequestErrors: string[]; attendanceToday: AttendanceToday | null; employeeProfile: DashboardProfile | null; payslips: DashboardPayslip[]; payslipsError: boolean };
 type View = 'employee' | 'admin' | 'preview' | 'system';
 const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
@@ -159,6 +182,12 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [profileChangeRequests, setProfileChangeRequests] = useState<ProfileChangeRequest[]>([]);
+  const [profileChangeLoading, setProfileChangeLoading] = useState(true);
+  const [profileChangeSaving, setProfileChangeSaving] = useState(false);
+  const [profileChangeError, setProfileChangeError] = useState('');
+  const [profileChangeMessage, setProfileChangeMessage] = useState('');
+  const [profileChangeForm, setProfileChangeForm] = useState({ field_key: 'official_email', requested_value: '', reason: '' });
   const [form, setForm] = useState({
     preferred_name: profile.preferred_name || '',
     gender: profile.gender || '',
@@ -176,6 +205,23 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     });
     setError('');
   }, [profile]);
+
+  async function loadProfileChangeRequests() {
+    setProfileChangeLoading(true);
+    try {
+      const { data, error: requestError } = await supabase.rpc('employee_get_my_profile_change_requests');
+      if (requestError) throw requestError;
+      setProfileChangeError('');
+      setProfileChangeRequests(Array.isArray(data) ? data as ProfileChangeRequest[] : []);
+    } catch {
+      setProfileChangeError('Profile change requests are temporarily unavailable. Refresh to try again.');
+      setProfileChangeRequests([]);
+    } finally {
+      setProfileChangeLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadProfileChangeRequests(); }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -196,6 +242,33 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
       setError('Unable to save your personal information. Refresh and try again.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function submitProfileChangeRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProfileChangeSaving(true);
+    setProfileChangeError('');
+    setProfileChangeMessage('');
+    try {
+      const { error: requestError } = await supabase.rpc('employee_submit_profile_change_request', {
+        p_field_key: profileChangeForm.field_key,
+        p_requested_value: profileChangeForm.requested_value.trim(),
+        p_reason: profileChangeForm.reason.trim(),
+      });
+      if (requestError) {
+        setProfileChangeError(requestError.message.includes('pending request already exists')
+          ? 'A pending request already exists for this field.'
+          : 'Unable to submit your request. Check the proposed value and try again.');
+      } else {
+        setProfileChangeForm(current => ({ ...current, requested_value: '', reason: '' }));
+        setProfileChangeMessage('Your profile change request was submitted for HR review.');
+        await loadProfileChangeRequests();
+      }
+    } catch {
+      setProfileChangeError('Unable to submit your request. Check your connection and try again.');
+    } finally {
+      setProfileChangeSaving(false);
     }
   }
 
@@ -226,6 +299,24 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
       <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{profile.marital_status || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{profile.employment_status.replace(/_/g, ' ')}</dd></div>
     </dl>}
+    <details className="border-t">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Request a protected profile change</summary>
+      <div className="border-t p-4">
+        <p className="mb-4 text-sm text-slate-600">HR reviews changes to protected profile fields. Approval updates the HRIS employee record; it does not change sign-in credentials or financial account details.</p>
+        <form className="grid grid-cols-1 sm:grid-cols-2 gap-4" onSubmit={submitProfileChangeRequest}>
+          <div><label htmlFor="employee-profile-change-field" className="block text-xs font-medium text-slate-600">Profile field</label><select id="employee-profile-change-field" className="mt-1 min-h-11 w-full rounded-md border px-3" value={profileChangeForm.field_key} onChange={event => setProfileChangeForm(current => ({ ...current, field_key: event.target.value }))}>{protectedProfileFields.map(([field, label]) => <option value={field} key={field}>{label}</option>)}</select></div>
+          <div><label htmlFor="employee-profile-change-value" className="block text-xs font-medium text-slate-600">Proposed value</label><input id="employee-profile-change-value" type={profileChangeForm.field_key.endsWith('email') ? 'email' : 'text'} required maxLength={500} className="mt-1 min-h-11 w-full rounded-md border px-3" value={profileChangeForm.requested_value} onChange={event => setProfileChangeForm(current => ({ ...current, requested_value: event.target.value }))}/></div>
+          <div className="sm:col-span-2"><label htmlFor="employee-profile-change-reason" className="block text-xs font-medium text-slate-600">Reason for change</label><textarea id="employee-profile-change-reason" required maxLength={1000} rows={3} className="mt-1 w-full rounded-md border px-3 py-2" value={profileChangeForm.reason} onChange={event => setProfileChangeForm(current => ({ ...current, reason: event.target.value }))}/></div>
+          <div className="sm:col-span-2"><button type="submit" disabled={profileChangeSaving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{profileChangeSaving ? 'Submitting…' : 'Submit profile change request'}</button></div>
+        </form>
+        {profileChangeMessage && <p role="status" className="mt-3 text-sm text-emerald-800">{profileChangeMessage}</p>}
+        {profileChangeError && <p role="alert" className="mt-3 text-sm text-red-800">{profileChangeError}</p>}
+        <section aria-label="My profile change requests" className="mt-5 border-t pt-4">
+          <h3 className="text-sm font-semibold">My profile change requests</h3>
+          {profileChangeLoading ? <p role="status" className="mt-2 text-sm text-slate-500">Loading request status…</p> : profileChangeRequests.length === 0 ? <p className="mt-2 text-sm text-slate-500">No profile change requests yet.</p> : <ul className="mt-2 divide-y">{profileChangeRequests.map(request => <li key={request.id} className="py-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">{profileFieldLabel(request.field_key)}</p><span className="rounded-md bg-slate-100 px-2 py-1 text-xs capitalize">{request.status}</span></div><p className="mt-1 text-xs text-slate-500">Submitted {new Date(request.submitted_at).toLocaleDateString()}</p>{request.review_note && <p className="mt-2 text-sm text-slate-600">HR note: {request.review_note}</p>}</li>)}</ul>}
+        </section>
+      </div>
+    </details>
   </section>;
 }
 
@@ -350,10 +441,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [tenantId, setTenantId] = useState('');
   const [adminAllowed, setAdminAllowed] = useState(false);
   const [recruitmentAllowed, setRecruitmentAllowed] = useState(false);
+  const [profileChangeReviewAllowed, setProfileChangeReviewAllowed] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   // Legacy permissions are globally stored, therefore valid for Synesis only.
   const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
-  const canUseSystemWorkspace = canAdminSelectedTenant || (recruitmentAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it'));
+  const canUseSystemWorkspace = canAdminSelectedTenant || ((recruitmentAllowed || profileChangeReviewAllowed) && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it'));
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
   const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) ? 'employee' : view;
@@ -429,6 +521,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       setTenantId('');
       setAdminAllowed(false);
       setRecruitmentAllowed(false);
+      setProfileChangeReviewAllowed(false);
       setIsSuperAdmin(false);
       setRecords(empty());
       setMembershipLoading(false);
@@ -444,6 +537,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setRecords(empty());
     setAdminAllowed(false);
     setRecruitmentAllowed(false);
+    setProfileChangeReviewAllowed(false);
     setIsSuperAdmin(false);
     if (switchedIdentity) {
       setTenantId('');
@@ -468,7 +562,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           .filter(e => !['resigned','terminated'].includes(e.employment_status))
           .map(e => e.tenant_id);
         const permissions = await Promise.all(
-          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage','recruitment.view','recruitment.manage']
+          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage','recruitment.view','recruitment.manage','self_service.manage']
             .map(id => supabase.rpc('has_permission', { p_permission_id: id }))
         );
         const isLegacyAdmin = adminResult.data?.active === true &&
@@ -476,10 +570,12 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         // Recruiter access is limited to active legacy admins with an explicit
         // recruitment permission; the recruiter RPCs enforce this again in SQL.
         const recruitmentWorkspaceAllowed = adminResult.data?.active === true &&
-          permissions.slice(5).some(right => !right.error && right.data === true);
+          permissions.slice(5, 7).some(right => !right.error && right.data === true);
+        const profileChangeReviewWorkspaceAllowed = adminResult.data?.active === true &&
+          !permissions[7].error && permissions[7].data === true;
         // Existing admin_users grants are specific to the legacy Synesis tenant:
         // global roles are NOT valid for any other tenant.
-        const legacyTenant = isLegacyAdmin || recruitmentWorkspaceAllowed
+        const legacyTenant = isLegacyAdmin || recruitmentWorkspaceAllowed || profileChangeReviewWorkspaceAllowed
           ? await supabase.from('tenants').select('id').eq('slug','synesis-it').eq('is_active', true).maybeSingle()
           : { data: null, error: null };
         if (legacyTenant.error) throw legacyTenant.error;
@@ -501,6 +597,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           ? previous : (found.data?.[0]?.id || ''));
         setAdminAllowed(isLegacyAdmin);
         setRecruitmentAllowed(recruitmentWorkspaceAllowed);
+        setProfileChangeReviewAllowed(profileChangeReviewWorkspaceAllowed);
         setIsSuperAdmin(isLegacyAdmin && adminResult.data?.is_super_admin === true);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');

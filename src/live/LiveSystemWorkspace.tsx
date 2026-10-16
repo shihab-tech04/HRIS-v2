@@ -3,6 +3,16 @@ import { supabase } from '../lib/supabase';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
 
 type RowData = Record<string, unknown>;
+type ProfileChangeRow = {
+  id: string;
+  employee_id: string;
+  employee_number: string | null;
+  full_name: string;
+  field_key: string;
+  requested_value: string;
+  reason: string;
+  submitted_at: string;
+};
 type Module = {
   id: string;
   group: string;
@@ -18,6 +28,7 @@ type Module = {
 const modules: Module[] = [
   { id: 'overview', group: 'Workspace', title: 'System overview', description: 'Live, permission-filtered HRIS operational snapshot.' },
   { id: 'employees', group: 'People & Organization', title: 'Employee directory', description: 'Authorized employee records.', table: 'employees', fields: 'id,full_name,employee_number,employment_status', primary: 'full_name', secondary: ['employee_number'], status: 'employment_status' },
+  { id: 'profileChanges', group: 'People & Organization', title: 'Profile correction requests', description: 'Review employee requests for protected HR profile fields.', integrated: true },
   { id: 'departments', group: 'People & Organization', title: 'Departments', description: 'Organization departments.', table: 'departments', fields: 'id,name,code,active', primary: 'name', secondary: ['code'], status: 'active' },
   { id: 'teams', group: 'People & Organization', title: 'Teams', description: 'Department teams.', table: 'teams', fields: 'id,name,code,active', primary: 'name', secondary: ['code'], status: 'active' },
   { id: 'designations', group: 'People & Organization', title: 'Designations', description: 'Organization job designations.', table: 'designations', fields: 'id,title,code,active', primary: 'title', secondary: ['code'], status: 'active' },
@@ -54,6 +65,67 @@ function readable(value: unknown) {
   if (typeof value === 'boolean') return value ? 'Active' : 'Inactive';
   if (typeof value === 'number' || typeof value === 'string') return String(value);
   return '—';
+}
+
+function ProfileChangeReview({ revision }: { revision: number }) {
+  const [requests, setRequests] = useState<ProfileChangeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState('');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [notes, setNotes] = useState<Record<string, string>>({});
+
+  async function load() {
+    setLoading(true);
+    try {
+      const { data, error: requestError } = await supabase.rpc('admin_list_profile_change_requests');
+      if (requestError) throw requestError;
+      setError('');
+      setRequests(Array.isArray(data) ? data as ProfileChangeRow[] : []);
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message.includes('permission')
+        ? 'Your account does not have permission to review profile correction requests.'
+        : 'Profile correction requests are unavailable. Refresh to try again.');
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, [revision]);
+
+  async function review(request: ProfileChangeRow, decision: 'approved' | 'rejected') {
+    setBusyId(request.id);
+    setError('');
+    setMessage('');
+    try {
+      const { error: reviewError } = await supabase.rpc('admin_review_profile_change_request', {
+        p_id: request.id,
+        p_decision: decision,
+        p_note: notes[request.id]?.trim() || null,
+      });
+      if (reviewError) throw reviewError;
+      setMessage(`Request ${decision}.`);
+      await load();
+    } catch {
+      setError('Unable to record this decision. The request may already have been reviewed; refresh and try again.');
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  return <section aria-label="Profile correction requests" className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className="p-4 border-b"><h3 className="font-semibold">Pending profile correction requests</h3><p className="mt-1 text-xs text-slate-500">Review changes to protected employee records. Approval changes the HRIS record only; it does not change login credentials or financial details.</p></div>
+    {message && <p role="status" className="p-3 text-sm text-emerald-800">{message}</p>}
+    {error && <p role="alert" className="p-4 text-sm text-red-700">{error}</p>}
+    {loading ? <p role="status" className="p-5 text-sm text-slate-600">Loading pending requests…</p> : error ? null : requests.length === 0 ? <p className="p-5 text-sm text-slate-600">No pending profile correction requests.</p> : <ul className="divide-y divide-slate-100">
+      {requests.map(request => <li key={request.id} className="p-4 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-medium">{request.full_name} <span className="text-xs text-slate-500">{request.employee_number || ''}</span></p><p className="mt-1 text-sm">{label(request.field_key)}: <span className="font-medium break-all">{request.requested_value}</span></p><p className="mt-1 text-sm text-slate-600">Reason: {request.reason}</p><p className="mt-1 text-xs text-slate-500">Submitted {new Date(request.submitted_at).toLocaleString()}</p></div></div>
+        <label className="block text-xs font-medium text-slate-600" htmlFor={`profile-change-note-${request.id}`}>Reviewer note (optional)<textarea id={`profile-change-note-${request.id}`} maxLength={1000} rows={2} className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={notes[request.id] || ''} onChange={event => setNotes(current => ({ ...current, [request.id]: event.target.value }))}/></label>
+        <div className="flex flex-wrap gap-2"><button type="button" disabled={Boolean(busyId)} onClick={() => void review(request, 'approved')} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{busyId === request.id ? 'Saving…' : 'Approve change'}</button><button type="button" disabled={Boolean(busyId)} onClick={() => void review(request, 'rejected')} className="min-h-10 rounded-md border px-4 text-sm disabled:opacity-50">Reject request</button></div>
+      </li>)}
+    </ul>}
+  </section>;
 }
 
 export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string; tenantName: string }) {
@@ -145,7 +217,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
             <p className="text-sm text-slate-600 mt-2">All HRIS areas are listed in the navigation. A filled marker indicates an RLS-filtered live record view. An empty marker indicates a workflow that is not yet integrated. No sample data or simulated saves are displayed.</p>
             <p className="text-sm text-slate-600 mt-2">Employee, Manager, HOD, HR, Admin, Super Admin and CEO workflows require their own verified role-based journeys. Viewing this system index does not impersonate those roles.</p>
           </section>
-        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} revision={revision} /> : selected.id === 'profileChanges' ? <ProfileChangeReview revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
             <h3 className="font-semibold">Authorized records</h3>
             <p className="text-xs text-slate-500">RLS protected · up to 50 records · read only</p>

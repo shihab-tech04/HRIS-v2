@@ -12,7 +12,9 @@ const jwtPayload = Buffer.from(JSON.stringify({ sub: userId, aud: 'authenticated
   exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-async function interceptAuth(page: import('@playwright/test').Page) {
+async function interceptAuth(page: import('@playwright/test').Page): Promise<() => Record<string, unknown> | null> {
+  let pendingProfileChange = true;
+  let profileChangeReviewPayload: Record<string, unknown> | null = null;
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -33,7 +35,13 @@ async function interceptAuth(page: import('@playwright/test').Page) {
     const table = url.pathname.split('/').pop();
     const requested = url.searchParams.get('select') || '';
     let data: unknown = [];
-    if (table === 'tenant_memberships') data = [];
+    if (url.pathname.endsWith('/rpc/admin_list_profile_change_requests')) data = pendingProfileChange ? [{ id: 'pf-1', employee_id: 'emp-1', employee_number: 'TEST-01', full_name: 'Synthetic Test Employee', field_key: 'official_email', requested_value: 'new.employee@example.org', reason: 'Employee contact address changed.', submitted_at: '2026-10-16T12:00:00.000Z' }] : [];
+    else if (url.pathname.endsWith('/rpc/admin_review_profile_change_request')) {
+      profileChangeReviewPayload = JSON.parse(request.postData() || '{}');
+      pendingProfileChange = false;
+      data = { success: true, status: 'approved' };
+    }
+    else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
       data = requested.includes('full_name')
         ? [{ id: 'emp-1', full_name: 'Synthetic Test Employee', employee_number: 'TEST-01', employment_status: 'active' }]
@@ -50,10 +58,11 @@ async function interceptAuth(page: import('@playwright/test').Page) {
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
+  return () => profileChangeReviewPayload;
 }
 
 test('authorized Super Admin opens real system navigation, not fixture preview', async ({ page }) => {
-  await interceptAuth(page);
+  const getProfileChangeReviewPayload = await interceptAuth(page);
   await page.goto('/');
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
@@ -71,6 +80,20 @@ test('authorized Super Admin opens real system navigation, not fixture preview',
   await moduleNav.getByRole('button', { name: /Employee directory/ }).click();
   await expect(page.getByText('Synthetic Test Employee')).toBeVisible();
   await expect(page.getByText('TEST-01')).toBeVisible();
+
+  await moduleNav.getByRole('button', { name: /Profile correction requests/ }).click();
+  await expect(page.getByRole('heading', { name: 'Profile correction requests' })).toBeVisible();
+  const changeRequests = page.getByRole('region', { name: 'Profile correction requests' });
+  await expect(changeRequests.getByText('new.employee@example.org')).toBeVisible();
+  await changeRequests.getByLabel('Reviewer note (optional)').fill('Verified against employee documents.');
+  await changeRequests.getByRole('button', { name: 'Approve change' }).click();
+  await expect(changeRequests.getByRole('status')).toHaveText('Request approved.');
+  await expect(changeRequests.getByText('No pending profile correction requests.')).toBeVisible();
+  expect(getProfileChangeReviewPayload()).toEqual({
+    p_id: 'pf-1',
+    p_decision: 'approved',
+    p_note: 'Verified against employee documents.',
+  });
 
   await moduleNav.getByRole('button', { name: /Compensation management/ }).click();
   await expect(page.getByRole('heading', { name: 'Workflow integration pending' })).toBeVisible();
