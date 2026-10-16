@@ -24,8 +24,9 @@ const jwtPayload = Buffer.from(JSON.stringify({
 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-test('employee sees only their own tenant-local attendance summary', async ({ page }) => {
+test('employee sees only their own tenant-local attendance and leave balance data', async ({ page }) => {
   let attendanceFilter: Record<string, string> = {};
+  let leaveContextMethod = '';
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -51,6 +52,10 @@ test('employee sees only their own tenant-local attendance summary', async ({ pa
     const table = path.split('/').pop() || '';
     let data: unknown = [];
     if (path.endsWith('/rpc/has_permission')) data = false;
+    else if (path.endsWith('/rpc/employee_get_leave_context')) {
+      leaveContextMethod = route.request().method();
+      data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }] };
+    }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
       data = url.searchParams.get('user_id') === `eq.${userId}`
@@ -85,4 +90,9 @@ test('employee sees only their own tenant-local attendance summary', async ({ pa
     employee_id: `eq.${employeeId}`,
   });
   expect(attendanceFilter.attendance_date).toMatch(/^eq\.\d{4}-\d{2}-\d{2}$/);
+  expect(leaveContextMethod).toBe('POST');
+  const balances = page.getByRole('region', { name: 'Remaining leave balances' });
+  await expect(balances.getByText('Annual Leave')).toBeVisible();
+  await expect(balances.getByText('15 days available')).toBeVisible();
+  await expect(balances.getByText('2026 · 3 used · 2 pending')).toBeVisible();
 });

@@ -13,10 +13,11 @@ type Employee = { id: string; full_name: string; employee_number: string; employ
 type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
+type LeaveBalance = { leave_type_id: string; leave_type_name: string; balance_year: number; available_days: number; used_days: number; pending_days: number };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; attendanceToday: AttendanceToday | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], attendanceToday: null });
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], attendanceToday: null });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -173,6 +174,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const canUseSystemWorkspace = canAdminSelectedTenant || (recruitmentAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it'));
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
+  const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) ? 'employee' : view;
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -336,6 +338,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       try {
         const timeZone = tenants.find(tenant => tenant.id === tenantId)?.timezone || 'UTC';
         const attendanceDate = tenantAttendanceDate(new Date(), timeZone);
+        const leaveContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_leave_context')
+          : Promise.resolve({ data: null, error: null });
         const attendance = (async () => {
           // Resolve only the authenticated user's employee record. RLS applies to
           // both reads; the attendance query is additionally constrained by this
@@ -351,18 +356,20 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             .eq('attendance_date', attendanceDate)
             .maybeSingle();
         })();
-        const [leaves, types, employees, departments, attendanceResult] = await Promise.all([
+        const [leaves, types, employees, departments, attendanceResult, leaveContextResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
           canAdminSelectedTenant ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
           attendance,
+          leaveContext,
         ]);
-        const denied = [leaves, types, employees, departments, attendanceResult].find(result => result.error);
+        const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
         if (denied?.error) throw denied.error;
         if (active) setRecords({
           leaves: (leaves.data || []) as Leave[],
           leaveTypes: (types.data || []) as LeaveType[],
+          leaveBalances: ((leaveContextResult.data as { balances?: LeaveBalance[] } | null)?.balances || []),
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
@@ -373,7 +380,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user?.id, tenantId, canAdminSelectedTenant, refreshKey, membershipLoading, tenants]);
+  }, [user?.id, tenantId, canAdminSelectedTenant, currentView, refreshKey, membershipLoading, tenants]);
 
   async function signOut() {
     setView('employee');
@@ -408,7 +415,6 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
-  const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) ? 'employee' : view;
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -463,6 +469,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My visible leave requests</h2><p className="text-xs text-slate-500">Last 50 RLS-visible requests</p></div>{records.leaves.length ? <ul className="divide-y">{records.leaves.map(item => <li key={item.id} className="p-4 flex justify-between gap-3"><p className="text-sm">{item.from_date} – {item.to_date} ({item.requested_days} days)</p><p className="text-xs font-medium">{item.status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible requests, or access is restricted.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized leave types</h2><p className="text-xs text-slate-500">Current tenant policy records</p></div>{records.leaveTypes.length ? <ul className="divide-y">{records.leaveTypes.map(item => <li key={item.id} className="p-4 flex justify-between gap-3 text-sm"><p>{item.name}</p><p>{item.annual_entitlement == null ? 'Policy-defined' : String(item.annual_entitlement) + ' days'}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible leave types.</p>}</section>
+            <section aria-label="Remaining leave balances" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Remaining leave balances</h2><p className="text-xs text-slate-500">Available days after used and pending leave</p></div>{records.leaveBalances.length ? <ul className="divide-y">{records.leaveBalances.map(item => <li key={item.leave_type_id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{item.leave_type_name}</p><p className="text-xs text-slate-500">{item.balance_year} · {item.used_days} used · {item.pending_days} pending</p></div><p className="text-sm font-semibold">{item.available_days} days available</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No leave balances are available for this year.</p>}</section>
             </div>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>
