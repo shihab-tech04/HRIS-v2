@@ -24,12 +24,16 @@ const jwtPayload = Buffer.from(JSON.stringify({
 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-test('employee sees own tenant-local attendance, leave, holidays, schedule, goals and announcements', async ({ page }) => {
+test('employee sees own attendance, pending requests and dashboard records', async ({ page }) => {
   let attendanceFilter: Record<string, string> = {};
+  let attendanceCorrectionFilter: Record<string, string> = {};
   let leaveContextMethod = '';
   let scheduleMethod = '';
   let performanceContextMethod = '';
   let noticeContextMethod = '';
+  let expenseContextMethod = '';
+  let travelContextMethod = '';
+  let selfServiceContextMethod = '';
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -57,7 +61,7 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule, goal
     if (path.endsWith('/rpc/has_permission')) data = false;
     else if (path.endsWith('/rpc/employee_get_leave_context')) {
       leaveContextMethod = route.request().method();
-      data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }], holidays: [{ id: 'e5555555-5555-4555-8555-555555555555', name: 'National Day', start_date: '2026-12-16', end_date: '2026-12-16', holiday_type: 'Public', description: null }] };
+      data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }], holidays: [{ id: 'e5555555-5555-4555-8555-555555555555', name: 'National Day', start_date: '2026-12-16', end_date: '2026-12-16', holiday_type: 'Public', description: null }], requests: [{ id: 'ec111111-1111-4111-8111-111111111111', leave_type_name: 'Annual Leave', from_date: '2026-11-01', to_date: '2026-11-02', status: 'pending', submitted_at: '2026-10-15T12:00:00.000Z' }] };
     }
     else if (path.endsWith('/rpc/employee_get_dashboard_schedule')) {
       scheduleMethod = route.request().method();
@@ -83,6 +87,22 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule, goal
         { id: 'eb333333-3333-4333-8333-333333333333', title: 'Future announcement', category: 'Events', body: 'Not published yet.', published_at: '2999-01-01T00:00:00.000Z', pinned: true },
       ] };
     }
+    else if (path.endsWith('/rpc/employee_get_expense_context')) {
+      expenseContextMethod = route.request().method();
+      data = { claims: [{ id: 'ec222222-2222-4222-8222-222222222222', description: 'Synthetic test claim', status: 'submitted', submitted_at: '2026-10-14T12:00:00.000Z' }], categories: [] };
+    }
+    else if (path.endsWith('/rpc/employee_get_travel_context')) {
+      travelContextMethod = route.request().method();
+      data = { requests: [{ id: 'ec333333-3333-4333-8333-333333333333', destination: 'Synthetic test destination', from_date: '2026-11-20', status: 'submitted', submitted_at: '2026-10-13T12:00:00.000Z' }] };
+    }
+    else if (path.endsWith('/rpc/employee_get_self_service_context')) {
+      selfServiceContextMethod = route.request().method();
+      data = { requests: [
+        { id: 'ec444444-4444-4444-8444-444444444444', request_type: 'employment_certificate', status: 'pending', submitted_at: '2026-10-12T12:00:00.000Z' },
+        { id: 'ec555555-5555-4555-8555-555555555555', request_type: 'work_from_home', status: 'in_progress', submitted_at: '2026-10-11T12:00:00.000Z' },
+        { id: 'ec666666-6666-4666-8666-666666666666', request_type: 'noc_letter', status: 'completed', submitted_at: '2026-10-10T12:00:00.000Z' },
+      ] };
+    }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
       data = url.searchParams.get('user_id') === `eq.${userId}`
@@ -93,6 +113,9 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule, goal
     else if (table === 'attendance_records') {
       attendanceFilter = Object.fromEntries(url.searchParams.entries());
       data = { status: 'late', work_mode: 'home', check_in: '2026-10-16T03:00:00.000Z', check_out: null };
+    } else if (table === 'attendance_corrections') {
+      attendanceCorrectionFilter = Object.fromEntries(url.searchParams.entries());
+      data = [{ id: 'ec777777-7777-4777-8777-777777777777', attendance_date: '2026-10-15', status: 'pending', requested_at: '2026-10-15T13:00:00.000Z' }];
     }
     if (route.request().method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/0' }, body: '' });
@@ -117,10 +140,19 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule, goal
     employee_id: `eq.${employeeId}`,
   });
   expect(attendanceFilter.attendance_date).toMatch(/^eq\.\d{4}-\d{2}-\d{2}$/);
+  expect(attendanceCorrectionFilter).toMatchObject({
+    select: 'id,attendance_date,status,requested_at',
+    tenant_id: `eq.${tenantId}`,
+    employee_id: `eq.${employeeId}`,
+    status: 'eq.pending',
+  });
   expect(leaveContextMethod).toBe('POST');
   expect(scheduleMethod).toBe('POST');
   expect(performanceContextMethod).toBe('POST');
   expect(noticeContextMethod).toBe('POST');
+  expect(expenseContextMethod).toBe('POST');
+  expect(travelContextMethod).toBe('POST');
+  expect(selfServiceContextMethod).toBe('POST');
   const balances = page.getByRole('region', { name: 'Remaining leave balances' });
   await expect(balances.getByText('Annual Leave')).toBeVisible();
   await expect(balances.getByText('15 days available')).toBeVisible();
@@ -160,4 +192,15 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule, goal
   expect(announcementRows).toHaveLength(2);
   expect(announcementRows[0]).toContain('Benefits enrollment timeline');
   expect(announcementRows[1]).toContain('October town hall');
+
+  const requests = page.getByRole('region', { name: 'Requests awaiting action' });
+  const requestRows = await requests.getByRole('listitem').allTextContents();
+  expect(requestRows).toHaveLength(6);
+  await expect(requests.getByText('Annual Leave request')).toBeVisible();
+  await expect(requests.getByText('Attendance correction')).toBeVisible();
+  await expect(requests.getByText('Expense claim')).toBeVisible();
+  await expect(requests.getByText('Travel request')).toBeVisible();
+  await expect(requests.getByText('employment certificate request')).toBeVisible();
+  await expect(requests.getByText('work from home request')).toBeVisible();
+  await expect(requests.getByText('noc letter request')).toHaveCount(0);
 });
