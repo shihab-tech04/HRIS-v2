@@ -89,6 +89,14 @@ async function openLearningCompletionQueue(page) {
   await page.getByRole('heading', { name: 'Learning completion review', exact: true }).waitFor({ state: 'visible' });
 }
 
+async function openMyTimesheets(page, locale = 'en') {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  const label = locale === 'bn' ? 'আমার টাইমশিট' : 'My Timesheets';
+  await navigation.getByRole('button', { name: label, exact: true }).click();
+  await page.getByRole('heading', { name: locale === 'bn' ? 'আমার টাইমশিটসমূহ' : 'My timesheets', exact: true }).waitFor({ state: 'visible' });
+}
+
 async function isolateExternalRequests(page) {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -618,11 +626,82 @@ try {
   await page.getByRole('button', { name: 'Refresh learning' }).click();
   await page.locator(`[data-learning-enrollment="${request.id}"]`).getByText('Cancelled', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Learning desktop workspace');
+
+  const timesheetTenantIds = [];
+  const directTimesheetReads = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    const rpc = url.pathname.match(/\/rest\/v1\/rpc\/(hris_(?:get_my_timesheet_context|save_my_timesheet|submit_my_timesheet))$/);
+    if (rpc && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      if (body?.p_tenant_id) timesheetTenantIds.push(body.p_tenant_id);
+    }
+    if (/\/rest\/v1\/(timesheet_activities|timesheets|timesheet_entries)(\?|$)/.test(url.pathname + url.search)) {
+      directTimesheetReads.push(url.pathname);
+    }
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const initialTimesheetContext = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_timesheet_context') && response.status() === 200);
+  await openMyTimesheets(page);
+  await initialTimesheetContext;
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await page.getByRole('heading', { name: 'আমার টাইমশিটসমূহ', exact: true }).waitFor({ state: 'visible' });
+  const timesheetContext = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_timesheet_context') && response.status() === 200);
+  await page.getByRole('button', { name: 'রিফ্রেশ', exact: true }).click();
+  await timesheetContext;
+  await page.getByRole('button', { name: 'নতুন টাইমশিট', exact: true }).click();
+  await page.getByLabel('সময়সীমার ধরন', { exact: true }).selectOption('daily');
+  await page.getByRole('button', { name: 'এন্ট্রি যোগ করুন', exact: true }).click();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  await page.getByRole('alert').getByText('প্রতিটি এন্ট্রির কার্যক্রম, কাজের তারিখ ও ঘণ্টা পূরণ করুন।', { exact: true }).waitFor({ state: 'visible' });
+  const localToday = await page.evaluate(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  });
+  await page.getByLabel('সময়সীমা শুরু', { exact: true }).fill(localToday);
+  await page.getByLabel('কাজের তারিখ', { exact: true }).fill(localToday);
+  await page.getByLabel('কার্যক্রম', { exact: true }).selectOption('88888888-8888-4888-8888-888888888901');
+  await page.getByLabel('ঘণ্টা', { exact: true }).fill('2.5');
+  await page.getByLabel('নোট (ঐচ্ছিক)', { exact: true }).fill('Synthetic browser-to-database timesheet.');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await assertNoOverflow(page, 'Bengali timesheet editor mobile');
+  const saveTimesheetResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_save_my_timesheet') && response.status() === 200);
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  const savedTimesheetId = await (await saveTimesheetResponse).json();
+  if (typeof savedTimesheetId !== 'string') throw new Error('Local Auth/Postgres timesheet save did not return its persisted ID.');
+  const timesheetCard = page.locator(`[data-timesheet-id="${savedTimesheetId}"]`);
+  await timesheetCard.getByText('QA A Delivery', { exact: true }).waitFor({ state: 'visible' });
+  await timesheetCard.getByText('মোট ২.৫ ঘণ্টা · ১ এন্ট্রি', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Bengali persisted timesheet mobile');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  await openMyTimesheets(page, 'bn');
+  const persistedTimesheet = page.locator(`[data-timesheet-id="${savedTimesheetId}"]`);
+  await persistedTimesheet.getByText('QA A Delivery', { exact: true }).waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Bengali persisted timesheet desktop');
+  await page.setViewportSize({ width: 375, height: 812 });
+  const submitTimesheetResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_submit_my_timesheet') && response.status() === 200);
+  await persistedTimesheet.getByRole('button', { name: 'টাইমশিট জমা দিন', exact: true }).click();
+  const submittedTimesheetId = await (await submitTimesheetResponse).json();
+  if (submittedTimesheetId !== savedTimesheetId) throw new Error('Local timesheet submission returned a different record.');
+  await persistedTimesheet.getByText('জমা হয়েছে', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.getByRole('heading', { name: 'My timesheets', exact: true }).waitFor({ state: 'visible' });
+  await persistedTimesheet.getByText('submitted', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'English submitted timesheet mobile');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'English submitted timesheet desktop');
+  if (timesheetTenantIds.some(id => id !== process.env.HRIS_LOCAL_LEARNING_TENANT_ID)) {
+    throw new Error(`Timesheet UI requested an unexpected tenant: ${timesheetTenantIds.join(', ')}.`);
+  }
+  if (directTimesheetReads.length) throw new Error(`Timesheet UI bypassed its tenant-scoped RPCs: ${directTimesheetReads.join(', ')}.`);
   if (rpcTenants.some(id => id !== process.env.HRIS_LOCAL_LEARNING_TENANT_ID)) {
     throw new Error(`Learning UI requested an unexpected tenant: ${rpcTenants.join(', ')}.`);
   }
   if (directLearningTableReads.length) throw new Error(`Learning UI bypassed its tenant-scoped RPCs: ${directLearningTableReads.join(', ')}.`);
-  console.log('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.');
+  console.log('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed; employee timesheet draft creation, full reload persistence, tenant-scoped save/submit RPCs, Bengali validation, and 375px/1280px layouts also passed.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

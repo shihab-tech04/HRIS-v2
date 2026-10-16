@@ -17,7 +17,7 @@ const token = [
   'synthetic-signature',
 ].join('.');
 
-test('linked employee saves and submits a tenant timesheet draft with retry and mobile layout', async ({ page }) => {
+test('linked employee completes the timesheet journey in Bengali and English with mobile recovery', async ({ page }) => {
   let authenticated = false;
   let failNextContext = true;
   let saved = false;
@@ -126,55 +126,67 @@ test('linked employee saves and submits a tenant timesheet draft with retry and 
   await expect(page.getByRole('alert')).toContainText('Synthetic timesheet service unavailable.');
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByText('No timesheets have been saved for this organization.')).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'আমার টাইমশিটসমূহ', exact: true })).toBeVisible();
+  await expect(page.getByText('এই প্রতিষ্ঠানের জন্য এখনো কোনো টাইমশিট সংরক্ষিত হয়নি।')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'নতুন টাইমশিট', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
-  await page.getByRole('button', { name: 'New timesheet' }).click();
-  await page.getByRole('button', { name: 'Add entry' }).click();
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  await expect(page.getByRole('alert')).toContainText('Complete the activity, work date, and hours');
-  await page.getByLabel('Activity', { exact: true }).selectOption(activityId);
-  await page.getByLabel('Hours', { exact: true }).fill('3.5');
-  await page.getByLabel('Note (optional)', { exact: true }).fill('Synthetic implementation work');
-  await page.getByRole('button', { name: 'Add entry' }).click();
-  await page.getByLabel('Activity', { exact: true }).nth(1).selectOption(activityId);
-  await page.getByLabel('Hours', { exact: true }).nth(1).fill('21.5');
-  await expect(page.getByText('25.00 / 24 hours · Over daily limit')).toBeVisible();
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  await expect(page.getByRole('alert')).toContainText('A day cannot contain more than 24 total hours');
+  await page.getByRole('button', { name: 'নতুন টাইমশিট', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'নতুন টাইমশিট খসড়া', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'এন্ট্রি যোগ করুন', exact: true }).click();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('প্রতিটি এন্ট্রির কার্যক্রম, কাজের তারিখ ও ঘণ্টা পূরণ করুন।');
+  await page.getByLabel('কার্যক্রম', { exact: true }).selectOption(activityId);
+  await page.getByLabel('ঘণ্টা', { exact: true }).fill('3.5');
+  await page.getByLabel('নোট (ঐচ্ছিক)', { exact: true }).fill('Synthetic implementation work');
+  await page.getByRole('button', { name: 'এন্ট্রি যোগ করুন', exact: true }).click();
+  await page.getByLabel('কার্যক্রম', { exact: true }).nth(1).selectOption(activityId);
+  await page.getByLabel('ঘণ্টা', { exact: true }).nth(1).fill('21.5');
+  await expect(page.getByText('২৫.০০ / ২৪ ঘণ্টা · দৈনিক সীমা অতিক্রম করেছে')).toBeVisible();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('এক দিনে মোট ২৪ ঘণ্টার বেশি হতে পারে না।');
   expect(rpcPayloads).toHaveLength(0);
-  await page.getByLabel('Hours', { exact: true }).nth(1).fill('2.25');
-  await expect(page.getByText('5.75 / 24 hours')).toBeVisible();
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  const timesheetCard = page.locator('article[aria-label^="Timesheet"]');
-  await expect(page.getByText('Timesheet draft saved.')).toBeVisible();
+  await page.getByLabel('ঘণ্টা', { exact: true }).nth(1).fill('2.25');
+  await expect(page.getByText('৫.৭৫ / ২৪ ঘণ্টা')).toBeVisible();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  const timesheetCard = page.locator(`[data-timesheet-id="${timesheetId}"]`);
+  await expect(page.getByText('টাইমশিটের খসড়া সংরক্ষিত হয়েছে।')).toBeVisible();
   await expect(timesheetCard).toContainText('Product delivery');
-  await expect(timesheetCard).toContainText('5.75 total hours');
+  await expect(timesheetCard).toContainText('মোট ৫.৭৫ ঘণ্টা · ২ এন্ট্রি');
 
-  await timesheetCard.getByRole('button', { name: 'Edit draft' }).click();
-  await page.getByLabel('Hours', { exact: true }).nth(1).fill('2.5');
-  await expect(page.getByText('6.00 / 24 hours')).toBeVisible();
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  await expect(page.getByText('Timesheet draft saved.')).toBeVisible();
-  await expect(timesheetCard).toContainText('6 total hours');
+  await timesheetCard.getByRole('button', { name: 'খসড়া সম্পাদনা করুন', exact: true }).click();
+  await page.getByLabel('ঘণ্টা', { exact: true }).nth(1).fill('2.5');
+  await expect(page.getByText('৬.০০ / ২৪ ঘণ্টা')).toBeVisible();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  await expect(page.getByText('টাইমশিটের খসড়া সংরক্ষিত হয়েছে।')).toBeVisible();
+  await expect(timesheetCard).toContainText('মোট ৬ ঘণ্টা');
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await timesheetCard.getByRole('button', { name: 'Submit timesheet' }).click();
-  await expect(page.getByText('Timesheet submitted for review.')).toBeVisible();
-  await expect(timesheetCard.getByText('submitted', { exact: true })).toBeVisible();
-  await expect(timesheetCard.getByRole('button', { name: 'Submit timesheet' })).toHaveCount(0);
+  await timesheetCard.getByRole('button', { name: 'টাইমশিট জমা দিন', exact: true }).click();
+  await expect(page.getByText('টাইমশিট পর্যালোচনার জন্য জমা হয়েছে।')).toBeVisible();
+  await expect(timesheetCard.getByText('জমা হয়েছে', { exact: true })).toBeVisible();
+  await expect(timesheetCard.getByRole('button', { name: 'টাইমশিট জমা দিন' })).toHaveCount(0);
 
   rejected = true;
   submitted = false;
-  await page.getByRole('button', { name: 'Refresh' }).click();
-  await expect(timesheetCard.getByText('rejected', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'রিফ্রেশ', exact: true }).click();
+  await expect(timesheetCard.getByText('প্রত্যাখ্যাত', { exact: true })).toBeVisible();
   await expect(timesheetCard).toContainText('Please correct the logged hours before resubmitting.');
-  await timesheetCard.getByRole('button', { name: 'Revise timesheet' }).click();
-  await page.getByLabel('Hours', { exact: true }).nth(1).fill('2.75');
-  await expect(page.getByText('6.25 / 24 hours')).toBeVisible();
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  await expect(timesheetCard.getByText('draft', { exact: true })).toBeVisible();
-  await timesheetCard.getByRole('button', { name: 'Submit timesheet' }).click();
+  await timesheetCard.getByRole('button', { name: 'টাইমশিট সংশোধন করুন', exact: true }).click();
+  await page.getByLabel('ঘণ্টা', { exact: true }).nth(1).fill('2.75');
+  await expect(page.getByText('৬.২৫ / ২৪ ঘণ্টা')).toBeVisible();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  await expect(timesheetCard.getByText('খসড়া', { exact: true })).toBeVisible();
+  await timesheetCard.getByRole('button', { name: 'টাইমশিট জমা দিন', exact: true }).click();
+  await expect(timesheetCard.getByText('জমা হয়েছে', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await expect(page.getByRole('heading', { name: 'My timesheets', exact: true })).toBeVisible();
   await expect(timesheetCard.getByText('submitted', { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   expect(rpcPayloads.map(item => item.endpoint)).toEqual([
     'hris_save_my_timesheet', 'hris_save_my_timesheet', 'hris_submit_my_timesheet',
