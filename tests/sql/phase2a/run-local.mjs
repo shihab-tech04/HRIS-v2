@@ -16,13 +16,14 @@ const dockerContext = process.env.HRIS_DOCKER_CONTEXT || 'colima-hris-acceptance
 const expectedProjectId = process.env.HRIS_PHASE2A_PROJECT_ID || 'synesis-hris-phase2a-20261014';
 const expectedApiPort = process.env.HRIS_PHASE2A_API_PORT || '58321';
 const expectedDbPort = process.env.HRIS_PHASE2A_DB_PORT || '58322';
+const allowedTempRoot = process.env.GITHUB_ACTIONS === 'true' ? '/tmp/' : '/private/tmp/';
 const env = {
   ...process.env,
   SUPABASE_HOME: process.env.SUPABASE_HOME || '/private/tmp/synesis-supabase-home',
   SUPABASE_TELEMETRY_DISABLED: '1',
   DOCKER_CONTEXT: dockerContext,
 };
-if (!workdir.startsWith('/private/tmp/')) throw new Error('Refusing to run outside /private/tmp.');
+if (!workdir.startsWith(allowedTempRoot)) throw new Error(`Refusing to run outside ${allowedTempRoot}.`);
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { cwd: root, env, encoding: 'utf8', ...options });

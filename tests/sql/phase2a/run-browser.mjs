@@ -83,6 +83,12 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     });
     await signIn(desktop, superAdmin.email);
     await check('Desktop Super Admin reaches the protected platform tenant workspace');
+    await desktop.getByRole('button', { name: 'Switch language to Bengali' }).click();
+    await desktop.getByRole('heading', { name: 'প্ল্যাটফর্মের প্রতিষ্ঠানসমূহ', exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await desktop.getByRole('button', { name: 'প্রতিষ্ঠান তৈরি করুন', exact: true }).count(), 1);
+    await desktop.getByRole('button', { name: 'Switch language to English' }).click();
+    await desktop.getByRole('heading', { name: 'Platform tenants', exact: true }).waitFor({ state: 'visible' });
+    await check('Desktop platform tenant journey switches between English and Bengali');
     await assertNoHorizontalOverflow(desktop, 'Desktop platform tenant workspace');
     await desktop.getByRole('button', { name: 'Create tenant', exact: true }).click();
     await desktop.getByLabel('Tenant code').fill(`P2A_CANCEL_${stamp.slice(-6)}`);

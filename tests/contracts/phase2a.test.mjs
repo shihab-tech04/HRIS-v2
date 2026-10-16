@@ -65,3 +65,14 @@ test('Refreshing data also revalidates permissions and protects old tenant recor
  assert.match(ui,/lastAccessUserId\.current !== user\.id/);
  assert.match(ui,/event === 'TOKEN_REFRESHED'/);
 });
+
+test('Phase 2A Auth acceptance is restricted to disposable host temp roots',()=>{
+ const runner=readFileSync('tests/sql/phase2a/run-local.mjs','utf8');
+ assert.match(runner,/process\.env\.GITHUB_ACTIONS === 'true' \? '\/tmp\/' : '\/private\/tmp\/'/);
+ assert.match(runner,/workdir\.startsWith\(allowedTempRoot\)/);
+ const browser=readFileSync('tests/sql/phase2a/run-browser.mjs','utf8');
+ assert.match(browser,/Switch language to Bengali/);
+ assert.match(browser,/Switch language to English/);
+ assert.match(browser,/width: 390, height: 844/);
+ assert.match(browser,/width: 1440, height: 1000/);
+});
