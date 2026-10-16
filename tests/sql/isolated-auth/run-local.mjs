@@ -393,6 +393,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261015022305_hris_travel_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015195145_hris_leave_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016105659_hris_tenant_leave_date_filter.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016142000_hris_leave_type_policy_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
@@ -4166,6 +4167,91 @@ psqlSync(`UPDATE public.employees SET employment_status='active'
   WHERE id='55555555-5555-4555-8555-555555555555';`);
 record('Terminated employee immediately loses self-service attendance and leave access',
   !terminatedEmployeeSummary.ok);
+
+const policyId = '99999999-9999-4999-8999-999999999905';
+const policyPayload = {
+  name: 'Synthetic configurable leave policy', code: 'SYN-CONF', applicable_gender: null,
+  min_days_notice: 2, requires_document_proof: false, annual_entitlement: 12, active: true,
+};
+const policyCreate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: policyId, p_payload: policyPayload, p_expected: null,
+});
+const policyRetryCreate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: policyId, p_payload: policyPayload, p_expected: null,
+});
+const duplicatePolicyCode = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: '99999999-9999-4999-8999-999999999906',
+  p_payload: { ...policyPayload, code: 'syn-conf' }, p_expected: null,
+});
+const policyUpdatePayload = { ...policyPayload, name: 'Synthetic configurable leave policy revised',
+  min_days_notice: 4, annual_entitlement: 14 };
+const policyExpected = { ...policyPayload };
+const policyUpdate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: policyId,
+  p_payload: policyUpdatePayload, p_expected: policyExpected,
+});
+const policyStaleUpdate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: policyId,
+  p_payload: { ...policyPayload, annual_entitlement: 99 }, p_expected: policyExpected,
+});
+const policyEmployeeContext = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+const employeePolicyVisible = policyEmployeeContext.data?.leave_types?.some(item => item.id === policyId);
+const policyDeactivate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: policyId,
+  p_payload: { ...policyUpdatePayload, active: false }, p_expected: policyUpdatePayload,
+});
+const policyEmployeeContextAfterDeactivate = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+const employeePolicyHiddenAfterDeactivate = !policyEmployeeContextAfterDeactivate.data?.leave_types?.some(item => item.id === policyId);
+const policyRow = queryAdmin(`SELECT to_jsonb(lt) FROM public.leave_types lt WHERE id='${policyId}'::uuid`);
+const policyHistory = queryAdmin(`SELECT jsonb_build_object(
+  'created',count(*) FILTER (WHERE action='leave.type.created')::integer,
+  'updated',count(*) FILTER (WHERE action='leave.type.updated')::integer,
+  'last_before',(array_agg(details->'before' ORDER BY created_at DESC)
+    FILTER (WHERE action='leave.type.updated'))[1],
+  'last_after',(array_agg(details->'annual_entitlement' ORDER BY created_at DESC)
+    FILTER (WHERE action='leave.type.updated'))[1])
+  FROM public.admin_audit_logs WHERE target_type='leave_type' AND target_id='${policyId}'`);
+const policyNoPermission = await employeeA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: '99999999-9999-4999-8999-999999999907', p_payload: policyPayload,
+});
+const policyReadOnlyViewer = await tenantViewer.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantB, p_leave_type_id: '99999999-9999-4999-8999-999999999908', p_payload: policyPayload,
+});
+const policyGlobalOnly = await globalOnly.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: '99999999-9999-4999-8999-999999999909', p_payload: policyPayload,
+});
+const policyCrossTenant = await managerB.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: '99999999-9999-4999-8999-999999999910', p_payload: policyPayload,
+});
+const directLeavePolicyWrite = await managerA.client.from('leave_types')
+  .update({ annual_entitlement: 100 }).eq('tenant_id', ids.tenantA).eq('id', policyId);
+record('Tenant leave managers can configure existing leave policy fields with idempotent create, optimistic edits, audit, and employee visibility',
+  !policyCreate.error && policyCreate.data?.id === policyId
+    && !policyRetryCreate.error && policyRetryCreate.data?.id === policyId
+    && Boolean(duplicatePolicyCode.error?.code === '23505')
+    && !policyUpdate.error && policyUpdate.data?.annual_entitlement === 14
+    && Boolean(policyStaleUpdate.error?.code === '40001')
+    && !policyDeactivate.error && policyDeactivate.data?.active === false
+    && policyRow?.name === policyUpdatePayload.name && Number(policyRow?.annual_entitlement) === 14 && policyRow?.active === false
+    && Number(policyRow?.min_days_notice) === 4 && employeePolicyVisible === true && employeePolicyHiddenAfterDeactivate
+    && policyHistory.created === 1 && policyHistory.updated === 2
+    && Number(policyHistory.last_before?.annual_entitlement) === 14
+    && policyHistory.last_before?.active === true && Number(policyHistory.last_after) === 14,
+  JSON.stringify({ create: policyCreate.error?.code || policyCreate.data?.id,
+    retry: policyRetryCreate.error?.code || policyRetryCreate.data?.id,
+    duplicate: duplicatePolicyCode.error?.code, update: policyUpdate.error?.code || policyUpdate.data?.annual_entitlement,
+    stale: policyStaleUpdate.error?.code, deactivate: policyDeactivate.error?.code || policyDeactivate.data?.active,
+    employeeVisible: employeePolicyVisible, hiddenAfterDeactivate: employeePolicyHiddenAfterDeactivate,
+    audit: policyHistory, row: policyRow }));
+record('Leave policy writes require active same-tenant leave.manage and cannot bypass the RPC',
+  Boolean(policyNoPermission.error?.code === '42501')
+    && Boolean(policyReadOnlyViewer.error?.code === '42501')
+    && Boolean(policyGlobalOnly.error?.code === '42501')
+    && Boolean(policyCrossTenant.error?.code === '42501')
+    && Boolean(directLeavePolicyWrite.error),
+  JSON.stringify({ employee: policyNoPermission.error?.code,
+    viewer: policyReadOnlyViewer.error?.code, globalOnly: policyGlobalOnly.error?.code,
+    crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code }));
 
 const leaveApproved = resolveLeave(managerA, ids.leaveApprove, 'approved', 'isolated local acceptance');
 const approvedRow = tableRow('leave_requests', ids.leaveApprove);

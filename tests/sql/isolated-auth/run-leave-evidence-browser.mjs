@@ -242,6 +242,80 @@ try {
     const pageText = await manager.locator('body').innerText().catch(() => '');
     throw new Error(`Manager leave table did not load. Page: ${pageText.slice(-1800)}. ${cause.message}`);
   });
+  const policyFormButton = manager.getByRole('button', { name: 'Add leave type', exact: true }).first();
+  await policyFormButton.click();
+  const policyForm = manager.getByRole('form', { name: 'Add a leave type' });
+  await policyForm.getByLabel('Leave type name').fill('Synthetic browser leave policy');
+  await policyForm.getByLabel('Code').fill(`SYNUI-${Date.now()}`);
+  await policyForm.getByLabel('Default annual entitlement (days)').fill('10');
+  await policyForm.getByLabel('Minimum advance notice (days)').fill('1');
+  await policyForm.getByLabel('Supporting evidence required').check();
+  let failPolicyCreateOnce = true;
+  await manager.route('**/rest/v1/rpc/hris_save_leave_type', async route => {
+    if (failPolicyCreateOnce && route.request().method() === 'POST') {
+      failPolicyCreateOnce = false;
+      return route.fulfill({ status: 503, contentType: 'application/json',
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-client-info',
+        },
+        body: JSON.stringify({ code: 'XX000', message: 'Synthetic policy persistence outage.' }) });
+    }
+    return route.continue();
+  });
+  const browserPolicyCreateResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_save_leave_type'), { timeout: 10000 });
+  await policyForm.getByRole('button', { name: 'Add leave type', exact: true }).click();
+  const browserPolicyFailed = await browserPolicyCreateResponse;
+  if (browserPolicyFailed.status() !== 503) throw new Error('The policy persistence recovery check did not inject its expected one-time outage.');
+  const failedPolicyPayload = browserPolicyFailed.request().postDataJSON();
+  await manager.getByRole('alert').filter({ hasText: 'Synthetic policy persistence outage.' }).waitFor({ state: 'visible' });
+  await policyForm.getByLabel('Leave type name').waitFor({ state: 'visible' });
+  if (await policyForm.getByLabel('Leave type name').inputValue() !== 'Synthetic browser leave policy'
+      || await policyForm.getByLabel('Default annual entitlement (days)').inputValue() !== '10') {
+    throw new Error('The leave policy form discarded its values after a failed save.');
+  }
+  const retryPolicyCreateResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_save_leave_type'), { timeout: 10000 });
+  await policyForm.getByRole('button', { name: 'Add leave type', exact: true }).click();
+  const browserPolicyCreated = await retryPolicyCreateResponse;
+  if (!browserPolicyCreated.ok()) throw new Error(`Manager leave policy creation returned ${browserPolicyCreated.status()}.`);
+  const browserPolicyPayload = browserPolicyCreated.request().postDataJSON();
+  const browserPolicyId = browserPolicyPayload?.p_leave_type_id;
+  const browserPolicyRow = manager.getByRole('row', { name: /Synthetic browser leave policy/ });
+  await browserPolicyRow.waitFor({ state: 'visible' });
+  if (browserPolicyPayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      || failedPolicyPayload?.p_leave_type_id !== browserPolicyId
+      || browserPolicyPayload?.p_payload?.annual_entitlement !== 10
+      || browserPolicyPayload?.p_payload?.min_days_notice !== 1
+      || browserPolicyPayload?.p_payload?.requires_document_proof !== true
+      || !browserPolicyId) {
+    throw new Error('The leave policy form did not persist the selected tenant and configured fields.');
+  }
+  await manager.unroute('**/rest/v1/rpc/hris_save_leave_type');
+  await browserPolicyRow.getByRole('button', { name: 'Edit Synthetic browser leave policy' }).click();
+  const editPolicyForm = manager.getByRole('form', { name: 'Edit leave type' });
+  await editPolicyForm.getByLabel('Default annual entitlement (days)').fill('11.5');
+  await editPolicyForm.getByLabel('Minimum advance notice (days)').fill('3');
+  const browserPolicyUpdateResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_save_leave_type'), { timeout: 10000 });
+  await editPolicyForm.getByRole('button', { name: 'Save changes', exact: true }).click();
+  const browserPolicyUpdated = await browserPolicyUpdateResponse;
+  if (!browserPolicyUpdated.ok()) throw new Error(`Manager leave policy update returned ${browserPolicyUpdated.status()}.`);
+  const browserPolicyUpdatePayload = browserPolicyUpdated.request().postDataJSON();
+  if (browserPolicyUpdatePayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      || browserPolicyUpdatePayload?.p_leave_type_id !== browserPolicyId
+      || browserPolicyUpdatePayload?.p_expected?.annual_entitlement !== 10
+      || browserPolicyUpdatePayload?.p_payload?.annual_entitlement !== 11.5) {
+    throw new Error('The leave policy edit did not send its original values for stale-write protection.');
+  }
+  await manager.getByRole('status').filter({ hasText: 'Leave type updated.' }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'Refresh leave type policies' }).click();
+  await manager.getByRole('row', { name: /Synthetic browser leave policy.*11\.5.*3/ }).waitFor({ state: 'visible' });
   const managerRows = await leaveTable.locator('tbody tr').allInnerTexts();
   const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-19/ });
   await managerRow.waitFor({ state: 'visible', timeout: 5000 }).catch(async cause => {
@@ -412,6 +486,10 @@ try {
       || !employeeRejectionText.includes(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE.toLocaleLowerCase())) {
     throw new Error('The employee did not see the manager rejection status and note after refreshing leave history.');
   }
+  await refreshedEmployee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const refreshedRequestDialog = refreshedEmployee.getByRole('dialog', { name: 'Request for leave' });
+  await refreshedRequestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic browser leave policy' });
+  await refreshedRequestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
   await navigateTo(refreshedEmployee, 'Notifications');
   const leaveApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);

@@ -16,6 +16,7 @@ import { LearningRequests } from './LearningRequests';
 import { LearningProgramAdmin } from './LearningProgramAdmin';
 import { LearningCompletionQueue } from './LearningCompletionQueue';
 import { OrganizationHolidayCalendar } from './OrganizationHolidayCalendar';
+import { LeaveTypePolicyManager } from './LeaveTypePolicyManager';
 import { MyTravelRequests, TravelRequests } from './TravelRequests';
 import { ExpenseClaims } from './ExpenseClaims';
 import { MyServiceRequests } from './MyServiceRequests';
@@ -1776,6 +1777,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </div>
         </>}
       </section>
+      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load()} />}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
           <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
