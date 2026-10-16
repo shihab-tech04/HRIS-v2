@@ -19,8 +19,11 @@ const checkStatus = x => x === 'PASS';
 const safePath = x => hasText(x) && !path.isAbsolute(x) && !x.split(/[\\/]/).includes('..');
 const readFile = (root, file) => {
   if (!safePath(file)) throw Error(`Invalid file path ${JSON.stringify(file)}`);
-  const target=path.resolve(root,file);
-  if (!target.startsWith(path.resolve(root)+path.sep)) throw Error(`Invalid file boundary ${file}`);
+  // Lexical containment alone is insufficient: a checked-out symlink can
+  // redirect a seemingly safe evidence path outside the repository.
+  const base=fs.realpathSync(root);
+  const target=fs.realpathSync(path.resolve(root,file));
+  if (!target.startsWith(base+path.sep)) throw Error(`Invalid file boundary ${file}`);
   return fs.readFileSync(target);
 };
 const runGit=(root,args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -71,6 +74,7 @@ export function validate({manifest,root,stage='audit',git=null}) {
     fail('SCOPE','Approved nonempty unique exact path list required');
   const actual = git?.changedPaths;
   if(isRelease && !Array.isArray(actual)) fail('DIFF','Verified git diff required for release');
+  if(!git?.headSHA && !isRelease) warn('GIT_UNVERIFIED','Audit does not have checked-out source provenance; do not treat it as acceptance');
   if(Array.isArray(actual)&&Array.isArray(paths)){
     const extra=unique(actual).filter(p=>!paths.includes(p));
     if(extra.length)fail('SCOPE_UNAUTHORIZED',`Unexpected changed paths: ${extra.join(', ')}`);
@@ -80,7 +84,9 @@ export function validate({manifest,root,stage='audit',git=null}) {
   else for(const c of manifest.scope.visibleElementChanges){
     if(!hasText(c?.id)||!hasText(c?.approvedRequirementId)||!hasText(c?.reviewEvidence))fail('UNAPPROVED_VISIBLE_CHANGE',`Visible change ${c?.id||'?'} missing independent source approval`);
   }
-  for(const neg of (manifest?.scope?.forbiddenElements??[])){
+  if(!Array.isArray(manifest?.scope?.forbiddenElements)||!manifest.scope.forbiddenElements.length)
+    fail('NEGATIVE_SPACE_INVENTORY','At least one explicit forbidden-element assertion is required');
+  for(const neg of (Array.isArray(manifest?.scope?.forbiddenElements)?manifest.scope.forbiddenElements:[])){
     if(!safePath(neg.file)||!hasText(neg.pattern)) {fail('NEGATIVE_SPACE','Invalid forbidden element assertion');continue}
     try {if(new RegExp(neg.pattern,'m').test(readFile(root,neg.file).toString('utf8')))fail('FORBIDDEN_UI',`Forbidden element found in ${neg.file}: ${neg.id||neg.pattern}`)}
     catch(e){fail('NEGATIVE_SPACE',`Cannot check negative-space assertion: ${e.message}`)}
@@ -88,7 +94,11 @@ export function validate({manifest,root,stage='audit',git=null}) {
 
   const states = manifest?.affectedStates;
   if(!Array.isArray(states)||!states.length)fail('IMPACT','At least one affected source/UI state required');
-  else for(const [i,s] of states.entries()) {
+  else {
+    const ids=states.map(s=>s?.id).filter(hasText);
+    if(unique(ids).length!==states.length)fail('IMPACT_DUPLICATE','Every affected UI state needs a unique ID');
+  }
+  if(Array.isArray(states)) for(const [i,s] of states.entries()) {
     const key=hasText(s?.id)?s.id:`state-${i}`;
     for(const field of ['route','role','locale','viewport','fixture','interaction']) if(!hasText(s?.[field]))fail('STATE_DESCRIPTOR',`${key}: missing ${field}`);
     const target=s?.baseline;
@@ -118,6 +128,12 @@ export function validate({manifest,root,stage='audit',git=null}) {
     if(!hasText(r.id)||!hasText(r.source)||!hasText(r.expectation))fail('REQUIREMENT_SOURCE','Missing authentic requirement ID/text/source');
     if(!checkStatus(r.status)||!hasText(r.testRef)||!hasText(r.evidence))fail('REQUIREMENT_UNVERIFIED',`${r.id||'?'}: independent acceptance evidence not passed`);
   }
+  if(Array.isArray(manifest?.requirements)){
+    const ids=manifest.requirements.map(r=>r?.id).filter(hasText);
+    if(unique(ids).length!==manifest.requirements.length)fail('REQUIREMENT_DUPLICATE','Every requirement needs a unique ID');
+    for(const probe of (Array.isArray(manifest?.sourceExpectations)?manifest.sourceExpectations:[]))
+      if(!ids.includes(probe?.requirementId))fail('SOURCE_TRACEABILITY',`${probe?.id||'?'} does not reference an inventoried requirement`);
+  }
   if(!Array.isArray(manifest?.blockingDefects))fail('DEFECT_REGISTER','Known defect register required');
   else for(const d of manifest.blockingDefects){if(!hasText(d.id)||!hasText(d.severity)||!hasText(d.status))fail('DEFECT_REGISTER','Incomplete known defect row');else if(isRelease && d.status!=='CLOSED' && (d.severity==='P0'||d.severity==='P1'))fail('OPEN_BLOCKER',`${d.id}: release-blocking defect remains ${d.status}`)}
 
@@ -129,7 +145,7 @@ export function validate({manifest,root,stage='audit',git=null}) {
     const d=manifest?.deployment;
     if(!d||d.status!=='PASS'||d.sourceSHA!==manifest.candidateSHA||!hasText(d.url)||!hasText(d.readbackEvidence))fail('DEPLOYMENT','Independent deployed asset/source readback not verified');
   }
-  const status=errors.length?'BLOCKED':stage==='audit'?'AUDIT_EVIDENCE_COMPLETE':'EVIDENCE_CHECK_PASS_NOT_AUTOMATIC_ACCEPTANCE';
+  const status=errors.length?'BLOCKED':stage==='audit'&&!git?.headSHA?'AUDIT_UNVERIFIED':stage==='audit'?'AUDIT_EVIDENCE_COMPLETE':'EVIDENCE_CHECK_PASS_NOT_AUTOMATIC_ACCEPTANCE';
   return {schemaVersion:'ux-agent/report-v1',stage,project:manifest?.project,status,errors,warnings,proof};
 }
 
@@ -162,6 +178,10 @@ function selfTest() {
     blocked('SOURCE_FORBIDDEN',m=>m.sourceExpectations[0].forbidden=['Save']);
     blocked('UNAPPROVED_VISIBLE_CHANGE',m=>m.scope.visibleElementChanges.push({id:'extra-button'}));
     blocked('FORBIDDEN_UI',m=>m.scope.forbiddenElements[0].pattern='Save');
+    blocked('NEGATIVE_SPACE_INVENTORY',m=>m.scope.forbiddenElements=[]);
+    blocked('SOURCE_TRACEABILITY',m=>m.sourceExpectations[0].requirementId='GHOST-REQ');
+    blocked('IMPACT_DUPLICATE',m=>m.affectedStates.push(structuredClone(m.affectedStates[0])));
+    blocked('REQUIREMENT_DUPLICATE',m=>m.requirements.push(structuredClone(m.requirements[0])));
     blocked('BASELINE_ROLE',m=>m.affectedStates[0].baseline.role='CURRENT_DEFECT');
     blocked('BASELINE_APPROVAL',m=>m.affectedStates[0].baseline.reviewer='developer');
     blocked('BASELINE_MISMATCH',m=>m.affectedStates[0].baseline.sha256='0'.repeat(64));
@@ -174,6 +194,14 @@ function selfTest() {
     blocked('DEPLOYMENT',m=>m.deployment.sourceSHA='a'.repeat(40),'postdeploy');
     blocked('AUTHORITY_CONFLICT',m=>m.authorities[0].status='CONFLICT_REQUIRES_DECISION');
     blocked('SOURCE_DRIFT',m=>m.candidateSHA='c'.repeat(40));
+    const outside=fs.mkdtempSync(path.join(process.cwd(),'ux-external-'));
+    try {
+      fs.writeFileSync(path.join(outside,'leak.txt'),'not repository evidence');
+      fs.symlinkSync(path.join(outside,'leak.txt'),path.join(root,'external-symlink.txt'));
+      blocked('SOURCE_CONTRACT',m=>m.sourceExpectations[0].file='external-symlink.txt');
+    } finally {fs.rmSync(outside,{recursive:true,force:true})}
+    const audit=validate({manifest:structuredClone(base),root,stage:'audit',git:null});
+    assert.equal(audit.status,'AUDIT_UNVERIFIED');tests++;
     console.log(`PASS: ${tests} positive/negative executable integrity tests`);
   } finally {fs.rmSync(root,{recursive:true,force:true})}
 }
