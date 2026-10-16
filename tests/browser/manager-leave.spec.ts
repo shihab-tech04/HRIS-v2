@@ -20,12 +20,14 @@ test('manager filters the leave queue and completes approval and rejection actio
   let failNextLeaveLoad = false;
   let failNextLeaveDecision = false;
   let failNextEvidenceDownload = false;
+  let failNextAbsenceLoad = false;
   const decisions: Record<string, unknown>[] = [];
   const evidenceDownloads: string[] = [];
+  const absenceWindows: Array<{ p_start?: string | null; p_end?: string | null }> = [];
   const requests = [
     { id: 'e3333333-3333-4333-8333-333333333331', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Medical leave', leave_type_code: 'MED', from_date: '2026-10-20', to_date: '2026-10-20', requested_days: 1, status: 'pending', attachment_url: `${userId}/${tenantId}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf` },
     { id: 'e3333333-3333-4333-8333-333333333332', full_name: 'Tanim Chowdhury', employee_number: 'QA-002', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-10-21', to_date: '2026-10-22', requested_days: 2, status: 'pending' },
-    { id: 'e3333333-3333-4333-8333-333333333333', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-09-02', to_date: '2026-09-03', requested_days: 2, status: 'approved' },
+    { id: 'e3333333-3333-4333-8333-333333333333', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-09-30', to_date: '2026-10-02', requested_days: 2, status: 'approved' },
     { id: 'e3333333-3333-4333-8333-333333333334', full_name: 'Nabil Hasan', employee_number: 'QA-003', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-08-17', to_date: '2026-08-17', requested_days: 1, status: 'rejected', resolution_note: 'Policy evidence was incomplete.' },
   ];
 
@@ -68,14 +70,28 @@ test('manager filters the leave queue and completes approval and rejection actio
       attendance_last_7_days: [],
     }) });
     if (endpoint === 'hris_get_tenant_leave_data') {
+      const payload = request.method() === 'POST' ? request.postDataJSON() as { p_start?: string | null; p_end?: string | null } : {};
+      if (payload.p_start || payload.p_end) absenceWindows.push(payload);
+      if ((payload.p_start || payload.p_end) && failNextAbsenceLoad) {
+        failNextAbsenceLoad = false;
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic absence calendar outage.' }) });
+      }
       if (failNextLeaveLoad) {
         failNextLeaveLoad = false;
         return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic leave service unavailable.' }) });
       }
+      const start = String(payload.p_start || '');
+      const end = String(payload.p_end || '');
+      const filteredRequests = requests.filter(item => (!start || item.to_date >= start) && (!end || item.from_date <= end));
+      const holidays = [
+        { id: 'e5555555-5555-4555-8555-555555555551', name: 'Synthetic holiday', start_date: '2026-10-03', end_date: '2026-10-03', active: true },
+        { id: 'e5555555-5555-4555-8555-555555555552', name: 'December synthetic holiday', start_date: '2026-12-16', end_date: '2026-12-16', active: true },
+      ]
+        .filter(item => (!start || item.end_date >= start) && (!end || item.start_date <= end));
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-        requests: requests.map(item => ({ ...item })),
+        requests: filteredRequests.map(item => ({ ...item })),
         leave_types: [{ id: 'e4444444-4444-4444-8444-444444444441', name: 'Annual leave' }, { id: 'e4444444-4444-4444-8444-444444444442', name: 'Medical leave' }],
-        holidays: [{ id: 'e5555555-5555-4555-8555-555555555551', name: 'Synthetic holiday', start_date: '2026-12-16', end_date: '2026-12-16', active: true }],
+        holidays,
       }) });
     }
     if (endpoint === 'admin_resolve_leave_request') {
@@ -114,6 +130,28 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Organization holidays' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /Synthetic holiday/ })).toContainText('2026-12-16');
+
+  const calendarMonth = page.getByLabel('Month', { exact: true });
+  await calendarMonth.fill('2026-11');
+  await expect(page.getByRole('region', { name: 'Absence calendar November 2026' })).toBeVisible();
+  failNextAbsenceLoad = true;
+  await calendarMonth.fill('2026-12');
+  const calendarError = page.getByRole('alert').filter({ hasText: 'Synthetic absence calendar outage.' });
+  await expect(calendarError).toBeVisible();
+  await calendarError.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.getByRole('region', { name: 'Absence calendar December 2026' })).toBeVisible();
+  await calendarMonth.fill('2026-10');
+  const octoberCalendar = page.getByRole('region', { name: 'Absence calendar October 2026' });
+  await expect(octoberCalendar).toBeVisible();
+  await expect(octoberCalendar.getByRole('button', { name: /October 1, 2026, 1 people on leave/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Approved absences on/ }).locator('..')).toContainText('Amira Rahman');
+  await octoberCalendar.getByRole('button', { name: /October 3, 2026.*Synthetic holiday/ }).click();
+  await expect(page.getByRole('heading', { name: /Organization holidays on/ }).locator('..')).toContainText('Synthetic holiday');
+  expect(absenceWindows).toContainEqual({ p_start: '2026-10-01', p_end: '2026-10-31' });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
 
   const table = page.getByRole('table', { name: 'Leave requests' });
   await expect(table.locator('tbody tr')).toHaveCount(4);

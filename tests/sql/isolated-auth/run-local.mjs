@@ -392,6 +392,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014160002_hris_system_notifications_inbox.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015022305_hris_travel_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015195145_hris_leave_decision_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016105659_hris_tenant_leave_date_filter.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
@@ -4419,6 +4420,14 @@ record('Team report requires both dashboard and report permissions and returns a
   !dashboardTeamReportOnly.ok && !dashboardTeamReportNoPermission.ok
   && dashboardTeamReportA.teams.every(row => !('employee_name' in row) && !('employee_id' in row)));
 const leaveDataB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data('${ids.tenantB}'::uuid,NULL,NULL)`);
+const leaveWindowB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data(
+  '${ids.tenantB}'::uuid,'2026-10-20'::date,'2026-10-20'::date)`);
+const leaveOverlapB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data(
+  '${ids.tenantB}'::uuid,'2026-10-18'::date,'2026-10-19'::date)`);
+const leaveViewWindowB = queryAs(tenantViewer, `SELECT public.hris_get_tenant_leave_data(
+  '${ids.tenantB}'::uuid,'2026-10-18'::date,'2026-10-19'::date)`);
+const leaveInvalidWindowB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data(
+  '${ids.tenantB}'::uuid,'2026-10-21'::date,'2026-10-19'::date)`);
 record('Tenant B dashboard, attendance and leave RPCs return tenant B data only',
   Number(dashboardB.employees) === 1
   && dashboardB.dashboard_date === localCurrentDate
@@ -4432,6 +4441,15 @@ record('Tenant B dashboard, attendance and leave RPCs return tenant B data only'
   && attendanceDataB.records[0].team_name === 'QA B Team'
   && leaveDataB.requests.length === 2
   && leaveDataB.requests.every(request => request.tenant_id === ids.tenantB));
+record('Leave date filters include overlapping dates, honor the upper/lower bounds, and preserve leave.view access',
+  leaveWindowB.requests.length === 1
+  && leaveWindowB.requests[0].id === ids.leaveTenantBViewer
+  && leaveWindowB.requests.every(request => request.tenant_id === ids.tenantB)
+  && leaveOverlapB.requests.length === 1
+  && leaveOverlapB.requests[0].id === ids.leaveTenantB
+  && leaveViewWindowB.requests.length === 1
+  && leaveViewWindowB.requests[0].id === ids.leaveTenantB
+  && leaveInvalidWindowB.requests.length === 0);
 const dashboardAValid = Number(dashboardA.team_members) === 6
   && dashboardA.dashboard_date === localCurrentDate
   && Number(dashboardA.attendance_today) === 5

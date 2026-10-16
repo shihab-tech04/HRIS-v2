@@ -214,6 +214,39 @@ function localIsoDate(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
+function leaveCalendarMonth(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftLeaveCalendarMonth(value: string, amount: number): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) return leaveCalendarMonth();
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + amount, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function leaveCalendarBounds(value: string): { start: string; end: string } {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) throw new Error('Choose a valid month for the absence calendar.');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) throw new Error('Choose a valid month for the absence calendar.');
+  const end = new Date(Date.UTC(year, month, 0));
+  return { start: `${value}-01`, end: `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, '0')}-${String(end.getUTCDate()).padStart(2, '0')}` };
+}
+
+function leaveCalendarCells(value: string): Array<string | null> {
+  const { start, end } = leaveCalendarBounds(value);
+  const first = new Date(`${start}T12:00:00Z`);
+  const days = Number(end.slice(-2));
+  const leading = (first.getUTCDay() + 6) % 7;
+  const cellCount = Math.ceil((leading + days) / 7) * 7;
+  return Array.from({ length: cellCount }, (_, index) => {
+    const day = index - leading + 1;
+    return day < 1 || day > days ? null : `${value}-${String(day).padStart(2, '0')}`;
+  });
+}
+
 function addIsoDateDays(value: string, count: number): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isInteger(count) || count < 0) return '';
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -1407,7 +1440,8 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
   </section>;
 }
 
-function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: boolean }) {
+function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; canManage: boolean; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
   const [data, setData] = useState<LeaveData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1420,8 +1454,16 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [absenceMonth, setAbsenceMonth] = useState(() => leaveCalendarMonth());
+  const [selectedAbsenceDate, setSelectedAbsenceDate] = useState(() => localIsoDate(new Date()));
+  const [absenceData, setAbsenceData] = useState<LeaveData | null>(null);
+  const [absenceDataTenantId, setAbsenceDataTenantId] = useState('');
+  const [absenceDataMonth, setAbsenceDataMonth] = useState('');
+  const [absenceLoading, setAbsenceLoading] = useState(true);
+  const [absenceError, setAbsenceError] = useState('');
   const dataTenantId = useRef('');
   const requestSequence = useRef(0);
+  const absenceRequestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
   const rejectionDialogRef = useRef<HTMLDivElement>(null);
   const rejectionTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1452,6 +1494,34 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     }
   }
 
+  async function loadAbsenceSchedule(month = absenceMonth) {
+    const requestId = ++absenceRequestSequence.current;
+    const requestedTenantId = tenantId;
+    setAbsenceLoading(true);
+    setAbsenceError('');
+    try {
+      const bounds = leaveCalendarBounds(month);
+      const { data: response, error: rpcError } = await supabase.rpc('hris_get_tenant_leave_data', {
+        p_tenant_id: requestedTenantId, p_start: bounds.start, p_end: bounds.end,
+      });
+      if (rpcError) throw rpcError;
+      const value = asObject(response);
+      if (!value) throw new Error('Absence calendar returned an invalid response.');
+      if (requestId !== absenceRequestSequence.current || activeTenantId.current !== requestedTenantId) return;
+      setAbsenceData({ requests: asRows(value.requests), leave_types: asRows(value.leave_types), holidays: asRows(value.holidays) });
+      setAbsenceDataTenantId(requestedTenantId);
+      setAbsenceDataMonth(month);
+    } catch (cause) {
+      if (requestId !== absenceRequestSequence.current || activeTenantId.current !== requestedTenantId) return;
+      setAbsenceData(null);
+      setAbsenceDataTenantId(requestedTenantId);
+      setAbsenceDataMonth(month);
+      setAbsenceError(cause instanceof Error ? cause.message : 'Unable to load the absence calendar.');
+    } finally {
+      if (requestId === absenceRequestSequence.current && activeTenantId.current === requestedTenantId) setAbsenceLoading(false);
+    }
+  }
+
   useEffect(() => {
     setData(null); dataTenantId.current = '';
     setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
@@ -1460,6 +1530,16 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     void load();
     return () => { requestSequence.current += 1; };
   }, [tenantId]);
+
+  useEffect(() => {
+    setAbsenceData(null);
+    setAbsenceDataTenantId('');
+    setAbsenceDataMonth('');
+    setSelectedAbsenceDate(`${absenceMonth}-01`);
+    setAbsenceError('');
+    void loadAbsenceSchedule(absenceMonth);
+    return () => { absenceRequestSequence.current += 1; };
+  }, [tenantId, absenceMonth]);
 
   useEffect(() => {
     if (!rejectingRequest) return;
@@ -1492,6 +1572,23 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     };
   }, [rejectingRequest]);
   const visibleData = dataTenantId.current === tenantId ? data : null;
+  const visibleAbsenceData = absenceDataTenantId === tenantId && absenceDataMonth === absenceMonth ? absenceData : null;
+  const absenceRequests = (visibleAbsenceData?.requests || []).filter(item => String(item.status || '').toLowerCase() === 'approved');
+  const absenceHolidays = (visibleAbsenceData?.holidays || []).filter(item => item.active === true);
+  const selectedDateAbsences = absenceRequests.filter(item =>
+    String(item.from_date || '') <= selectedAbsenceDate && String(item.to_date || '') >= selectedAbsenceDate);
+  const selectedDateHolidays = absenceHolidays.filter(item =>
+    String(item.start_date || '') <= selectedAbsenceDate && String(item.end_date || '') >= selectedAbsenceDate);
+  const calendarCells = leaveCalendarCells(absenceMonth);
+  const calendarWeekdays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(Date.UTC(2024, 0, 1 + index));
+    return date.toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { weekday: 'short', timeZone: 'UTC' });
+  });
+  const calendarMonthLabel = new Date(`${absenceMonth}-01T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'long', year: 'numeric' });
+  const selectedAbsenceDateLabel = new Date(`${selectedAbsenceDate}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const calendarDateText = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : display(value);
   const pending = useMemo(() => (visibleData?.requests || []).filter(item => String(item.status || '').toLowerCase() === 'pending'), [visibleData]);
   const statusOptions = useMemo(() => Array.from(new Set((visibleData?.requests || [])
     .map(item => String(item.status || '').trim()).filter(Boolean)))
@@ -1522,6 +1619,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
         setResolutionNote('');
       }
       await load();
+      await loadAbsenceSchedule(absenceMonth);
       if (decision === 'rejected') document.getElementById('leave-workspace-heading')?.focus();
     } catch (cause) {
       if (activeTenantId.current === actionTenantId) {
@@ -1579,7 +1677,7 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Leave Requests</h2>
         <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
-      <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+      <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
       </button>
     </div>
@@ -1593,6 +1691,64 @@ function LeaveWorkspace({ tenantId, canManage }: { tenantId: string; canManage: 
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{visibleData.leave_types.length}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Holidays</p><p className="mt-2 text-2xl font-semibold">{visibleData.holidays.length}</p></div>
       </div>
+      <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div><h3 id="leave-absence-calendar-heading" className="font-semibold text-[#08263D]">{tx('Absence calendar')}</h3>
+            <p className="mt-1 text-xs text-slate-600">{tx('Only approved leave requests appear here. Pending requests remain in the review queue.')}</p></div>
+          <div className="flex flex-wrap items-end gap-2">
+            <button type="button" aria-label={tx('Previous month')} onClick={() => setAbsenceMonth(month => shiftLeaveCalendarMonth(month, -1))}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg" aria-controls="leave-absence-month-view">‹</button>
+            <div><label htmlFor="leave-absence-month" className="mb-1 block text-xs font-medium text-slate-600">{tx('Month')}</label>
+              <input id="leave-absence-month" type="month" required value={absenceMonth}
+                onChange={event => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) setAbsenceMonth(event.target.value); }}
+                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm" /></div>
+            <button type="button" aria-label={tx('Next month')} onClick={() => setAbsenceMonth(month => shiftLeaveCalendarMonth(month, 1))}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg" aria-controls="leave-absence-month-view">›</button>
+            <button type="button" onClick={() => setAbsenceMonth(leaveCalendarMonth())}
+              className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">{tx('Current month')}</button>
+          </div>
+        </div>
+        {absenceError && <StatusMessage error={absenceError} onRetry={() => void loadAbsenceSchedule(absenceMonth)} retryLabel={tx('Retry')} />}
+        {(absenceLoading || (!visibleAbsenceData && !absenceError)) && <p role="status" className="rounded-lg border bg-[#F8FAFA] p-4 text-sm">{tx('Loading absence calendar…')}</p>}
+        {visibleAbsenceData && !absenceLoading && <>
+          <div className="overflow-x-auto rounded-lg border border-slate-200" role="region" aria-label={`${tx('Absence calendar')} ${calendarMonthLabel}`} tabIndex={0}>
+            <table id="leave-absence-month-view" className="w-full min-w-[336px] table-fixed text-left text-sm" aria-label={`${tx('Absence calendar')} ${calendarMonthLabel}`}>
+              <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{calendarWeekdays.map(day => <th key={day} scope="col" className="px-1 py-2 text-center font-medium">{day}</th>)}</tr></thead>
+              <tbody>{Array.from({ length: calendarCells.length / 7 }, (_, week) => <tr key={week} className="divide-x divide-slate-100 border-t border-slate-100">
+                {calendarCells.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
+                  if (!date) return <td key={`empty-${week}-${dayIndex}`} className="h-[76px] bg-slate-50/60" aria-hidden="true" />;
+                  const dayAbsences = absenceRequests.filter(item => String(item.from_date || '') <= date && String(item.to_date || '') >= date);
+                  const dayHolidays = absenceHolidays.filter(item => String(item.start_date || '') <= date && String(item.end_date || '') >= date);
+                  const dayLabel = new Date(`${date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                  return <td key={date} className="h-[76px] p-0.5 align-top sm:p-1">
+                    <button type="button" aria-pressed={selectedAbsenceDate === date}
+                      aria-label={`${dayLabel}, ${localizedEmployeeNumber(dayAbsences.length, locale)} ${tx('people on leave')}${dayHolidays.length ? `, ${dayHolidays.map(item => display(item.name)).join(', ')}` : ''}`}
+                      onClick={() => setSelectedAbsenceDate(date)}
+                      className={`flex h-full min-h-[72px] w-full flex-col items-start rounded-md p-1 text-left focus-visible:outline-2 focus-visible:outline-[#085587] sm:p-1.5 ${selectedAbsenceDate === date ? 'bg-[#E7F1F3] ring-1 ring-[#085587]' : 'hover:bg-slate-50'}`}>
+                      <span className="font-medium tabular-nums">{new Date(`${date}T12:00:00Z`).getUTCDate().toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}</span>
+                      {dayAbsences.length > 0 && <span className="mt-1 w-full truncate rounded bg-[#DCEFF4] px-1 py-0.5 text-[9px] font-medium leading-3 text-[#085587] sm:text-[10px]">{localizedEmployeeNumber(dayAbsences.length, locale)} {tx('people on leave')}</span>}
+                      {dayHolidays.length > 0 && <span className="mt-1 w-full truncate rounded bg-amber-50 px-1 py-0.5 text-[9px] leading-3 text-amber-800 sm:text-[10px]">{display(dayHolidays[0].name)}</span>}
+                    </button>
+                  </td>;
+                })}
+              </tr>)}</tbody>
+            </table>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <section aria-labelledby="leave-absence-day-heading" className="min-w-0 rounded-lg border border-slate-200 p-3">
+              <h4 id="leave-absence-day-heading" className="font-medium text-slate-800">{tx('Approved absences on')} {selectedAbsenceDateLabel}</h4>
+              {selectedDateAbsences.length ? <ul className="mt-2 divide-y divide-slate-100">{selectedDateAbsences.map((item, index) => <li key={String(item.id || index)} className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2 text-sm">
+                <span className="font-medium text-slate-800">{display(item.full_name)}</span><span className="text-slate-600">{display(item.leave_type_name)} · {calendarDateText(item.from_date)} – {calendarDateText(item.to_date)}</span>
+              </li>)}</ul> : <p className="mt-2 text-sm text-slate-600">{tx('No approved absences on this date.')}</p>}
+            </section>
+            <section aria-labelledby="leave-absence-holiday-heading" className="min-w-0 rounded-lg border border-slate-200 p-3">
+              <h4 id="leave-absence-holiday-heading" className="font-medium text-slate-800">{tx('Organization holidays on')} {selectedAbsenceDateLabel}</h4>
+              {selectedDateHolidays.length ? <ul className="mt-2 divide-y divide-slate-100">{selectedDateHolidays.map((item, index) => <li key={String(item.id || index)} className="py-2 text-sm text-slate-700">{display(item.name)} · {calendarDateText(item.start_date)} – {calendarDateText(item.end_date)}</li>)}</ul>
+                : <p className="mt-2 text-sm text-slate-600">{tx('No organization holidays on this date.')}</p>}
+            </section>
+          </div>
+        </>}
+      </section>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">Search requests</label>
@@ -3255,7 +3411,7 @@ export function LiveHrisWorkspace({
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale}
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
-          {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
+          {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} />}
           {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <>
             <OrganizationProjects tenantId={tenantId} locale={locale} />
             {isEmployee && <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />}
