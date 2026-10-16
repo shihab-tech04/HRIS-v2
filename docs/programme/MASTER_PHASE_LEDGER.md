@@ -1,8 +1,19 @@
 # Synesis HRIS 360° — Master Phase Ledger
 
-**Checkpoint:** 2026-10-16 20:00 Asia/Dhaka. **Overall state:** INCOMPLETE; no release phase accepted.
+**Checkpoint:** 2026-10-16 20:58 Asia/Dhaka. **Overall state:** INCOMPLETE; Phase 21 is not accepted.
 
 This ledger records verified implementation evidence against the user-supplied master directive. The owner reports the canonical source contains 1,047 original stories across 153 modules with SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`; stories are not marked accepted until their canonical text is linked to observed acceptance evidence.
+
+## Latest verified checkpoint (2026-10-16 20:58 Asia/Dhaka)
+
+- Main development branch: `5238da1136d970a9835172cb95c635e68ccf5437`; tree `e4bf690e7a8776db6b1aba69fca3c50413b3508c`. Local recoverable Main commit: `48491e0c951918d81f91d7bc8e2207769ac328a2`; local tree is identical. The Main branch URL is https://github.com/shihab-tech04/HRIS-v2/tree/development/hris-checkpoints.
+- Main full disposable Auth/Postgres/RLS/browser workflow: **268/268 passed, 0 failed** at the exact published head (Actions run https://github.com/shihab-tech04/HRIS-v2/actions/runs/38918314901); disposable database security advisor: **No issues found**. Phase 2A/2B tenant provisioning acceptance: **61/61 passed** (Actions run https://github.com/shihab-tech04/HRIS-v2/actions/runs/38918314910).
+- Candidate development branch remains at `27ceacf817827939212ad36b38e89a87fd70a515`. Its latest disposable acceptance run passed (Actions run https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/38881354428): Auth/RLS 166/166, profile browser 19/19, application browser 435/435, and route/localization/privacy 46/46. No Candidate source changed in this checkpoint.
+- Phase 09's approved tenant-wide holiday and Leave/Absence workflow is verified on Main. The full suite covers tenant-scoped holiday/leave permissions, policy validation, evidence privacy, holiday-aware and cross-year balance updates, duplicate decisions, date filters, and the real holiday browser journey. No regional rules, location inference, new entitlement/accrual policy, or production change was introduced.
+- Since the 2:20 PM Main Drive checkpoint (`876317d`), Main changed 9 files (451 insertions, 12 deletions): four live UI/localization files, one service-request notification migration, and four contract/isolated-acceptance files. The current approved notification batch and test corrections are included in the development tree.
+- Current versioned Main bundle is in the connected account's owned Drive folder: `HRIS-v2-leave-service-notification-acceptance-48491e0-20261016.bundle`, Drive ID `13dTv1NRBz_bx2nPHuyydiwODDAKcAi6c`. Local SHA-256 `08d57f73465ca49a4053f6c0067c0ecbc8187da59e629a78f5d17a31ee6a47b9`; local bundle verification passed; Drive metadata byte count matches local (16,197,411 bytes). The Drive connector did not provide a remote checksum; no remote SHA match is claimed. Acceptance addendum and verification receipt are also in the folder.
+- The expected canonical matrix SHA is still not present in the read-only Project `sources/` mirror (the directory is empty); exact-name and broadened connected Drive searches did not locate the canonical matrix. Formal source-linked story acceptance remains **0/1,047**, with **1,047 pending mapping**. This is not a claim of zero implemented workflow functionality.
+- Release remains incomplete: Phase 21 is blocked on canonical story reconciliation and remaining programme-wide acceptance gates. Full Figma side-by-side acceptance, production permission certification, and unapproved leave entitlements/accrual/carry-over/cancellation rules remain open. Payroll Pay Run and Expense Decisions remain excluded pending their separate rules. Neither GitHub `main` branch, production data/permissions, nor live deployment was changed.
 
 | Phase | Scope | State | Evidence at this checkpoint |
 |---|---|---|---|
