@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { tenantAttendanceDate } from './attendanceDate.mjs';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 
@@ -12,9 +13,38 @@ type Employee = { id: string; full_name: string; employee_number: string; employ
 type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[] };
+type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], attendanceToday: null });
+
+function attendanceStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    present: 'Present',
+    late: 'Late',
+    absent: 'Absent',
+    on_leave: 'On leave',
+    holiday: 'Holiday',
+    weekend: 'Weekend',
+    missing: 'No attendance recorded',
+    partial: 'Partial attendance',
+  };
+  return labels[status] || 'Status unavailable';
+}
+
+function attendanceWorkModeLabel(workMode: string) {
+  const labels: Record<string, string> = {
+    office: 'Working on-site',
+    home: 'Working remotely',
+    client: 'Working at a client site',
+    field: 'Working in the field',
+  };
+  return labels[workMode] || '';
+}
+
+function attendanceDateLabel(now: Date, timeZone: string | null) {
+  return `Today · ${tenantAttendanceDate(now, timeZone || 'UTC')}`;
+}
 
 function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
   onSuccess: (value: User) => void;
@@ -304,19 +334,38 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setError('');
     async function loadRecords() {
       try {
-        const [leaves, types, employees, departments] = await Promise.all([
+        const timeZone = tenants.find(tenant => tenant.id === tenantId)?.timezone || 'UTC';
+        const attendanceDate = tenantAttendanceDate(new Date(), timeZone);
+        const attendance = (async () => {
+          // Resolve only the authenticated user's employee record. RLS applies to
+          // both reads; the attendance query is additionally constrained by this
+          // row's tenant and employee IDs.
+          const linkedEmployee = await supabase.from('employees').select('id')
+            .eq('tenant_id', tenantId).eq('user_id', user!.id).limit(1).maybeSingle();
+          if (linkedEmployee.error) return { data: null, error: linkedEmployee.error };
+          if (!linkedEmployee.data) return { data: null, error: null };
+          return supabase.from('attendance_records')
+            .select('status,work_mode,check_in,check_out')
+            .eq('tenant_id', tenantId)
+            .eq('employee_id', linkedEmployee.data.id)
+            .eq('attendance_date', attendanceDate)
+            .maybeSingle();
+        })();
+        const [leaves, types, employees, departments, attendanceResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
           canAdminSelectedTenant ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
+          attendance,
         ]);
-        const denied = [leaves, types, employees, departments].find(result => result.error);
+        const denied = [leaves, types, employees, departments, attendanceResult].find(result => result.error);
         if (denied?.error) throw denied.error;
         if (active) setRecords({
           leaves: (leaves.data || []) as Leave[],
           leaveTypes: (types.data || []) as LeaveType[],
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
+          attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
         });
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Database read failed.');
@@ -393,9 +442,22 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Authorized access</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? (isSuperAdmin ? 'Super Administrator' : 'Synesis administrator') : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
             <div className="bg-white border rounded-lg p-4"><ShieldAlert className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Access model</p><p className="font-semibold">Supabase Auth + RLS</p><p className="text-xs text-slate-500">No service-role token in browser</p></div>
           </section>
-          {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="space-y-4">
+            <section aria-label="Today's attendance" className="bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4">
+                <h2 className="font-semibold">Today's attendance</h2>
+                <p className="text-xs text-slate-500">{attendanceDateLabel(new Date(), current.timezone)}</p>
+              </div>
+              {records.attendanceToday ? <div className="p-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-medium" role="status">{attendanceStatusLabel(records.attendanceToday.status)}</p>
+                {['present', 'late', 'partial'].includes(records.attendanceToday.status) && attendanceWorkModeLabel(records.attendanceToday.work_mode) &&
+                  <p className="text-sm text-slate-600">{attendanceWorkModeLabel(records.attendanceToday.work_mode)}</p>}
+              </div> : <p className="p-4 text-sm text-slate-600">No attendance record is available for today.</p>}
+            </section>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My visible leave requests</h2><p className="text-xs text-slate-500">Last 50 RLS-visible requests</p></div>{records.leaves.length ? <ul className="divide-y">{records.leaves.map(item => <li key={item.id} className="p-4 flex justify-between gap-3"><p className="text-sm">{item.from_date} – {item.to_date} ({item.requested_days} days)</p><p className="text-xs font-medium">{item.status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible requests, or access is restricted.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized leave types</h2><p className="text-xs text-slate-500">Current tenant policy records</p></div>{records.leaveTypes.length ? <ul className="divide-y">{records.leaveTypes.map(item => <li key={item.id} className="p-4 flex justify-between gap-3 text-sm"><p>{item.name}</p><p>{item.annual_entitlement == null ? 'Policy-defined' : String(item.annual_entitlement) + ' days'}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible leave types.</p>}</section>
+            </div>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized departments</h2></div>{records.departments.length ? <ul className="divide-y">{records.departments.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.name}</p><p className="text-xs text-slate-500">{item.code}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No departments visible.</p>}</section>
