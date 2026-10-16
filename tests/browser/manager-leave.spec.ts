@@ -20,10 +20,11 @@ test('manager filters the leave queue and completes approval and rejection actio
   let failNextLeaveLoad = false;
   let failNextLeaveDecision = false;
   let failNextEvidenceDownload = false;
-  let failNextAbsenceLoad = false;
+  let failAbsenceUntilRetry = false;
   const decisions: Record<string, unknown>[] = [];
   const evidenceDownloads: string[] = [];
   const absenceWindows: Array<{ p_start?: string | null; p_end?: string | null }> = [];
+  const failedAbsenceWindows: string[] = [];
   const requests = [
     { id: 'e3333333-3333-4333-8333-333333333331', full_name: 'Amira Rahman', employee_number: 'QA-001', leave_type_name: 'Medical leave', leave_type_code: 'MED', from_date: '2026-10-20', to_date: '2026-10-20', requested_days: 1, status: 'pending', attachment_url: `${userId}/${tenantId}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf` },
     { id: 'e3333333-3333-4333-8333-333333333332', full_name: 'Tanim Chowdhury', employee_number: 'QA-002', leave_type_name: 'Annual leave', leave_type_code: 'ANN', from_date: '2026-10-21', to_date: '2026-10-22', requested_days: 2, status: 'pending' },
@@ -72,8 +73,8 @@ test('manager filters the leave queue and completes approval and rejection actio
     if (endpoint === 'hris_get_tenant_leave_data') {
       const payload = request.method() === 'POST' ? request.postDataJSON() as { p_start?: string | null; p_end?: string | null } : {};
       if (payload.p_start || payload.p_end) absenceWindows.push(payload);
-      if (payload.p_start === '2026-12-01' && failNextAbsenceLoad) {
-        failNextAbsenceLoad = false;
+      if (payload.p_start === '2026-12-01' && failAbsenceUntilRetry) {
+        failedAbsenceWindows.push(`${payload.p_start}/${payload.p_end}`);
         return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic absence calendar outage.' }) });
       }
       if (failNextLeaveLoad) {
@@ -134,11 +135,14 @@ test('manager filters the leave queue and completes approval and rejection actio
   const calendarMonth = page.getByLabel('Month', { exact: true });
   await calendarMonth.fill('2026-11');
   await expect(page.getByRole('region', { name: 'Absence calendar November 2026' })).toBeVisible();
-  failNextAbsenceLoad = true;
+  const absenceWindowsBeforeDecember = absenceWindows.length;
+  failAbsenceUntilRetry = true;
   await calendarMonth.fill('2026-12');
-  await expect.poll(() => absenceWindows.some(window => window.p_start === '2026-12-01' && window.p_end === '2026-12-31')).toBe(true);
+  await expect.poll(() => absenceWindows.length > absenceWindowsBeforeDecember).toBe(true);
+  await expect.poll(() => failedAbsenceWindows.length > 0).toBe(true);
   const calendarError = page.getByRole('alert').filter({ hasText: 'Synthetic absence calendar outage.' });
   await expect(calendarError).toBeVisible();
+  failAbsenceUntilRetry = false;
   await calendarError.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByRole('region', { name: 'Absence calendar December 2026' })).toBeVisible();
   await calendarMonth.fill('2026-10');
