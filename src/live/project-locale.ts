@@ -494,6 +494,7 @@ const bengali: Record<string, string> = {
   'Month': 'মাস',
   'Current month': 'চলতি মাস',
   'Loading absence calendar…': 'অনুপস্থিতির ক্যালেন্ডার লোড হচ্ছে…',
+  'Unable to load the absence calendar.': 'অনুপস্থিতির ক্যালেন্ডার লোড করা যায়নি।',
   'people on leave': 'জন ছুটিতে',
   'Approved absences on': 'এই তারিখে অনুমোদিত ছুটি:',
   'No approved absences on this date.': 'এই তারিখে কোনো অনুমোদিত ছুটি নেই।',

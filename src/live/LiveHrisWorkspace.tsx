@@ -1515,12 +1515,12 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
       setAbsenceData({ requests: asRows(value.requests), leave_types: asRows(value.leave_types), holidays: asRows(value.holidays) });
       setAbsenceDataTenantId(requestedTenantId);
       setAbsenceDataMonth(month);
-    } catch (cause) {
+    } catch {
       if (requestId !== absenceRequestSequence.current || activeTenantId.current !== requestedTenantId) return;
       setAbsenceData(null);
       setAbsenceDataTenantId(requestedTenantId);
       setAbsenceDataMonth(month);
-      setAbsenceError(cause instanceof Error ? cause.message : 'Unable to load the absence calendar.');
+      setAbsenceError(tx('Unable to load the absence calendar.'));
     } finally {
       if (requestId === absenceRequestSequence.current && activeTenantId.current === requestedTenantId) setAbsenceLoading(false);
     }

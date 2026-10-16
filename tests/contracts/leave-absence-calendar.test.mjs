@@ -25,6 +25,7 @@ test('absence calendar loads by active tenant and date range, shows approved lea
   assert.match(workspace, /No approved absences on this date\./);
   assert.match(workspace, /people on leave/);
   assert.match(workspace, /loadAbsenceSchedule\(absenceMonth\)/);
+  assert.match(workspace, /setAbsenceError\(tx\('Unable to load the absence calendar\.'\)\)/);
 });
 
 test('manager leave date controls use the tenant-scoped overlap query and recover to the full queue', () => {
@@ -39,7 +40,7 @@ test('manager leave date controls use the tenant-scoped overlap query and recove
 });
 
 test('Bengali labels and isolated tenant/date acceptance cover the calendar journey', () => {
-  for (const phrase of ['Absence calendar','Previous month','Next month','Current month','Loading absence calendar…',
+  for (const phrase of ['Absence calendar','Previous month','Next month','Current month','Loading absence calendar…','Unable to load the absence calendar.',
     'people on leave','Approved absences on','No approved absences on this date.','Organization holidays on',
     'No organization holidays on this date.','Search requests','Employee, leave type, date…','Filter by status',
     'From date','To date','Apply date range','Clear dates','The end date must be on or after the start date.',

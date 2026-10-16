@@ -158,6 +158,13 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
   await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  failAbsenceUntilRetry = true;
+  await page.locator('#leave-absence-month').fill('2026-12');
+  const bengaliCalendarError = page.getByRole('alert').filter({ hasText: 'অনুপস্থিতির ক্যালেন্ডার লোড করা যায়নি।' });
+  await expect(bengaliCalendarError).toBeVisible();
+  failAbsenceUntilRetry = false;
+  await bengaliCalendarError.getByRole('button', { name: 'আবার চেষ্টা করুন' }).click();
+  await expect(page.getByRole('region', { name: /অনুপস্থিতির ক্যালেন্ডার.*ডিসেম্বর/ })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
 
   const table = page.getByRole('table', { name: 'Leave requests' });
