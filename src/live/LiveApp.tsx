@@ -155,6 +155,83 @@ function attendanceDateLabel(now: Date, timeZone: string | null) {
   return `Today · ${tenantAttendanceDate(now, timeZone || 'UTC')}`;
 }
 
+function EmployeeProfileSection({ profile, onSaved }: { profile: DashboardProfile; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState('');
+  const [form, setForm] = useState({
+    preferred_name: profile.preferred_name || '',
+    gender: profile.gender || '',
+    date_of_birth: profile.date_of_birth || '',
+    nationality: profile.nationality || '',
+    marital_status: profile.marital_status || '',
+  });
+  useEffect(() => {
+    setForm({
+      preferred_name: profile.preferred_name || '',
+      gender: profile.gender || '',
+      date_of_birth: profile.date_of_birth || '',
+      nationality: profile.nationality || '',
+      marital_status: profile.marital_status || '',
+    });
+    setError('');
+  }, [profile]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setSaved('');
+    try {
+      const { error: updateError } = await supabase.rpc('employee_update_my_profile', { p_payload: {
+        preferred_name: form.preferred_name.trim(),
+        gender: form.gender,
+        date_of_birth: form.date_of_birth,
+        nationality: form.nationality.trim(),
+        marital_status: form.marital_status.trim(),
+      } });
+      if (updateError) throw updateError;
+      setEditing(false);
+      setSaved('Personal information saved.');
+      onSaved();
+    } catch {
+      setError('Unable to save your personal information. Refresh and try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
+    <div className="border-b p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>{!editing && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setError(''); setSaved(''); setEditing(true); }}>Edit personal information</button>}</div>
+    {saved && <p role="status" className="border-b p-3 text-sm text-emerald-800">{saved}</p>}
+    {error && <p role="alert" className="border-b p-3 text-sm text-red-800">{error}</p>}
+    {editing ? <form className="p-4" onSubmit={submit}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div><label htmlFor="employee-profile-preferred-name" className="block text-xs font-medium text-slate-600">Preferred name</label><input id="employee-profile-preferred-name" maxLength={120} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.preferred_name} onChange={event => setForm(value => ({ ...value, preferred_name: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-gender" className="block text-xs font-medium text-slate-600">Gender</label><select id="employee-profile-gender" className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.gender} onChange={event => setForm(value => ({ ...value, gender: event.target.value }))}><option value="">Not provided</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
+        <div><label htmlFor="employee-profile-date-of-birth" className="block text-xs font-medium text-slate-600">Date of birth</label><input id="employee-profile-date-of-birth" type="date" max={new Date().toISOString().slice(0, 10)} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.date_of_birth} onChange={event => setForm(value => ({ ...value, date_of_birth: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-nationality" className="block text-xs font-medium text-slate-600">Nationality</label><input id="employee-profile-nationality" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.nationality} onChange={event => setForm(value => ({ ...value, nationality: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-marital-status" className="block text-xs font-medium text-slate-600">Marital status</label><input id="employee-profile-marital-status" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.marital_status} onChange={event => setForm(value => ({ ...value, marital_status: event.target.value }))}/></div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save personal information'}</button><button type="button" disabled={saving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setForm({ preferred_name: profile.preferred_name || '', gender: profile.gender || '', date_of_birth: profile.date_of_birth || '', nationality: profile.nationality || '', marital_status: profile.marital_status || '' }); setEditing(false); setError(''); }}>Cancel</button></div>
+    </form> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
+      <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{profile.full_name || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Preferred name</dt><dd className="font-medium">{profile.preferred_name || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Employee number</dt><dd className="font-medium">{profile.employee_number || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Official email</dt><dd className="font-medium">{profile.official_email || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Personal email</dt><dd className="font-medium">{profile.personal_email || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Personal phone</dt><dd className="font-medium">{profile.phone || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Official phone</dt><dd className="font-medium">{profile.official_phone || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Gender</dt><dd className="font-medium">{profile.gender || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Date of birth</dt><dd className="font-medium">{profile.date_of_birth || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Nationality</dt><dd className="font-medium">{profile.nationality || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{profile.marital_status || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{profile.employment_status.replace(/_/g, ' ')}</dd></div>
+    </dl>}
+  </section>;
+}
+
 function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
   onSuccess: (value: User) => void;
   onRecoveryVerified: (value: User) => void;
@@ -675,23 +752,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                 </dl></details>
               </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No released payslips are available.</p>}
             </section>
-            <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>
-              {records.employeeProfile ? <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
-                <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{records.employeeProfile.full_name || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Preferred name</dt><dd className="font-medium">{records.employeeProfile.preferred_name || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Employee number</dt><dd className="font-medium">{records.employeeProfile.employee_number || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Official email</dt><dd className="font-medium">{records.employeeProfile.official_email || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Personal email</dt><dd className="font-medium">{records.employeeProfile.personal_email || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Personal phone</dt><dd className="font-medium">{records.employeeProfile.phone || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Official phone</dt><dd className="font-medium">{records.employeeProfile.official_phone || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Gender</dt><dd className="font-medium">{records.employeeProfile.gender || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Date of birth</dt><dd className="font-medium">{records.employeeProfile.date_of_birth || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Nationality</dt><dd className="font-medium">{records.employeeProfile.nationality || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{records.employeeProfile.marital_status || 'Not provided'}</dd></div>
-                <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{records.employeeProfile.employment_status.replace(/_/g, ' ')}</dd></div>
-              </dl> : <p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p>}
-            </section>
+            {records.employeeProfile ? <EmployeeProfileSection profile={records.employeeProfile} onSaved={() => setRefreshKey(n => n + 1)} /> : <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div><p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p></section>}
             <section aria-label="Upcoming schedule" className="bg-white border rounded-lg overflow-hidden">
               <div className="border-b p-4"><h2 className="font-semibold">Upcoming schedule</h2><p className="text-xs text-slate-500">Assigned interviews, training, and review dates</p></div>
               {records.scheduleError ? <p role="status" className="p-4 text-sm text-slate-600">Schedule information is temporarily unavailable. Refresh to try again.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">

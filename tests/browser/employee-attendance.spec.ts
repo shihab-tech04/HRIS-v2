@@ -37,6 +37,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   let payslipMethod = '';
   let employeeProfileFilter: Record<string, string> = {};
   let broadProfileRpcCalled = false;
+  let profileUpdateMethod = '';
+  let profileUpdatePayload: Record<string, unknown> = {};
+  let updatedProfileFields: Record<string, unknown> = {};
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -117,11 +120,17 @@ test('employee sees own attendance, pending requests and dashboard records', asy
       broadProfileRpcCalled = true;
       data = { bank: { bank_account_no: 'should-not-be-requested' }, nid_number: 'should-not-be-requested' };
     }
+    else if (path.endsWith('/rpc/employee_update_my_profile')) {
+      profileUpdateMethod = route.request().method();
+      profileUpdatePayload = JSON.parse(route.request().postData() || '{}');
+      updatedProfileFields = (profileUpdatePayload.p_payload as Record<string, unknown>) || {};
+      data = employeeId;
+    }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
       employeeProfileFilter = Object.fromEntries(url.searchParams.entries());
       data = url.searchParams.get('user_id') === `eq.${userId}`
-        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', preferred_name: 'Sam', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', personal_email: 'sam.personal@example.org', phone: '+8801712345678', official_phone: '+88029000000', gender: 'Female', date_of_birth: '1990-04-12', nationality: 'Bangladeshi', marital_status: 'Single', employment_status: 'active' }]
+        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', preferred_name: updatedProfileFields.preferred_name ?? 'Sam', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', personal_email: 'sam.personal@example.org', phone: '+8801712345678', official_phone: '+88029000000', gender: updatedProfileFields.gender ?? 'Female', date_of_birth: updatedProfileFields.date_of_birth ?? '1990-04-12', nationality: updatedProfileFields.nationality ?? 'Bangladeshi', marital_status: updatedProfileFields.marital_status ?? 'Single', employment_status: 'active' }]
         : [];
     } else if (table === 'admin_users') data = { active: false, is_super_admin: false };
     else if (table === 'tenants') data = [{ id: tenantId, name: 'Test tenant', slug: 'test-tenant', timezone: 'Asia/Dhaka' }];
@@ -250,7 +259,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   const profile = page.getByRole('region', { name: 'My profile' });
   await expect(profile.getByText('Synthetic Employee')).toBeVisible();
   await expect(profile.getByText('SYN-001')).toBeVisible();
-  await expect(profile.getByText('Sam', { exact: true })).toBeVisible();
+  await expect(profile.getByText('Sam')).toBeVisible();
   await expect(profile.getByText('synthetic.employee@example.org')).toBeVisible();
   await expect(profile.getByText('sam.personal@example.org')).toBeVisible();
   await expect(profile.getByText('+8801712345678')).toBeVisible();
@@ -260,4 +269,26 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(profile.getByText('Bangladeshi')).toBeVisible();
   await expect(profile.getByText('Single')).toBeVisible();
   await expect(profile.getByText('active')).toBeVisible();
+
+  await profile.getByRole('button', { name: 'Edit personal information' }).click();
+  await profile.getByLabel('Preferred name').fill('Sammy');
+  await profile.getByLabel('Gender').selectOption('Other');
+  await profile.getByLabel('Date of birth').fill('1990-04-13');
+  await profile.getByLabel('Nationality').fill('Bangladeshi');
+  await profile.getByLabel('Marital status').fill('Single');
+  await profile.getByRole('button', { name: 'Save personal information' }).click();
+  await expect(profile.getByText('Sammy')).toBeVisible();
+  await expect(profile.getByRole('status')).toHaveText('Personal information saved.');
+  await expect(profile.getByText('Other', { exact: true })).toBeVisible();
+  await expect(profile.getByText('1990-04-13')).toBeVisible();
+  await expect(profile.getByText('Bangladeshi')).toBeVisible();
+  await expect(profile.getByText('Single')).toBeVisible();
+  expect(profileUpdateMethod).toBe('POST');
+  expect(profileUpdatePayload).toEqual({ p_payload: {
+    preferred_name: 'Sammy',
+    gender: 'Other',
+    date_of_birth: '1990-04-13',
+    nationality: 'Bangladeshi',
+    marital_status: 'Single',
+  } });
 });
