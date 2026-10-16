@@ -298,6 +298,9 @@ let createdReferralBucket = false;
 let referralBucketSafeToClean = false;
 let createdLearningEvidenceBucket = false;
 let learningEvidenceBucketSafeToClean = false;
+let createdEmployeeDocumentsBucket = false;
+let employeeDocumentsBucketSafeToClean = false;
+const employeeDocumentStoragePaths = [];
 const password = randomBytes(24).toString('base64url');
 try {
   for (const email of emails) {
@@ -419,6 +422,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016092922_candidate_context_authenticated_execute.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -531,6 +535,24 @@ if (learningEvidenceBucketCheck.data) {
   if (bucket.error) throw bucket.error;
   createdLearningEvidenceBucket = true;
   learningEvidenceBucketSafeToClean = true;
+}
+const employeeDocumentsBucketCheck = await adminAuth.storage.getBucket('employee-documents');
+if (employeeDocumentsBucketCheck.data) {
+  const existingEmployeeDocuments = await adminAuth.storage.from('employee-documents').list('', { limit: 100 });
+  if (existingEmployeeDocuments.error) throw existingEmployeeDocuments.error;
+  if (employeeDocumentsBucketCheck.data.public || existingEmployeeDocuments.data?.length) {
+    throw new Error('Refusing to test: the isolated employee-documents bucket must be private and empty.');
+  }
+  employeeDocumentsBucketSafeToClean = true;
+} else {
+  const statusCode = String(employeeDocumentsBucketCheck.error?.statusCode || '');
+  if (!employeeDocumentsBucketCheck.error || statusCode !== '404') {
+    throw employeeDocumentsBucketCheck.error || new Error('Unable to inspect the isolated employee-documents bucket.');
+  }
+  const bucket = await adminAuth.storage.createBucket('employee-documents', { public: false });
+  if (bucket.error) throw bucket.error;
+  createdEmployeeDocumentsBucket = true;
+  employeeDocumentsBucketSafeToClean = true;
 }
 const ids = {
   leaveApprove: '88888888-8888-4888-8888-888888888801',
@@ -649,6 +671,79 @@ const directFamilyWrite = await employeeA.client.from('employee_family_members')
   name: 'Synthetic Unauthorized Dependent',
 }).select('id');
 record('Direct family table writes remain denied', !!directFamilyWrite.error);
+
+const employeeDocumentPolicyState = queryAdmin(`SELECT jsonb_build_object(
+  'rls_enabled', c.relrowsecurity,
+  'manager_policy', (SELECT jsonb_build_object('permissive',permissive,'qual',qual)
+    FROM pg_policies WHERE schemaname='public' AND tablename='employee_documents'
+      AND policyname='employee_documents_admin_read'),
+  'tenant_guard', (SELECT jsonb_build_object('permissive',permissive,'qual',qual)
+    FROM pg_policies WHERE schemaname='public' AND tablename='employee_documents'
+      AND policyname='employee_documents_tenant_read_guard'),
+  'anon_select',has_table_privilege('anon','public.employee_documents','SELECT'),
+  'authenticated_select',has_table_privilege('authenticated','public.employee_documents','SELECT'),
+  'authenticated_truncate',has_table_privilege('authenticated','public.employee_documents','TRUNCATE'),
+  'authenticated_trigger',has_table_privilege('authenticated','public.employee_documents','TRIGGER'),
+  'authenticated_references',has_table_privilege('authenticated','public.employee_documents','REFERENCES'),
+  'authenticated_privileges', COALESCE((
+    SELECT jsonb_agg(p.privilege_type ORDER BY p.privilege_type)
+    FROM aclexplode(COALESCE(c.relacl, acldefault('r'::"char", c.relowner))) p
+    WHERE p.grantee=(SELECT oid FROM pg_roles WHERE rolname='authenticated')
+  ), '[]'::jsonb)
+) FROM pg_class c WHERE c.oid='public.employee_documents'::regclass`);
+record('Employee-document metadata uses restrictive tenant RLS and removes excessive client grants',
+  employeeDocumentPolicyState.rls_enabled === true
+    && employeeDocumentPolicyState.manager_policy?.permissive === 'PERMISSIVE'
+    && String(employeeDocumentPolicyState.manager_policy?.qual).includes('hris_employee_document_manager_read')
+    && employeeDocumentPolicyState.tenant_guard?.permissive === 'RESTRICTIVE'
+    && String(employeeDocumentPolicyState.tenant_guard?.qual).includes('hris_employee_document_own_read')
+    && employeeDocumentPolicyState.anon_select === false
+    && employeeDocumentPolicyState.authenticated_select === true
+    && employeeDocumentPolicyState.authenticated_truncate === false
+    && employeeDocumentPolicyState.authenticated_trigger === false
+    && employeeDocumentPolicyState.authenticated_references === false
+    && JSON.stringify(employeeDocumentPolicyState.authenticated_privileges) === '["SELECT"]',
+  JSON.stringify(employeeDocumentPolicyState));
+
+const [documentManagerA, documentManagerB, documentEmployeeA, documentEmployeeB,
+  documentViewerA, documentGlobalOnly] = await Promise.all([
+  managerA.client.from('employee_documents').select('id,employee_id,name').order('id'),
+  managerB.client.from('employee_documents').select('id,employee_id,name').order('id'),
+  employeeA.client.from('employee_documents').select('id,employee_id,name').order('id'),
+  employeeB.client.from('employee_documents').select('id,employee_id,name').order('id'),
+  employeesViewer.client.from('employee_documents').select('id,employee_id,name').order('id'),
+  globalOnly.client.from('employee_documents').select('id,employee_id,name').order('id'),
+]);
+const documentRowA = 'a3333333-3333-4333-8333-333333333333';
+const documentRowB = 'a4444444-4444-4444-8444-444444444444';
+record('Employee-document managers and directory viewers read only documents in their active tenant',
+  !documentManagerA.error && !documentManagerB.error && !documentViewerA.error
+    && documentManagerA.data?.length === 1 && documentManagerA.data[0]?.id === documentRowA
+    && documentManagerB.data?.length === 1 && documentManagerB.data[0]?.id === documentRowB
+    && documentViewerA.data?.length === 1 && documentViewerA.data[0]?.id === documentRowA);
+record('Employees read only their own document metadata and global roles alone grant no document access',
+  !documentEmployeeA.error && !documentEmployeeB.error && !documentGlobalOnly.error
+    && documentEmployeeA.data?.length === 1 && documentEmployeeA.data[0]?.id === documentRowA
+    && documentEmployeeB.data?.length === 1 && documentEmployeeB.data[0]?.id === documentRowB
+    && documentGlobalOnly.data?.length === 0);
+const directAnonymousEmployeeDocuments = attemptAs(null,
+  'SELECT id FROM public.employee_documents', 'anon');
+record('Anonymous clients cannot read employee-document metadata', !directAnonymousEmployeeDocuments.ok);
+
+const employeeDocumentStoragePath = `${employeeA.userId}/synthetic-document.pdf`;
+const employeeDocumentUpload = await adminAuth.storage.from('employee-documents').upload(
+  employeeDocumentStoragePath, new Blob(['synthetic employee document']),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (employeeDocumentUpload.error) throw employeeDocumentUpload.error;
+employeeDocumentStoragePaths.push(employeeDocumentStoragePath);
+const documentStorageOwner = await employeeA.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
+const documentStoragePeer = await employeeB.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
+const documentStorageManager = await managerA.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
+const documentStorageGlobalOnly = await globalOnly.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
+record('Employee-document object reads stay owner-only until a tenant-safe storage path contract exists',
+  !documentStorageOwner.error && Boolean(documentStoragePeer.error)
+    && Boolean(documentStorageManager.error) && Boolean(documentStorageGlobalOnly.error));
 
 const candidateStageHistoryAccess = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
@@ -6461,6 +6556,15 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');
+    if (deletedBucket.error) throw deletedBucket.error;
+  }
+  const employeeDocumentStorage = adminAuth.storage.from('employee-documents');
+  if (employeeDocumentsBucketSafeToClean && employeeDocumentStoragePaths.length) {
+    const removed = await employeeDocumentStorage.remove(employeeDocumentStoragePaths);
+    if (removed.error) throw removed.error;
+  }
+  if (createdEmployeeDocumentsBucket) {
+    const deletedBucket = await adminAuth.storage.deleteBucket('employee-documents');
     if (deletedBucket.error) throw deletedBucket.error;
   }
   for (const userId of createdUserIds) {

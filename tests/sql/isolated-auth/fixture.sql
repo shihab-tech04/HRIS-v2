@@ -244,6 +244,27 @@ CREATE TABLE public.employees (
   UNIQUE (tenant_id, official_email)
 );
 
+-- Synthetic copy of the production document metadata contract. The legacy
+-- global permission policy and excessive grants are deliberate so the
+-- tenant-read migration must close the same exposure in isolated acceptance.
+CREATE TABLE public.employee_documents (
+  id uuid PRIMARY KEY,
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  name text NOT NULL,
+  document_type text,
+  file_url text,
+  uploaded_at timestamptz NOT NULL DEFAULT now(),
+  expires_at date,
+  verified boolean NOT NULL DEFAULT false,
+  verification_status text,
+  verification_note text,
+  reviewed_at timestamptz,
+  reviewed_by uuid
+);
+ALTER TABLE public.employee_documents ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.employee_documents TO authenticated, anon;
+GRANT TRUNCATE, TRIGGER, REFERENCES ON public.employee_documents TO authenticated;
+
 -- Synthetic copy of the hosted family table. Its first policy intentionally
 -- mirrors the legacy global permission rule that the migration must replace.
 CREATE TABLE public.employee_family_members (
@@ -875,6 +896,7 @@ ALTER TABLE public.performance_goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_performance_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employee_family_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY employees_admin_read ON public.employees
   FOR SELECT TO authenticated USING (
@@ -891,6 +913,10 @@ CREATE POLICY hris_employees_tenant_read_guard ON public.employees
     OR public.hris_admin_can_read_tenant(tenant_id,'employees.manage')
   );
 CREATE POLICY employee_family_admin_read ON public.employee_family_members
+  FOR SELECT TO authenticated USING (
+    public.has_permission('employees.view') OR public.has_permission('employees.manage')
+  );
+CREATE POLICY employee_documents_admin_read ON public.employee_documents
   FOR SELECT TO authenticated USING (
     public.has_permission('employees.view') OR public.has_permission('employees.manage')
   );
@@ -1169,6 +1195,9 @@ INSERT INTO public.employees(id,tenant_id,user_id,department_id,team_id,designat
 INSERT INTO public.employee_family_members(id,employee_id,name,relationship,date_of_birth,is_nominee) VALUES
   ('a1111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','Synthetic Dependent A','Child','2015-06-17',true),
   ('a2222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','Synthetic Dependent B','Parent','1965-03-21',false);
+INSERT INTO public.employee_documents(id,employee_id,name,document_type,file_url,verification_status) VALUES
+  ('a3333333-3333-4333-8333-333333333333','55555555-5555-4555-8555-555555555555','Synthetic Employee A document','identity','employee-a/document-a.pdf','verified'),
+  ('a4444444-4444-4444-8444-444444444444','66666666-6666-4666-8666-666666666666','Synthetic Employee B document','identity','employee-b/document-b.pdf','pending');
 INSERT INTO public.performance_goals(id,tenant_id,employee_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin) VALUES
   ('88888888-8888-4888-8888-888888888801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A goal','Synthetic own goal','Individual','Complete local acceptance',20,'2026-12-31','in_progress',50,'assigned'),
   ('88888888-8888-4888-8888-888888888802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B goal','Synthetic other-tenant goal','Individual','Complete local acceptance',10,'2026-12-31','in_progress',50,'assigned');
@@ -1334,6 +1363,12 @@ CREATE POLICY leave_evidence_admin_select ON storage.objects
   FOR SELECT TO authenticated USING (
     bucket_id='leave-evidence'
     AND (public.has_permission('leave.view') OR public.has_permission('leave.manage'))
+  );
+CREATE POLICY employee_documents_own_select ON storage.objects
+  FOR SELECT TO authenticated USING (
+    bucket_id='employee-documents'
+    AND ((storage.foldername(name))[1]=(SELECT auth.uid())::text
+      OR public.has_permission('employees.view') OR public.has_permission('employees.manage'))
   );
 CREATE POLICY leave_evidence_employee_delete ON storage.objects
   FOR DELETE TO authenticated USING (
