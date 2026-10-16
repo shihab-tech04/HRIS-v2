@@ -129,7 +129,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /Synthetic holiday/ })).toContainText('2026-12-16');
+  await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
 
   const calendarMonth = page.getByLabel('Month', { exact: true });
   await calendarMonth.fill('2026-11');
