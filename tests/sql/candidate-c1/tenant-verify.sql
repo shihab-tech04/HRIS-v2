@@ -28,9 +28,9 @@ VALUES
 INSERT INTO public.candidate_application_stage_history
   (id,application_id,stage,note,actor_type,actor_user_id,created_at)
 VALUES
-  ('51515151-5151-4151-8151-515151515151','30303030-3030-4030-8030-303030303030','interview','private staff note A','employee','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','2026-01-01T00:00:00Z'),
+  ('51515151-5151-4151-8151-515151515151','30303030-3030-4030-8030-303030303030','interview','private staff note A','recruitment','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','2026-01-01T00:00:00Z'),
   ('52525252-5252-4252-8252-525252525252','30303030-3030-4030-8030-303030303030','interview','candidate-visible note A','candidate','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','2026-01-02T00:00:00Z'),
-  ('53535353-5353-4353-8353-535353535353','40404040-4040-4040-8040-404040404040','screening','private staff note B','employee','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','2026-01-01T00:00:00Z');
+  ('53535353-5353-4353-8353-535353535353','40404040-4040-4040-8040-404040404040','screening','private staff note B','recruitment','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','2026-01-01T00:00:00Z');
 
 INSERT INTO public.interviews
   (id,application_id,scheduled_at,interview_type,panel_notes,status,panel_members)
