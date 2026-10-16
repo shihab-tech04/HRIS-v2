@@ -6021,7 +6021,7 @@ try {
   holidayBrowserError = String(error.stderr || error.message || 'local holiday browser run failed').slice(-1800);
 }
 record('Real local Auth-to-Postgres holiday calendar journey passes validation, cancellation, retry, persistence, and responsive recovery',
-  holidayBrowserOutput.includes('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, persisted employee upcoming-holiday visibility, tenant isolation, refresh, and mobile/desktop layouts.'),
+  holidayBrowserOutput.includes('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, EN/BN mobile/desktop, persisted employee upcoming-holiday visibility, tenant isolation, and refresh.'),
   holidayBrowserError);
 
 const globalOnlyRole = queryAdmin(`SELECT jsonb_build_object('global_role',EXISTS (
