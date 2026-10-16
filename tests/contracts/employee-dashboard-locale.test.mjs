@@ -28,6 +28,10 @@ test('employee dashboard and inline request journeys have unique Bengali transla
     assert.ok(translations.get(phrase)?.length > 0, `missing Employee Dashboard translation: ${phrase}`);
     assert.notEqual(translations.get(phrase), phrase, `${phrase} is not translated`);
   }
+  for (const phrase of ['Weekly work-hours data', 'Week', 'Complete check-in pairs']) {
+    assert.ok(translations.get(phrase)?.length > 0, `missing accessible weekly attendance translation: ${phrase}`);
+    assert.notEqual(translations.get(phrase), phrase, `${phrase} is not translated`);
+  }
 });
 
 test('Employee Dashboard shares the active locale with date, number, leave, and correction views', () => {
@@ -46,4 +50,14 @@ test('real Auth/Postgres browser journey checks Bengali persistence, validation,
     'উপস্থিতির মাস', 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।',
     'Employee attendance month Bengali mobile', 'page.reload()',
   ]) assert.ok(browser.includes(phrase), `browser acceptance is missing ${phrase}`);
+});
+
+test('employee attendance chart exposes its computed weekly values as an accessible table', () => {
+  const employeeOverview = workspace.slice(workspace.indexOf('function EmployeeOverview('), workspace.indexOf('export function LiveHrisWorkspace('));
+  assert.match(employeeOverview, /<table aria-label=\{tx\('Weekly work-hours data'\)\} className="sr-only">/);
+  assert.match(employeeOverview, /weekBuckets\.map\(\(bucket, index\) => <tr key=\{bucket\.label\}>/);
+  assert.match(employeeOverview, /employeeNumber\(bucket\.hours, 1\)/);
+  assert.match(employeeOverview, /employeeNumber\(bucket\.count\)/);
+  assert.match(browser, /getByRole\('table', \{ name: 'Weekly work-hours data', exact: true \}\)/);
+  assert.match(browser, /getByRole\('table', \{ name: 'সাপ্তাহিক কাজের সময়ের তথ্য', exact: true \}\)/);
 });

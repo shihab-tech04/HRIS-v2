@@ -148,6 +148,27 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Working hours', exact: true }).click();
   await page.locator('[title="8.0 recorded hours"]').waitFor({ state: 'visible' });
+  const weekCount = Math.ceil(new Date(Date.UTC(Number(previousMonth.slice(0, 4)), Number(previousMonth.slice(5, 7)), 0)).getUTCDate() / 7);
+  const weeklyTable = page.getByRole('table', { name: 'Weekly work-hours data', exact: true });
+  await weeklyTable.waitFor({ state: 'visible' });
+  if (await weeklyTable.locator('tbody tr').count() !== weekCount) {
+    throw new Error(`Accessible English weekly attendance rows did not match the selected month (${weekCount} weeks).`);
+  }
+  if (!(await weeklyTable.innerText()).includes('8.0 hr') || !(await weeklyTable.innerText()).includes('1')) {
+    throw new Error('Accessible English weekly attendance did not expose the persisted hours and complete-pair count.');
+  }
+  await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
+  const bengaliWeeklyTable = page.getByRole('table', { name: 'সাপ্তাহিক কাজের সময়ের তথ্য', exact: true });
+  await bengaliWeeklyTable.waitFor({ state: 'visible' });
+  await bengaliWeeklyTable.getByRole('columnheader', { name: 'সপ্তাহ', exact: true }).waitFor({ state: 'visible' });
+  await bengaliWeeklyTable.getByRole('columnheader', { name: 'নথিভুক্ত কাজের সময়', exact: true }).waitFor({ state: 'visible' });
+  await bengaliWeeklyTable.getByRole('columnheader', { name: 'সম্পূর্ণ চেক-ইন জোড়া', exact: true }).waitFor({ state: 'visible' });
+  if (await bengaliWeeklyTable.locator('tbody tr').count() !== weekCount) {
+    throw new Error(`Accessible Bengali weekly attendance rows did not match the selected month (${weekCount} weeks).`);
+  }
+  await assertNoOverflow(page, 'Employee accessible weekly attendance Bengali mobile');
+  await page.getByRole('button', { name: 'Switch language to English', exact: true }).click();
+  await weeklyTable.waitFor({ state: 'visible' });
 
   await monthInput.fill(process.env.HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH);
   const emptyParts = process.env.HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH.split('-').map(Number);

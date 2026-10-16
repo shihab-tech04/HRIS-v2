@@ -2859,6 +2859,14 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
                     <span className="mt-1 block text-[10px] tabular-nums text-slate-700">{bucket.count ? `${employeeNumber(bucket.hours, 1)}${tx('h')}` : '—'}</span>
                   </div>)}
                 </div> : null)}
+                {attendanceMonthReady && <table aria-label={tx('Weekly work-hours data')} className="sr-only">
+                  <thead><tr><th scope="col">{tx('Week')}</th><th scope="col">{tx('Recorded working hours')}</th><th scope="col">{tx('Complete check-in pairs')}</th></tr></thead>
+                  <tbody>{weekBuckets.map((bucket, index) => <tr key={bucket.label}>
+                    <th scope="row">{txf('Week {week} · {range}', { week: employeeNumber(index + 1), range: bucket.label.replace(/\d+/g, digits => employeeNumber(Number(digits))) })}</th>
+                    <td>{employeeNumber(bucket.hours, 1)} {tx('hr')}</td>
+                    <td>{employeeNumber(bucket.count)}</td>
+                  </tr>)}</tbody>
+                </table>}
                 {attendanceMonthReady && !workHours.some(item => item.hours !== null) && <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{txf('No complete check-in and check-out pairs are available for {month}.', { month: attendanceMonthLabel })}</p>}
                 {attendanceMonthReady && <p className="mt-3 text-xs text-slate-500">{tx('Scheduled hours are not returned in this personal summary, so no required-hours target is shown.')}</p>}
               </div>}
