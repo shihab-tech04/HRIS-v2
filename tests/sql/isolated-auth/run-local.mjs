@@ -586,6 +586,17 @@ const familyPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'tenant_guard', (SELECT jsonb_build_object('permissive',permissive,'qual',qual)
     FROM pg_policies WHERE schemaname='public' AND tablename='employee_family_members'
       AND policyname='employee_family_tenant_guard'),
+  'anon_privileges', COALESCE((
+    SELECT jsonb_agg(p.privilege_type ORDER BY p.privilege_type)
+    FROM aclexplode(COALESCE(c.relacl, acldefault('r'::"char", c.relowner))) p
+    WHERE p.grantee=(SELECT oid FROM pg_roles WHERE rolname='anon')
+  ), '[]'::jsonb),
+  'authenticated_privileges', COALESCE((
+    SELECT jsonb_agg(p.privilege_type ORDER BY p.privilege_type)
+    FROM aclexplode(COALESCE(c.relacl, acldefault('r'::"char", c.relowner))) p
+    WHERE p.grantee=(SELECT oid FROM pg_roles WHERE rolname='authenticated')
+  ), '[]'::jsonb),
+  'anon_select',has_table_privilege('anon','public.employee_family_members','SELECT'),
   'select_grant',has_table_privilege('authenticated','public.employee_family_members','SELECT'),
   'insert_grant',has_table_privilege('authenticated','public.employee_family_members','INSERT'),
   'update_grant',has_table_privilege('authenticated','public.employee_family_members','UPDATE'),
@@ -598,6 +609,9 @@ record('Family RLS replaces global permission reads with tenant-scoped admin and
     && String(familyPolicyState.self_policy).includes('hris_own_employee_for_tenant')
     && familyPolicyState.tenant_guard?.permissive === 'RESTRICTIVE'
     && String(familyPolicyState.tenant_guard?.qual).includes('hris_admin_can_read_tenant')
+    && familyPolicyState.anon_privileges?.length === 0
+    && familyPolicyState.anon_select === false
+    && JSON.stringify(familyPolicyState.authenticated_privileges) === '["SELECT"]'
     && familyPolicyState.select_grant === true
     && familyPolicyState.insert_grant === false
     && familyPolicyState.update_grant === false
@@ -614,6 +628,8 @@ const [familyAdminA, familyAdminB, familyViewerA, familyEmployeeA, familyEmploye
 ]);
 const familyRowA = 'a1111111-1111-4111-8111-111111111111';
 const familyRowB = 'a2222222-2222-4222-8222-222222222222';
+const directAnonymousFamilyRead = attemptAs(null, 'SELECT id FROM public.employee_family_members', 'anon');
+record('Anonymous role has no direct employee-family-table privileges', !directAnonymousFamilyRead.ok);
 record('Family read/manage access returns only rows from each manager active tenant',
   !familyAdminA.error && !familyAdminB.error
     && familyAdminA.data?.length === 1 && familyAdminA.data[0]?.id === familyRowA

@@ -12,6 +12,10 @@ BEGIN
 
   EXECUTE 'ALTER TABLE public.employee_family_members ENABLE ROW LEVEL SECURITY';
   EXECUTE 'CREATE INDEX IF NOT EXISTS employee_family_members_employee_id_idx ON public.employee_family_members (employee_id)';
+  -- Keep the client contract read-only. This also removes broad default table
+  -- grants such as TRUNCATE, REFERENCES, TRIGGER, and version-specific rights.
+  EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE public.employee_family_members FROM PUBLIC, anon, authenticated';
+  EXECUTE 'GRANT SELECT ON TABLE public.employee_family_members TO authenticated';
 
   -- Replace the production policy that used the global has_permission helper.
   EXECUTE 'DROP POLICY IF EXISTS employee_family_admin_read ON public.employee_family_members';
