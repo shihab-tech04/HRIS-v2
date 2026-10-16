@@ -140,13 +140,8 @@ test('manager filters the leave queue and completes approval and rejection actio
   await calendarMonth.fill('2026-12');
   await expect.poll(() => absenceWindows.length > absenceWindowsBeforeDecember).toBe(true);
   await expect.poll(() => failedAbsenceWindows.length > 0).toBe(true);
-  const calendarError = page.getByRole('alert').filter({ hasText: 'Synthetic absence calendar outage.' });
-  await expect(calendarError).toBeVisible().catch(async cause => {
-    const calendarPanel = page.locator('section[aria-labelledby="leave-absence-calendar-heading"]');
-    const panelText = await calendarPanel.innerText().catch(() => 'Calendar panel is unavailable.');
-    console.log('[leave-calendar-debug]', JSON.stringify({ failedAbsenceWindows, absenceWindows, panelText }));
-    throw cause;
-  });
+  const calendarError = page.getByRole('alert').filter({ hasText: 'Unable to load the absence calendar.' });
+  await expect(calendarError).toBeVisible();
   failAbsenceUntilRetry = false;
   await calendarError.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByRole('region', { name: 'Absence calendar December 2026' })).toBeVisible();
