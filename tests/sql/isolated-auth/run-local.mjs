@@ -2188,21 +2188,24 @@ const completedCandidateInterviewEvent = completedCandidateApplication?.stage_hi
 const duplicateInterviewCompletion = await recruitmentManagerA.client.rpc('hris_complete_candidate_interview', {
   p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
 });
-record('Interview completion persists one recruiter-attributed history event, remains idempotent, and exposes only the candidate-safe stage',
-  completionAfterBrowser.interview_status === 'completed'
+const completionAcceptance = {
+  browserPersistedCompleted: completionAfterBrowser.interview_status === 'completed'
     && completionAfterBrowser.candidate_response === 'confirmed'
-    && completionAfterBrowser.application_stage === 'interview_completed'
-    && completionAfterBrowser.event_count === 1
-    && completionAfterBrowser.event_actor === recruitmentManagerA.userId
-    && !completedManagerRows.error && completedManagerRow?.interview_status === 'completed'
-    && completedCandidateApplication?.stage === 'interview_completed'
-    && completedCandidateInterviewEvent?.stage === 'interview_completed'
-    && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'actor_user_id')
-    && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'note')
-    && !JSON.stringify(candidateContextAfterInterview.data || {}).includes('Panel debrief: clear examples')
-    && !duplicateInterviewCompletion.error && duplicateInterviewCompletion.data?.changed === false
-    && queryAdmin(`SELECT count(*) FROM public.candidate_application_stage_history h
-        WHERE h.application_id=${sqlLiteral(recruitmentIds.applicationA1)}::uuid AND h.stage='interview_completed'`) === 1);
+    && completionAfterBrowser.application_stage === 'interview_completed',
+  singleRecruiterHistoryEvent: completionAfterBrowser.event_count === 1
+    && completionAfterBrowser.event_actor === recruitmentManagerA.userId,
+  managerProjectionShowsCompleted: !completedManagerRows.error && completedManagerRow?.interview_status === 'completed',
+  candidateProjectionShowsCompleted: completedCandidateApplication?.stage === 'interview_completed'
+    && completedCandidateInterviewEvent?.stage === 'interview_completed',
+  candidateProjectionOmitsPrivateHistoryFields: !Object.hasOwn(completedCandidateInterviewEvent || {}, 'actor_user_id')
+    && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'note'),
+  candidateProjectionOmitsPanelDebrief: !JSON.stringify(candidateContextAfterInterview.data || {}).includes('Panel debrief: clear examples'),
+  duplicateRetryIsIdempotent: !duplicateInterviewCompletion.error && duplicateInterviewCompletion.data?.changed === false,
+  onePersistedCompletionEvent: queryAdmin(`SELECT count(*) FROM public.candidate_application_stage_history h
+      WHERE h.application_id=${sqlLiteral(recruitmentIds.applicationA1)}::uuid AND h.stage='interview_completed'`) === 1,
+};
+record('Interview completion persists one recruiter-attributed history event, remains idempotent, and exposes only the candidate-safe stage',
+  Object.values(completionAcceptance).every(Boolean), JSON.stringify(completionAcceptance));
 const assessmentAfterBrowser = queryAdmin(`SELECT jsonb_build_object('status',status,'note',review_note,'reviewer',reviewed_by,'reviewed_at',reviewed_at)
   FROM public.candidate_assessments WHERE id=${sqlLiteral(assessmentId)}::uuid`);
 const assessmentManagerReadAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
@@ -2296,8 +2299,8 @@ record('Recruiter stage transitions persist one sanitized history event per acce
   stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
     && !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
     && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
-    && !transitionHistoryA1.error && acceptedTransitionHistoryA1.length === 3
-    && acceptedTransitionHistoryA1.map(row => row.stage).sort().join(',') === 'interview_scheduled,screening,under_review'
+    && !transitionHistoryA1.error && acceptedTransitionHistoryA1.length === 4
+    && acceptedTransitionHistoryA1.map(row => row.stage).sort().join(',') === 'interview_completed,interview_scheduled,screening,under_review'
     && acceptedTransitionHistoryA1.every(row => row.actor_user_id === recruitmentManagerA.userId)
     && !transitionHistoryA2.error && transitionHistoryA2.data.length === 3
     && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 2
