@@ -28,6 +28,36 @@ type AttendanceToday = { status: string; work_mode: string; check_in: string | n
 type DashboardPayslip = { id: string; pay_period_name: string; pay_date: string | null; currency: string; net_salary: number; basic_salary: number | null; house_rent_allowance: number | null; medical_allowance: number | null; transport_allowance: number | null; special_allowance: number | null; overtime_pay: number | null; bonus: number | null; tax_deduction: number | null; provident_fund_deduction: number | null; leave_without_pay_deduction: number | null; other_deductions: number | null; gross_earnings: number | null; total_deductions: number | null };
 type ProfileChangeRequest = { id: string; field_key: string; reason: string; status: string; submitted_at: string; reviewed_at: string | null; review_note: string | null };
 type EmployeeAddress = { id: string | null; address_type: 'Present' | 'Permanent' | 'Other'; district: string; thana: string; post_code: string; city_village: string; road_block_house: string };
+type EmployeeFamilyMember = { id: string | null; name: string; phone: string; nid_number: string; date_of_birth: string; relationship: string; present_address: string; permanent_address: string; is_nominee: boolean; working_in_synesis: boolean; occupation: string; academic_qualification: string; blood_group: string; gender: '' | 'Male' | 'Female' | 'Other' };
+function emptyEmployeeFamilyMember(): EmployeeFamilyMember {
+  return { id: null, name: '', phone: '', nid_number: '', date_of_birth: '', relationship: '', present_address: '', permanent_address: '', is_nominee: false, working_in_synesis: false, occupation: '', academic_qualification: '', blood_group: '', gender: '' };
+}
+function normalizeEmployeeFamilyMembers(value: unknown): EmployeeFamilyMember[] {
+  if (!Array.isArray(value)) throw new Error('Invalid family member response.');
+  return value.map((item): EmployeeFamilyMember => {
+    if (!item || typeof item !== 'object') throw new Error('Invalid family member response.');
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== 'string' || typeof row.name !== 'string') throw new Error('Invalid family member response.');
+    const text = (key: string) => typeof row[key] === 'string' ? row[key] as string : '';
+    const gender = text('gender');
+    return {
+      id: row.id,
+      name: row.name,
+      phone: text('phone'),
+      nid_number: text('nid_number'),
+      date_of_birth: text('date_of_birth'),
+      relationship: text('relationship'),
+      present_address: text('present_address'),
+      permanent_address: text('permanent_address'),
+      is_nominee: row.is_nominee === true,
+      working_in_synesis: row.working_in_synesis === true,
+      occupation: text('occupation'),
+      academic_qualification: text('academic_qualification'),
+      blood_group: text('blood_group'),
+      gender: gender === 'Male' || gender === 'Female' || gender === 'Other' ? gender : '',
+    };
+  }).sort((left, right) => left.name.localeCompare(right.name) || (left.id || '').localeCompare(right.id || ''));
+}
 const employeeAddressTypes: EmployeeAddress['address_type'][] = ['Present', 'Permanent', 'Other'];
 function normalizeEmployeeAddresses(value: unknown): EmployeeAddress[] {
   if (!Array.isArray(value)) throw new Error('Invalid employee address response.');
@@ -219,6 +249,13 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   const [addressesEditing, setAddressesEditing] = useState(false);
   const [addressesSaving, setAddressesSaving] = useState(false);
   const [addressesError, setAddressesError] = useState('');
+  const [familyMembers, setFamilyMembers] = useState<EmployeeFamilyMember[]>([]);
+  const [familyDraft, setFamilyDraft] = useState<EmployeeFamilyMember[]>([]);
+  const [familyLoading, setFamilyLoading] = useState(true);
+  const [familyEditing, setFamilyEditing] = useState(false);
+  const [familySaving, setFamilySaving] = useState(false);
+  const [familyError, setFamilyError] = useState('');
+  const [familySavedMessage, setFamilySavedMessage] = useState('');
   const [form, setForm] = useState({
     preferred_name: profile.preferred_name || '',
     personal_email: profile.personal_email || '',
@@ -280,6 +317,27 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   }
 
   useEffect(() => { void loadAddresses(); }, []);
+
+  async function loadFamilyMembers() {
+    setFamilyLoading(true);
+    setFamilyError('');
+    try {
+      const { data, error: familyErrorResult } = await supabase.from('employee_family_members')
+        .select('id,name,phone,nid_number,date_of_birth,relationship,present_address,permanent_address,is_nominee,working_in_synesis,occupation,academic_qualification,blood_group,gender')
+        .order('created_at', { ascending: true });
+      if (familyErrorResult) throw familyErrorResult;
+      setFamilyMembers(normalizeEmployeeFamilyMembers(data || []));
+      return true;
+    } catch {
+      setFamilyError('Your family details are temporarily unavailable. Refresh to try again.');
+      setFamilyMembers([]);
+      return false;
+    } finally {
+      setFamilyLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadFamilyMembers(); }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -376,6 +434,49 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     }]);
   }
 
+  function addFamilyMember() {
+    setFamilyDraft(current => current.length >= 100 ? current : [...current, emptyEmployeeFamilyMember()]);
+    setFamilyError('');
+  }
+
+  async function saveFamilyMembers(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFamilySaving(true);
+    setFamilyError('');
+    setFamilySavedMessage('');
+    try {
+      const rows = familyDraft
+        .filter(member => Boolean(member.id) || [member.name, member.phone, member.nid_number, member.date_of_birth, member.relationship, member.present_address, member.permanent_address, member.occupation, member.academic_qualification, member.blood_group, member.gender].some(value => value.trim()))
+        .map(member => ({
+          ...(member.id ? { id: member.id } : {}),
+          name: member.name.trim(),
+          phone: member.phone.trim(),
+          nid_number: member.nid_number.trim(),
+          date_of_birth: member.date_of_birth,
+          relationship: member.relationship.trim(),
+          present_address: member.present_address.trim(),
+          permanent_address: member.permanent_address.trim(),
+          is_nominee: member.is_nominee,
+          working_in_synesis: member.working_in_synesis,
+          occupation: member.occupation.trim(),
+          academic_qualification: member.academic_qualification.trim(),
+          blood_group: member.blood_group.trim(),
+          gender: member.gender,
+        }));
+      const { data, error: saveError } = await supabase.rpc('employee_save_my_family_members_v2', { p_rows: rows });
+      if (saveError) throw saveError;
+      if (Number(data) !== rows.length) throw new Error('Family member save count did not match.');
+      const reloaded = await loadFamilyMembers();
+      setFamilyEditing(false);
+      setFamilyDraft([]);
+      setFamilySavedMessage(reloaded ? 'Family information saved.' : 'Family information saved. Refresh to reload the latest details.');
+    } catch {
+      setFamilyError('Unable to save family details. Check the required names and try again.');
+    } finally {
+      setFamilySaving(false);
+    }
+  }
+
   return <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
     <div className="border-b p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>{!editing && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setError(''); onSaved(''); setEditing(true); }}>Edit personal information</button>}</div>
     {savedMessage && <p role="status" className="border-b p-3 text-sm text-emerald-800">{savedMessage}</p>}
@@ -441,6 +542,60 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
           <button type="button" disabled={addressesSaving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setAddressesEditing(false); setAddressDraft([]); setAddressesError(''); }}>Cancel</button>
         </div>
       </form> : <ul className="divide-y p-4 text-sm">{addresses.length === 0 ? <li className="text-slate-500">No address details added.</li> : addresses.map(address => <li key={address.id} className="py-3 first:pt-0 last:pb-0"><p className="font-medium">{address.address_type} address</p><p className="mt-1 text-slate-600">{[address.road_block_house, address.city_village, address.thana, address.district, address.post_code].filter(Boolean).join(', ') || 'Not provided'}</p></li>)}</ul>}
+    </section>
+    <section id="employee-family-members" aria-label="Dependents and family members" className="border-t">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+        <div><h3 className="font-semibold">Dependents and family members</h3><p className="mt-1 text-xs text-slate-500">Manage the family details linked to your employee record.</p></div>
+        {!familyEditing && !familyLoading && !familyError && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setFamilyDraft(familyMembers.length ? familyMembers.map(member => ({ ...member })) : [emptyEmployeeFamilyMember()]); setFamilySavedMessage(''); setFamilyError(''); setFamilyEditing(true); }}>{familyMembers.length ? 'Edit family information' : 'Add family member'}</button>}
+      </div>
+      {familySavedMessage && <p role="status" className="border-b p-3 text-sm text-emerald-800">{familySavedMessage}</p>}
+      {familyLoading ? <p className="p-4 text-sm text-slate-500">Loading family details…</p> : familyError && !familyEditing ? <div className="flex flex-wrap items-center gap-3 p-4"><p role="alert" className="text-sm text-red-800">{familyError}</p><button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { void loadFamilyMembers(); }}>Retry</button></div> : familyEditing ? <form className="p-4" onSubmit={saveFamilyMembers}>
+        <div className="space-y-4">
+          {familyDraft.map((member, index) => {
+            const prefix = `Family member ${index + 1}`;
+            const idPrefix = `employee-family-member-${member.id || `new-${index}`}`;
+            return <fieldset key={member.id || `new-${index}`} className="rounded-md border p-4">
+              <legend className="px-1 text-sm font-semibold">{prefix}</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div><label htmlFor={`${idPrefix}-name`} className="block text-xs font-medium text-slate-600">{prefix} name</label><input id={`${idPrefix}-name`} required maxLength={200} autoComplete="name" className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.name} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, name: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-phone`} className="block text-xs font-medium text-slate-600">{prefix} phone</label><input id={`${idPrefix}-phone`} type="tel" maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.phone} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, phone: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-nid`} className="block text-xs font-medium text-slate-600">{prefix} national ID number</label><input id={`${idPrefix}-nid`} maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.nid_number} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, nid_number: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-dob`} className="block text-xs font-medium text-slate-600">{prefix} date of birth</label><input id={`${idPrefix}-dob`} type="date" max={new Date().toISOString().slice(0, 10)} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.date_of_birth} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, date_of_birth: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-relationship`} className="block text-xs font-medium text-slate-600">{prefix} relationship</label><input id={`${idPrefix}-relationship`} maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.relationship} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, relationship: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-gender`} className="block text-xs font-medium text-slate-600">{prefix} gender</label><select id={`${idPrefix}-gender`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.gender} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, gender: event.target.value as EmployeeFamilyMember['gender'] } : row))}><option value="">Not provided</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
+                <div><label htmlFor={`${idPrefix}-present-address`} className="block text-xs font-medium text-slate-600">{prefix} present address</label><input id={`${idPrefix}-present-address`} maxLength={500} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.present_address} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, present_address: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-permanent-address`} className="block text-xs font-medium text-slate-600">{prefix} permanent address</label><input id={`${idPrefix}-permanent-address`} maxLength={500} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.permanent_address} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, permanent_address: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-occupation`} className="block text-xs font-medium text-slate-600">{prefix} occupation</label><input id={`${idPrefix}-occupation`} maxLength={120} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.occupation} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, occupation: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-qualification`} className="block text-xs font-medium text-slate-600">{prefix} academic qualification</label><input id={`${idPrefix}-qualification`} maxLength={200} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.academic_qualification} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, academic_qualification: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-blood-group`} className="block text-xs font-medium text-slate-600">{prefix} blood group</label><input id={`${idPrefix}-blood-group`} maxLength={20} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.blood_group} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, blood_group: event.target.value } : row))}/></div>
+                <div className="flex flex-col justify-center gap-3">
+                  <label className="flex items-center gap-2 text-sm" htmlFor={`${idPrefix}-nominee`}><input id={`${idPrefix}-nominee`} type="checkbox" checked={member.is_nominee} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, is_nominee: event.target.checked } : row))}/>{prefix} nominee</label>
+                  <label className="flex items-center gap-2 text-sm" htmlFor={`${idPrefix}-synesis`}><input id={`${idPrefix}-synesis`} type="checkbox" checked={member.working_in_synesis} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, working_in_synesis: event.target.checked } : row))}/>{prefix} works in Synesis</label>
+                </div>
+              </div>
+            </fieldset>;
+          })}
+        </div>
+        {familyError && <p role="alert" className="mt-3 text-sm text-red-800">{familyError}</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" disabled={familySaving || familyDraft.length >= 100} className="min-h-10 rounded-md border px-3 text-sm disabled:opacity-50" onClick={addFamilyMember}>Add another family member</button>
+          <button type="submit" disabled={familySaving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{familySaving ? 'Saving…' : 'Save family information'}</button>
+          <button type="button" disabled={familySaving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setFamilyEditing(false); setFamilyDraft([]); setFamilyError(''); }}>Cancel</button>
+        </div>
+      </form> : <ul className="divide-y p-4 text-sm">{familyMembers.length === 0 ? <li className="text-slate-500">No dependent or family records added.</li> : familyMembers.map(member => <li key={member.id} className="py-3 first:pt-0 last:pb-0"><h4 className="font-medium">{member.name}</h4><dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <div><dt className="text-xs text-slate-500">Relationship</dt><dd>{member.relationship || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Phone</dt><dd>{member.phone || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">National ID number</dt><dd>{member.nid_number || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Date of birth</dt><dd>{member.date_of_birth || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Present address</dt><dd>{member.present_address || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Permanent address</dt><dd>{member.permanent_address || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Nominee</dt><dd>{member.is_nominee ? 'Yes' : 'No'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Works in Synesis</dt><dd>{member.working_in_synesis ? 'Yes' : 'No'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Occupation</dt><dd>{member.occupation || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Academic qualification</dt><dd>{member.academic_qualification || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Blood group</dt><dd>{member.blood_group || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Gender</dt><dd>{member.gender || 'Not provided'}</dd></div>
+      </dl></li>)}</ul>}
     </section>
     <details className="border-t">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Request a protected profile change</summary>
