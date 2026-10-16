@@ -81,10 +81,6 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     let data: unknown = [];
     if (path.endsWith('/rpc/has_permission')) data = false;
     else if (path.endsWith('/rpc/employee_get_my_profile_change_requests')) data = profileChangeHistory;
-    else if (path.endsWith('/rpc/employee_get_my_addresses_v2')) {
-      addressGetMethods.push(route.request().method());
-      data = employeeAddresses;
-    }
     else if (path.endsWith('/rpc/employee_save_my_addresses_v2')) {
       addressSaveMethod = route.request().method();
       addressSavePayload = JSON.parse(route.request().postData() || '{}');
@@ -160,6 +156,10 @@ test('employee sees own attendance, pending requests and dashboard records', asy
       profileUpdatePayload = JSON.parse(route.request().postData() || '{}');
       updatedProfileFields = (profileUpdatePayload.p_payload as Record<string, unknown>) || {};
       data = employeeId;
+    }
+    else if (table === 'employee_addresses') {
+      addressGetMethods.push(route.request().method());
+      data = employeeAddresses;
     }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
@@ -350,7 +350,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(addresses.getByText('House 6, Madhabpur, Burichang, Cumilla, 3520')).toBeVisible();
   await expect(profile.getByText('Present and permanent addresses saved.')).toBeVisible();
   expect(addressGetMethods.length).toBeGreaterThanOrEqual(2);
-  expect(addressGetMethods.every(method => method === 'POST')).toBe(true);
+  expect(addressGetMethods.every(method => method === 'GET')).toBe(true);
   expect(addressSaveMethod).toBe('POST');
   expect(addressSavePayload).toEqual({ p_rows: [
     {
