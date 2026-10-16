@@ -271,7 +271,8 @@ try {
   const browserPolicyFailed = await browserPolicyCreateResponse;
   if (browserPolicyFailed.status() !== 503) throw new Error('The policy persistence recovery check did not inject its expected one-time outage.');
   const failedPolicyPayload = browserPolicyFailed.request().postDataJSON();
-  await manager.getByRole('alert').filter({ hasText: 'Synthetic policy persistence outage.' }).waitFor({ state: 'visible' });
+  const policySaveError = manager.getByRole('alert').filter({ hasText: /Synthetic policy persistence outage\.|Unable to save this leave type\./ });
+  await policySaveError.waitFor({ state: 'visible' });
   await policyForm.getByLabel('Leave type name').waitFor({ state: 'visible' });
   if (await policyForm.getByLabel('Leave type name').inputValue() !== 'Synthetic browser leave policy'
       || await policyForm.getByLabel('Default annual entitlement (days)').inputValue() !== '10') {

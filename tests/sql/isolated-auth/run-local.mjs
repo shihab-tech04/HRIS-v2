@@ -394,6 +394,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261015195145_hris_leave_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016105659_hris_tenant_leave_date_filter.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016142000_hris_leave_type_policy_management.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016183000_hris_leave_balance_allocation_snapshot.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
@@ -4321,6 +4322,68 @@ record('Missing second-year ledger rolls back earlier updates and audit', !missi
   && missingRequest.status === 'pending' && Number(missingBalance.pending_days) === 1
   && Number(missingBalance.used_days) === 0 && auditCount(ids.leaveMissingLedger, 'leave.request.approved') === 0,
   missingLedger.ok ? 'unexpected approval' : 'expected transactional rejection');
+
+const allocationSnapshotDate = queryAdmin(`SELECT to_jsonb(candidate::date)
+  FROM generate_series('2027-01-01'::date,'2027-02-28'::date,interval '1 day') AS g(candidate)
+  JOIN public.employees e ON e.id='55555555-5555-4555-8555-555555555555'::uuid
+  LEFT JOIN public.shifts s ON s.id=e.shift_id AND s.active IS TRUE
+  WHERE NOT (extract(dow FROM candidate)::integer=ANY(coalesce(s.weekly_off_days,'{}'::integer[])))
+    AND NOT EXISTS (SELECT 1 FROM public.holidays h WHERE h.tenant_id='${ids.tenantA}'::uuid
+      AND h.active IS TRUE AND candidate::date BETWEEN h.start_date AND h.end_date)
+  ORDER BY candidate LIMIT 1`);
+const allocationSnapshotSubmission = await employeeA.client.rpc('hris_employee_submit_leave_request', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    leave_type_id: ids.leaveTypeA, from_date: allocationSnapshotDate, to_date: allocationSnapshotDate,
+    day_portion: 'full', reason: 'Synthetic leave allocation snapshot acceptance',
+  },
+});
+const allocationSnapshotRequestId = allocationSnapshotSubmission.data;
+const allocationSnapshotRows = allocationSnapshotRequestId ? queryAdmin(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+    'balance_year',balance_year,'chargeable_days',chargeable_days) ORDER BY balance_year),'[]'::jsonb)
+  FROM private.hris_leave_balance_allocations WHERE tenant_id='${ids.tenantA}'::uuid
+    AND leave_request_id=${sqlLiteral(allocationSnapshotRequestId)}::uuid
+    AND employee_id='55555555-5555-4555-8555-555555555555'::uuid`) : [];
+const allocationSnapshotEmployeeRead = allocationSnapshotRequestId && attemptAs(employeeA,
+  `SELECT count(*) FROM private.hris_leave_balance_allocations WHERE leave_request_id=${sqlLiteral(allocationSnapshotRequestId)}::uuid`);
+const allocationSnapshotManagerRead = allocationSnapshotRequestId && attemptAs(managerA,
+  `SELECT count(*) FROM private.hris_leave_balance_allocations WHERE leave_request_id=${sqlLiteral(allocationSnapshotRequestId)}::uuid`);
+record('New leave request records an internal per-year allocation and keeps it private from employee and manager table reads',
+  !allocationSnapshotSubmission.error && allocationSnapshotDate
+  && allocationSnapshotRows.length === 1
+  && Number(allocationSnapshotRows[0].chargeable_days) === 1
+  && allocationSnapshotRows[0].balance_year === 2027
+  && allocationSnapshotEmployeeRead?.ok === false && allocationSnapshotManagerRead?.ok === false,
+  JSON.stringify({ date: allocationSnapshotDate, allocations: allocationSnapshotRows,
+    employeeDenied: allocationSnapshotEmployeeRead?.ok === false,
+    managerDenied: allocationSnapshotManagerRead?.ok === false,
+    error: allocationSnapshotSubmission.error?.message }));
+if (allocationSnapshotRequestId) {
+  psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
+    VALUES ('${ids.tenantA}'::uuid,'Synthetic post-submission calendar change',${sqlLiteral(allocationSnapshotDate)}::date,
+      ${sqlLiteral(allocationSnapshotDate)}::date,'general',true);`);
+}
+const allocationSnapshotDecision = allocationSnapshotRequestId
+  ? resolveLeave(managerA, allocationSnapshotRequestId, 'approved') : { success: false };
+const allocationSnapshotBalance = allocationSnapshotRequestId
+  ? queryAdmin(`SELECT to_jsonb(b) FROM public.employee_leave_balances b
+      WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+        AND leave_type_id='${ids.leaveTypeA}'::uuid AND balance_year=2027`) : null;
+const allocationSnapshotRequest = allocationSnapshotRequestId
+  ? tableRow('leave_requests', allocationSnapshotRequestId) : null;
+const duplicateAllocationSnapshotDecision = allocationSnapshotRequestId
+  ? attemptAs(managerA, `SELECT public.admin_resolve_leave_request(${sqlLiteral(allocationSnapshotRequestId)}::uuid,'approved',NULL)`)
+  : { ok: true };
+record('Leave approval consumes the submission allocation after the holiday calendar changes and remains single-decision',
+  allocationSnapshotDecision.success === true
+  && allocationSnapshotRequest?.status === 'approved'
+  && Number(allocationSnapshotBalance.pending_days) === 0
+  && Number(allocationSnapshotBalance.used_days) === 1
+  && auditCount(allocationSnapshotRequestId, 'leave.request.approved') === 1
+  && duplicateAllocationSnapshotDecision.ok === false,
+  JSON.stringify({ status: allocationSnapshotRequest?.status, balance: allocationSnapshotBalance,
+    auditCount: auditCount(allocationSnapshotRequestId, 'leave.request.approved'),
+    duplicateDenied: duplicateAllocationSnapshotDecision.ok === false }));
 
 const attendanceApproved = resolveAttendance(managerA, ids.attendanceCorrection, 'approved');
 const attendanceRow = tableRow('attendance_records', ids.attendanceRecord);
