@@ -41,6 +41,8 @@ test('isolated Auth/Postgres tests deny viewers, employees, global-only, cross-t
   assert.ok(runner.includes('20261016142000_hris_leave_type_policy_management.sql'));
   assert.match(runner, /Leave policy writes require active same-tenant leave\.manage and cannot bypass the RPC/);
   assert.match(runner, /Tenant leave managers can configure existing leave policy fields with idempotent create, optimistic edits, audit, and employee visibility/);
+  assert.match(runner, /Gender-restricted leave is denied for a non-matching employee profile without creating a request or balance/);
+  assert.match(runner, /Minimum advance notice is enforced at submission; an eligible work date persists with its balance/);
   assert.match(runner, /policyStaleUpdate\.error\?\.code === '40001'/);
   assert.match(runner, /duplicatePolicyCode\.error\?\.code === '23505'/);
   assert.match(runner, /employeePolicyHiddenAfterDeactivate/);

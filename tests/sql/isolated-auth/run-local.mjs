@@ -4257,6 +4257,82 @@ record('Leave policy writes require active same-tenant leave.manage and cannot b
     viewer: policyReadOnlyViewer.error?.code, globalOnly: policyGlobalOnly.error?.code,
     crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code }));
 
+const genderPolicyId = '99999999-9999-4999-8999-999999999911';
+const noticePolicyId = '99999999-9999-4999-8999-999999999912';
+const genderPolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: genderPolicyId, p_expected: null,
+  p_payload: { name: 'Synthetic gender-restricted leave', code: 'SYN-GENDER',
+    applicable_gender: 'female', min_days_notice: null, requires_document_proof: false,
+    annual_entitlement: 5, active: true },
+});
+const noticePolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: noticePolicyId, p_expected: null,
+  p_payload: { name: 'Synthetic notice-restricted leave', code: 'SYN-NOTICE',
+    applicable_gender: null, min_days_notice: 2, requires_document_proof: false,
+    annual_entitlement: 5, active: true },
+});
+const leavePolicyEligibleDate = queryAdmin(`SELECT jsonb_build_object('date',to_char(candidate,'YYYY-MM-DD'))
+  FROM (
+    SELECT g.day::date AS candidate
+    FROM generate_series('${localCurrentDate}'::date+2,'${localCurrentDate}'::date+20,interval '1 day') g(day)
+  ) dates
+  JOIN public.employees e ON e.user_id='${employeeA.userId}'::uuid AND e.tenant_id='${ids.tenantA}'::uuid
+  LEFT JOIN public.shifts s ON s.id=e.shift_id AND s.tenant_id=e.tenant_id
+  WHERE NOT (extract(dow FROM candidate)::integer=ANY(coalesce(s.weekly_off_days,'{}'::integer[])))
+    AND NOT EXISTS (SELECT 1 FROM public.holidays h WHERE h.tenant_id=e.tenant_id
+      AND h.active IS TRUE AND candidate BETWEEN h.start_date AND h.end_date)
+  ORDER BY candidate LIMIT 1`);
+const genderRestrictedRequest = await employeeA.client.rpc('hris_employee_submit_leave_request', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { leave_type_id: genderPolicyId, from_date: leavePolicyEligibleDate.date,
+    to_date: leavePolicyEligibleDate.date, day_portion: 'full', reason: 'Synthetic gender policy denial' },
+});
+const genderRestrictedRows = queryAdmin(`SELECT jsonb_build_object('requests',count(*)::integer,'balances',
+  (SELECT count(*)::integer FROM public.employee_leave_balances b WHERE b.tenant_id='${ids.tenantA}'::uuid
+    AND b.employee_id=(SELECT e.id FROM public.employees e WHERE e.user_id='${employeeA.userId}'::uuid
+      AND e.tenant_id='${ids.tenantA}'::uuid) AND b.leave_type_id='${genderPolicyId}'::uuid))
+  FROM public.leave_requests r WHERE r.tenant_id='${ids.tenantA}'::uuid
+    AND r.employee_id=(SELECT e.id FROM public.employees e WHERE e.user_id='${employeeA.userId}'::uuid
+      AND e.tenant_id='${ids.tenantA}'::uuid) AND r.leave_type_id='${genderPolicyId}'::uuid`);
+record('Gender-restricted leave is denied for a non-matching employee profile without creating a request or balance',
+  !genderPolicyCreate.error && !noticePolicyCreate.error && Boolean(leavePolicyEligibleDate.date)
+    && Boolean(genderRestrictedRequest.error?.code === '42501')
+    && genderRestrictedRows.requests === 0 && genderRestrictedRows.balances === 0,
+  JSON.stringify({ gender: queryAdmin(`SELECT jsonb_build_object('gender',gender) FROM public.employees
+    WHERE user_id='${employeeA.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid`).gender,
+    eligibleDate: leavePolicyEligibleDate.date,
+    error: genderRestrictedRequest.error?.code, writes: genderRestrictedRows }));
+
+const tooSoonDate = addCalendarDays(localCurrentDate, 1);
+const tooSoonRequest = await employeeA.client.rpc('hris_employee_submit_leave_request', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { leave_type_id: noticePolicyId, from_date: tooSoonDate, to_date: tooSoonDate,
+    day_portion: 'full', reason: 'Synthetic minimum notice denial' },
+});
+const tooSoonRows = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.leave_requests r
+  WHERE r.tenant_id='${ids.tenantA}'::uuid
+    AND r.employee_id=(SELECT e.id FROM public.employees e WHERE e.user_id='${employeeA.userId}'::uuid
+      AND e.tenant_id='${ids.tenantA}'::uuid) AND r.leave_type_id='${noticePolicyId}'::uuid`);
+const noticeRequest = await employeeA.client.rpc('hris_employee_submit_leave_request', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { leave_type_id: noticePolicyId, from_date: leavePolicyEligibleDate.date,
+    to_date: leavePolicyEligibleDate.date, day_portion: 'full', reason: 'Synthetic valid notice boundary' },
+});
+const noticeRequestRow = noticeRequest.data ? tableRow('leave_requests', noticeRequest.data) : null;
+const noticeBalance = balance(noticePolicyId, Number(leavePolicyEligibleDate.date?.slice(0, 4)));
+record('Minimum advance notice is enforced at submission; an eligible work date persists with its balance',
+  !noticePolicyCreate.error && Boolean(leavePolicyEligibleDate.date)
+    && Boolean(tooSoonRequest.error?.code === '22000')
+    && String(tooSoonRequest.error?.message || '').includes('advance notice')
+    && tooSoonRows.count === 0 && !noticeRequest.error
+    && noticeRequestRow?.status === 'pending'
+    && noticeRequestRow?.from_date === leavePolicyEligibleDate.date
+    && Number(noticeBalance.pending_days) === 1,
+  JSON.stringify({ tooSoonDate, tooSoonError: tooSoonRequest.error?.message,
+    tooSoonRows: tooSoonRows.count, eligibleDate: leavePolicyEligibleDate.date,
+    validRequestError: noticeRequest.error?.code || null, validRequestStatus: noticeRequestRow?.status,
+    pendingDays: noticeBalance.pending_days }));
+
 const leaveApproved = resolveLeave(managerA, ids.leaveApprove, 'approved', 'isolated local acceptance');
 const approvedRow = tableRow('leave_requests', ids.leaveApprove);
 const leaveBalance = balance(ids.leaveTypeA, 2026);
