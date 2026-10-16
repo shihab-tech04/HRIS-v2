@@ -22,8 +22,9 @@ type DashboardInterview = { id: string; job_title: string; interview_type: strin
 type DashboardSchedule = { training: DashboardTraining[]; performance_cycles: DashboardCycle[]; learning_sessions: DashboardLearningSession[]; interviews: DashboardInterview[] };
 type DashboardGoal = { id: string; title: string; category: string; target_metric: string | null; current_progress: number; due_date: string | null; status: string; origin: 'assigned' | 'personal' };
 type DashboardNotice = { id: string; title: string; category: string; body: string; published_at: string; pinned: boolean };
+type DashboardActionRequest = { id: string; category: string; title: string; status: string; requestDate: string | null; submittedAt: string | null };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; attendanceToday: AttendanceToday | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; pendingRequests: DashboardActionRequest[]; pendingRequestErrors: string[]; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
 const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
 function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
@@ -61,7 +62,31 @@ function normalizeDashboardNotices(value: unknown): DashboardNotice[] {
     && Date.parse((notice as DashboardNotice).published_at) <= Date.now()))
     .map(notice => ({ ...notice, pinned: notice.pinned === true }));
 }
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, notices: [], noticesError: false, attendanceToday: null });
+function normalizePendingRequests(value: unknown, category: string, pendingStatuses: string[], titleFor: (row: Record<string, unknown>) => string): DashboardActionRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): DashboardActionRequest[] => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const status = typeof row.status === 'string' ? row.status.toLowerCase() : '';
+    if (typeof row.id !== 'string' || !pendingStatuses.includes(status)) return [];
+    const requestDate = [row.attendance_date, row.from_date, row.claim_date].find(field => typeof field === 'string');
+    const submittedAt = [row.requested_at, row.submitted_at, row.created_at].find(field => typeof field === 'string');
+    return [{
+      id: row.id,
+      category,
+      title: titleFor(row),
+      status,
+      requestDate: typeof requestDate === 'string' ? requestDate : null,
+      submittedAt: typeof submittedAt === 'string' ? submittedAt : null,
+    }];
+  });
+}
+function contextRows(value: unknown, key: string): unknown[] {
+  if (!value || typeof value !== 'object') return [];
+  const rows = (value as Record<string, unknown>)[key];
+  return Array.isArray(rows) ? rows : [];
+}
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, notices: [], noticesError: false, pendingRequests: [], pendingRequestErrors: [], attendanceToday: null });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -394,22 +419,43 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const noticesContext = currentView === 'employee'
           ? supabase.rpc('employee_get_notice_context')
           : Promise.resolve({ data: null, error: null });
+        const expenseContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_expense_context')
+          : Promise.resolve({ data: null, error: null });
+        const travelContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_travel_context')
+          : Promise.resolve({ data: null, error: null });
+        const selfServiceContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_self_service_context')
+          : Promise.resolve({ data: null, error: null });
         const attendance = (async () => {
           // Resolve only the authenticated user's employee record. RLS applies to
           // both reads; the attendance query is additionally constrained by this
           // row's tenant and employee IDs.
           const linkedEmployee = await supabase.from('employees').select('id')
             .eq('tenant_id', tenantId).eq('user_id', user!.id).limit(1).maybeSingle();
-          if (linkedEmployee.error) return { data: null, error: linkedEmployee.error };
-          if (!linkedEmployee.data) return { data: null, error: null };
-          return supabase.from('attendance_records')
-            .select('status,work_mode,check_in,check_out')
-            .eq('tenant_id', tenantId)
-            .eq('employee_id', linkedEmployee.data.id)
-            .eq('attendance_date', attendanceDate)
-            .maybeSingle();
+          if (linkedEmployee.error) return { data: null, error: linkedEmployee.error, pendingCorrections: [], pendingCorrectionsError: true };
+          if (!linkedEmployee.data) return { data: null, error: null, pendingCorrections: [], pendingCorrectionsError: false };
+          const [today, corrections] = await Promise.all([
+            supabase.from('attendance_records')
+              .select('status,work_mode,check_in,check_out')
+              .eq('tenant_id', tenantId)
+              .eq('employee_id', linkedEmployee.data.id)
+              .eq('attendance_date', attendanceDate)
+              .maybeSingle(),
+            currentView === 'employee'
+              ? supabase.from('attendance_corrections')
+                  .select('id,attendance_date,status,requested_at')
+                  .eq('tenant_id', tenantId)
+                  .eq('employee_id', linkedEmployee.data.id)
+                  .eq('status', 'pending')
+                  .order('requested_at', { ascending: false })
+                  .limit(20)
+              : Promise.resolve({ data: [], error: null }),
+          ]);
+          return { data: today.data, error: today.error, pendingCorrections: corrections.data || [], pendingCorrectionsError: Boolean(corrections.error) };
         })();
-        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult, noticesContextResult] = await Promise.all([
+        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult, noticesContextResult, expenseContextResult, travelContextResult, selfServiceContextResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
@@ -419,6 +465,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           scheduleContext,
           performanceContext,
           noticesContext,
+          expenseContext,
+          travelContext,
+          selfServiceContext,
         ]);
         const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -433,6 +482,19 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           goalsError: Boolean(performanceContextResult.error),
           notices: normalizeDashboardNotices(noticesContextResult.data).slice(0, 8),
           noticesError: Boolean(noticesContextResult.error),
+          pendingRequests: [
+            ...normalizePendingRequests(contextRows(leaveContextResult.data, 'requests'), 'Leave', ['pending'], row => typeof row.leave_type_name === 'string' ? `${row.leave_type_name} request` : 'Leave request'),
+            ...normalizePendingRequests(attendanceResult.pendingCorrections, 'Attendance', ['pending'], () => 'Attendance correction'),
+            ...normalizePendingRequests(contextRows(expenseContextResult.data, 'claims'), 'Expense', ['submitted'], () => 'Expense claim'),
+            ...normalizePendingRequests(contextRows(travelContextResult.data, 'requests'), 'Travel', ['submitted'], () => 'Travel request'),
+            ...normalizePendingRequests(contextRows(selfServiceContextResult.data, 'requests'), 'Service', ['pending', 'in_progress'], row => typeof row.request_type === 'string' ? `${row.request_type.replace(/_/g, ' ')} request` : 'Service request'),
+          ],
+          pendingRequestErrors: [
+            ...(attendanceResult.pendingCorrectionsError ? ['Attendance'] : []),
+            ...(expenseContextResult.error ? ['Expense'] : []),
+            ...(travelContextResult.error ? ['Travel'] : []),
+            ...(selfServiceContextResult.error ? ['Service'] : []),
+          ],
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
@@ -529,6 +591,14 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                   <div><dt className="text-xs text-slate-500">Check-out</dt><dd className="font-medium">{tenantAttendanceTime(records.attendanceToday.check_out, current.timezone || 'UTC') || (records.attendanceToday.check_in ? 'Not checked out' : 'Not recorded')}</dd></div>
                 </dl>
               </div> : <p className="p-4 text-sm text-slate-600">No attendance record is available for today.</p>}
+            </section>
+            <section aria-label="Requests awaiting action" className="bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4"><h2 className="font-semibold">Requests awaiting action</h2><p className="text-xs text-slate-500">Your unresolved leave, attendance, expense, travel, and service requests</p></div>
+              {records.pendingRequestErrors.length > 0 && <p role="status" className="border-b p-4 text-sm text-slate-600">Some request categories are temporarily unavailable: {records.pendingRequestErrors.join(', ')}. Refresh to try again.</p>}
+              {records.pendingRequests.length ? <ul className="divide-y">{records.pendingRequests.map(request => <li key={`${request.category}-${request.id}`} className="p-4 flex flex-wrap items-start justify-between gap-3">
+                <div><p className="text-sm font-medium">{request.title}</p><p className="text-xs text-slate-500">{request.category}</p></div>
+                <div className="text-sm sm:text-right"><p className="font-medium capitalize">{request.status.replace(/_/g, ' ')}</p>{request.requestDate && <p className="text-xs text-slate-600">For {request.requestDate}</p>}{request.submittedAt && <p className="text-xs text-slate-500">Submitted {tenantAttendanceDateTime(request.submittedAt, current.timezone || 'UTC') || 'date unavailable'}</p>}</div>
+              </li>)}</ul> : <p className="p-4 text-sm text-slate-500">{records.pendingRequestErrors.length ? 'No requests are visible in the categories that loaded.' : 'You have no unresolved requests.'}</p>}
             </section>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My visible leave requests</h2><p className="text-xs text-slate-500">Last 50 RLS-visible requests</p></div>{records.leaves.length ? <ul className="divide-y">{records.leaves.map(item => <li key={item.id} className="p-4 flex justify-between gap-3"><p className="text-sm">{item.from_date} – {item.to_date} ({item.requested_days} days)</p><p className="text-xs font-medium">{item.status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible requests, or access is restricted.</p>}</section>
