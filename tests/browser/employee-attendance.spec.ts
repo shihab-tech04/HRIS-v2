@@ -54,7 +54,7 @@ test('employee sees only their own tenant-local attendance and leave balance dat
     if (path.endsWith('/rpc/has_permission')) data = false;
     else if (path.endsWith('/rpc/employee_get_leave_context')) {
       leaveContextMethod = route.request().method();
-      data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }] };
+      data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }], holidays: [{ id: 'e5555555-5555-4555-8555-555555555555', name: 'National Day', start_date: '2026-12-16', end_date: '2026-12-16', holiday_type: 'Public', description: null }] };
     }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
@@ -95,4 +95,7 @@ test('employee sees only their own tenant-local attendance and leave balance dat
   await expect(balances.getByText('Annual Leave')).toBeVisible();
   await expect(balances.getByText('15 days available')).toBeVisible();
   await expect(balances.getByText('2026 · 3 used · 2 pending')).toBeVisible();
+  const holidays = page.getByRole('region', { name: 'Upcoming holidays' });
+  await expect(holidays.getByText('National Day')).toBeVisible();
+  await expect(holidays.getByText('2026-12-16 · Public')).toBeVisible();
 });
