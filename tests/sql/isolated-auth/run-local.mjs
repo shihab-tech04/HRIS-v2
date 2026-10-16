@@ -4515,7 +4515,8 @@ const mixedProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'weekl
     note: 'Synthetic unlinked non-project work' },
 ]);
 submitTimesheet(managerA2, ids.tenantA, mixedProjectTimesheet.id);
-const mixedProjectReview = queryAdmin(`SELECT project_id::text AS id FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).id;
+const mixedProjectReview = queryAdmin(`SELECT jsonb_build_object('id',project_id::text)
+  FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).id;
 resolveProjectTimesheet(employeeA, ids.tenantA, mixedProjectTimesheet.id, mixedProjectReview, 1, 'approved');
 record('Non-project hours remain submitted after project approval because no non-project approval authority is defined',
   queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${mixedProjectTimesheet.id}'::uuid`).status === 'submitted'
