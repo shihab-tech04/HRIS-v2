@@ -77,10 +77,16 @@ function validate(contract, sourceSha = null) {
     }
   }
 }
-function checkUiManifest(changedFiles) {
-  const ui = changedFiles.filter(f => /^(src\/|app\/|components\/).*\.(tsx|jsx|css|scss)$/.test(f));
+function impactsVisibleUi(file) {
+  const normalized = file.replace(/\\/g, '/');
+  if (/^(?:index\.html|(?:vite|tailwind|postcss|next)\.config\.[cm]?[jt]s)$/i.test(normalized)) return true;
+  return /^(?:src|app|components|pages|styles|public|assets|static)\//.test(normalized)
+    && /\.(?:ts|tsx|js|jsx|css|scss|sass|less|html|htm|mdx|svg|png|jpg|jpeg|gif|webp|avif|ico|woff|woff2|ttf|otf|json)$/i.test(normalized);
+}
+function checkUiManifest(changedFiles, base = root) {
+  const ui = changedFiles.filter(impactsVisibleUi);
   if (!ui.length) return [];
-  const manifest = JSON.parse(readRelative('docs/product-integrity/ui-change-manifest.json'));
+  const manifest = JSON.parse(readRelative('docs/product-integrity/ui-change-manifest.json', base));
   if (manifest.schema !== 'approved-ui-change/1' || !Array.isArray(manifest.changes)) throw Error('UI manifest schema invalid');
   return ui.filter(f => !manifest.changes.some(e => e.path === f && e.requirement && e.approvalReference && e.approvedDesign && Array.isArray(e.forbiddenAdditions)));
 }
@@ -109,6 +115,10 @@ function selfTest() {
     assert.equal(probe({id:'stories',path:'story.json',op:'json_story_coverage',value:1047},tmp).pass,false);
     fs.mkdirSync(path.join(tmp,'docs/product-integrity'),{recursive:true});
     fs.writeFileSync(path.join(tmp,'docs/product-integrity/ui-change-manifest.json'),JSON.stringify({schema:'approved-ui-change/1',changes:[]}));
+    const newlyCovered = ['public/logo.svg', 'index.html', 'src/router.ts', 'styles/app.css', 'tailwind.config.js'];
+    assert.deepEqual(checkUiManifest(newlyCovered, tmp), newlyCovered);
+    assert.equal(impactsVisibleUi('docs/README.md'), false);
+    assert.equal(impactsVisibleUi('src/components/Modal.tsx'), true);
     const valid={schema:'product-integrity/1',product:'Example',sourceOfApproval:'accepted requirements',
       checks:[{id:'SRC-1',path:'source.txt',op:'contains',text:'/my-account',reason:'route',approvalReference:'decision',enforcement:'release'}],
       requiredEvidence:[{id:'E-1',description:'browser evidence',reference:'run',status:'VERIFIED',reviewer:'reviewer',evidence:'approved review',verifiedSourceSha:'a'.repeat(40)}]};
