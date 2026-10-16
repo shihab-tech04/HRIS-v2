@@ -4324,12 +4324,15 @@ record('Missing second-year ledger rolls back earlier updates and audit', !missi
   missingLedger.ok ? 'unexpected approval' : 'expected transactional rejection');
 
 const allocationSnapshotDate = queryAdmin(`SELECT to_jsonb(candidate::date)
-  FROM generate_series('2027-01-01'::date,'2027-02-28'::date,interval '1 day') AS g(candidate)
+  FROM generate_series('2098-01-01'::date,'2098-02-28'::date,interval '1 day') AS g(candidate)
   JOIN public.employees e ON e.id='55555555-5555-4555-8555-555555555555'::uuid
   LEFT JOIN public.shifts s ON s.id=e.shift_id AND s.active IS TRUE
   WHERE NOT (extract(dow FROM candidate)::integer=ANY(coalesce(s.weekly_off_days,'{}'::integer[])))
     AND NOT EXISTS (SELECT 1 FROM public.holidays h WHERE h.tenant_id='${ids.tenantA}'::uuid
       AND h.active IS TRUE AND candidate::date BETWEEN h.start_date AND h.end_date)
+    AND NOT EXISTS (SELECT 1 FROM public.leave_requests r WHERE r.tenant_id='${ids.tenantA}'::uuid
+      AND r.employee_id=e.id AND r.status IN ('pending','approved')
+      AND daterange(r.from_date,r.to_date,'[]') && daterange(candidate::date,candidate::date,'[]'))
   ORDER BY candidate LIMIT 1`);
 const allocationSnapshotSubmission = await employeeA.client.rpc('hris_employee_submit_leave_request', {
   p_tenant_id: ids.tenantA,
@@ -4339,6 +4342,7 @@ const allocationSnapshotSubmission = await employeeA.client.rpc('hris_employee_s
   },
 });
 const allocationSnapshotRequestId = allocationSnapshotSubmission.data;
+const allocationSnapshotYear = allocationSnapshotDate ? Number(allocationSnapshotDate.slice(0,4)) : null;
 const allocationSnapshotRows = allocationSnapshotRequestId ? queryAdmin(`SELECT coalesce(jsonb_agg(jsonb_build_object(
     'balance_year',balance_year,'chargeable_days',chargeable_days) ORDER BY balance_year),'[]'::jsonb)
   FROM private.hris_leave_balance_allocations WHERE tenant_id='${ids.tenantA}'::uuid
@@ -4352,7 +4356,7 @@ record('New leave request records an internal per-year allocation and keeps it p
   !allocationSnapshotSubmission.error && allocationSnapshotDate
   && allocationSnapshotRows.length === 1
   && Number(allocationSnapshotRows[0].chargeable_days) === 1
-  && allocationSnapshotRows[0].balance_year === 2027
+  && allocationSnapshotRows[0].balance_year === allocationSnapshotYear
   && allocationSnapshotEmployeeRead?.ok === false && allocationSnapshotManagerRead?.ok === false,
   JSON.stringify({ date: allocationSnapshotDate, allocations: allocationSnapshotRows,
     employeeDenied: allocationSnapshotEmployeeRead?.ok === false,
@@ -4368,7 +4372,7 @@ const allocationSnapshotDecision = allocationSnapshotRequestId
 const allocationSnapshotBalance = allocationSnapshotRequestId
   ? queryAdmin(`SELECT to_jsonb(b) FROM public.employee_leave_balances b
       WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
-        AND leave_type_id='${ids.leaveTypeA}'::uuid AND balance_year=2027`) : null;
+        AND leave_type_id='${ids.leaveTypeA}'::uuid AND balance_year=${allocationSnapshotYear}`) : null;
 const allocationSnapshotRequest = allocationSnapshotRequestId
   ? tableRow('leave_requests', allocationSnapshotRequestId) : null;
 const duplicateAllocationSnapshotDecision = allocationSnapshotRequestId

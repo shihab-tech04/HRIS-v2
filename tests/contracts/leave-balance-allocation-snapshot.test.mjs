@@ -27,4 +27,6 @@ test('isolated Auth/Postgres acceptance changes the calendar before resolving a 
   assert.match(runner, /20261016183000_hris_leave_balance_allocation_snapshot\.sql/);
   assert.match(runner, /Leave approval consumes the submission allocation after the holiday calendar changes/);
   assert.match(runner, /private from employee and manager table reads/);
+  assert.match(runner, /generate_series\('2098-01-01'::date,'2098-02-28'::date/);
+  assert.match(runner, /daterange\(r\.from_date,r\.to_date,'\[\]'\) && daterange\(candidate::date,candidate::date,'\[\]'\)/);
 });

@@ -1476,10 +1476,11 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   activeTenantId.current = tenantId;
   resolvingRequestIdRef.current = resolvingRequestId;
 
-  async function load(range = appliedRequestRange) {
+  async function load(range = appliedRequestRange, showLoading = true) {
     const requestId = ++requestSequence.current;
     const requestedTenantId = tenantId;
-    setLoading(true); setError(''); setEvidenceMessage(''); setEvidenceError('');
+    if (showLoading) setLoading(true);
+    setError(''); setEvidenceMessage(''); setEvidenceError('');
     try {
       const { data: response, error: rpcError } = await supabase.rpc('hris_get_tenant_leave_data', {
         p_tenant_id: requestedTenantId, p_start: range.from || null, p_end: range.to || null,
@@ -1777,7 +1778,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </div>
         </>}
       </section>
-      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load()} />}
+      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
           <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>

@@ -32,6 +32,9 @@ test('leave policy editor is permission-gated and uses tenant-safe create, edit,
   assert.match(policyUi, /active: !item\.active/);
   assert.match(policyUi, /await onRefresh\(\)/);
   assert.match(policyUi, /Existing employee balance records are preserved/);
+  assert.match(workspace, /async function load\(range = appliedRequestRange, showLoading = true\)/);
+  assert.match(workspace, /if \(showLoading\) setLoading\(true\)/);
+  assert.match(workspace, /onRefresh=\{\(\) => load\(appliedRequestRange, false\)\}/);
 });
 
 test('isolated Auth/Postgres tests deny viewers, employees, global-only, cross-tenant, stale, duplicate, and direct writes', () => {
