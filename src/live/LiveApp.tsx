@@ -14,10 +14,11 @@ type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
 type LeaveBalance = { leave_type_id: string; leave_type_name: string; balance_year: number; available_days: number; used_days: number; pending_days: number };
+type Holiday = { id: string; name: string; start_date: string; end_date: string; holiday_type: string | null; description: string | null };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; attendanceToday: AttendanceToday | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], attendanceToday: null });
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], attendanceToday: null });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -370,6 +371,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           leaves: (leaves.data || []) as Leave[],
           leaveTypes: (types.data || []) as LeaveType[],
           leaveBalances: ((leaveContextResult.data as { balances?: LeaveBalance[] } | null)?.balances || []),
+          holidays: ((leaveContextResult.data as { holidays?: Holiday[] } | null)?.holidays || []),
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
@@ -470,6 +472,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My visible leave requests</h2><p className="text-xs text-slate-500">Last 50 RLS-visible requests</p></div>{records.leaves.length ? <ul className="divide-y">{records.leaves.map(item => <li key={item.id} className="p-4 flex justify-between gap-3"><p className="text-sm">{item.from_date} – {item.to_date} ({item.requested_days} days)</p><p className="text-xs font-medium">{item.status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible requests, or access is restricted.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized leave types</h2><p className="text-xs text-slate-500">Current tenant policy records</p></div>{records.leaveTypes.length ? <ul className="divide-y">{records.leaveTypes.map(item => <li key={item.id} className="p-4 flex justify-between gap-3 text-sm"><p>{item.name}</p><p>{item.annual_entitlement == null ? 'Policy-defined' : String(item.annual_entitlement) + ' days'}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible leave types.</p>}</section>
             <section aria-label="Remaining leave balances" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Remaining leave balances</h2><p className="text-xs text-slate-500">Available days after used and pending leave</p></div>{records.leaveBalances.length ? <ul className="divide-y">{records.leaveBalances.map(item => <li key={item.leave_type_id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{item.leave_type_name}</p><p className="text-xs text-slate-500">{item.balance_year} · {item.used_days} used · {item.pending_days} pending</p></div><p className="text-sm font-semibold">{item.available_days} days available</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No leave balances are available for this year.</p>}</section>
+            <section aria-label="Upcoming holidays" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Upcoming holidays</h2><p className="text-xs text-slate-500">Current tenant calendar</p></div>{records.holidays.length ? <ul className="divide-y">{records.holidays.map(item => <li key={item.id} className="p-4"><p className="text-sm font-medium">{item.name}</p><p className="text-xs text-slate-600">{item.start_date === item.end_date ? item.start_date : `${item.start_date} – ${item.end_date}`}{item.holiday_type ? ` · ${item.holiday_type}` : ''}</p>{item.description && <p className="text-xs text-slate-500 mt-1">{item.description}</p>}</li>)}</ul> : <p className="p-4 text-sm text-slate-500">No upcoming holidays are scheduled.</p>}</section>
             </div>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>
