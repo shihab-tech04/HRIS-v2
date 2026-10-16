@@ -87,7 +87,7 @@ try {
   const card = employee.locator(`[data-service-request="${saved.id}"]`);
   await card.waitFor({ state: 'visible' });
   await card.getByText(reason, { exact: true }).waitFor({ state: 'visible' });
-  await card.getByText('অপেক্ষমাণ', { exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('অপেক্ষমাণ', { exact: true }).first().waitFor({ state: 'visible' });
   await employee.getByRole('status').getByText('আপনার অনুরোধ জমা হয়েছে এবং এখন অপেক্ষমাণ।', { exact: true }).waitFor({ state: 'visible' });
   await employee.getByRole('button', { name: 'আমার পরিষেবা অনুরোধ রিফ্রেশ করুন', exact: true }).click();
   await card.getByText(reason, { exact: true }).waitFor({ state: 'visible' });
@@ -100,12 +100,12 @@ try {
   await employee.unroute(historyPath);
   await employee.getByRole('button', { name: 'আবার চেষ্টা করুন', exact: true }).click();
   await card.getByText(reason, { exact: true }).waitFor({ state: 'visible' });
-  await card.getByText('অপেক্ষমাণ', { exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('অপেক্ষমাণ', { exact: true }).first().waitFor({ state: 'visible' });
   await employee.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(employee, 'Bengali service request desktop');
   await employee.getByRole('button', { name: 'Switch language to English' }).click();
   await employee.getByRole('heading', { name: 'My Service Requests', exact: true }).waitFor({ state: 'visible' });
-  await card.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('Pending', { exact: true }).first().waitFor({ state: 'visible' });
   await assertNoOverflow(employee, 'English service request desktop');
 
   const manager = await browser.newPage({ viewport: { width: 375, height: 812 } });
@@ -121,7 +121,7 @@ try {
   await manager.getByRole('heading', { name: 'Service Requests', exact: true }).waitFor({ state: 'visible' });
   const managerCard = manager.locator(`[data-service-request="${saved.id}"]`);
   await managerCard.getByText('Synthetic Employee A', { exact: false }).waitFor({ state: 'visible' });
-  await managerCard.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('Pending', { exact: true }).first().waitFor({ state: 'visible' });
 
   const decisionPath = '**/rest/v1/rpc/hris_resolve_tenant_service_request';
   await manager.route(decisionPath, route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"temporary local acceptance outage"}' }));
@@ -129,9 +129,9 @@ try {
   await manager.getByRole('alert').getByText('This action could not be saved. Refresh the queue and try again.', { exact: true }).waitFor({ state: 'visible' });
   await manager.getByRole('button', { name: 'Refresh before retrying', exact: true }).click();
   await manager.unroute(decisionPath);
-  await managerCard.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('Pending', { exact: true }).first().waitFor({ state: 'visible' });
   await managerCard.getByRole('button', { name: 'Start review', exact: true }).click();
-  await managerCard.getByText('In progress', { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('In progress', { exact: true }).first().waitFor({ state: 'visible' });
 
   await manager.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(manager, 'English service request manager desktop');
@@ -142,8 +142,8 @@ try {
   if (await saveDecision.isEnabled()) throw new Error('Completion was available without a recorded resolution outcome.');
   await outcomeField.fill(outcome);
   await saveDecision.click();
-  await managerCard.getByText('Completed', { exact: true }).waitFor({ state: 'visible' });
-  await managerCard.getByText(outcome, { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('Completed', { exact: true }).first().waitFor({ state: 'visible' });
+  await managerCard.getByText(outcome, { exact: true }).first().waitFor({ state: 'visible' });
 
   const queuePath = '**/rest/v1/rpc/hris_get_tenant_service_requests';
   await manager.route(queuePath, route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"temporary local acceptance outage"}' }));
@@ -151,7 +151,7 @@ try {
   await manager.getByRole('alert').getByText('Unable to load service requests. Try refreshing the queue.', { exact: true }).waitFor({ state: 'visible' });
   await manager.unroute(queuePath);
   await manager.getByRole('button', { name: 'Try again', exact: true }).click();
-  await managerCard.getByText('Completed', { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('Completed', { exact: true }).first().waitFor({ state: 'visible' });
 
   const secondReason = `Synthetic shift change request ${Date.now()}`;
   await employee.getByLabel('Request type').selectOption('shift_change');
@@ -165,10 +165,10 @@ try {
   }
   const secondManagerCard = manager.locator(`[data-service-request="${secondSaved.id}"]`);
   await manager.getByRole('button', { name: 'Refresh service request queue', exact: true }).click();
-  await secondManagerCard.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await secondManagerCard.getByText('Pending', { exact: true }).first().waitFor({ state: 'visible' });
   await secondManagerCard.getByRole('button', { name: 'Reject', exact: true }).click();
   await secondManagerCard.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await secondManagerCard.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await secondManagerCard.getByText('Pending', { exact: true }).first().waitFor({ state: 'visible' });
   await secondManagerCard.getByRole('button', { name: 'Reject', exact: true }).click();
   const rejectionField = secondManagerCard.getByLabel('Reason for rejection', { exact: true });
   const saveRejection = secondManagerCard.getByRole('button', { name: 'Save decision', exact: true });
@@ -176,12 +176,12 @@ try {
   const rejection = 'The requested schedule is not available.';
   await rejectionField.fill(rejection);
   await saveRejection.click();
-  await secondManagerCard.getByText('Rejected', { exact: true }).waitFor({ state: 'visible' });
-  await secondManagerCard.getByText(rejection, { exact: true }).waitFor({ state: 'visible' });
+  await secondManagerCard.getByText('Rejected', { exact: true }).first().waitFor({ state: 'visible' });
+  await secondManagerCard.getByText(rejection, { exact: true }).first().waitFor({ state: 'visible' });
 
   await manager.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await manager.getByRole('heading', { name: 'পরিষেবা অনুরোধ', exact: true }).waitFor({ state: 'visible' });
-  await secondManagerCard.getByText('প্রত্যাখ্যাত', { exact: true }).waitFor({ state: 'visible' });
+  await secondManagerCard.getByText('প্রত্যাখ্যাত', { exact: true }).first().waitFor({ state: 'visible' });
   await manager.setViewportSize({ width: 375, height: 812 });
   await assertNoOverflow(manager, 'Bengali service request manager mobile');
   await manager.setViewportSize({ width: 1280, height: 900 });
@@ -192,10 +192,10 @@ try {
   await employee.getByRole('button', { name: 'আমার পরিষেবা অনুরোধ রিফ্রেশ করুন', exact: true }).click();
   const finalEmployeeCard = employee.locator(`[data-service-request="${saved.id}"]`);
   const finalRejectedCard = employee.locator(`[data-service-request="${secondSaved.id}"]`);
-  await finalEmployeeCard.getByText('সম্পন্ন', { exact: true }).waitFor({ state: 'visible' });
-  await finalEmployeeCard.getByText(outcome, { exact: true }).waitFor({ state: 'visible' });
-  await finalRejectedCard.getByText('প্রত্যাখ্যাত', { exact: true }).waitFor({ state: 'visible' });
-  await finalRejectedCard.getByText(rejection, { exact: true }).waitFor({ state: 'visible' });
+  await finalEmployeeCard.getByText('সম্পন্ন', { exact: true }).first().waitFor({ state: 'visible' });
+  await finalEmployeeCard.getByText(outcome, { exact: true }).first().waitFor({ state: 'visible' });
+  await finalRejectedCard.getByText('প্রত্যাখ্যাত', { exact: true }).first().waitFor({ state: 'visible' });
+  await finalRejectedCard.getByText(rejection, { exact: true }).first().waitFor({ state: 'visible' });
   await finalEmployeeCard.getByText('অবস্থার ইতিহাস', { exact: false }).click();
   await finalEmployeeCard.getByText('চলমান', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(employee, 'Bengali service request employee mobile after HR decisions');
