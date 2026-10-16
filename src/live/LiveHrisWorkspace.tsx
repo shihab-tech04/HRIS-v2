@@ -200,6 +200,11 @@ function displayWorkMode(value: unknown): string {
   return value.trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
+function displayAttendanceStatus(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return 'Not recorded';
+  return value.trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
 function displayAttendanceDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return display(value);
   const [, year, month, day] = value.match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
@@ -3176,7 +3181,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><h3 id="employee-today-heading" className="font-semibold text-[#08263D]">{tx('Today’s attendance')}</h3>
                 <p className="mt-1 text-xs text-slate-500">{employeeDate(today)} · {tx('organization local date')}</p></div>
-              {todayRecord && <span className="rounded-full bg-[#E7F1F3] px-3 py-1 text-xs font-medium text-[#08558B]">{tx(display(todayRecord.status))}</span>}
+              {todayRecord && <span className="rounded-full bg-[#E7F1F3] px-3 py-1 text-xs font-medium text-[#08558B]">{tx(displayAttendanceStatus(todayRecord.status))}</span>}
             </div>
             {todayRecord ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div><p className="text-xs text-slate-500">{tx('Check in')}</p><p className="mt-1 text-sm font-medium">{employeeTime(todayRecord.check_in)}</p></div>
@@ -3261,7 +3266,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
               {activePanel === 'check-in-times' && <div>
                 <h4 className="font-medium text-slate-800">{tx('Check-in history')} · {attendanceMonthLabel}</h4>
                 {attendanceMonthReady && (monthAttendanceRows.length ? <ul className="mt-2 divide-y divide-slate-100">{monthAttendanceRows.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <span><strong>{employeeDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{tx(display(row.status))}</span></span>
+                  <span><strong>{employeeDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{tx(displayAttendanceStatus(row.status))}</span></span>
                   <span className="tabular-nums">{employeeTime(row.check_in)} – {employeeTime(row.check_out)}</span>
                 </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{txf('No attendance records are available for {month}.', { month: attendanceMonthLabel })}</p>)}
               </div>}

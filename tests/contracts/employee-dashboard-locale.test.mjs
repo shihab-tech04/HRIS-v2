@@ -54,6 +54,9 @@ test('real Auth/Postgres browser journey checks Bengali persistence, validation,
 
 test('employee attendance chart exposes its computed weekly values as an accessible table', () => {
   const employeeOverview = workspace.slice(workspace.indexOf('function EmployeeOverview('), workspace.indexOf('export function LiveHrisWorkspace('));
+  assert.match(workspace, /function displayAttendanceStatus\(value: unknown\)/);
+  assert.match(employeeOverview, /tx\(displayAttendanceStatus\(todayRecord\.status\)\)/);
+  assert.match(employeeOverview, /tx\(displayAttendanceStatus\(row\.status\)\)/);
   assert.match(employeeOverview, /<div className="sr-only">\s*<table aria-label=\{tx\('Weekly work-hours data'\)\}>/);
   assert.match(employeeOverview, /weekBuckets\.map\(\(bucket, index\) => <tr key=\{bucket\.label\}>/);
   assert.match(employeeOverview, /employeeNumber\(bucket\.hours, 1\)/);
