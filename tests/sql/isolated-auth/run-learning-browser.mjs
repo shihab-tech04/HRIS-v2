@@ -82,6 +82,20 @@ async function openLearningPrograms(page) {
   await page.getByRole('heading', { name: 'Learning programs', exact: true }).waitFor({ state: 'visible' });
 }
 
+async function assertFocused(locator, description) {
+  await locator.waitFor({ state: 'visible' });
+  const focusRecovered = await locator.evaluate(async element => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (element === document.activeElement) return true;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    return element === document.activeElement;
+  });
+  if (!focusRecovered) {
+    throw new Error(`${description} did not receive keyboard focus.`);
+  }
+}
+
 async function openLearningCompletionQueue(page) {
   const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
@@ -265,11 +279,18 @@ try {
 
   const removeSkillButton = skillCard.getByRole('button', { name: 'Remove Technical communication' });
   await removeSkillButton.click();
+  await assertFocused(page.getByRole('alertdialog').getByRole('button', { name: 'Keep skill' }), 'Skill dialog initial action');
+  await page.keyboard.press('Shift+Tab');
+  await assertFocused(page.getByRole('alertdialog').getByRole('button', { name: 'Remove skill', exact: true }), 'Skill dialog reverse focus wrap');
+  await page.keyboard.press('Tab');
+  await assertFocused(page.getByRole('alertdialog').getByRole('button', { name: 'Keep skill' }), 'Skill dialog forward focus wrap');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Keep skill' }).click();
+  await assertFocused(removeSkillButton, 'Keep skill cancellation focus recovery');
   await skillCard.getByText('Technical communication', { exact: true }).waitFor({ state: 'visible' });
   await removeSkillButton.click();
   await page.keyboard.press('Escape');
   await page.getByRole('alertdialog').waitFor({ state: 'hidden' });
+  await assertFocused(removeSkillButton, 'Escape cancellation focus recovery');
   const skillDeleteResponse = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_delete_my_skill') && response.status() === 200);
   const deleteRefreshContext = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
   const deleteRefreshJoinLinks = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_join_links') && response.status() === 200);
@@ -278,6 +299,7 @@ try {
   await skillDeleteResponse;
   await Promise.all([deleteRefreshContext, deleteRefreshJoinLinks]);
   await page.getByText('Skill removed from your profile.', { exact: true }).waitFor({ state: 'visible' });
+  await assertFocused(page.getByRole('heading', { name: 'Your skill profile', exact: true }), 'Skill removal focus recovery');
   await skillCard.waitFor({ state: 'detached' });
   await page.setViewportSize({ width: 1280, height: 900 });
   const desktopSkillRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
@@ -327,12 +349,19 @@ try {
 
   const enrollmentHistory = page.locator(`[data-learning-enrollment="${enrollment.id}"]`);
   await enrollmentHistory.getByRole('button', { name: 'Cancel enrollment' }).click();
+  await assertFocused(page.getByRole('alertdialog').getByRole('button', { name: 'Keep it' }), 'Enrollment dialog initial action');
+  await page.keyboard.press('Shift+Tab');
+  await assertFocused(page.getByRole('alertdialog').getByRole('button', { name: 'Confirm cancellation' }), 'Enrollment dialog reverse focus wrap');
+  await page.keyboard.press('Tab');
+  await assertFocused(page.getByRole('alertdialog').getByRole('button', { name: 'Keep it' }), 'Enrollment dialog forward focus wrap');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Keep it' }).click();
+  await assertFocused(enrollmentHistory.getByRole('button', { name: 'Cancel enrollment' }), 'Keep enrollment cancellation focus recovery');
   await enrollmentHistory.getByText('Enrolled', { exact: true }).waitFor({ state: 'visible' });
   await enrollmentHistory.getByRole('button', { name: 'Cancel enrollment' }).click();
   const cancelResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_employee_cancel_learning'));
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm cancellation' }).click();
   await cancelResponse;
+  await assertFocused(page.getByRole('heading', { name: 'My Learning', exact: true }), 'Enrollment cancellation focus recovery');
   await page.locator(`[data-learning-enrollment="${enrollment.id}"]`).getByText('Cancelled', { exact: true }).waitFor({ state: 'visible' });
 
   await page.locator(`[data-learning-enrollment="${request.id}"]`).getByRole('button', { name: 'Cancel enrollment' }).click();

@@ -4,6 +4,7 @@ import { BookOpen, CalendarClock, CheckCircle2, Clock3, ExternalLink, Graduation
 import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
 import { learningText } from './learning-locale';
+import { activateModalFocusTrap } from './modal-focus';
 
 type LearningSession = {
   id: string;
@@ -133,10 +134,19 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
   const [revision, setRevision] = useState(0);
   const requestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
+  const myLearningHeadingRef = useRef<HTMLHeadingElement>(null);
   const skillHeadingRef = useRef<HTMLHeadingElement>(null);
+  const skillDeleteDialogRef = useRef<HTMLDivElement>(null);
   const deleteSkillCancelRef = useRef<HTMLButtonElement>(null);
   const deleteSkillTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const skillDeleteCompletedRef = useRef(false);
+  const cancelDialogRef = useRef<HTMLDivElement>(null);
+  const cancelKeepRef = useRef<HTMLButtonElement>(null);
+  const cancelTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const cancelCompletedRef = useRef(false);
+  const savingRef = useRef(savingKey);
   activeTenantId.current = tenantId;
+  savingRef.current = savingKey;
 
   async function load(isCurrent: () => boolean = () => true) {
     const requestId = ++requestSequence.current;
@@ -255,6 +265,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
     try {
       const result = await action();
       if (result.error) throw result.error;
+      if (key.startsWith('cancel:')) cancelCompletedRef.current = true;
       setMessage(tx(success));
       setRevision(value => value + 1);
     } catch (cause) {
@@ -378,10 +389,10 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
       });
       if (result.error) throw result.error;
       if (activeTenantId.current !== requestedTenant) return;
+      skillDeleteCompletedRef.current = true;
       setSkillDeleteTarget(null);
       setSkillMessage(tx('Skill removed from your profile.'));
       setRevision(value => value + 1);
-      requestAnimationFrame(() => skillHeadingRef.current?.focus());
     } catch (cause) {
       if (activeTenantId.current !== requestedTenant) return;
       setSkillError(cause instanceof Error ? tx(cause.message) : tx('Unable to remove this skill. Try again.'));
@@ -394,18 +405,27 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
     if (savingKey) return;
     setSkillDeleteTarget(null);
     setSkillError('');
-    requestAnimationFrame(() => deleteSkillTriggerRef.current?.focus());
   }
 
   useEffect(() => {
     if (!skillDeleteTarget) return;
-    deleteSkillCancelRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !savingKey) closeSkillDelete();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [skillDeleteTarget, savingKey]);
+    return activateModalFocusTrap(skillDeleteDialogRef.current, {
+      initialFocus: deleteSkillCancelRef.current,
+      returnFocus: () => skillDeleteCompletedRef.current ? skillHeadingRef.current : deleteSkillTriggerRef.current,
+      fallbackFocus: skillHeadingRef.current,
+      onEscape: () => { if (!savingRef.current) closeSkillDelete(); },
+    });
+  }, [Boolean(skillDeleteTarget)]);
+
+  useEffect(() => {
+    if (!cancelTarget) return;
+    return activateModalFocusTrap(cancelDialogRef.current, {
+      initialFocus: cancelKeepRef.current,
+      returnFocus: () => cancelCompletedRef.current ? myLearningHeadingRef.current : cancelTriggerRef.current,
+      fallbackFocus: myLearningHeadingRef.current,
+      onEscape: () => { if (!savingRef.current) setCancelTarget(null); },
+    });
+  }, [Boolean(cancelTarget)]);
 
   function selectedSession(program: LearningProgram): string | null {
     return sessionSelection[program.id] || null;
@@ -419,7 +439,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
 
   return <section aria-labelledby="my-learning-heading" className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0"><h2 id="my-learning-heading" className="text-2xl font-medium text-[#49454F]">{tx("My Learning")}</h2>
+      <div className="min-w-0"><h2 id="my-learning-heading" ref={myLearningHeadingRef} tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx("My Learning")}</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">{tx("Explore active learning programs, manage your requests, and keep track of your enrollment history.")}</p></div>
       <button type="button" aria-label={tx("Refresh learning")} onClick={() => setRevision(value => value + 1)} disabled={loading}
         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true" />{tx("Refresh")}</button>
@@ -459,7 +479,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
         : skills.length === 0 ? <p role="status" className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">{tx("No skills recorded yet. Add one to start your profile.")}</p>
           : <ul className="mt-3 grid gap-2 sm:grid-cols-2">{skills.map(skill => <li key={skill.id} data-learning-skill={skill.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-[#F8FCFC] p-3">
             <div className="min-w-0"><p className="break-words text-sm font-medium text-slate-900">{skill.skill_name}</p>{skill.proficiency && <p className="mt-0.5 break-words text-xs text-slate-600">{skill.proficiency} · {tx('Self-reported')}</p>}{skill.verified && <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{tx("Organization verified")}</p>}</div>
-            {!skill.verified && <div className="flex shrink-0 gap-2"><button type="button" disabled={Boolean(savingKey)} onClick={() => { setSkillError(''); setEditingSkillId(skill.id); setSkillName(skill.skill_name); setSkillProficiency(skill.proficiency || ''); document.getElementById('learning-skill-name')?.focus(); }} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium disabled:opacity-50">{tx("Edit")}</button><button type="button" disabled={Boolean(savingKey)} aria-label={tx('Remove {skill}', { skill: skill.skill_name })} onClick={event => { deleteSkillTriggerRef.current = event.currentTarget; setSkillError(''); setSkillDeleteTarget(skill); }} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-rose-800 disabled:opacity-50">{tx("Remove")}</button></div>}
+            {!skill.verified && <div className="flex shrink-0 gap-2"><button type="button" disabled={Boolean(savingKey)} onClick={() => { setSkillError(''); setEditingSkillId(skill.id); setSkillName(skill.skill_name); setSkillProficiency(skill.proficiency || ''); document.getElementById('learning-skill-name')?.focus(); }} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium disabled:opacity-50">{tx("Edit")}</button><button type="button" disabled={Boolean(savingKey)} aria-label={tx('Remove {skill}', { skill: skill.skill_name })} onClick={event => { deleteSkillTriggerRef.current = event.currentTarget; skillDeleteCompletedRef.current = false; setSkillError(''); setSkillDeleteTarget(skill); }} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-rose-800 disabled:opacity-50">{tx("Remove")}</button></div>}
           </li>)}</ul>}
       <div className="mt-4 border-t border-slate-100 pt-4">
         <h4 className="text-sm font-semibold text-[#1E1B39]">{tx('Verified learning')}</h4>
@@ -478,7 +498,7 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
       <p className="mt-2 text-xs text-slate-500">{tx("Skills entered here are not organization verified. Verified skills are read-only in this profile.")}</p>
     </section>
 
-    {skillDeleteTarget && <div role="alertdialog" aria-modal="true" aria-labelledby="delete-skill-title" aria-describedby="delete-skill-description" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (event.target === event.currentTarget) closeSkillDelete(); }}>
+    {skillDeleteTarget && <div ref={skillDeleteDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="delete-skill-title" aria-describedby="delete-skill-description" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (event.target === event.currentTarget) closeSkillDelete(); }}>
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><h3 id="delete-skill-title" className="text-lg font-semibold text-slate-900">{tx("Remove this skill?")}</h3><p id="delete-skill-description" className="mt-2 break-words text-sm text-slate-600">{tx('{skill} will be removed from your skill profile. Organization-verified skills cannot be removed here.', { skill: skillDeleteTarget.skill_name })}</p>{skillError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{skillError}</p>}<div className="mt-5 flex flex-wrap justify-end gap-2"><button ref={deleteSkillCancelRef} type="button" disabled={Boolean(savingKey)} onClick={closeSkillDelete} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">{tx("Keep skill")}</button><button type="button" disabled={Boolean(savingKey)} onClick={() => void deleteSkill()} className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{savingKey === `skill-delete:${skillDeleteTarget.id}` ? tx('Removing…') : tx('Remove skill')}</button></div></div>
     </div>}
 
@@ -542,13 +562,13 @@ export function MyLearning({ tenantId, locale }: { tenantId: string; locale: Loc
                 <button type="button" disabled={Boolean(completionSavingId) || loading || (evidenceRequired && !completionEvidence[enrollment.id])} onClick={() => void submitCompletion(enrollment)} className="min-h-11 w-full rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white hover:bg-[#06466F] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{completionSavingId === enrollment.id ? tx('Submitting…') : tx(enrollment.status === 'returned_for_correction' ? 'Resubmit for verification' : 'Mark completed')}</button>
               </div>}
               {isOpen(enrollment) && enrollment.mandatory && <p className="mt-3 text-xs text-slate-500">{tx("This enrollment was assigned and cannot be cancelled here.")}</p>}
-              {isOpen(enrollment) && !enrollment.mandatory && <button type="button" disabled={Boolean(savingKey)} onClick={() => setCancelTarget(enrollment)} className="mt-3 min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 disabled:opacity-50">{tx("Cancel enrollment")}</button>}
+              {isOpen(enrollment) && !enrollment.mandatory && <button type="button" disabled={Boolean(savingKey)} onClick={event => { cancelTriggerRef.current = event.currentTarget; cancelCompletedRef.current = false; setCancelTarget(enrollment); }} className="mt-3 min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 disabled:opacity-50">{tx("Cancel enrollment")}</button>}
             </article>;
         })}</div>}
     </section>
 
-    {cancelTarget && <div role="alertdialog" aria-modal="true" aria-labelledby="cancel-learning-title" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setCancelTarget(null); }}>
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><h3 id="cancel-learning-title" className="text-lg font-semibold text-slate-900">{tx("Cancel this learning activity?")}</h3><p className="mt-2 break-words text-sm text-slate-600">{tx('{program} will be marked cancelled. You may submit another request or enrollment later if the program remains available.', { program: cancelTarget.program_title })}</p><div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={Boolean(savingKey)} onClick={() => setCancelTarget(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium">{tx("Keep it")}</button><button type="button" disabled={Boolean(savingKey)} onClick={() => void performAction(`cancel:${cancelTarget.id}`, () => supabase.rpc('hris_employee_cancel_learning', { p_tenant_id: tenantId, p_id: cancelTarget.id }), 'Learning activity cancelled.')} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{savingKey === `cancel:${cancelTarget.id}` ? tx('Cancelling…') : tx('Confirm cancellation')}</button></div></div>
+    {cancelTarget && <div ref={cancelDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="cancel-learning-title" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (event.target === event.currentTarget && !savingRef.current) setCancelTarget(null); }}>
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><h3 id="cancel-learning-title" className="text-lg font-semibold text-slate-900">{tx("Cancel this learning activity?")}</h3><p className="mt-2 break-words text-sm text-slate-600">{tx('{program} will be marked cancelled. You may submit another request or enrollment later if the program remains available.', { program: cancelTarget.program_title })}</p><div className="mt-4 flex flex-wrap justify-end gap-2"><button ref={cancelKeepRef} type="button" disabled={Boolean(savingKey)} onClick={() => { if (!savingKey) setCancelTarget(null); }} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium">{tx("Keep it")}</button><button type="button" disabled={Boolean(savingKey)} onClick={() => void performAction(`cancel:${cancelTarget.id}`, () => supabase.rpc('hris_employee_cancel_learning', { p_tenant_id: tenantId, p_id: cancelTarget.id }), 'Learning activity cancelled.')} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{savingKey === `cancel:${cancelTarget.id}` ? tx('Cancelling…') : tx('Confirm cancellation')}</button></div></div>
     </div>}
   </section>;
 }
