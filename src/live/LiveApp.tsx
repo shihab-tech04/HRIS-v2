@@ -27,6 +27,28 @@ type DashboardActionRequest = { id: string; category: string; title: string; sta
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
 type DashboardPayslip = { id: string; pay_period_name: string; pay_date: string | null; currency: string; net_salary: number; basic_salary: number | null; house_rent_allowance: number | null; medical_allowance: number | null; transport_allowance: number | null; special_allowance: number | null; overtime_pay: number | null; bonus: number | null; tax_deduction: number | null; provident_fund_deduction: number | null; leave_without_pay_deduction: number | null; other_deductions: number | null; gross_earnings: number | null; total_deductions: number | null };
 type ProfileChangeRequest = { id: string; field_key: string; reason: string; status: string; submitted_at: string; reviewed_at: string | null; review_note: string | null };
+type EmployeeAddress = { id: string | null; address_type: 'Present' | 'Permanent' | 'Other'; district: string; thana: string; post_code: string; city_village: string; road_block_house: string };
+const employeeAddressTypes: EmployeeAddress['address_type'][] = ['Present', 'Permanent', 'Other'];
+function normalizeEmployeeAddresses(value: unknown): EmployeeAddress[] {
+  if (!Array.isArray(value)) throw new Error('Invalid employee address response.');
+  return value.map((item): EmployeeAddress => {
+    if (!item || typeof item !== 'object') throw new Error('Invalid employee address response.');
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== 'string' || !employeeAddressTypes.includes(row.address_type as EmployeeAddress['address_type'])) {
+      throw new Error('Invalid employee address response.');
+    }
+    const text = (key: string) => typeof row[key] === 'string' ? row[key] as string : '';
+    return {
+      id: row.id,
+      address_type: row.address_type as EmployeeAddress['address_type'],
+      district: text('district'),
+      thana: text('thana'),
+      post_code: text('post_code'),
+      city_village: text('city_village'),
+      road_block_house: text('road_block_house'),
+    };
+  });
+}
 const protectedProfileFields = [
   ['full_name', 'Full name'],
   ['official_email', 'Official email (HR record only)'],
@@ -188,6 +210,12 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   const [profileChangeError, setProfileChangeError] = useState('');
   const [profileChangeMessage, setProfileChangeMessage] = useState('');
   const [profileChangeForm, setProfileChangeForm] = useState({ field_key: 'official_email', requested_value: '', reason: '' });
+  const [addresses, setAddresses] = useState<EmployeeAddress[]>([]);
+  const [addressDraft, setAddressDraft] = useState<EmployeeAddress[]>([]);
+  const [addressesLoading, setAddressesLoading] = useState(true);
+  const [addressesEditing, setAddressesEditing] = useState(false);
+  const [addressesSaving, setAddressesSaving] = useState(false);
+  const [addressesError, setAddressesError] = useState('');
   const [form, setForm] = useState({
     preferred_name: profile.preferred_name || '',
     personal_email: profile.personal_email || '',
@@ -226,6 +254,22 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   }
 
   useEffect(() => { void loadProfileChangeRequests(); }, []);
+
+  async function loadAddresses() {
+    setAddressesLoading(true);
+    setAddressesError('');
+    try {
+      const { data, error: addressError } = await supabase.rpc('employee_get_my_addresses_v2');
+      if (addressError) throw addressError;
+      setAddresses(normalizeEmployeeAddresses(data));
+    } catch {
+      setAddressesError('Your address details are temporarily unavailable. Refresh to try again.');
+    } finally {
+      setAddressesLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadAddresses(); }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -278,6 +322,47 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     }
   }
 
+  async function saveAddresses(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAddressesSaving(true);
+    setAddressesError('');
+    try {
+      const rows = addressDraft
+        .filter(row => row.id || [row.district, row.thana, row.post_code, row.city_village, row.road_block_house].some(value => value.trim()))
+        .map(row => ({
+          ...(row.id ? { id: row.id } : {}),
+          address_type: row.address_type,
+          district: row.district.trim(),
+          thana: row.thana.trim(),
+          post_code: row.post_code.trim(),
+          city_village: row.city_village.trim(),
+          road_block_house: row.road_block_house.trim(),
+        }));
+      const { data, error: saveError } = await supabase.rpc('employee_save_my_addresses_v2', { p_rows: rows });
+      if (saveError) throw saveError;
+      if (Number(data) !== rows.length) throw new Error('Address save count did not match.');
+      await loadAddresses();
+      setAddressesEditing(false);
+      onSaved('Present and permanent addresses saved.');
+    } catch {
+      setAddressesError('Unable to save your address details. Refresh and try again.');
+    } finally {
+      setAddressesSaving(false);
+    }
+  }
+
+  function addAddress(addressType: EmployeeAddress['address_type']) {
+    setAddressDraft(current => [...current, {
+      id: null,
+      address_type: addressType,
+      district: '',
+      thana: '',
+      post_code: '',
+      city_village: '',
+      road_block_house: '',
+    }]);
+  }
+
   return <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
     <div className="border-b p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>{!editing && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setError(''); onSaved(''); setEditing(true); }}>Edit personal information</button>}</div>
     {savedMessage && <p role="status" className="border-b p-3 text-sm text-emerald-800">{savedMessage}</p>}
@@ -307,6 +392,37 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
       <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{profile.marital_status || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{profile.employment_status.replace(/_/g, ' ')}</dd></div>
     </dl>}
+    <section id="employee-addresses" aria-label="Present and permanent addresses" className="border-t">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+        <div><h3 className="font-semibold">Present and permanent addresses</h3><p className="mt-1 text-xs text-slate-500">Manage the address details linked to your employee record.</p></div>
+        {!addressesEditing && !addressesLoading && !addressesError && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setAddressDraft(addresses.map(address => ({ ...address }))); setAddressesEditing(true); setAddressesError(''); }}>Edit addresses</button>}
+      </div>
+      {addressesLoading ? <p className="p-4 text-sm text-slate-500">Loading addresses…</p> : addressesError ? <div className="flex flex-wrap items-center gap-3 p-4"><p role="alert" className="text-sm text-red-800">{addressesError}</p><button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { void loadAddresses(); }}>Retry</button></div> : addressesEditing ? <form className="p-4" onSubmit={saveAddresses}>
+        <div className="space-y-4">
+          {addressDraft.map((address, index) => {
+            const prefix = `${address.address_type} address ${index + 1}`;
+            const idPrefix = `employee-address-${address.id || `new-${index}`}`;
+            return <fieldset key={address.id || `new-${index}`} className="rounded-md border p-4">
+              <legend className="px-1 text-sm font-semibold">{prefix}</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div><label htmlFor={`${idPrefix}-type`} className="block text-xs font-medium text-slate-600">{prefix} type</label><select id={`${idPrefix}-type`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.address_type} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, address_type: event.target.value as EmployeeAddress['address_type'] } : row))}>{employeeAddressTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
+                <div><label htmlFor={`${idPrefix}-district`} className="block text-xs font-medium text-slate-600">{prefix} district</label><input id={`${idPrefix}-district`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.district} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, district: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-thana`} className="block text-xs font-medium text-slate-600">{prefix} thana</label><input id={`${idPrefix}-thana`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.thana} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, thana: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-post-code`} className="block text-xs font-medium text-slate-600">{prefix} post code</label><input id={`${idPrefix}-post-code`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.post_code} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, post_code: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-city-village`} className="block text-xs font-medium text-slate-600">{prefix} city or village</label><input id={`${idPrefix}-city-village`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.city_village} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, city_village: event.target.value } : row))}/></div>
+                <div><label htmlFor={`${idPrefix}-road-block-house`} className="block text-xs font-medium text-slate-600">{prefix} road, block or house</label><input id={`${idPrefix}-road-block-house`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.road_block_house} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, road_block_house: event.target.value } : row))}/></div>
+              </div>
+            </fieldset>;
+          })}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {!addressDraft.some(address => address.address_type === 'Present') && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => addAddress('Present')}>Add present address</button>}
+          {!addressDraft.some(address => address.address_type === 'Permanent') && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => addAddress('Permanent')}>Add permanent address</button>}
+          <button type="submit" disabled={addressesSaving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{addressesSaving ? 'Saving…' : 'Save addresses'}</button>
+          <button type="button" disabled={addressesSaving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setAddressesEditing(false); setAddressDraft([]); setAddressesError(''); }}>Cancel</button>
+        </div>
+      </form> : <ul className="divide-y p-4 text-sm">{addresses.length === 0 ? <li className="text-slate-500">No address details added.</li> : addresses.map(address => <li key={address.id} className="py-3 first:pt-0 last:pb-0"><p className="font-medium">{address.address_type} address</p><p className="mt-1 text-slate-600">{[address.road_block_house, address.city_village, address.thana, address.district, address.post_code].filter(Boolean).join(', ') || 'Not provided'}</p></li>)}</ul>}
+    </section>
     <details className="border-t">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Request a protected profile change</summary>
       <div className="border-t p-4">
