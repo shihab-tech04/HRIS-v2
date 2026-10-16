@@ -4281,6 +4281,9 @@ const leavePolicyEligibleDate = queryAdmin(`SELECT jsonb_build_object('date',to_
   WHERE NOT (extract(dow FROM candidate)::integer=ANY(coalesce(s.weekly_off_days,'{}'::integer[])))
     AND NOT EXISTS (SELECT 1 FROM public.holidays h WHERE h.tenant_id=e.tenant_id
       AND h.active IS TRUE AND candidate BETWEEN h.start_date AND h.end_date)
+    AND NOT EXISTS (SELECT 1 FROM public.leave_requests r WHERE r.tenant_id=e.tenant_id
+      AND r.employee_id=e.id AND r.status IN ('pending','approved')
+      AND daterange(r.from_date,r.to_date,'[]') && daterange(candidate,candidate,'[]'))
   ORDER BY candidate LIMIT 1`);
 const genderRestrictedRequest = await employeeA.client.rpc('hris_employee_submit_leave_request', {
   p_tenant_id: ids.tenantA,
