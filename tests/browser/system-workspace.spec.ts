@@ -82,7 +82,7 @@ test('authorized Super Admin opens real system navigation, not fixture preview',
   await expect(page.getByText('TEST-01')).toBeVisible();
 
   await moduleNav.getByRole('button', { name: /Profile correction requests/ }).click();
-  await expect(page.getByRole('heading', { name: 'Profile correction requests' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Profile correction requests', exact: true })).toBeVisible();
   const changeRequests = page.getByRole('region', { name: 'Profile correction requests' });
   await expect(changeRequests.getByText('new.employee@example.org')).toBeVisible();
   await changeRequests.getByLabel('Reviewer note (optional)').fill('Verified against employee documents.');
