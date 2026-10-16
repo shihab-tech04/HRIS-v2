@@ -6,7 +6,7 @@ This package turns selected policy claims into **fail-closed, reproducible check
 
 ## Contents
 
-- `ux-integrity-gate.mjs` — dependency-free Node 20+ verification controller; positive/negative self-tests.
+- `ux-integrity-gate.mjs` — dependency-free Node 20+ verification controller; positive/negative self-tests (26 scenarios).
 - `manifest.template.json` — deliberately **unapproved** evidence schema; do not turn its placeholders into PASS.
 - `UX_Agent_Operational_Activation_and_Release_Gates.md` — exact activation, governance and acceptance runbook.
 - `verified-tests.txt` — actual self-test output and source code hash.
@@ -31,8 +31,8 @@ Release mode verifies current commit and git diff against the source baseline, c
 
 ## Explicit negative test coverage
 
-20 positive/negative scenarios exercise required/forbidden source patterns, stale candidate SHA, unauthorized paths, unapproved UI, forbidden new controls, defective screenshots passed as baselines, self-approved baselines, changed SHA256 content, missing approved comparison, wrong comparison digest, unverified interaction, unverified requirement, open blocker, test-source drift, deployment mismatch, unresolved authority conflict and checkout drift.
+26 positive/negative scenarios exercise required/forbidden source patterns, stale candidate SHA, unauthorized paths, unapproved UI, forbidden new controls, defective screenshots passed as baselines, self-approved baselines, changed SHA256 content, missing approved comparison, wrong comparison digest, unverified interaction, unverified requirement, open blocker, test-source drift, deployment mismatch, unresolved authority conflict and checkout drift. Additional cases block evidence paths that escape the repository through symlinks, missing forbidden-element assertions, orphan source-to-requirement links, duplicate state or requirement IDs, and an audit with no verified Git provenance being represented as complete.
 
 ## Status
 
-The package's own 20 deterministic tests PASS. Product-specific acceptance **has not passed** on Office Management, TaxPay, HRIS Main or HRIS Candidate. A standalone library package is not an installed production gate. Activation requires a compatible CI workflow, reviewed per-project manifest/source authority, approved visual goldens, full-browser/evidence generation, and owner-enforced protected branches.
+The package's own 26 deterministic tests PASS locally and in all four draft-branch controller CI jobs. Product-specific acceptance **has not passed** on Office Management, TaxPay, HRIS Main or HRIS Candidate. A standalone library package is not an installed production gate. Activation requires a compatible CI workflow, reviewed per-project manifest/source authority, approved visual goldens, full-browser/evidence generation, and owner-enforced protected branches.
