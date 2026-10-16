@@ -25,8 +25,10 @@ const jwtPayload = Buffer.from(JSON.stringify({
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
 test('employee sees own attendance, pending requests and dashboard records', async ({ page }) => {
-  let attendanceFilter: Record<string, string> = {};
-  let attendanceCorrectionFilter: Record<string, string> = {};
+  let dashboardRpcPayload: Record<string, unknown> = {};
+  let attendancePeriodRpcPayload: Record<string, unknown> = {};
+  let legacyAttendanceRestReads = 0;
+  const dashboardDate = new Date().toISOString().slice(0, 10);
   let leaveContextMethod = '';
   let scheduleMethod = '';
   let performanceContextMethod = '';
@@ -100,6 +102,25 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     const table = path.split('/').pop() || '';
     let data: unknown = [];
     if (path.endsWith('/rpc/has_permission')) data = false;
+    else if (path.endsWith('/rpc/hris_get_my_dashboard_data')) {
+      dashboardRpcPayload = JSON.parse(route.request().postData() || '{}');
+      data = {
+        employee: { full_name: 'Synthetic Employee', employee_number: 'SYN-001', official_email: email,
+          designation_title: 'Product Designer', department_name: 'Experience Design' },
+        dashboard_date: dashboardDate,
+        attendance: {
+          records: [{ id: 'ec888888-8888-4888-8888-888888888888', attendance_date: dashboardDate,
+            status: 'late', work_mode: 'home', check_in: `${dashboardDate}T03:00:00.000Z`, check_out: null }],
+          corrections: [{ id: 'ec777777-7777-4777-8777-777777777777', attendance_date: dashboardDate,
+            status: 'pending', requested_at: `${dashboardDate}T13:00:00.000Z` }],
+        },
+      };
+    } else if (path.endsWith('/rpc/hris_get_my_attendance_period')) {
+      attendancePeriodRpcPayload = JSON.parse(route.request().postData() || '{}');
+      data = { tenant_id: tenantId, month_start: attendancePeriodRpcPayload.p_month_start,
+        records: [{ id: 'ec888888-8888-4888-8888-888888888888', attendance_date: dashboardDate,
+          status: 'late', work_mode: 'home', check_in: `${dashboardDate}T03:00:00.000Z`, check_out: null, work_hours: null }] };
+    }
     else if (path.endsWith('/rpc/employee_get_my_profile_change_requests')) data = profileChangeHistory;
     else if (path.endsWith('/rpc/employee_save_my_addresses_v2')) {
       addressSaveMethod = route.request().method();
@@ -202,13 +223,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
         : [];
     } else if (table === 'admin_users') data = { active: false, is_super_admin: false };
     else if (table === 'tenants') data = [{ id: tenantId, name: 'Test tenant', slug: 'test-tenant', timezone: 'Asia/Dhaka' }];
-    else if (table === 'attendance_records') {
-      attendanceFilter = Object.fromEntries(url.searchParams.entries());
-      data = { status: 'late', work_mode: 'home', check_in: '2026-10-16T03:00:00.000Z', check_out: null };
-    } else if (table === 'attendance_corrections') {
-      attendanceCorrectionFilter = Object.fromEntries(url.searchParams.entries());
-      data = [{ id: 'ec777777-7777-4777-8777-777777777777', attendance_date: '2026-10-15', status: 'pending', requested_at: '2026-10-15T13:00:00.000Z' }];
-    }
+    else if (table === 'attendance_records' || table === 'attendance_corrections') legacyAttendanceRestReads += 1;
     if (route.request().method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/0' }, body: '' });
       return;
@@ -226,18 +241,12 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(attendance.getByText('Working remotely')).toBeVisible();
   await expect(attendance.getByText('09:00', { exact: true })).toBeVisible();
   await expect(attendance.getByText('Not checked out', { exact: true })).toBeVisible();
-  expect(attendanceFilter).toMatchObject({
-    select: 'status,work_mode,check_in,check_out',
-    tenant_id: `eq.${tenantId}`,
-    employee_id: `eq.${employeeId}`,
+  expect(dashboardRpcPayload).toEqual({ p_tenant_id: tenantId });
+  expect(attendancePeriodRpcPayload).toMatchObject({
+    p_tenant_id: tenantId,
+    p_month_start: `${dashboardDate.slice(0, 7)}-01`,
   });
-  expect(attendanceFilter.attendance_date).toMatch(/^eq\.\d{4}-\d{2}-\d{2}$/);
-  expect(attendanceCorrectionFilter).toMatchObject({
-    select: 'id,attendance_date,status,requested_at',
-    tenant_id: `eq.${tenantId}`,
-    employee_id: `eq.${employeeId}`,
-    status: 'eq.pending',
-  });
+  expect(legacyAttendanceRestReads).toBe(0);
   expect(leaveContextMethod).toBe('POST');
   expect(scheduleMethod).toBe('POST');
   expect(performanceContextMethod).toBe('POST');

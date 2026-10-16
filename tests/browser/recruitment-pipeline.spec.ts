@@ -58,8 +58,10 @@ test('recruiter reviews an application, signs a private CV link and persists a s
     const request = route.request();
     const url = new URL(request.url());
     const endpoint = url.pathname.split('/').pop();
-    if (endpoint === 'has_permission') {
-      const permission = (request.postDataJSON() as { p_permission_id?: string }).p_permission_id || '';
+    if (endpoint === 'has_permission' || endpoint === 'has_tenant_permission') {
+      const payload = request.postDataJSON() as { p_permission_id?: string; p_tenant_id?: string };
+      if (endpoint === 'has_tenant_permission') expect(payload.p_tenant_id).toBe(tenantId);
+      const permission = payload.p_permission_id || '';
       permissionChecks.push(permission);
       await route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify(permission === 'recruitment.view' || permission === 'recruitment.manage') });
