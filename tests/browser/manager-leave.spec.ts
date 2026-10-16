@@ -128,7 +128,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
   await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Organization holidays' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /Synthetic holiday/ })).toContainText('2026-12-16');
 
   const calendarMonth = page.getByLabel('Month', { exact: true });
@@ -151,9 +151,32 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(page.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
+  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
 
   const table = page.getByRole('table', { name: 'Leave requests' });
+  const requestFrom = page.locator('#leave-request-from');
+  const requestTo = page.locator('#leave-request-to');
+  await requestFrom.fill('2026-10-01');
+  await requestTo.fill('2026-10-01');
+  await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('approved');
+  expect(absenceWindows).toContainEqual({ p_start: '2026-10-01', p_end: '2026-10-01' });
+
+  await requestFrom.fill('2026-10-22');
+  await requestTo.fill('2026-10-21');
+  await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('The end date must be on or after the start date.');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+
+  await requestFrom.fill('2026-10-20');
+  await requestTo.fill('2026-10-22');
+  await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await expect(page.getByRole('status').filter({ hasText: 'Showing 2 of 2' })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear dates', exact: true }).click();
   await expect(table.locator('tbody tr')).toHaveCount(4);
   await expect(table.getByRole('row', { name: /Nabil Hasan/ })).toContainText('Decision note: Policy evidence was incomplete.');
   const evidenceDownload = page.waitForEvent('download');
@@ -226,5 +249,6 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(table.locator('tbody tr')).toHaveCount(4);
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(page.getByRole('region', { name: 'Leave request results' })).toBeVisible();
+  await expect(page.getByLabel('From date', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
 });

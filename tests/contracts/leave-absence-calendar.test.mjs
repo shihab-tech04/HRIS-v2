@@ -27,10 +27,23 @@ test('absence calendar loads by active tenant and date range, shows approved lea
   assert.match(workspace, /loadAbsenceSchedule\(absenceMonth\)/);
 });
 
+test('manager leave date controls use the tenant-scoped overlap query and recover to the full queue', () => {
+  assert.match(workspace, /p_tenant_id: requestedTenantId, p_start: range\.from \|\| null, p_end: range\.to \|\| null/);
+  assert.match(workspace, /requestFromDate && requestToDate && requestFromDate > requestToDate/);
+  assert.match(workspace, /setAppliedRequestRange\(\{ from: '', to: '' \}\)/);
+  assert.match(workspace, /aria-label="Leave request results"/);
+  assert.match(browser, /2026-10-01/);
+  assert.match(browser, /The end date must be on or after the start date\./);
+  assert.match(browser, /Clear dates/);
+  assert.match(browser, /Showing 2 of 2/);
+});
+
 test('Bengali labels and isolated tenant/date acceptance cover the calendar journey', () => {
   for (const phrase of ['Absence calendar','Previous month','Next month','Current month','Loading absence calendar…',
     'people on leave','Approved absences on','No approved absences on this date.','Organization holidays on',
-    'No organization holidays on this date.']) {
+    'No organization holidays on this date.','Search requests','Employee, leave type, date…','Filter by status',
+    'From date','To date','Apply date range','Clear dates','The end date must be on or after the start date.',
+    'Showing {shown} of {total}']) {
     assert.ok(locale.includes(`'${phrase}':`), `missing Bengali translation: ${phrase}`);
   }
   assert.ok(runner.includes('20261016105659_hris_tenant_leave_date_filter.sql'));

@@ -1454,6 +1454,10 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [requestFromDate, setRequestFromDate] = useState('');
+  const [requestToDate, setRequestToDate] = useState('');
+  const [appliedRequestRange, setAppliedRequestRange] = useState({ from: '', to: '' });
+  const [filterError, setFilterError] = useState('');
   const [absenceMonth, setAbsenceMonth] = useState(() => leaveCalendarMonth());
   const [selectedAbsenceDate, setSelectedAbsenceDate] = useState(() => localIsoDate(new Date()));
   const [absenceData, setAbsenceData] = useState<LeaveData | null>(null);
@@ -1471,13 +1475,13 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   activeTenantId.current = tenantId;
   resolvingRequestIdRef.current = resolvingRequestId;
 
-  async function load() {
+  async function load(range = appliedRequestRange) {
     const requestId = ++requestSequence.current;
     const requestedTenantId = tenantId;
     setLoading(true); setError(''); setEvidenceMessage(''); setEvidenceError('');
     try {
       const { data: response, error: rpcError } = await supabase.rpc('hris_get_tenant_leave_data', {
-        p_tenant_id: requestedTenantId, p_start: null, p_end: null,
+        p_tenant_id: requestedTenantId, p_start: range.from || null, p_end: range.to || null,
       });
       if (rpcError) throw rpcError;
       const value = asObject(response);
@@ -1526,10 +1530,10 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     setData(null); dataTenantId.current = '';
     setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
     setDownloadingEvidenceId(''); setEvidenceMessage(''); setEvidenceError('');
-    setSearch(''); setStatusFilter('all');
-    void load();
+    setSearch(''); setStatusFilter('all'); setFilterError('');
+    void load(appliedRequestRange);
     return () => { requestSequence.current += 1; };
-  }, [tenantId]);
+  }, [tenantId, appliedRequestRange]);
 
   useEffect(() => {
     setAbsenceData(null);
@@ -1602,6 +1606,29 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
       return matchesStatus && (!needle || searchText.includes(needle));
     });
   }, [visibleData, search, statusFilter]);
+
+  function applyRequestDateRange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (requestFromDate && requestToDate && requestFromDate > requestToDate) {
+      setFilterError(tx('The end date must be on or after the start date.'));
+      return;
+    }
+    setFilterError('');
+    const nextRange = { from: requestFromDate, to: requestToDate };
+    if (nextRange.from === appliedRequestRange.from && nextRange.to === appliedRequestRange.to) {
+      void load(nextRange);
+      return;
+    }
+    setAppliedRequestRange(nextRange);
+  }
+
+  function clearRequestDateRange() {
+    setRequestFromDate('');
+    setRequestToDate('');
+    setFilterError('');
+    if (!appliedRequestRange.from && !appliedRequestRange.to) return;
+    setAppliedRequestRange({ from: '', to: '' });
+  }
 
   async function resolveRequest(id: string, decision: 'approved' | 'rejected', note: string | null = null) {
     if (resolvingRequestId) return;
@@ -1750,20 +1777,32 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </>}
       </section>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">Search requests</label>
+        <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
+          <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
             <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
-              placeholder="Employee, leave type, date…" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+              placeholder={tx('Employee, leave type, date…')} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
           </div>
-          <div className="sm:w-52"><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">Filter by status</label>
+          <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
+            <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-to" className="mb-1 block text-xs font-medium text-slate-600">{tx('To date')}</label>
+            <input id="leave-request-to" type="date" value={requestToDate} onChange={event => setRequestToDate(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Filter by status')}</label>
             <select id="leave-request-status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}
               className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-              <option value="all">All statuses</option>
+              <option value="all">{tx('All statuses')}</option>
               {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{status.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</option>)}
             </select>
           </div>
-          <p className="pb-3 text-xs text-slate-500" role="status">Showing {filteredRequests.length} of {visibleData.requests.length}</p>
-        </div>
+          <button type="submit" className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770]">{tx('Apply date range')}</button>
+          <button type="button" onClick={clearRequestDateRange} disabled={!requestFromDate && !requestToDate && !appliedRequestRange.from && !appliedRequestRange.to}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Clear dates')}</button>
+          {filterError && <p className="text-sm text-rose-700 sm:col-span-2 xl:col-span-6" role="alert">{filterError}</p>}
+          <p className="text-xs text-slate-500 sm:col-span-2 xl:col-span-6" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>
+        </form>
         {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : !filteredRequests.length
           ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
           <table className="w-full min-w-[760px] text-left text-sm" aria-label="Leave requests">
