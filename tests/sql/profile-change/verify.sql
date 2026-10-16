@@ -102,12 +102,13 @@ SELECT public.check_profile_change(
    FROM public.employee_profile_change_requests WHERE id = :'approved_request_id'::uuid),
   'Approval decision and reviewer note persist'
 );
+-- Inspect the audit table as the migration owner, not as the authenticated reviewer.
+RESET ROLE;
 SELECT public.check_profile_change(
   (SELECT count(*) = 1 AND bool_and(details ? 'field_key' AND NOT (details ? 'requested_value'))
    FROM public.admin_audit_logs WHERE target_id = :'approved_request_id'),
   'Audit record records the decision without copying the sensitive proposed value'
 );
-RESET ROLE;
 
 -- Authorized HR rejection leaves the employee record unchanged.
 SET ROLE authenticated;
