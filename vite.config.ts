@@ -6,8 +6,29 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
-    base: process.env.GITHUB_PAGES === 'true' ? '/HRIS-v2/' : '/',
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'hris-dev-entry',
+        configureServer(server) {
+          server.middlewares.use((request, _response, next) => {
+            if (request.url === '/' || request.url?.startsWith('/?')) {
+              request.url = `/app.html${request.url.slice(1)}`;
+            }
+            next();
+          });
+        },
+      },
+    ],
+    base: process.env.GITHUB_PAGES === 'true' || process.env.NODE_ENV === 'production'
+      ? '/HRIS-v2/'
+      : '/',
+    build: {
+      rollupOptions: {
+        input: fileURLToPath(new URL('./app.html', import.meta.url)),
+      },
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('.', import.meta.url)),

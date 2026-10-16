@@ -26,6 +26,8 @@ jobs:
         env:
           GITHUB_PAGES: 'true'
         run: npm run build
+      - name: Verify the branch-served Pages entry matches the production build
+        run: git diff --exit-code -- index.html assets .nojekyll
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser smoke gate
