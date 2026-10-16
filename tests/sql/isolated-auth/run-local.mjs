@@ -3994,6 +3994,8 @@ record('Tenant B manager reads tenant B leave rows without seeing tenant A',
 
 const dashboardB = queryAs(managerB, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantB}'::uuid)`);
 const dashboardA = queryAs(managerA, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantA}'::uuid)`);
+const attendanceDataA = queryAs(managerA, `SELECT public.hris_get_tenant_attendance_data(
+  '${ids.tenantA}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,false)`);
 const attendanceDataB = queryAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
   '${ids.tenantB}'::uuid,'${localCurrentDate}'::date,'${localCurrentDate}'::date,NULL,NULL,false)`);
 const attendanceReportA = queryAs(managerA, `SELECT public.hris_get_tenant_attendance_data(
@@ -4014,12 +4016,19 @@ const dashboardTeamReportFixtureDate = queryAs(managerA, `SELECT public.hris_get
 const reportEmployeeA = attendanceReportA.find(row => row.employee_number === 'QA-A-001');
 const reportEmployeeB = attendanceReportB.find(row => row.employee_number === 'QA-B-001');
 const reportCrossTenantTeam = attendanceReportA.find(row => row.employee_number === 'QA-A-002');
+const detailEmployeeA = attendanceDataA.records.find(row => row.employee_number === 'QA-A-001');
+const detailCrossTenantTeam = attendanceDataA.records.find(row => row.employee_number === 'QA-A-002');
 record('Attendance report resolves same-tenant teams and suppresses cross-tenant team references',
   reportEmployeeA?.team_name === 'QA A Team'
   && reportEmployeeB?.team_name === 'QA B Team'
   && reportCrossTenantTeam?.team_name == null,
   JSON.stringify({ tenantA: reportEmployeeA?.team_name, tenantB: reportEmployeeB?.team_name,
     mismatchedTenantReference: reportCrossTenantTeam?.team_name }));
+record('Attendance detail resolves same-tenant teams and suppresses cross-tenant team references',
+  detailEmployeeA?.team_name === 'QA A Team'
+  && detailCrossTenantTeam?.team_name == null,
+  JSON.stringify({ sameTenant: detailEmployeeA?.team_name,
+    mismatchedTenantReference: detailCrossTenantTeam?.team_name }));
 record('reports.view-only membership can read the aggregate report but not attendance details',
   attendanceReportOnlyA.some(row => row.team_name === 'QA A Team') && !attendanceDetailsReportOnly.ok);
 const dashboardTeamA = dashboardTeamReportA.teams.find(row => row.team_name === 'QA A Team');
@@ -4089,6 +4098,7 @@ record('Tenant B dashboard, attendance and leave RPCs return tenant B data only'
   && Number(dashboardB.on_leave_today) === 0
   && attendanceDataB.records.length === 1
   && attendanceDataB.records[0].tenant_id === ids.tenantB
+  && attendanceDataB.records[0].team_name === 'QA B Team'
   && leaveDataB.requests.length === 2
   && leaveDataB.requests.every(request => request.tenant_id === ids.tenantB));
 const dashboardAValid = Number(dashboardA.team_members) === 6

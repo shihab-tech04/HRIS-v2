@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261012183000_hris_attendance_report_team_name.sql', import.meta.url), 'utf8');
+const detailMigration = readFileSync(new URL('../../supabase/migrations/20261016003910_attendance_detail_team_name.sql', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const csv = readFileSync(new URL('../../src/live/csv.ts', import.meta.url), 'utf8');
 const searchAsset = readFileSync(new URL('../../src/assets/attendance-search.svg', import.meta.url), 'utf8');
 const downloadAsset = readFileSync(new URL('../../src/assets/attendance-download.png', import.meta.url));
@@ -25,6 +27,19 @@ test('attendance report export includes the displayed Team Name field', () => {
   assert.match(workspace, /'designation_title', 'team_name', 'department_name'/);
   assert.match(workspace, /'Designation', 'Team Name', 'Department'/);
   assert.match(browser, /Synthetic Product Team/);
+});
+
+test('attendance detail returns only same-tenant team labels and keeps executable access restricted', () => {
+  assert.match(detailMigration, /ds\.title designation_title,t\.name team_name/);
+  assert.match(detailMigration, /LEFT JOIN public\.teams t ON t\.id=e\.team_id AND t\.tenant_id=p_tenant_id/);
+  assert.match(detailMigration, /FROM PUBLIC, anon/);
+  assert.match(detailMigration, /TO authenticated, service_role/);
+  assert.match(workspace, /'designation_title', 'team_name', 'department_name', 'attendance_date'/);
+  assert.match(workspace, /projectText\(locale, 'Team Name'\)/);
+  assert.match(browser, /Synthetic Product Team/);
+  const bengaliTeamName = String.fromCodePoint(0x09a6, 0x09b2, 0x09c7, 0x09b0, 0x0020, 0x09a8, 0x09be, 0x09ae);
+  assert.ok(locale.includes(`'Team Name': '${bengaliTeamName}'`));
+  assert.ok(browser.includes(`name: '${bengaliTeamName}'`));
 });
 
 test('Figma team filter applies to visible attendance rows and CSV exports', () => {

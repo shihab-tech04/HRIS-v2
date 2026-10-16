@@ -26,12 +26,14 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     id: 'e3333333-3333-4333-8333-333333333333', employee_id: 'e4444444-4444-4444-8444-444444444444',
     full_name: 'Synthetic Attendance Employee', employee_number: 'ATT-001',
     designation_title: 'UX Designer', department_name: 'Experience Design',
+    team_name: 'Synthetic Product Team',
     attendance_date: '2026-10-12', check_in: '2026-10-12T03:13:16.000Z',
     check_out: '2026-10-12T11:46:58.000Z', work_mode: 'office', status: 'present', work_hours: 8.56,
   };
   const syntheticLateAttendance = {
     ...syntheticAttendance, id: 'e5555555-5555-4555-8555-555555555555', employee_id: 'e6666666-6666-4666-8666-666666666666',
     full_name: 'Synthetic Late Employee', employee_number: 'ATT-002', status: 'late', work_hours: 8.3,
+    team_name: 'Synthetic Design Team',
   };
   const allAttendance = [syntheticAttendance, syntheticLateAttendance];
   const correctionRequests: Record<string, unknown>[] = [
@@ -131,9 +133,15 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Attendance Report' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
+  const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
+  await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
   await expect(row).toContainText('ATT-001');
   await expect(row).toContainText('UX Designer');
+  await expect(row).toContainText('Synthetic Product Team');
   await expect(row).toContainText('Experience Design');
   await expect(row).toContainText('12-10-2026');
   await expect(row).toContainText('Office');
@@ -191,6 +199,11 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Download report' }).click();
   const download = await downloadWaiter;
   expect(download.suggestedFilename()).toMatch(/^attendance-report-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.csv$/);
+  const detailCsvStream = await download.createReadStream();
+  let detailCsv = '';
+  if (detailCsvStream) for await (const chunk of detailCsvStream) detailCsv += chunk.toString();
+  expect(detailCsv).toContain('"Team Name"');
+  expect(detailCsv).toContain('"Synthetic Design Team"');
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);

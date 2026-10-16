@@ -803,7 +803,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   </section>;
 }
 
-function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantId: string; canView: boolean; canReport: boolean; canManage: boolean }) {
+function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: { tenantId: string; canView: boolean; canReport: boolean; canManage: boolean; locale: Locale }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -968,10 +968,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     if (!exportRows.length) return;
     const fields = aggregateOnly
       ? ['employee_name', 'employee_number', 'designation_title', 'team_name', 'department_name', 'attendance_days', 'office_hours', 'working_hours', 'deviation']
-      : ['full_name', 'employee_number', 'designation_title', 'department_name', 'attendance_date', 'check_in', 'check_out', 'work_mode', 'status', 'work_hours'];
+      : ['full_name', 'employee_number', 'designation_title', 'team_name', 'department_name', 'attendance_date', 'check_in', 'check_out', 'work_mode', 'status', 'work_hours'];
     const labels = aggregateOnly
       ? ['Employee', 'Employee number', 'Designation', 'Team Name', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation']
-      : ['Employee', 'Employee number', 'Designation', 'Department', 'Date', 'Check in', 'Check out', 'Work location', 'Status', 'Working hours'];
+      : ['Employee', 'Employee number', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Check in', 'Check out', 'Work location', 'Status', 'Working hours'];
     downloadCsv(`attendance-report-${from}-${to}.csv`, labels, exportRows.map(row => fields.map(field => row[field])));
   }
 
@@ -1122,9 +1122,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
     </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-        <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1160px] border-spacing-0'}`}>
+          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1280px] border-spacing-0'}`}>
           <thead className="bg-white text-xs text-slate-500"><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="border-b border-slate-200 px-4 py-4 font-medium">
+            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="border-b border-slate-200 px-4 py-4 font-medium">
               {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">
                 <span>{label}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
@@ -1160,7 +1160,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage }: { tenantI
                 </div>
               </td>
               <td className={cellClass}>{display(row.designation_title)}</td>
-              {aggregateOnly && <td className={cellClass}>{display(row.team_name)}</td>}
+              <td className={cellClass}>{display(row.team_name)}</td>
               <td className={cellClass}>{display(row.department_name)}</td>
               {aggregateOnly ? <>
                 <td className={cellClass}>{displayAttendanceDate(from)}</td><td className={cellClass}>{displayAttendanceDate(to)}</td>
@@ -3074,7 +3074,7 @@ export function LiveHrisWorkspace({
           {current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
-            tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage}
+            tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale}
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} />}
