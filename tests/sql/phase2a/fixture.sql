@@ -9,7 +9,8 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
  SELECT NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
 $$;
 CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
- SELECT jsonb_build_object('email',current_setting('request.jwt.claim.email',true))
+ SELECT coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)
+        || jsonb_build_object('email',current_setting('request.jwt.claim.email',true))
 $$;
 CREATE FUNCTION public.is_live_session()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$

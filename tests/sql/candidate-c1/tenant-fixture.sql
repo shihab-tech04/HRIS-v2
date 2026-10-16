@@ -253,17 +253,6 @@ BEGIN
   END IF;
 END $do$;
 
--- The earlier Phase 2A fixture only exposes email from auth.jwt(). Candidate
--- tenant tests also need the synthetic session_id claim for is_live_session().
-CREATE OR REPLACE FUNCTION auth.jwt()
-RETURNS jsonb
-LANGUAGE sql
-STABLE
-AS $function$
-  SELECT coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
-    || jsonb_build_object('email', current_setting('request.jwt.claim.email', true));
-$function$;
-
 CREATE OR REPLACE FUNCTION public.is_live_session()
 RETURNS boolean
 LANGUAGE sql
