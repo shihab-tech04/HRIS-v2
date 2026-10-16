@@ -172,7 +172,7 @@ try {
   await noOverflow(managerPage, 'project review mobile view');
 
   await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await persistedCard.getByText('Rejected', { exact: true }).waitFor({ state: 'visible' });
+  await persistedCard.getByText('Rejected', { exact: true }).first().waitFor({ state: 'visible' });
   await persistedCard.getByRole('button', { name: 'Correct this project portion', exact: true }).click();
   await employeePage.getByLabel('Hours', { exact: true }).fill('4');
   await employeePage.getByLabel('Note (optional)', { exact: true }).fill(`${marker} corrected`);
@@ -191,7 +191,7 @@ try {
 
   await employeePage.setViewportSize({ width: 1280, height: 900 });
   await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await persistedCard.getByText('Approved', { exact: true }).waitFor({ state: 'visible' });
+  await persistedCard.getByText('Approved', { exact: true }).first().waitFor({ state: 'visible' });
   await noOverflow(employeePage, 'employee timesheet desktop view');
 
   if (employeeSaveOutage || employeeCorrectionOutage || managerQueueOutage) throw new Error('The browser recovery path did not exercise every injected outage.');
