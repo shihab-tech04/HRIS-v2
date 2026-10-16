@@ -8,6 +8,7 @@ const workspace = read('../../src/live/LiveHrisWorkspace.tsx');
 const locale = read('../../src/live/project-locale.ts');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../browser/manager-leave.spec.ts');
+const isolatedAuthBrowser = read('../sql/isolated-auth/run-leave-evidence-browser.mjs');
 
 test('tenant leave date bounds return requests overlapping the requested interval', () => {
   assert.match(migration, /has_tenant_permission\(p_tenant_id, 'leave\.view'\)[\s\S]+?has_tenant_permission\(p_tenant_id, 'leave\.manage'\)/);
@@ -53,4 +54,14 @@ test('Bengali labels and isolated tenant/date acceptance cover the calendar jour
   assert.match(browser, /Switch language to Bengali/);
   assert.match(browser, /375/);
   assert.match(browser, /absenceWindows/);
+});
+
+test('real Auth/Postgres leave acceptance verifies persisted manager filtering and approved calendar data', () => {
+  assert.match(isolatedAuthBrowser, /p_tenant_id === process\.env\.HRIS_LOCAL_LEAVE_TENANT_ID[\s\S]+?p_start === '2026-10-20' && payload\?\.p_end === '2026-10-20'/);
+  assert.match(isolatedAuthBrowser, /rangedUiRequest\.status !== 'approved'/);
+  assert.match(isolatedAuthBrowser, /p_start === '2026-10-01' && payload\?\.p_end === '2026-10-31'/);
+  assert.match(isolatedAuthBrowser, /approvedEvidenceRequest\?\.status !== 'approved'[\s\S]+?rejectedRequest\?\.status !== 'rejected'/);
+  assert.match(isolatedAuthBrowser, /No approved absences on this date\./);
+  assert.match(isolatedAuthBrowser, /Manager absence calendar Bengali mobile/);
+  assert.match(runner, /run-leave-evidence-browser\.mjs/);
 });

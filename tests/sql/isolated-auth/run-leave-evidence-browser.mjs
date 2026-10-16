@@ -313,7 +313,74 @@ try {
   await manager.getByRole('status').filter({ hasText: 'Leave request rejected.' }).waitFor({ state: 'visible' });
   await rejectionRow.getByRole('cell').filter({ hasText: 'rejected' }).waitFor({ state: 'visible' });
   await rejectionRow.getByText(`Decision note: ${process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE}`).waitFor({ state: 'visible' });
+
+  const managerRangeResponse = manager.waitForResponse(response => {
+    if (response.request().method() !== 'POST'
+        || !new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_get_tenant_leave_data')) return false;
+    const payload = response.request().postDataJSON();
+    return payload?.p_tenant_id === process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      && payload?.p_start === '2026-10-20' && payload?.p_end === '2026-10-20';
+  }, { timeout: 10000 });
+  await manager.locator('#leave-request-from').fill('2026-10-20');
+  await manager.locator('#leave-request-to').fill('2026-10-20');
+  await manager.getByRole('button', { name: 'Apply date range', exact: true }).click();
+  const managerRange = await managerRangeResponse;
+  if (!managerRange.ok()) throw new Error(`Same-tenant manager date filter returned ${managerRange.status()}.`);
+  const managerRangeData = await managerRange.json();
+  const rangedUiRequest = Array.isArray(managerRangeData?.requests)
+    ? managerRangeData.requests.find(item => item.id === uiLeaveRequestId)
+    : null;
+  if (!rangedUiRequest || rangedUiRequest.status !== 'approved') {
+    throw new Error('The real manager date filter did not return the approved UI request overlapping 2026-10-20.');
+  }
+  await uiManagerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'Clear dates', exact: true }).click();
+  await managerRow.waitFor({ state: 'visible' });
+  await rejectionRow.waitFor({ state: 'visible' });
+
+  const calendarMonth = manager.locator('#leave-absence-month');
+  await calendarMonth.fill('2026-11');
+  await manager.getByRole('region', { name: 'Absence calendar November 2026' }).waitFor({ state: 'visible' });
+  const octoberCalendarResponse = manager.waitForResponse(response => {
+    if (response.request().method() !== 'POST'
+        || !new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_get_tenant_leave_data')) return false;
+    const payload = response.request().postDataJSON();
+    return payload?.p_tenant_id === process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      && payload?.p_start === '2026-10-01' && payload?.p_end === '2026-10-31';
+  }, { timeout: 10000 });
+  await calendarMonth.fill('2026-10');
+  const octoberResponse = await octoberCalendarResponse;
+  if (!octoberResponse.ok()) throw new Error(`Same-tenant manager absence calendar returned ${octoberResponse.status()}.`);
+  const octoberData = await octoberResponse.json();
+  const octoberRequests = Array.isArray(octoberData?.requests) ? octoberData.requests : [];
+  const approvedEvidenceRequest = octoberRequests.find(item => item.id === process.env.HRIS_LOCAL_LEAVE_REQUEST_ID);
+  const approvedUiRequest = octoberRequests.find(item => item.id === uiLeaveRequestId);
+  const rejectedRequest = octoberRequests.find(item => item.id === process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID);
+  if (approvedEvidenceRequest?.status !== 'approved' || approvedUiRequest?.status !== 'approved'
+      || rejectedRequest?.status !== 'rejected') {
+    throw new Error('The real tenant-scoped October response did not preserve both approvals and the rejection.');
+  }
+  const octoberCalendar = manager.getByRole('region', { name: 'Absence calendar October 2026' });
+  await octoberCalendar.waitFor({ state: 'visible' });
+  const october19 = octoberCalendar.getByRole('button', { name: /October 19, 2026, \d+ people on leave/ });
+  await october19.click();
+  const selectedOctober19 = manager.getByRole('heading', { name: /Approved absences on/ }).locator('..');
+  await selectedOctober19.getByText('Synthetic Employee A').waitFor({ state: 'visible' });
+  const october22 = octoberCalendar.getByRole('button', { name: /October 22, 2026,/ });
+  await october22.click();
+  const selectedOctober22 = manager.getByRole('heading', { name: /Approved absences on/ }).locator('..');
+  await selectedOctober22.getByText('No approved absences on this date.').waitFor({ state: 'visible' });
+  if ((await selectedOctober22.innerText()).includes('Synthetic Employee A')) {
+    throw new Error('The absence calendar displayed the employee’s rejected request as approved leave.');
+  }
+
   await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
+  await manager.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await manager.setViewportSize({ width: 375, height: 812 });
+  await manager.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' }).waitFor({ state: 'visible' });
+  await manager.getByLabel('মাস', { exact: true }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'আগের মাস' }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(manager, 'Manager absence calendar Bengali mobile');
   await managerContext.close();
 
   const refreshedEmployeeContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
