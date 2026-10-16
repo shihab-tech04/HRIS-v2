@@ -171,17 +171,36 @@ try {
   await managerCard.getByRole('heading', { name: destination }).waitFor({ state: 'visible' });
   await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await managerPage.getByRole('heading', { name: 'ভ্রমণ অনুরোধ', exact: true }).waitFor({ state: 'visible' });
-  await managerCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন' }).click();
-  await managerPage.getByRole('alertdialog').getByRole('button', { name: 'বাতিল', exact: true }).click();
+  const returnRequestButton = managerCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন' });
+  await returnRequestButton.click();
+  const cancelledDecisionDialog = managerPage.getByRole('alertdialog');
+  const cancelledDecisionNote = cancelledDecisionDialog.getByLabel('নোট');
+  if (!(await cancelledDecisionNote.evaluate(element => element === document.activeElement))) throw new Error('Travel decision dialog did not focus its note field.');
+  const cancelTravelDecision = cancelledDecisionDialog.getByRole('button', { name: 'বাতিল', exact: true });
+  const confirmTravelReturn = cancelledDecisionDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true });
+  await managerPage.keyboard.press('Shift+Tab');
+  if (!(await confirmTravelReturn.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the travel decision dialog.');
+  await managerPage.keyboard.press('Tab');
+  if (!(await cancelledDecisionNote.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the travel decision dialog.');
+  await cancelTravelDecision.click();
+  await cancelledDecisionDialog.waitFor({ state: 'detached' });
+  if (!(await returnRequestButton.evaluate(element => element === document.activeElement))) throw new Error('Cancelling a travel decision did not restore focus to its trigger.');
   await managerCard.waitFor({ state: 'visible' });
-  await managerCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন' }).click();
-  await managerPage.getByRole('alertdialog').getByLabel('নোট').fill('Please clarify the visit objective.');
+  await returnRequestButton.click();
+  const rejectionDialog = managerPage.getByRole('alertdialog');
+  const rejectionNote = rejectionDialog.getByLabel('নোট');
+  if (!(await rejectionNote.evaluate(element => element === document.activeElement))) throw new Error('Travel rejection dialog did not focus its note field.');
+  await managerPage.keyboard.press('Shift+Tab');
+  if (!(await rejectionDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true }).evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the travel rejection dialog.');
+  await managerPage.keyboard.press('Tab');
+  if (!(await rejectionNote.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the travel rejection dialog.');
+  await rejectionNote.fill('Please clarify the visit objective.');
   const rejectResponsePromise = managerPage.waitForResponse(
     response => response.url().includes('/rest/v1/rpc/hris_resolve_travel_request'), { timeout: 10000 },
   );
   let rejectResponse;
   try {
-    await managerPage.getByRole('alertdialog').getByRole('button', { name: 'ফেরত নিশ্চিত করুন' }).click();
+    await rejectionDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন' }).click();
     rejectResponse = await rejectResponsePromise;
   } catch (cause) {
     await rejectResponsePromise.catch(() => {});
@@ -192,6 +211,7 @@ try {
     throw new Error(`Manager return was not confirmed: ${JSON.stringify(rejected)}.`);
   }
   await managerCard.waitFor({ state: 'detached' });
+  if (!(await managerPage.getByRole('heading', { name: 'ভ্রমণ অনুরোধ', exact: true }).evaluate(element => element === document.activeElement))) throw new Error('Travel rejection did not restore focus after removing its queue row.');
   await assertNoOverflow(managerPage, 'Travel manager queue desktop');
 
   await employeePage.getByRole('button', { name: 'আমার ভ্রমণ অনুরোধ রিফ্রেশ করুন' }).click();
@@ -214,12 +234,20 @@ try {
   await managerPage.getByRole('button', { name: 'Refresh travel requests' }).click();
   await managerCard.waitFor({ state: 'visible' });
   await managerCard.getByRole('button', { name: 'Approve', exact: true }).click();
+  const approvalDialog = managerPage.getByRole('alertdialog');
+  const approvalNote = approvalDialog.getByLabel('Note');
+  const confirmTravelApproval = approvalDialog.getByRole('button', { name: 'Confirm approval', exact: true });
+  if (!(await approvalNote.evaluate(element => element === document.activeElement))) throw new Error('Travel approval dialog did not focus its note field.');
+  await managerPage.keyboard.press('Shift+Tab');
+  if (!(await confirmTravelApproval.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the travel approval dialog.');
+  await managerPage.keyboard.press('Tab');
+  if (!(await approvalNote.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the travel approval dialog.');
   const approveResponsePromise = managerPage.waitForResponse(
     response => response.url().includes('/rest/v1/rpc/hris_resolve_travel_request'), { timeout: 10000 },
   );
   let approveResponse;
   try {
-    await managerPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm approval' }).click();
+    await confirmTravelApproval.click();
     approveResponse = await approveResponsePromise;
   } catch (cause) {
     await approveResponsePromise.catch(() => {});
@@ -228,6 +256,7 @@ try {
   const approved = await approveResponse.json();
   if (!approveResponse.ok() || approved?.id !== requestId || approved?.status !== 'approved') throw new Error(`Manager approval was not confirmed: ${JSON.stringify(approved)}.`);
   await managerCard.waitFor({ state: 'detached' });
+  if (!(await managerPage.getByRole('heading', { name: 'Travel requests', exact: true }).evaluate(element => element === document.activeElement))) throw new Error('Travel approval did not restore focus after removing its queue row.');
   await assertNoOverflow(managerPage, 'Travel manager queue mobile');
 
   await employeePage.setViewportSize({ width: 1280, height: 900 });

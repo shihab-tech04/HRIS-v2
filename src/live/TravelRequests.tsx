@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { CalendarDays, Check, MapPin, RefreshCw, Send, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { activateModalFocusTrap } from './modal-focus';
 import type { Locale } from './project-locale';
 import { travelRequestError, travelRequestText } from './travel-request-locale';
 
@@ -295,9 +296,27 @@ export function TravelRequests({ tenantId, canManage, locale }: { tenantId: stri
   const requestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
   const previousTenantId = useRef(tenantId);
+  const decisionDialogRef = useRef<HTMLDivElement>(null);
+  const queueHeadingRef = useRef<HTMLHeadingElement>(null);
+  const savingRef = useRef(saving);
+  const completedDecisionRef = useRef(false);
   activeTenantId.current = tenantId;
+  savingRef.current = saving;
   const closeDialog = () => { if (!saving) { setTarget(null); setNote(''); setActionError(''); } };
-  useEscapeToClose(Boolean(target), closeDialog);
+  useEffect(() => {
+    if (!target) return;
+    return activateModalFocusTrap(decisionDialogRef.current, {
+      returnFocus: () => completedDecisionRef.current ? queueHeadingRef.current : undefined,
+      fallbackFocus: queueHeadingRef.current,
+      onEscape: () => { if (!savingRef.current) closeDialog(); },
+    });
+  }, [Boolean(target)]);
+
+  function openDecision(request: QueueRequest, decision: Decision) {
+    completedDecisionRef.current = false;
+    setTarget({ request, decision });
+    setNote(''); setActionError(''); setMessage('');
+  }
 
   useEffect(() => {
     if (previousTenantId.current !== tenantId) setMessage('');
@@ -337,6 +356,7 @@ export function TravelRequests({ tenantId, canManage, locale }: { tenantId: stri
         employee: target.request.employee_name,
         decision: tx(target.decision === 'approved' ? 'approved' : 'rejected'),
       }));
+      completedDecisionRef.current = true;
       setTarget(null); setNote(''); setRevision(value => value + 1);
     } catch (cause) {
       const code = (cause as { code?: string })?.code;
@@ -346,7 +366,7 @@ export function TravelRequests({ tenantId, canManage, locale }: { tenantId: stri
   }
 
   return <section aria-labelledby="travel-queue-heading" className="min-w-0 space-y-4">
-    <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="travel-queue-heading" className="text-2xl font-medium text-[#49454F]">{tx('Travel requests')}</h2><p className="mt-1 max-w-3xl text-sm text-slate-600">{tx('Review submitted business travel requests for this organization.')}</p></div>
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 ref={queueHeadingRef} tabIndex={-1} id="travel-queue-heading" className="text-2xl font-medium text-[#49454F]">{tx('Travel requests')}</h2><p className="mt-1 max-w-3xl text-sm text-slate-600">{tx('Review submitted business travel requests for this organization.')}</p></div>
       <button type="button" aria-label={tx('Refresh travel requests')} onClick={() => setRevision(value => value + 1)} disabled={loading || saving} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true"/>{tx('Refresh')}</button></div>
     {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">{tx('Retry')}</button></div>}
     {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
@@ -356,8 +376,8 @@ export function TravelRequests({ tenantId, canManage, locale }: { tenantId: stri
       : requests.length === 0 ? <div role="status" className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-6 text-center"><Check className="mx-auto h-7 w-7 text-emerald-700" aria-hidden="true"/><h3 className="mt-2 font-semibold text-slate-800">{tx('No travel requests waiting')}</h3><p className="mt-1 text-sm text-slate-600">{tx('New submissions from employees will appear here.')}</p></div>
       : <div className="grid min-w-0 gap-3 xl:grid-cols-2">{requests.map(request => <article key={request.id} data-travel-queue-request={request.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-[#615E83]">{request.employee_number || tx('Employee')} · {tx('Submitted {date}', { date: showTimestamp(request.submitted_at, locale, tx) })}</p><h3 className="mt-1 break-words text-lg font-semibold text-[#1E1B39]">{request.destination}</h3><p className="mt-1 text-sm font-medium text-slate-700">{request.employee_name}</p></div><span className="shrink-0 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">{tx('Submitted')}</span></div>
         <p className="mt-3 flex items-start gap-2 text-sm text-slate-600"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"/>{showDate(request.from_date, locale, tx)} – {showDate(request.to_date, locale, tx)}</p><p className="mt-2 break-words text-sm text-slate-700">{request.purpose}</p>{request.estimated_cost !== null && <p className="mt-2 text-sm text-slate-600">{tx('Estimated cost:')} {Number(request.estimated_cost).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {request.estimated_currency}</p>}
-        {canManage && <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={saving} onClick={() => { setTarget({ request, decision: 'rejected' }); setNote(''); setActionError(''); setMessage(''); }} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm font-medium text-rose-800 disabled:opacity-50">{tx('Return for changes')}</button><button type="button" disabled={saving} onClick={() => { setTarget({ request, decision: 'approved' }); setNote(''); setActionError(''); setMessage(''); }} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{tx('Approve')}</button></div>}
+        {canManage && <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={saving} onClick={() => openDecision(request, 'rejected')} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm font-medium text-rose-800 disabled:opacity-50">{tx('Return for changes')}</button><button type="button" disabled={saving} onClick={() => openDecision(request, 'approved')} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{tx('Approve')}</button></div>}
       </article>)}</div>}
-    {target && <div role="alertdialog" aria-modal="true" aria-labelledby="travel-decision-heading" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) closeDialog(); }}><div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl"><h3 id="travel-decision-heading" className="text-lg font-semibold text-slate-900">{tx(target.decision === 'approved' ? 'Approve travel request?' : 'Return travel request for changes?')}</h3><p className="mt-2 break-words text-sm text-slate-600">{target.request.employee_name} · {target.request.destination}</p><label htmlFor="travel-review-note" className="mt-4 block text-sm font-medium text-slate-700">{tx('Note')} <span className="font-normal text-slate-500">{tx('(optional)')}</span><textarea id="travel-review-note" rows={3} maxLength={2000} disabled={saving} value={note} onChange={event => setNote(event.target.value)} className="mt-1 min-h-24 w-full resize-y rounded-lg border border-slate-300 p-3 text-sm" placeholder={tx('Add a note for the employee.')}/></label>{actionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{actionError}</p>}<div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={saving} onClick={closeDialog} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">{tx('Cancel')}</button><button type="button" disabled={saving} onClick={() => void resolveRequest()} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{tx(saving ? 'Saving…' : target.decision === 'approved' ? 'Confirm approval' : 'Confirm return')}</button></div></div></div>}
+    {target && <div ref={decisionDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="travel-decision-heading" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) closeDialog(); }}><div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl"><h3 id="travel-decision-heading" className="text-lg font-semibold text-slate-900">{tx(target.decision === 'approved' ? 'Approve travel request?' : 'Return travel request for changes?')}</h3><p className="mt-2 break-words text-sm text-slate-600">{target.request.employee_name} · {target.request.destination}</p><label htmlFor="travel-review-note" className="mt-4 block text-sm font-medium text-slate-700">{tx('Note')} <span className="font-normal text-slate-500">{tx('(optional)')}</span><textarea id="travel-review-note" rows={3} maxLength={2000} disabled={saving} value={note} onChange={event => setNote(event.target.value)} className="mt-1 min-h-24 w-full resize-y rounded-lg border border-slate-300 p-3 text-sm" placeholder={tx('Add a note for the employee.')}/></label>{actionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{actionError}</p>}<div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={saving} onClick={closeDialog} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">{tx('Cancel')}</button><button type="button" disabled={saving} onClick={() => void resolveRequest()} className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50">{tx(saving ? 'Saving…' : target.decision === 'approved' ? 'Confirm approval' : 'Confirm return')}</button></div></div></div>}
   </section>;
 }
