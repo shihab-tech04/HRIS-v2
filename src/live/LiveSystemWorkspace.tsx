@@ -217,7 +217,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
             <p className="text-sm text-slate-600 mt-2">All HRIS areas are listed in the navigation. A filled marker indicates an RLS-filtered live record view. An empty marker indicates a workflow that is not yet integrated. No sample data or simulated saves are displayed.</p>
             <p className="text-sm text-slate-600 mt-2">Employee, Manager, HOD, HR, Admin, Super Admin and CEO workflows require their own verified role-based journeys. Viewing this system index does not impersonate those roles.</p>
           </section>
-        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} revision={revision} /> : selected.id === 'profileChanges' ? <ProfileChangeReview revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} /> : selected.id === 'profileChanges' ? <ProfileChangeReview revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
             <h3 className="font-semibold">Authorized records</h3>
             <p className="text-xs text-slate-500">RLS protected · up to 50 records · read only</p>

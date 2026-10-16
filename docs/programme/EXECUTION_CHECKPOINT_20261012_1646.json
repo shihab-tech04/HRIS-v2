@@ -1,0 +1,70 @@
+{
+  "recorded_at": "2026-10-12T16:46:38+06:00",
+  "status": "RECOVERABLE_LOCAL_CHECKPOINT_NOT_FOR_RELEASE",
+  "current_phase": 17,
+  "current_module": "Employee Dashboard",
+  "related_phases": [4, 5, 8, 9, 18, 20],
+  "application": "Main HRIS",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "implementation_commit": "5ae9ae8e58d7e4c5eb2dab21d19e8feb1a40b17c",
+  "commit_summary": {
+    "paths": 17,
+    "text_insertions": 303,
+    "text_deletions": 70,
+    "includes_updated_and_new_evidence_images": true
+  },
+  "implementation": {
+    "features": [
+      "Tenant-linked employee profile and tenant-local dashboard date",
+      "Today's attendance, recent recorded work hours and work locations",
+      "Leave balances, request entry, request history and upcoming holidays",
+      "Four personal dashboard views use visible two-column tabs at 375px"
+    ],
+    "acceptance_record": "docs/programme/ACCEPTANCE_EVIDENCE_20261012_1644.md",
+    "browser_evidence": [
+      "docs/evidence/employee-dashboard-desktop-20261012.png",
+      "docs/evidence/employee-dashboard-mobile-20261012.png"
+    ]
+  },
+  "verification": {
+    "typescript": "PASS",
+    "contracts": {"passed": 26, "failed": 0},
+    "vite_build": "PASS_WITH_688.21KB_CHUNK_WARNING",
+    "chromium": {"passed": 36, "failed": 0},
+    "isolated_local_auth_rls": {"passed": 44, "failed": 0},
+    "git_diff_check": "PASS",
+    "previous_tenant_security_failures": {
+      "current_matching_checks": 5,
+      "status": "ALL_PASS",
+      "cases": [
+        "Tenant B cannot read Tenant A attendance",
+        "Tenant A cannot read Tenant B attendance",
+        "Tenant B cannot call Tenant A dashboard, attendance or leave RPCs",
+        "Tenant B cannot approve Tenant A leave",
+        "Tenant B cannot approve Tenant A attendance"
+      ]
+    },
+    "test_boundary": "Synthetic local Auth/RLS fixtures only; mocked browser services; no production data or permissions changed"
+  },
+  "canonical_story_catalogue": {
+    "user_reported_stories": 1047,
+    "user_reported_modules": 153,
+    "expected_sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "mounted_project_sources_file_count": 0,
+    "repository_skeleton_rows": 0,
+    "repository_skeleton_sha256": "456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996",
+    "mapped_and_accepted": 0,
+    "unmapped": 1047,
+    "blocker": "The exact canonical catalogue is not available in this task's mounted Project sources or connected Drive search results; no story IDs/criteria were inferred"
+  },
+  "blockers": [
+    "Canonical catalogue access is required to map story IDs and acceptance criteria"
+  ],
+  "next_executable_action": "Continue Figma-aligned attendance information screen implementation while resolving Project/Library source mount; preserve tenant-scoped contracts and run synthetic local security regressions",
+  "release_state": "NOT_ACCEPTED_NOT_FOR_RELEASE",
+  "production_data_or_permissions_changed": false,
+  "paid_supabase_service_activated": false,
+  "github_push": false,
+  "deployment": false,
+  "final_drive_source_archive": false
+}

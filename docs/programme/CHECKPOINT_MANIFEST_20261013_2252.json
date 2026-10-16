@@ -1,0 +1,33 @@
+{
+  "checkpoint": "2026-10-13T22:52:00+06:00",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "state": "local_implementation_verified_drive_preservation_pending",
+  "repositories": [
+    {
+      "name": "HRIS-v2",
+      "commit": "3164a3dc6ce234f7b18daea7aad86289812f8481",
+      "role": "Main HRIS interview scheduling, tenant authorization, HR response queue"
+    },
+    {
+      "name": "HRIS-Candidate-v2",
+      "commit": "3f9ff7dfcac0256aab65017c42defb5baa57ee74",
+      "role": "Candidate interview response and local end-to-end acceptance"
+    }
+  ],
+  "verification": {
+    "candidate_local_auth_postgres_browser": { "passed": 102, "failed": 0, "viewports": [375, 1280] },
+    "main_contracts": { "passed": 91, "failed": 0 },
+    "candidate_route_contracts": { "passed": 17, "failed": 0 },
+    "typescript_and_builds": "passed"
+  },
+  "drive": {
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "folder_name": "HRMIS Preservation 2026-10-11",
+    "owner": "shihabshajib01@gmail.com",
+    "owner_verified": true,
+    "upload_permission_verified": "prior successful versioned upload and readback in this owned folder at 2026-10-13 21:49 Asia/Dhaka",
+    "archive_files": [],
+    "remote_sha256_readback": "pending"
+  },
+  "release": { "github_push": false, "deployment": false, "production_migration": false }
+}

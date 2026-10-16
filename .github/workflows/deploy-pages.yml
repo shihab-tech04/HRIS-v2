@@ -1,17 +1,20 @@
 name: Publish HRIS on GitHub Pages
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Confirm that the owner has explicitly approved this production release.
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: github-pages
   cancel-in-progress: true
 jobs:
   build:
+    if: github.ref == 'refs/heads/main' && inputs.release_approved == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +41,11 @@ jobs:
           path: dist
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main' && inputs.release_approved == true
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
     steps:

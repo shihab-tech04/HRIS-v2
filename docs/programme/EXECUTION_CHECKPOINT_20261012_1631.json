@@ -1,0 +1,118 @@
+{
+  "recorded_at": "2026-10-12T16:31:00+06:00",
+  "status": "RECOVERABLE_LOCAL_CHECKPOINT_NOT_FOR_RELEASE",
+  "current_phase": 17,
+  "current_module": "Managerial Dashboard",
+  "related_phases": [4, 8, 9],
+  "application": "Main HRIS",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "source_commit": "5e935f50b3cc36b13d8bb057377b7017fd004b6b",
+  "worktree_clean_at_source_commit": true,
+  "drive_baseline": {
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "snapshot_local_time": "2026-10-12 14:20 Asia/Dhaka",
+    "manifest_file_id": "1V97tsvIgpbElDrOjz3NNTwTXc1kMTst_",
+    "source_manifest_counts": {
+      "main": 91,
+      "candidate": 58
+    },
+    "main_existing_files_changed_sha256": 9,
+    "main_new_tracked_files": 25,
+    "main_removed_files": 0,
+    "candidate_existing_files_changed_sha256": 0,
+    "candidate_new_tracked_files": 1,
+    "candidate_removed_files": 0,
+    "main_changed_existing_paths": [
+      "HRIS-v2/docs/phase-2/APPROVAL_RESOLUTION_ISOLATED_TEST_PLAN.md",
+      "HRIS-v2/src/live/LiveApp.tsx",
+      "HRIS-v2/src/live/LiveHrisWorkspace.tsx",
+      "HRIS-v2/supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql",
+      "HRIS-v2/supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql",
+      "HRIS-v2/tests/browser/system-workspace.spec.ts",
+      "HRIS-v2/tests/contracts/approval-resolution-migrations.test.mjs",
+      "HRIS-v2/tests/contracts/live-workspace.test.mjs",
+      "HRIS-v2/tests/contracts/phase1.test.mjs"
+    ],
+    "main_new_tracked_paths": [
+      "HRIS-v2/.env.example",
+      "HRIS-v2/docs/evidence/employee-leave-mobile-20261012.png",
+      "HRIS-v2/docs/evidence/managerial-dashboard-desktop-20261012.png",
+      "HRIS-v2/docs/evidence/managerial-dashboard-mobile-20261012.png",
+      "HRIS-v2/docs/programme/APPROVED_BUSINESS_RULES.md",
+      "HRIS-v2/docs/programme/CANONICAL_USER_STORY_MATRIX.json",
+      "HRIS-v2/docs/programme/CURRENT_SOURCE_MANIFEST.md",
+      "HRIS-v2/docs/programme/DEFECT_AND_ROOT_CAUSE_LEDGER.md",
+      "HRIS-v2/docs/programme/EXECUTION_CHECKPOINT_20261012_1610.json",
+      "HRIS-v2/docs/programme/EXECUTION_CHECKPOINT_20261012_1610.md",
+      "HRIS-v2/docs/programme/EXECUTION_CHECKPOINT_20261012_1610_SHA256SUMS.txt",
+      "HRIS-v2/docs/programme/FINAL_RELEASE_ACCEPTANCE.md",
+      "HRIS-v2/docs/programme/FRONTEND_BACKEND_INTEGRATION_MATRIX.md",
+      "HRIS-v2/docs/programme/FROZEN_COMPONENT_REGISTER.md",
+      "HRIS-v2/docs/programme/LOCAL_CHECKPOINT.md",
+      "HRIS-v2/docs/programme/MASTER_PHASE_LEDGER.md",
+      "HRIS-v2/docs/programme/REGRESSION_LEDGER.md",
+      "HRIS-v2/docs/programme/SECURITY_AND_RLS_MATRIX.md",
+      "HRIS-v2/docs/programme/SQL_CONTRACT_REGISTRY.md",
+      "HRIS-v2/docs/programme/SUPABASE_SECURITY_ADVISOR_20261012.md",
+      "HRIS-v2/supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql",
+      "HRIS-v2/tests/browser/employee-leave.spec.ts",
+      "HRIS-v2/tests/browser/managerial-dashboard.spec.ts",
+      "HRIS-v2/tests/sql/isolated-auth/fixture.sql",
+      "HRIS-v2/tests/sql/isolated-auth/run-local.mjs"
+    ],
+    "candidate_new_tracked_paths": ["HRIS-Candidate-v2/.env.example"]
+  },
+  "committed_changes_since_local_source_checkpoint": {
+    "base_commit": "86ce4e6aa5cd18c3525b3427398b037456eb57c8",
+    "head_commit": "5e935f50b3cc36b13d8bb057377b7017fd004b6b",
+    "paths": 14,
+    "insertions": 474,
+    "deletions": 75,
+    "latest_feature_commit": {
+      "sha": "5e935f50b3cc36b13d8bb057377b7017fd004b6b",
+      "paths": 11,
+      "insertions": 396,
+      "deletions": 75
+    }
+  },
+  "verification": {
+    "typescript": "PASS",
+    "contract_tests": "26/26 PASS",
+    "vite_build": "PASS_WITH_EXISTING_676.75KB_CHUNK_WARNING",
+    "isolated_local_auth_rls": "43/43 PASS",
+    "full_chromium_suite": "36/36 PASS",
+    "managerial_dashboard_after_timezone_adjustment": "2/2 PASS",
+    "git_diff_check": "PASS",
+    "intermediate_failures_resolved": [
+      "isolated SQL attempt 41/43 due to test fixture/date setup; final 43/43",
+      "browser attempt 35/36 due to stale generic workspace expectation; final 36/36"
+    ]
+  },
+  "prior_tenant_security_cases": {
+    "original_ids_preserved": false,
+    "current_matching_cases": 5,
+    "current_status": "ALL PASS in isolated 43/43 suite",
+    "cases": [
+      "Tenant B manager cannot read Tenant A attendance",
+      "Tenant A manager cannot read Tenant B attendance",
+      "Tenant B manager cannot call Tenant A dashboard, attendance or leave RPCs",
+      "Tenant B manager cannot approve Tenant A leave",
+      "Tenant B manager cannot approve Tenant A attendance"
+    ]
+  },
+  "story_acceptance": {
+    "expected": 1047,
+    "fully_implemented_and_tested_against_canonical_acceptance": 0,
+    "pending_or_unreconciled": 1047,
+    "reason": "authoritative story catalogue inaccessible; local matrix is an empty skeleton"
+  },
+  "production_mutations": {
+    "database": false,
+    "auth_settings": false,
+    "paid_supabase_services": false,
+    "github_push": false,
+    "deployment": false
+  },
+  "release_status": "NOT_ACCEPTED_NOT_FOR_RELEASE",
+  "next_action": "Continue functional Figma-aligned HRIS module work using verified contracts while recovering the canonical story catalogue."
+}

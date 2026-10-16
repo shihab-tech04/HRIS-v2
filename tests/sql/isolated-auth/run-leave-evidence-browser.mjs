@@ -1,0 +1,537 @@
+// Verify the real employee submission/evidence and manager decision journey
+// against the disposable local Auth, Postgres, RPC, and private Storage stack.
+import { chromium } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
+import { resolve } from 'node:path';
+import { stopChildProcess } from './stop-child-process.mjs';
+
+const required = [
+  'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
+  'HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_LEAVE_MANAGER_EMAIL',
+  'HRIS_LOCAL_LEAVE_TENANT_ID', 'HRIS_LOCAL_LEAVE_EMPLOYEE_ID',
+  'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
+  'HRIS_LOCAL_LEAVE_REQUEST_REASON', 'HRIS_LOCAL_LEAVE_HISTORY_YEAR',
+  'HRIS_LOCAL_LEAVE_REJECTION_NOTE', 'HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID',
+];
+for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
+
+const apiUrl = new URL(process.env.HRIS_LOCAL_SUPABASE_URL);
+const expectedApiPort = process.env.HRIS_SUPABASE_API_PORT || '55421';
+if (apiUrl.hostname !== '127.0.0.1' || apiUrl.port !== expectedApiPort) {
+  throw new Error(`Refusing the leave-evidence browser journey: expected isolated local Supabase API port ${expectedApiPort}.`);
+}
+const evidenceParts = process.env.HRIS_LOCAL_LEAVE_EVIDENCE_PATH.split('/');
+if (evidenceParts.length !== 3
+    || evidenceParts[0] !== process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_ID
+    || evidenceParts[1] !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID) {
+  throw new Error('Refusing the leave-evidence browser journey: the test object path is not owner and tenant scoped.');
+}
+
+const repo = process.cwd();
+const port = await new Promise((resolvePort, reject) => {
+  const probe = createNetServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close(() => reject(new Error('Unable to select an available loopback port for the leave-evidence browser journey.')));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolvePort(String(address.port)));
+  });
+});
+const origin = `http://127.0.0.1:${port}`;
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+  cwd: repo,
+  env: {
+    ...process.env,
+    VITE_SUPABASE_URL: process.env.HRIS_LOCAL_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY: process.env.HRIS_LOCAL_SUPABASE_ANON_KEY,
+  },
+  stdio: ['ignore', 'ignore', 'pipe'],
+});
+
+let browser;
+let serverStderr = '';
+let serverSpawnError = '';
+server.stderr.on('data', chunk => { serverStderr = `${serverStderr}${chunk.toString()}`.slice(-4000); });
+server.on('error', error => { serverSpawnError = error.code || error.name || 'spawn_error'; });
+
+function safeServerDiagnostic() {
+  let diagnostic = serverStderr;
+  for (const key of [
+    'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
+    'HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_LEAVE_MANAGER_EMAIL',
+  ]) {
+    const secret = process.env[key];
+    if (secret) diagnostic = diagnostic.replaceAll(secret, '[REDACTED]');
+  }
+  diagnostic = diagnostic
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\b/g, '[REDACTED_TOKEN]')
+    .replace(/\b(?:sb_secret|sb_publishable)_[A-Za-z0-9_-]+\b/g, '[REDACTED_KEY]')
+    .replace(/(authorization:\s*bearer\s+)\S+/gi, '$1[REDACTED]')
+    .trim();
+  return diagnostic.slice(-1000);
+}
+
+async function waitForServer() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (serverSpawnError) throw new Error(`Local Vite server could not start (${serverSpawnError}).`);
+    if (server.exitCode !== null) {
+      const diagnostic = safeServerDiagnostic();
+      throw new Error(`Local Vite server exited with ${server.exitCode}.${diagnostic ? ` Startup diagnostic: ${diagnostic}` : ''}`);
+    }
+    try {
+      const response = await fetch(origin);
+      if (response.ok && (await response.text()).includes('Synesis HRIS 360°')) return;
+    } catch { /* Vite is starting. */ }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error('Timed out waiting for the local HRIS UI server.');
+}
+
+async function routeOnlyLocalServices(context) {
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') {
+      return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    }
+    return route.abort();
+  });
+}
+
+async function signIn(page, email) {
+  await page.goto(origin);
+  await page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  if ((await page.evaluate(() => window.innerWidth)) < 1024) {
+    await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
+  } else {
+    await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible' });
+  }
+}
+
+async function navigateTo(page, label) {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: label, exact: true }).click();
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const dimensions = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
+  if (dimensions.document > dimensions.viewport) throw new Error(`${label} overflowed: ${JSON.stringify(dimensions)}.`);
+}
+
+async function assertDownloadedEvidence(page, download, expectedPrefix, expectedContent = 'isolated synthetic evidence') {
+  if (!download.suggestedFilename().startsWith(expectedPrefix)) {
+    throw new Error(`Unexpected evidence filename: ${download.suggestedFilename()}.`);
+  }
+  const downloadedPath = await download.path();
+  if (!downloadedPath) throw new Error('The downloaded evidence file was not materialized locally.');
+  const bytes = await readFile(downloadedPath);
+  if (!bytes.includes(Buffer.from(expectedContent))) {
+    throw new Error('Downloaded evidence did not contain the isolated Storage object bytes.');
+  }
+}
+
+try {
+  await waitForServer();
+  browser = await chromium.launch({ headless: true });
+
+  const employeeContext = await browser.newContext({ viewport: { width: 375, height: 812 }, acceptDownloads: true });
+  await routeOnlyLocalServices(employeeContext);
+  const employee = await employeeContext.newPage();
+  await signIn(employee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
+  await navigateTo(employee, 'My Leave');
+  await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(employee, 'Employee personal leave mobile');
+  const history = employee.getByRole('table', {
+    name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,
+  });
+  const ownRow = history.getByRole('row', { name: new RegExp(process.env.HRIS_LOCAL_LEAVE_REQUEST_REASON) });
+  await ownRow.waitFor({ state: 'visible' });
+  await ownRow.getByRole('button', { name: 'Download evidence' }).waitFor({ state: 'visible' });
+
+  const uiEvidenceReason = 'Real employee UI leave evidence request';
+  await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const requestDialog = employee.getByRole('dialog', { name: 'Request for leave' });
+  await requestDialog.waitFor({ state: 'visible' });
+  await requestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic evidence-required leave' });
+  await requestDialog.locator('#personal-leave-from').fill('2026-10-20');
+  await requestDialog.locator('#personal-leave-to').fill('2026-10-20');
+  await requestDialog.getByLabel('Reason').fill(uiEvidenceReason);
+  await requestDialog.locator('#personal-leave-evidence').setInputFiles({
+    name: 'employee-ui-leave-evidence.pdf', mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nreal employee UI evidence bytes\n'),
+  });
+  const uiEvidenceUpload = employee.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.includes('/storage/v1/object/leave-evidence/'),
+  { timeout: 10000 });
+  const uiLeaveSubmission = employee.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_employee_submit_leave_request'),
+  { timeout: 10000 });
+  await requestDialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  const [uploadedResponse, submittedResponse] = await Promise.all([uiEvidenceUpload, uiLeaveSubmission]);
+  if (!uploadedResponse.ok()) throw new Error(`Employee UI evidence upload returned ${uploadedResponse.status()}.`);
+  if (!submittedResponse.ok()) throw new Error(`Employee UI leave submission returned ${submittedResponse.status()}.`);
+  const uiLeaveRequestValue = await submittedResponse.json();
+  const uiLeaveRequestId = typeof uiLeaveRequestValue === 'string' ? uiLeaveRequestValue : uiLeaveRequestValue?.id;
+  const uiEvidencePath = decodeURIComponent(new URL(uploadedResponse.url()).pathname.split('/storage/v1/object/leave-evidence/')[1] || '');
+  const submittedPayload = submittedResponse.request().postDataJSON();
+  console.log(`LEAVE_UI_REQUEST_ACCEPTANCE=${JSON.stringify({ id: uiLeaveRequestId, path: uiEvidencePath, reason: uiEvidenceReason })}`);
+  if (!uiLeaveRequestId || !uiEvidencePath.startsWith(`${process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_ID}/${process.env.HRIS_LOCAL_LEAVE_TENANT_ID}/`)
+      || submittedPayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      || submittedPayload?.p_payload?.attachment_url !== uiEvidencePath
+      || submittedPayload?.p_payload?.reason !== uiEvidenceReason
+      || submittedPayload?.p_payload?.from_date !== '2026-10-20') {
+    throw new Error('Employee UI submission did not persist the selected tenant, reason, date, and owner-scoped evidence path.');
+  }
+  await employee.getByRole('status').filter({ hasText: 'Leave request submitted.' }).waitFor({ state: 'visible' });
+  const uiHistoryRow = history.getByRole('row', { name: new RegExp(uiEvidenceReason) });
+  await uiHistoryRow.waitFor({ state: 'visible' });
+  await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const reopenedRequestDialog = employee.getByRole('dialog', { name: 'Request for leave' });
+  await reopenedRequestDialog.waitFor({ state: 'visible' });
+  const evidenceInputReset = await reopenedRequestDialog.locator('#personal-leave-evidence')
+    .evaluate(input => input.value === '' && input.files?.length === 0);
+  await reopenedRequestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  if (!evidenceInputReset) throw new Error('The employee evidence input was not reset after the real UI submission.');
+
+  const employeeUiStorageResponse = employee.waitForResponse(response =>
+    response.request().method() === 'GET'
+      && decodeURIComponent(new URL(response.url()).pathname).includes(`/storage/v1/object/leave-evidence/${uiEvidencePath}`),
+  { timeout: 10000 });
+  const employeeUiDownload = employee.waitForEvent('download');
+  await uiHistoryRow.getByRole('button', { name: 'Download evidence' }).click();
+  const [employeeUiResponse, employeeUiFile] = await Promise.all([employeeUiStorageResponse, employeeUiDownload]);
+  if (!employeeUiResponse.ok()) throw new Error(`Employee UI evidence download returned ${employeeUiResponse.status()}.`);
+  await assertDownloadedEvidence(employee, employeeUiFile, `personal-leave-evidence-${uiLeaveRequestId.slice(0, 8)}`, 'real employee UI evidence bytes');
+
+  const employeeStorageResponse = employee.waitForResponse(response =>
+    response.request().method() === 'GET' && response.url().includes('/storage/v1/object/leave-evidence/'), { timeout: 10000 })
+    .catch(async cause => {
+      const alerts = await employee.getByRole('alert').allTextContents();
+      throw new Error(`Employee UI made no private Storage request; alerts: ${alerts.join(' | ') || '(none)'}. ${cause.message}`);
+    });
+  const employeeDownload = employee.waitForEvent('download');
+  await ownRow.getByRole('button', { name: 'Download evidence' }).click();
+  const [employeeResponse, employeeFile] = await Promise.all([employeeStorageResponse, employeeDownload]);
+  if (!employeeResponse.ok()) throw new Error(`Employee Storage download returned ${employeeResponse.status()}.`);
+  if (!decodeURIComponent(new URL(employeeResponse.url()).pathname).includes(process.env.HRIS_LOCAL_LEAVE_EVIDENCE_PATH)) {
+    throw new Error('Employee browser downloaded a different leave-evidence object than the request references.');
+  }
+  await assertDownloadedEvidence(employee, employeeFile, `personal-leave-evidence-${process.env.HRIS_LOCAL_LEAVE_REQUEST_ID.slice(0, 8)}`);
+  await employee.getByRole('status').filter({ hasText: 'Evidence downloaded.' }).waitFor({ state: 'visible' });
+  await employeeContext.close();
+
+  const managerContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+  await routeOnlyLocalServices(managerContext);
+  const manager = await managerContext.newPage();
+  await signIn(manager, process.env.HRIS_LOCAL_LEAVE_MANAGER_EMAIL);
+  await navigateTo(manager, 'Leave');
+  await manager.getByRole('heading', { name: 'Leave Requests' }).waitFor({ state: 'visible' });
+  const leaveTable = manager.getByRole('table', { name: 'Leave requests' });
+  await leaveTable.waitFor({ state: 'visible', timeout: 10000 }).catch(async cause => {
+    const pageText = await manager.locator('body').innerText().catch(() => '');
+    throw new Error(`Manager leave table did not load. Page: ${pageText.slice(-1800)}. ${cause.message}`);
+  });
+  const policyFormButton = manager.getByRole('button', { name: 'Add leave type', exact: true }).first();
+  await policyFormButton.click();
+  const policyForm = manager.getByRole('form', { name: 'Add a leave type' });
+  await policyForm.getByLabel('Leave type name').fill('Synthetic browser leave policy');
+  await policyForm.getByLabel('Code').fill(`SYNUI-${Date.now()}`);
+  await policyForm.getByLabel('Default annual entitlement (days)').fill('10');
+  await policyForm.getByLabel('Minimum advance notice (days)').fill('1');
+  await policyForm.getByLabel('Supporting evidence required').check();
+  let failPolicyCreateOnce = true;
+  await manager.route('**/rest/v1/rpc/hris_save_leave_type', async route => {
+    if (failPolicyCreateOnce && route.request().method() === 'POST') {
+      failPolicyCreateOnce = false;
+      return route.fulfill({ status: 503, contentType: 'application/json',
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-client-info',
+        },
+        body: JSON.stringify({ code: 'XX000', message: 'Synthetic policy persistence outage.' }) });
+    }
+    return route.continue();
+  });
+  const browserPolicyCreateResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_save_leave_type'), { timeout: 10000 });
+  await policyForm.getByRole('button', { name: 'Add leave type', exact: true }).click();
+  const browserPolicyFailed = await browserPolicyCreateResponse;
+  if (browserPolicyFailed.status() !== 503) throw new Error('The policy persistence recovery check did not inject its expected one-time outage.');
+  const failedPolicyPayload = browserPolicyFailed.request().postDataJSON();
+  const policySaveError = manager.getByRole('alert').filter({ hasText: /Synthetic policy persistence outage\.|Unable to save this leave type\./ });
+  await policySaveError.waitFor({ state: 'visible' });
+  await policyForm.getByLabel('Leave type name').waitFor({ state: 'visible' });
+  if (await policyForm.getByLabel('Leave type name').inputValue() !== 'Synthetic browser leave policy'
+      || await policyForm.getByLabel('Default annual entitlement (days)').inputValue() !== '10') {
+    throw new Error('The leave policy form discarded its values after a failed save.');
+  }
+  const retryPolicyCreateResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_save_leave_type'), { timeout: 10000 });
+  await policyForm.getByRole('button', { name: 'Add leave type', exact: true }).click();
+  const browserPolicyCreated = await retryPolicyCreateResponse;
+  if (!browserPolicyCreated.ok()) throw new Error(`Manager leave policy creation returned ${browserPolicyCreated.status()}.`);
+  const browserPolicyPayload = browserPolicyCreated.request().postDataJSON();
+  const browserPolicyId = browserPolicyPayload?.p_leave_type_id;
+  const browserPolicyRow = manager.getByRole('row', { name: /Synthetic browser leave policy/ });
+  await browserPolicyRow.waitFor({ state: 'visible' });
+  if (browserPolicyPayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      || failedPolicyPayload?.p_leave_type_id !== browserPolicyId
+      || browserPolicyPayload?.p_payload?.annual_entitlement !== 10
+      || browserPolicyPayload?.p_payload?.min_days_notice !== 1
+      || browserPolicyPayload?.p_payload?.requires_document_proof !== true
+      || !browserPolicyId) {
+    throw new Error('The leave policy form did not persist the selected tenant and configured fields.');
+  }
+  await manager.unroute('**/rest/v1/rpc/hris_save_leave_type');
+  await browserPolicyRow.getByRole('button', { name: 'Edit Synthetic browser leave policy' }).click();
+  const editPolicyForm = manager.getByRole('form', { name: 'Edit leave type' });
+  await editPolicyForm.getByLabel('Default annual entitlement (days)').fill('11.5');
+  await editPolicyForm.getByLabel('Minimum advance notice (days)').fill('3');
+  const browserPolicyUpdateResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_save_leave_type'), { timeout: 10000 });
+  await editPolicyForm.getByRole('button', { name: 'Save changes', exact: true }).click();
+  const browserPolicyUpdated = await browserPolicyUpdateResponse;
+  if (!browserPolicyUpdated.ok()) throw new Error(`Manager leave policy update returned ${browserPolicyUpdated.status()}.`);
+  const browserPolicyUpdatePayload = browserPolicyUpdated.request().postDataJSON();
+  if (browserPolicyUpdatePayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      || browserPolicyUpdatePayload?.p_leave_type_id !== browserPolicyId
+      || browserPolicyUpdatePayload?.p_expected?.annual_entitlement !== 10
+      || browserPolicyUpdatePayload?.p_payload?.annual_entitlement !== 11.5) {
+    throw new Error('The leave policy edit did not send its original values for stale-write protection.');
+  }
+  await manager.getByRole('status').filter({ hasText: 'Leave type updated.' }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'Refresh leave type policies' }).click();
+  await manager.getByRole('row', { name: /Synthetic browser leave policy.*11\.5.*3/ }).waitFor({ state: 'visible' });
+  const managerRows = await leaveTable.locator('tbody tr').allInnerTexts();
+  const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-19/ });
+  await managerRow.waitFor({ state: 'visible', timeout: 5000 }).catch(async cause => {
+    throw new Error(`Evidence request missing from manager queue. Rows: ${JSON.stringify(managerRows)}. ${cause.message}`);
+  });
+  const uiManagerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-20/ });
+  await uiManagerRow.waitFor({ state: 'visible', timeout: 5000 });
+  const managerStorageResponse = manager.waitForResponse(response =>
+    response.request().method() === 'GET' && response.url().includes('/storage/v1/object/leave-evidence/'), { timeout: 10000 })
+    .catch(async cause => {
+      const alerts = await manager.getByRole('alert').allTextContents();
+      throw new Error(`Manager UI made no private Storage request; alerts: ${alerts.join(' | ') || '(none)'}. ${cause.message}`);
+    });
+  const managerDownload = manager.waitForEvent('download');
+  await managerRow.getByRole('button', { name: /Download evidence for Synthetic Employee A/ }).click();
+  const [managerResponse, managerFile] = await Promise.all([managerStorageResponse, managerDownload]);
+  if (!managerResponse.ok()) throw new Error(`Same-tenant manager Storage download returned ${managerResponse.status()}.`);
+  if (!decodeURIComponent(new URL(managerResponse.url()).pathname).includes(process.env.HRIS_LOCAL_LEAVE_EVIDENCE_PATH)) {
+    throw new Error('Manager browser downloaded a different leave-evidence object than the request references.');
+  }
+  await assertDownloadedEvidence(manager, managerFile, `leave-evidence-${process.env.HRIS_LOCAL_LEAVE_REQUEST_ID.slice(0, 8)}`);
+  await manager.getByRole('status').filter({ hasText: 'Evidence downloaded.' }).waitFor({ state: 'visible' });
+
+  const managerUiStorageResponse = manager.waitForResponse(response =>
+    response.request().method() === 'GET'
+      && decodeURIComponent(new URL(response.url()).pathname).includes(`/storage/v1/object/leave-evidence/${uiEvidencePath}`),
+  { timeout: 10000 });
+  const managerUiDownload = manager.waitForEvent('download');
+  await uiManagerRow.getByRole('button', { name: /Download evidence for Synthetic Employee A/ }).click();
+  const [managerUiResponse, managerUiFile] = await Promise.all([managerUiStorageResponse, managerUiDownload]);
+  if (!managerUiResponse.ok()) throw new Error(`Same-tenant manager UI evidence download returned ${managerUiResponse.status()}.`);
+  await assertDownloadedEvidence(manager, managerUiFile, `leave-evidence-${uiLeaveRequestId.slice(0, 8)}`, 'real employee UI evidence bytes');
+
+  const approvalResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
+  { timeout: 10000 });
+  await managerRow.getByRole('button', { name: 'Approve', exact: true }).click();
+  const resolved = await approvalResponse;
+  if (!resolved.ok()) throw new Error(`Same-tenant manager approval returned ${resolved.status()}.`);
+  await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
+  await managerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+
+  const uiApprovalResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
+  { timeout: 10000 });
+  await uiManagerRow.getByRole('button', { name: 'Approve', exact: true }).click();
+  const uiApproved = await uiApprovalResponse;
+  if (!uiApproved.ok()) throw new Error(`Same-tenant manager approval of the employee UI request returned ${uiApproved.status()}.`);
+  await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
+  await uiManagerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+
+  const rejectionRow = leaveTable.getByRole('row', {
+    name: /Synthetic Employee A.*Synthetic annual leave.*2026-10-22/,
+  });
+  await rejectionRow.waitFor({ state: 'visible' });
+  await rejectionRow.getByRole('button', { name: 'Reject', exact: true }).click();
+  const rejectionDialog = manager.getByRole('dialog', { name: 'Reject leave request' });
+  await rejectionDialog.waitFor({ state: 'visible' });
+  await rejectionDialog.getByLabel('Decision note (optional)').fill(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE);
+  const rejectionResponse = manager.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/admin_resolve_leave_request'),
+  { timeout: 10000 });
+  await rejectionDialog.getByRole('button', { name: 'Reject request', exact: true }).click();
+  const rejected = await rejectionResponse;
+  if (!rejected.ok()) throw new Error(`Same-tenant manager rejection returned ${rejected.status()}.`);
+  await manager.getByRole('status').filter({ hasText: 'Leave request rejected.' }).waitFor({ state: 'visible' });
+  await rejectionRow.getByRole('cell').filter({ hasText: 'rejected' }).waitFor({ state: 'visible' });
+  await rejectionRow.getByText(`Decision note: ${process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE}`).waitFor({ state: 'visible' });
+
+  const managerRangeResponse = manager.waitForResponse(response => {
+    if (response.request().method() !== 'POST'
+        || !new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_get_tenant_leave_data')) return false;
+    const payload = response.request().postDataJSON();
+    return payload?.p_tenant_id === process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      && payload?.p_start === '2026-10-20' && payload?.p_end === '2026-10-20';
+  }, { timeout: 10000 });
+  await manager.locator('#leave-request-from').fill('2026-10-20');
+  await manager.locator('#leave-request-to').fill('2026-10-20');
+  await manager.getByRole('button', { name: 'Apply date range', exact: true }).click();
+  const managerRange = await managerRangeResponse;
+  if (!managerRange.ok()) throw new Error(`Same-tenant manager date filter returned ${managerRange.status()}.`);
+  const managerRangeData = await managerRange.json();
+  const rangedUiRequest = Array.isArray(managerRangeData?.requests)
+    ? managerRangeData.requests.find(item => item.id === uiLeaveRequestId)
+    : null;
+  if (!rangedUiRequest || rangedUiRequest.status !== 'approved') {
+    throw new Error('The real manager date filter did not return the approved UI request overlapping 2026-10-20.');
+  }
+  await uiManagerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'Clear dates', exact: true }).click();
+  await managerRow.waitFor({ state: 'visible' });
+  await rejectionRow.waitFor({ state: 'visible' });
+
+  const calendarMonth = manager.locator('#leave-absence-month');
+  await calendarMonth.fill('2026-11');
+  await manager.getByRole('region', { name: 'Absence calendar November 2026' }).waitFor({ state: 'visible' });
+  const octoberCalendarResponse = manager.waitForResponse(response => {
+    if (response.request().method() !== 'POST'
+        || !new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_get_tenant_leave_data')) return false;
+    const payload = response.request().postDataJSON();
+    return payload?.p_tenant_id === process.env.HRIS_LOCAL_LEAVE_TENANT_ID
+      && payload?.p_start === '2026-10-01' && payload?.p_end === '2026-10-31';
+  }, { timeout: 10000 });
+  await calendarMonth.fill('2026-10');
+  const octoberResponse = await octoberCalendarResponse;
+  if (!octoberResponse.ok()) throw new Error(`Same-tenant manager absence calendar returned ${octoberResponse.status()}.`);
+  const octoberData = await octoberResponse.json();
+  const octoberRequests = Array.isArray(octoberData?.requests) ? octoberData.requests : [];
+  const approvedEvidenceRequest = octoberRequests.find(item => item.id === process.env.HRIS_LOCAL_LEAVE_REQUEST_ID);
+  const approvedUiRequest = octoberRequests.find(item => item.id === uiLeaveRequestId);
+  const rejectedRequest = octoberRequests.find(item => item.id === process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID);
+  if (approvedEvidenceRequest?.status !== 'approved' || approvedUiRequest?.status !== 'approved'
+      || rejectedRequest?.status !== 'rejected') {
+    throw new Error('The real tenant-scoped October response did not preserve both approvals and the rejection.');
+  }
+  const octoberCalendar = manager.getByRole('region', { name: 'Absence calendar October 2026' });
+  await octoberCalendar.waitFor({ state: 'visible' });
+  const october19 = octoberCalendar.getByRole('button', { name: /October 19, 2026, \d+ people on leave/ });
+  await october19.click();
+  const selectedOctober19 = manager.getByRole('heading', { name: /Approved absences on/ }).locator('..');
+  await selectedOctober19.getByText('Synthetic Employee A').waitFor({ state: 'visible' });
+  const october22 = octoberCalendar.getByRole('button', { name: /October 22, 2026,/ });
+  await october22.click();
+  const selectedOctober22 = manager.getByRole('heading', { name: /Approved absences on/ }).locator('..');
+  await selectedOctober22.getByText('No approved absences on this date.').waitFor({ state: 'visible' });
+  if ((await selectedOctober22.innerText()).includes('Synthetic Employee A')) {
+    throw new Error('The absence calendar displayed the employee’s rejected request as approved leave.');
+  }
+
+  await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
+  await manager.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await manager.setViewportSize({ width: 375, height: 812 });
+  await manager.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' }).waitFor({ state: 'visible' });
+  await manager.getByLabel('মাস', { exact: true }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'আগের মাস' }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(manager, 'Manager absence calendar Bengali mobile');
+  await managerContext.close();
+
+  const refreshedEmployeeContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await routeOnlyLocalServices(refreshedEmployeeContext);
+  const refreshedEmployee = await refreshedEmployeeContext.newPage();
+  await signIn(refreshedEmployee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
+  await navigateTo(refreshedEmployee, 'My Leave');
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const refreshedHistory = refreshedEmployee.getByRole('table', {
+    name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,
+  });
+  const resolvedRequest = refreshedHistory.getByRole('row', {
+    name: new RegExp(process.env.HRIS_LOCAL_LEAVE_REQUEST_REASON),
+  });
+  await resolvedRequest.waitFor({ state: 'visible' });
+  if (!(await resolvedRequest.innerText()).toLocaleLowerCase().includes('approved')) {
+    throw new Error('The employee did not see the manager approval after refreshing their leave history.');
+  }
+  const refreshedUiRequest = refreshedHistory.getByRole('row', { name: new RegExp(uiEvidenceReason) });
+  await refreshedUiRequest.waitFor({ state: 'visible' });
+  if (!(await refreshedUiRequest.innerText()).toLocaleLowerCase().includes('approved')) {
+    throw new Error('The employee did not see the UI-created request approval after refreshing their leave history.');
+  }
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee refreshed leave history mobile');
+  const employeeRejectedRequest = refreshedHistory.getByRole('row', { name: /Synthetic UI rejection acceptance/ });
+  await employeeRejectedRequest.waitFor({ state: 'visible' });
+  const employeeRejectionText = (await employeeRejectedRequest.innerText()).toLocaleLowerCase();
+  if (!employeeRejectionText.includes('rejected')
+      || !employeeRejectionText.includes(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE.toLocaleLowerCase())) {
+    throw new Error('The employee did not see the manager rejection status and note after refreshing leave history.');
+  }
+  await refreshedEmployee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const refreshedRequestDialog = refreshedEmployee.getByRole('dialog', { name: 'Request for leave' });
+  await refreshedRequestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic browser leave policy' });
+  await refreshedRequestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await navigateTo(refreshedEmployee, 'Notifications');
+  const leaveApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);
+  await leaveApprovalCard.waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await leaveApprovalCard.waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Leave decision notifications mobile');
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'ছুটির অনুরোধ অনুমোদিত' }).first().waitFor({ state: 'visible' });
+  const bengaliApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);
+  await bengaliApprovalCard.getByRole('button', { name: 'ছুটির তথ্য খুলুন', exact: true }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const focusedUiRequest = refreshedEmployee.locator(`[data-leave-request-id="${uiLeaveRequestId}"]`);
+  await focusedUiRequest.waitFor({ state: 'visible' });
+  await refreshedEmployee.waitForFunction(expectedId =>
+    document.activeElement?.getAttribute('data-leave-request-id') === expectedId, uiLeaveRequestId);
+  const focusedUiRequestId = await refreshedEmployee.evaluate(() => document.activeElement?.getAttribute('data-leave-request-id'));
+  if (focusedUiRequestId !== uiLeaveRequestId) throw new Error('Opening the leave notification did not focus its matching request history row.');
+
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
+  await refreshedEmployee.setViewportSize({ width: 1280, height: 900 });
+  await navigateTo(refreshedEmployee, 'Notifications');
+  const leaveRejectionCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="rejected"][data-notification-request-id="${process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID}"]`);
+  await leaveRejectionCard.waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Leave decision notifications desktop');
+  await leaveRejectionCard.getByRole('button', { name: 'Open leave', exact: true }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const focusedRejectedRequest = refreshedEmployee.locator(`[data-leave-request-id="${process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID}"]`);
+  await focusedRejectedRequest.waitFor({ state: 'visible' });
+  await refreshedEmployee.waitForFunction(expectedId =>
+    document.activeElement?.getAttribute('data-leave-request-id') === expectedId,
+  process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID);
+  const focusedRejectedRequestId = await refreshedEmployee.evaluate(() => document.activeElement?.getAttribute('data-leave-request-id'));
+  if (focusedRejectedRequestId !== process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID) {
+    throw new Error('Opening the rejected leave notification did not focus its matching request history row.');
+  }
+  await refreshedEmployeeContext.close();
+
+  console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves and rejects, refreshed employee history and owner-only decision notifications persist, Bengali and English notification actions return to the matching request on mobile and desktop.');
+  console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
+} finally {
+  if (browser) await browser.close();
+  await stopChildProcess(server);
+}

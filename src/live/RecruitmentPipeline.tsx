@@ -1,529 +1,702 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import { Download, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { downloadCsv } from './csv';
+import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
+import { CandidateAssessmentAssignment, CandidateAssessmentQueue } from './CandidateAssessments';
+import { candidateInterviewText } from './candidate-interview-locale';
+import type { Locale } from './project-locale';
 
-type ReviewStage = 'screening' | 'shortlisted' | 'final_review' | 'rejected';
-type StageHistory = {
+type Milestone = { stage: string; created_at: string };
+type Application = {
+  application_id: string;
+  candidate_name: string;
+  job_id: string;
+  job_reference: string;
+  job_title: string;
+  stage: string;
+  applied_at: string;
+  milestones: Milestone[];
+};
+type PipelinePayload = {
+  applications?: Application[];
+  available_stages?: string[];
+  total_count?: number;
+  limit?: number;
+  offset?: number;
+};
+type StageTransitionResult = {
+  success?: boolean;
+  changed?: boolean;
   stage?: string;
-  actor_type?: string;
-  note?: string | null;
+  history_id?: string;
   created_at?: string;
 };
-type CandidateApplication = {
-  id: string;
-  candidate_user_id?: string;
-  full_name?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  current_location?: string | null;
-  years_experience?: number | null;
-  skills?: string[] | null;
-  cv_url?: string | null;
-  cover_letter?: string | null;
-  application_data?: Record<string, unknown> | null;
-  stage?: string | null;
-  status_note?: string | null;
-  applied_at?: string | null;
-  job_title?: string | null;
-  job_reference?: string | null;
-  stage_history?: StageHistory[] | null;
-};
-type RecruiterInterview = {
+
+const PAGE_SIZE = 50;
+
+function OfferIssueForm({ tenantId, application, onIssued }: {
+  tenantId: string;
+  application: Application;
+  onIssued: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [payPeriod, setPayPeriod] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
+  const [responseDeadline, setResponseDeadline] = useState('');
+  const [terms, setTerms] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await supabase.rpc('hris_issue_candidate_offer', {
+        p_tenant_id: tenantId,
+        p_application_id: application.application_id,
+        p_salary_amount: Number(amount),
+        p_salary_currency: currency.trim().toUpperCase(),
+        p_pay_period: payPeriod,
+        p_proposed_joining_date: joiningDate,
+        p_response_deadline: responseDeadline,
+        p_terms: terms,
+      });
+      if (result.error) throw result.error;
+      setSuccess(true);
+      onIssued();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '';
+      setError(message.includes('open offer already exists')
+        ? 'An offer is already awaiting this candidate’s response. Refresh the pipeline to check its status.'
+        : message.includes('not found in this organization')
+          ? 'This application is not available in the selected organization.'
+          : 'The offer could not be issued. Check the entered terms and your recruitment access, then try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (success) return <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Offer issued to the candidate. Their response is tracked separately from this application workflow.</p>;
+
+  return <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+    <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">Issue offer</summary>
+    <form onSubmit={submit} className="mt-2 grid gap-3 sm:grid-cols-2">
+      <label className="text-xs font-medium text-slate-700">Offer amount
+        <input aria-label="Offer amount" type="number" min="0.01" step="0.01" required value={amount} onChange={event => setAmount(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">Currency code
+        <input aria-label="Currency code" type="text" required maxLength={3} pattern="[A-Za-z]{3}" value={currency} onChange={event => setCurrency(event.target.value)} placeholder="e.g. BDT" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm uppercase" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">Pay period
+        <select aria-label="Pay period" required value={payPeriod} onChange={event => setPayPeriod(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="">Select a pay period</option><option value="monthly">Monthly</option><option value="annual">Annual</option>
+        </select>
+      </label>
+      <label className="text-xs font-medium text-slate-700">Proposed joining date
+        <input aria-label="Proposed joining date" type="date" required value={joiningDate} onChange={event => setJoiningDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">Candidate response deadline
+        <input aria-label="Candidate response deadline" type="date" required value={responseDeadline} onChange={event => setResponseDeadline(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">Offer terms
+        <textarea aria-label="Offer terms" required maxLength={10000} rows={5} value={terms} onChange={event => setTerms(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <span className="mt-1 block text-xs text-slate-500">These terms will be shown to the candidate before they respond.</span>
+      </label>
+      {error && <p role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+      <div className="sm:col-span-2 flex justify-end">
+        <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{submitting ? 'Issuing offer…' : 'Issue offer to candidate'}</button>
+      </div>
+    </form>
+  </details>;
+}
+
+function InterviewScheduleForm({ tenantId, applicationId, onScheduled, onCancel, compact = false, locale }: {
+  tenantId: string;
+  applicationId: string;
+  onScheduled: () => void;
+  onCancel?: () => void;
+  compact?: boolean;
+  locale?: Locale;
+}) {
+  const tx = (text: string) => locale ? candidateInterviewText(locale, text) : text;
+  const [round, setRound] = useState('');
+  const [format, setFormat] = useState('Video Call');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [duration, setDuration] = useState('30');
+  const [location, setLocation] = useState('');
+  const [panel, setPanel] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [successTimeZone, setSuccessTimeZone] = useState('');
+
+  function cancel() {
+    if (submitting) return;
+    setRound('');
+    setFormat('Video Call');
+    setScheduledAt('');
+    setDuration('30');
+    setLocation('');
+    setPanel('');
+    setInstructions('');
+    setError('');
+    onCancel?.();
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await supabase.rpc('hris_schedule_candidate_interview', {
+        p_tenant_id: tenantId,
+        p_application_id: applicationId,
+        p_round_name: round.trim(),
+        p_format: format,
+        p_scheduled_at: scheduledAt,
+        p_duration_minutes: Number(duration),
+        p_location_or_link: location.trim() || null,
+        p_panel_members: panel.split(',').map(name => name.trim()).filter(Boolean),
+        p_instructions: instructions.trim() || null,
+      });
+      if (result.error) throw result.error;
+      setSuccessTimeZone(typeof result.data?.timezone === 'string' ? result.data.timezone : tx('organization time zone'));
+      setSuccess(true);
+      onScheduled();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message.toLowerCase() : '';
+      setError(tx(message.includes('already active')
+        ? 'An interview invitation is already awaiting a response. Review the interview response list below.'
+        : message.includes('not found in this organization')
+          ? 'This application is not available in the selected organization.'
+          : message.includes('recruitment management access')
+            ? 'You do not have interview scheduling access for this organization.'
+            : 'The interview could not be scheduled. Check the details and your recruitment access, then try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (success) return <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Interview invitation scheduled')} ({successTimeZone}). {tx('The candidate can now review and respond from Interviews.')}</p>;
+
+  const form = <form onSubmit={submit} className="mt-2 grid gap-3 sm:grid-cols-2">
+      <label className="text-xs font-medium text-slate-700">{tx('Interview round')}
+        <input aria-label={tx('Interview round')} required maxLength={120} value={round} onChange={event => setRound(event.target.value)} placeholder={tx('e.g. Technical interview')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">{tx('Format')}
+        <select aria-label={tx('Interview format')} value={format} onChange={event => setFormat(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="Video Call">{tx('Video Call')}</option><option value="In-person">{tx('In-person')}</option><option value="Phone Call">{tx('Phone Call')}</option>
+        </select>
+      </label>
+      <label className="text-xs font-medium text-slate-700">{tx('Date and time (organization time zone)')}
+        <input aria-label={tx('Interview date and time (organization time zone)')} type="datetime-local" required value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700">{tx('Duration in minutes')}
+        <input aria-label={tx('Interview duration in minutes')} type="number" min="15" max="480" step="15" required value={duration} onChange={event => setDuration(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{tx(format === 'Video Call' ? 'Secure meeting link' : format === 'In-person' ? 'Interview location' : 'Call details (optional)')}
+        <input aria-label={tx(format === 'Video Call' ? 'Secure meeting link' : format === 'In-person' ? 'Interview location' : 'Call details')} type={format === 'Video Call' ? 'url' : 'text'} required={format !== 'Phone Call'} value={location} onChange={event => setLocation(event.target.value)} placeholder={tx(format === 'Video Call' ? 'https://…' : format === 'In-person' ? 'Office and room' : 'Optional dial-in details')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{tx('Panel members (comma separated)')}
+        <input aria-label={tx('Panel members')} value={panel} onChange={event => setPanel(event.target.value)} placeholder={tx('Names shown to the candidate')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+      </label>
+      <label className="text-xs font-medium text-slate-700 sm:col-span-2">{tx('Candidate instructions (optional)')}
+        <textarea aria-label={tx('Candidate instructions')} rows={3} maxLength={4000} value={instructions} onChange={event => setInstructions(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </label>
+      {error && <p role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+      <div className="sm:col-span-2 flex flex-wrap justify-end gap-2">
+        {compact && <button type="button" disabled={submitting} onClick={cancel} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Cancel')}</button>}
+        <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{submitting ? tx('Scheduling…') : tx('Send interview invitation')}</button>
+      </div>
+  </form>;
+  return compact ? form : <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+    <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">{tx('Schedule interview')}</summary>
+    {form}
+  </details>;
+}
+
+type InterviewResponse = {
   id: string;
   application_id: string;
-  scheduled_at?: string | null;
-  interview_type?: string | null;
-  location_or_link?: string | null;
-  panel_notes?: string | null;
-  status?: string | null;
-  duration_minutes?: number | null;
-  timezone?: string | null;
-  instructions?: string | null;
-  panel_members?: string[] | null;
-  candidate_response?: string | null;
-  candidate_response_note?: string | null;
-  candidate_proposed_times?: string | null;
-};
-type RecruiterAssessment = {
-  id: string;
-  application_id: string;
-  title?: string | null;
-  assessment_type?: string | null;
-  instructions?: string | null;
-  deadline_date?: string | null;
-  status?: string | null;
-  submission_data?: Record<string, unknown> | null;
-  submitted_at?: string | null;
-  reviewed_at?: string | null;
-  review_note?: string | null;
-};
-type RecruitmentData = {
-  applications?: CandidateApplication[] | null;
-  interviews?: RecruiterInterview[] | null;
-  assessments?: RecruiterAssessment[] | null;
-};
-type Access = 'checking' | 'denied' | 'view' | 'manage';
-type InterviewDraft = {
-  scheduledAt: string;
-  interviewType: string;
-  locationOrLink: string;
-  panelNotes: string;
-  durationMinutes: string;
-  instructions: string;
-  panelMembers: string;
-};
-type AssessmentDraft = {
-  title: string;
-  assessmentType: string;
-  instructions: string;
-  deadlineDate: string;
+  candidate_name: string;
+  candidate_email: string;
+  job_title: string;
+  round_name: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  candidate_response: string;
+  candidate_response_note: string | null;
+  candidate_proposed_times: string | null;
+  timezone: string | null;
+  panel_notes: string | null;
+  interview_status: 'scheduled' | 'completed';
 };
 
-const emptyInterviewDraft: InterviewDraft = {
-  scheduledAt: '', interviewType: 'Technical interview', locationOrLink: '', panelNotes: '',
-  durationMinutes: '60', instructions: '', panelMembers: ''
-};
-
-function localDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function todayDate(): string {
-  return localDate(new Date());
-}
-
-function tomorrowDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return localDate(date);
-}
-
-function emptyAssessmentDraft(): AssessmentDraft {
-  return { title: '', assessmentType: 'Technical assessment', instructions: '', deadlineDate: tomorrowDate() };
-}
-
-const reviewStages: { value: ReviewStage; label: string }[] = [
-  { value: 'screening', label: 'Screening' },
-  { value: 'shortlisted', label: 'Shortlisted' },
-  { value: 'final_review', label: 'Final review' },
-  { value: 'rejected', label: 'Rejected' }
-];
-
-function readable(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (Array.isArray(value)) return value.map(item => String(item)).join(', ') || '—';
-  if (typeof value === 'object') return JSON.stringify(value) || '—';
-  return String(value);
-}
-
-function dateLabel(value?: string | null): string {
-  if (!value) return '—';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString();
-}
-
-function applicationAnswers(application: CandidateApplication): { questionId: string; answer: unknown }[] {
-  const answers = application.application_data?.answers;
-  if (!Array.isArray(answers)) return [];
-  return answers.filter((entry): entry is { questionId: string; answer: unknown } =>
-    Boolean(entry && typeof entry === 'object' && 'questionId' in entry && 'answer' in entry)
-  );
-}
-
-function privateCvPath(application: CandidateApplication): string | null {
-  const path = application.cv_url?.trim();
-  const owner = application.candidate_user_id;
-  if (!path || !owner || /^[a-z][a-z0-9+.-]*:\/\//i.test(path) || path.includes('\\')) return null;
-  const segments = path.split('/');
-  if (segments[0] !== owner || segments.some(segment => !segment || segment === '.' || segment === '..')) return null;
-  return path;
-}
-
-export function RecruitmentPipeline({ revision, tenantId }: { revision: number; tenantId: string }) {
-  const [access, setAccess] = useState<Access>('checking');
-  const [applications, setApplications] = useState<CandidateApplication[]>([]);
-  const [interviews, setInterviews] = useState<RecruiterInterview[]>([]);
-  const [assessments, setAssessments] = useState<RecruiterAssessment[]>([]);
+function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled }: {
+  tenantId: string;
+  revision: number;
+  locale: Locale;
+  onRescheduled: (applicationId: string) => void;
+}) {
+  const tx = (text: string) => candidateInterviewText(locale, text);
+  const currentLocale = useRef(locale);
+  currentLocale.current = locale;
+  const [rows, setRows] = useState<InterviewResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [reloadKey, setReloadKey] = useState(0);
-  const [selectedStages, setSelectedStages] = useState<Record<string, ReviewStage | ''>>({});
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [savingId, setSavingId] = useState('');
-  const [cvLoadingId, setCvLoadingId] = useState('');
-  const [cvLinks, setCvLinks] = useState<Record<string, string>>({});
-  const [interviewDrafts, setInterviewDrafts] = useState<Record<string, InterviewDraft>>({});
-  const [assessmentDrafts, setAssessmentDrafts] = useState<Record<string, AssessmentDraft>>({});
-  const [assessmentReviewNotes, setAssessmentReviewNotes] = useState<Record<string, string>>({});
-  const [savingInterviewId, setSavingInterviewId] = useState('');
-  const [savingAssessmentId, setSavingAssessmentId] = useState('');
-  const [reviewingAssessmentId, setReviewingAssessmentId] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [expanded, setExpanded] = useState('');
+  const [editingNotes, setEditingNotes] = useState('');
+  const [panelNotesDraft, setPanelNotesDraft] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const [savedNotesFor, setSavedNotesFor] = useState('');
+  const [rescheduledApplicationId, setRescheduledApplicationId] = useState('');
+  const [completingInterviewId, setCompletingInterviewId] = useState('');
+  const [completionErrorFor, setCompletionErrorFor] = useState('');
+
+  function startEditingNotes(row: InterviewResponse) {
+    setNotesError('');
+    setSavedNotesFor('');
+    setPanelNotesDraft(row.panel_notes || '');
+    setEditingNotes(row.id);
+  }
+
+  function cancelEditingNotes() {
+    if (savingNotes) return;
+    setEditingNotes('');
+    setPanelNotesDraft('');
+    setNotesError('');
+  }
+
+  async function savePanelNotes(event: FormEvent<HTMLFormElement>, row: InterviewResponse) {
+    event.preventDefault();
+    if (editingNotes !== row.id || savingNotes) return;
+    setSavingNotes(true);
+    setNotesError('');
+    try {
+      const result = await supabase.rpc('hris_save_candidate_interview_panel_notes', {
+        p_tenant_id: tenantId,
+        p_interview_id: row.id,
+        p_panel_notes: panelNotesDraft,
+      });
+      if (result.error) throw result.error;
+      if (result.data?.success !== true || result.data?.interview_id !== row.id) throw new Error('Interview note response was invalid.');
+      const savedNotes = typeof result.data.panel_notes === 'string' ? result.data.panel_notes : null;
+      setRows(current => current.map(item => item.id === row.id ? { ...item, panel_notes: savedNotes } : item));
+      setEditingNotes('');
+      setPanelNotesDraft('');
+      setSavedNotesFor(row.id);
+    } catch {
+      setNotesError(candidateInterviewText(currentLocale.current, 'Panel notes could not be saved. Your text is kept here; retry or refresh the interview responses.'));
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
+  async function completeInterview(row: InterviewResponse) {
+    if (completingInterviewId || row.interview_status !== 'scheduled' || row.candidate_response !== 'confirmed') return;
+    setCompletingInterviewId(row.id);
+    setCompletionErrorFor('');
+    try {
+      const result = await supabase.rpc('hris_complete_candidate_interview', {
+        p_tenant_id: tenantId,
+        p_interview_id: row.id,
+      });
+      if (result.error) throw result.error;
+      if (result.data?.success !== true || result.data?.interview_id !== row.id
+        || result.data?.status !== 'completed') throw new Error('Interview completion response was invalid.');
+      setRows(current => current.map(item => item.id === row.id
+        ? { ...item, interview_status: 'completed' }
+        : item));
+      setRetry(value => value + 1);
+    } catch {
+      setCompletionErrorFor(row.id);
+    } finally {
+      setCompletingInterviewId('');
+    }
+  }
 
   useEffect(() => {
-    let active = true;
-    setAccess('checking');
-    setApplications([]);
-    setInterviews([]);
-    setAssessments([]);
-    setSelectedStages({});
-    setNotes({});
-    setCvLinks({});
-    setInterviewDrafts({});
-    setAssessmentDrafts({});
-    setAssessmentReviewNotes({});
-    setError('');
-    setLoading(true);
-
+    let current = true;
+    setRows([]); setLoading(true); setError('');
     void (async () => {
-      const [viewPermission, managePermission] = await Promise.all([
-        supabase.rpc('has_permission', { p_permission_id: 'recruitment.view' }),
-        supabase.rpc('has_permission', { p_permission_id: 'recruitment.manage' })
-      ]);
-      if (viewPermission.error || managePermission.error) {
-        throw new Error('Recruitment access could not be verified for this session.');
-      }
-      const canView = viewPermission.data === true;
-      const canManage = managePermission.data === true;
-      if (!canView && !canManage) {
-        if (active) {
-          setAccess('denied');
-          setError('Recruitment view permission is required to open this pipeline.');
-        }
-        return;
-      }
+      try {
+        const result = await supabase.rpc('hris_get_candidate_interview_responses', { p_tenant_id: tenantId });
+        if (result.error) throw result.error;
+        if (!Array.isArray(result.data)) throw new Error('Interview response service returned an invalid response.');
+        if (current) setRows(result.data as InterviewResponse[]);
+      } catch {
+        if (current) { setRows([]); setError(candidateInterviewText(currentLocale.current, 'Interview responses could not be loaded. Check recruitment management access and retry.')); }
+      } finally { if (current) setLoading(false); }
+    })();
+    return () => { current = false; };
+  }, [tenantId, revision, retry]);
+  useEffect(() => setRescheduledApplicationId(''), [tenantId]);
 
-      const { data, error: dataError } = await supabase.rpc('admin_get_recruitment_data');
-      if (dataError) throw dataError;
-      if (!data || typeof data !== 'object') throw new Error('Recruitment records were not returned.');
+  const responseLabel: Record<string, string> = {
+    invited: tx('Awaiting candidate response'), confirmed: tx('Candidate accepted'),
+    declined: tx('Candidate declined'), reschedule_requested: tx('Reschedule requested'),
+  };
+  return <section aria-labelledby="interview-responses-heading" className="space-y-3">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 id="interview-responses-heading" className="text-xl font-semibold text-[#1E1B39]">{tx('Interview responses')}</h3>
+      <p className="mt-1 text-sm text-slate-600">{tx('Candidate replies and rescheduling availability for this organization.')}</p></div>
+      <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} aria-label={tx('Refresh interview responses')} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"><RefreshCw className="mr-2 inline h-4 w-4" aria-hidden="true" />{tx('Refresh')}</button></div>
+    {rescheduledApplicationId && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Replacement interview invitation sent and refreshed. The candidate can respond to the new time.')}</p>}
+    {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{error} <button type="button" onClick={() => setRetry(value => value + 1)} className="font-semibold underline">{tx('Retry')}</button></div>}
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('Loading interview responses…')}</p>
+      : rows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('No interview invitations have been scheduled.')}</p>
+      : <ul className="space-y-3">{rows.map(row => <li key={row.id} data-interview-id={row.id} data-interview-application-id={row.application_id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-900">{row.candidate_name}</h4><p className="break-all text-sm text-slate-600">{row.candidate_email}</p><p className="mt-1 text-sm text-slate-700">{row.job_title} · {row.round_name.split(' — ')[0]}</p><p className="mt-1 text-xs text-slate-500">{dateTime(row.scheduled_at, row.timezone || undefined)} · {row.duration_minutes} minutes{row.timezone ? ` · ${row.timezone}` : ''}</p></div>
+          <span className="w-fit rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{row.interview_status === 'completed' ? tx('Interview completed') : responseLabel[row.candidate_response] || tx('Response recorded')}</span></div>
+        {completionErrorFor === row.id && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{tx('Interview completion could not be saved. Check recruitment access and retry.')}</p>}
+        {row.interview_status === 'completed' && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Interview completed. The application is under evaluation.')}</p>}
+        {row.candidate_response_note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><strong>{tx('Candidate note:')}</strong> {row.candidate_response_note}</p>}
+        {row.candidate_proposed_times && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>{tx('Proposed availability:')}</strong> {row.candidate_proposed_times}</p>}
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2"><div><h5 className="text-sm font-semibold text-slate-900">{tx('Internal panel notes')}</h5><p className="mt-1 text-xs text-slate-600">{tx('Only authorized recruitment staff can view these notes.')}</p></div>
+            {editingNotes !== row.id && <button type="button" onClick={() => startEditingNotes(row)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-[#085587]">{tx(row.panel_notes ? 'Edit panel notes' : 'Add panel notes')}</button>}</div>
+          {savedNotesFor === row.id && <p role="status" className="mt-2 text-sm text-emerald-800">{tx('Panel notes saved.')}</p>}
+          {row.panel_notes && editingNotes !== row.id ? <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-white p-3 text-sm text-slate-700">{row.panel_notes}</p>
+            : !row.panel_notes && editingNotes !== row.id ? <p className="mt-3 text-sm text-slate-600">{tx('No internal panel notes have been recorded.')}</p> : null}
+          {editingNotes === row.id && <form onSubmit={event => void savePanelNotes(event, row)} className="mt-3 space-y-3">
+            <label className="block text-xs font-medium text-slate-700">{tx('Panel notes')}
+              <textarea aria-label={`${tx('Panel notes')} — ${row.candidate_name}`} maxLength={4000} rows={4} value={panelNotesDraft} onChange={event => setPanelNotesDraft(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+            </label>
+            <p className="text-xs text-slate-500">{tx('Leave blank and save to clear the existing notes.')}</p>
+            {notesError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{notesError}</p>}
+            <div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={savingNotes} onClick={cancelEditingNotes} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">{tx('Cancel')}</button>
+              <button type="submit" disabled={savingNotes} className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-semibold text-white disabled:opacity-50">{savingNotes ? tx('Saving notes…') : tx('Save panel notes')}</button></div>
+          </form>}
+        </div>
+        {row.candidate_response === 'reschedule_requested' && <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2" open={expanded === row.id} onToggle={event => setExpanded((event.currentTarget as HTMLDetailsElement).open ? row.id : '')}>
+          <summary className="min-h-9 cursor-pointer py-2 text-sm font-semibold text-[#085587]">{tx('Offer another time')}</summary>
+          <InterviewScheduleForm key={`${tenantId}-${row.application_id}-${revision}`} compact locale={locale} tenantId={tenantId} applicationId={row.application_id} onCancel={() => setExpanded('')} onScheduled={() => {
+            setRescheduledApplicationId(row.application_id);
+            onRescheduled(row.application_id);
+          }} />
+        </details>}
+        {row.interview_status === 'scheduled' && row.candidate_response === 'confirmed' && <div className="mt-3 flex justify-end">
+          <button type="button" disabled={completingInterviewId === row.id} onClick={() => void completeInterview(row)} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+            {completingInterviewId === row.id ? tx('Saving interview completion…') : tx('Mark interview complete')}
+          </button>
+        </div>}
+      </li>)}</ul>}
+  </section>;
+}
 
-      const records = (data as RecruitmentData).applications;
-      if (active) {
-        setApplications(Array.isArray(records) ? records.filter(row => typeof row?.id === 'string') : []);
-        setInterviews(Array.isArray((data as RecruitmentData).interviews) ? (data as RecruitmentData).interviews!.filter(row => typeof row?.id === 'string') : []);
-        setAssessments(Array.isArray((data as RecruitmentData).assessments) ? (data as RecruitmentData).assessments!.filter(row => typeof row?.id === 'string') : []);
-        setAccess(canManage ? 'manage' : 'view');
-      }
-    })().catch(() => {
-      if (active) {
-        setAccess('denied');
-        setError('Recruitment records could not be verified. Refresh the workspace or contact an administrator.');
-      }
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
+function stageLabel(value: string) {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
 
-    return () => { active = false; };
-  }, [revision, reloadKey, tenantId]);
+function dateTime(value: string, timeZone?: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString(undefined, timeZone ? { timeZone } : undefined);
+}
+
+function applicationStageOptions(stage: string) {
+  const options: { value: string; label: string }[] = [];
+  if (stage === 'applied' || stage === 'submitted') {
+    options.push({ value: 'under_review', label: 'Move to review' });
+  }
+  if (stage === 'applied' || stage === 'submitted' || stage === 'under_review') {
+    options.push({ value: 'screening', label: 'Move to screening' });
+  }
+  if (!['withdrawn', 'rejected', 'offer_extended', 'offer_accepted', 'offer_declined', 'hired'].includes(stage)) {
+    options.push({ value: 'rejected', label: 'Reject application' });
+  }
+  return options;
+}
+
+function ApplicationStageForm({ tenantId, application, onUpdated }: {
+  tenantId: string;
+  application: Application;
+  onUpdated: (result: StageTransitionResult) => void;
+}) {
+  const options = applicationStageOptions(application.stage);
+  const [nextStage, setNextStage] = useState(options[0]?.value || '');
+  const [confirmingRejection, setConfirmingRejection] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    setNotice('');
-  }, [revision, tenantId]);
-
-  async function updateStage(application: CandidateApplication) {
-    const stage = selectedStages[application.id];
-    if (access !== 'manage' || !stage) return;
-    setSavingId(application.id);
+    setNextStage(applicationStageOptions(application.stage)[0]?.value || '');
+    setConfirmingRejection(false);
     setError('');
-    setNotice('');
+  }, [tenantId, application.application_id, application.stage]);
+
+  async function saveStage() {
+    if (saving || !nextStage) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
     try {
-      const { error: updateError } = await supabase.rpc('admin_update_application_stage', {
-        p_application_id: application.id,
-        p_stage: stage,
-        p_note: notes[application.id]?.trim() || null
+      const response = await supabase.rpc('hris_update_candidate_application_stage', {
+        p_tenant_id: tenantId,
+        p_application_id: application.application_id,
+        p_stage: nextStage,
       });
-      if (updateError) throw updateError;
-      setNotice(`Application stage updated to ${reviewStages.find(item => item.value === stage)?.label || stage}.`);
-      setSelectedStages(current => ({ ...current, [application.id]: '' }));
-      setNotes(current => ({ ...current, [application.id]: '' }));
-      setReloadKey(value => value + 1);
+      if (response.error) throw response.error;
+      const result = response.data as StageTransitionResult | null;
+      if (!result?.success || result.stage !== nextStage || (result.changed && (!result.history_id || !result.created_at))) {
+        throw new Error('Application stage update returned an invalid response.');
+      }
+      onUpdated(result);
+      setMessage(result.changed ? 'Application progress updated.' : 'This application is already at that stage.');
+      setConfirmingRejection(false);
     } catch {
-      setError('The application stage was not saved. Check your recruitment management permission and retry.');
+      setError('The application could not be updated. Refresh the pipeline and try again, or check your recruitment access.');
     } finally {
-      setSavingId('');
+      setSaving(false);
     }
   }
 
-  async function createCvLink(application: CandidateApplication) {
-    const path = privateCvPath(application);
-    if (!path) {
-      setError('A verified private CV file is not available for this application.');
-      return;
-    }
-    setCvLoadingId(application.id);
+  if (!options.length) return null;
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (nextStage === 'rejected') setConfirmingRejection(true);
+    else void saveStage();
+  }
+
+  return <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+    <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium text-[#085587]">Update application progress</summary>
+    <form onSubmit={submit} className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+      <label className="block text-xs font-medium text-slate-700">
+        Next application stage
+        <select aria-label={`Next application stage for ${application.candidate_name}`} required value={nextStage}
+          onChange={event => { setNextStage(event.target.value); setConfirmingRejection(false); setError(''); setMessage(''); }}
+          disabled={saving || confirmingRejection} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+      {!confirmingRejection && <button type="submit" disabled={saving || !nextStage}
+        className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+        {saving ? 'Saving…' : 'Save stage'}
+      </button>}
+      {confirmingRejection && <div role="alertdialog" aria-label="Confirm application rejection" className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+        <p className="text-sm font-medium text-amber-950">Reject this application? The decision will be recorded in the candidate’s history and cannot be reversed here.</p>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={saving} onClick={() => setConfirmingRejection(false)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium">Cancel</button>
+          <button type="button" disabled={saving} onClick={() => void saveStage()} className="min-h-10 rounded-lg bg-rose-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Rejecting…' : 'Confirm rejection'}</button>
+        </div>
+      </div>}
+      {error && <p role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+      {message && <p role="status" className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
+    </form>
+  </details>;
+}
+
+export function RecruitmentPipeline({ tenantId, locale = 'en', canManagePreboarding = false, canManageOffers = false, canManageApplicationStages = false }: { tenantId: string; locale?: Locale; canManagePreboarding?: boolean; canManageOffers?: boolean; canManageApplicationStages?: boolean }) {
+  const tenantRef = useRef(tenantId);
+  tenantRef.current = tenantId;
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [stages, setStages] = useState<string[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [search, setSearch] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const [stage, setStage] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [revision, setRevision] = useState(0);
+  const [assessmentRevision, setAssessmentRevision] = useState(0);
+  const [recentlyIssuedApplicationIds, setRecentlyIssuedApplicationIds] = useState<Set<string>>(() => new Set());
+  const [recentlyScheduledApplicationIds, setRecentlyScheduledApplicationIds] = useState<Set<string>>(() => new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const requestSequence = useRef(0);
+
+  useEffect(() => {
+    const request = ++requestSequence.current;
+    const requestTenantId = tenantId;
+    setApplications([]);
+    setStages([]);
+    setTotalCount(0);
+    setRecentlyIssuedApplicationIds(new Set());
+    setLoading(true);
     setError('');
-    try {
-      const { data, error: signedUrlError } = await supabase.storage
-        .from('candidate-documents')
-        .createSignedUrl(path, 60);
-      if (signedUrlError || !data?.signedUrl) throw signedUrlError || new Error('Signed link was not returned.');
-      setCvLinks(current => ({ ...current, [application.id]: data.signedUrl }));
-    } catch {
-      setError('The private CV could not be opened for this session. Check recruitment view permission and retry.');
-    } finally {
-      setCvLoadingId('');
-    }
-  }
-
-  function updateInterviewDraft(applicationId: string, key: keyof InterviewDraft, value: string) {
-    setInterviewDrafts(current => ({
-      ...current,
-      [applicationId]: { ...emptyInterviewDraft, ...current[applicationId], [key]: value }
-    }));
-  }
-
-  function updateAssessmentDraft(applicationId: string, key: keyof AssessmentDraft, value: string) {
-    setAssessmentDrafts(current => ({
-      ...current,
-      [applicationId]: { ...current[applicationId] || emptyAssessmentDraft(), [key]: value }
-    }));
-  }
-
-  async function scheduleInterview(application: CandidateApplication) {
-    const draft = interviewDrafts[application.id] || emptyInterviewDraft;
-    const scheduledAt = new Date(draft.scheduledAt);
-    const durationMinutes = Number(draft.durationMinutes);
-    if (!draft.scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
-      setError('Choose a future interview date and time.');
-      return;
-    }
-    if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 600) {
-      setError('Interview duration must be between 1 and 600 minutes.');
-      return;
-    }
-    setSavingInterviewId(application.id);
-    setError('');
-    setNotice('');
-    try {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Dhaka';
-      const { error: scheduleError } = await supabase.rpc('admin_schedule_interview', {
-        p_application_id: application.id,
-        p_payload: {
-          scheduled_at: scheduledAt.toISOString(),
-          interview_type: draft.interviewType.trim() || 'Interview',
-          location_or_link: draft.locationOrLink.trim() || null,
-          panel_notes: draft.panelNotes.trim() || null,
-          duration_minutes: durationMinutes,
-          timezone,
-          instructions: draft.instructions.trim() || null,
-          panel_members: draft.panelMembers.split(/[\n,]/).map(member => member.trim()).filter(Boolean)
+    void (async () => {
+      try {
+        const result = await supabase.rpc('hris_get_recruitment_pipeline', {
+          p_tenant_id: requestTenantId,
+          p_search: submittedSearch || null,
+          p_stage: stage || null,
+          p_limit: PAGE_SIZE,
+          p_offset: offset,
+        });
+        if (request !== requestSequence.current || tenantRef.current !== requestTenantId) return;
+        if (result.error) throw result.error;
+        const payload = result.data as PipelinePayload | null;
+        if (!payload || !Array.isArray(payload.applications) || !Array.isArray(payload.available_stages)
+          || typeof payload.total_count !== 'number') {
+          throw new Error('Recruitment pipeline returned an invalid response.');
         }
-      });
-      if (scheduleError) throw scheduleError;
-      setNotice('Interview scheduled in HRIS and the candidate has been notified.');
-      setInterviewDrafts(current => ({ ...current, [application.id]: emptyInterviewDraft }));
-      setReloadKey(value => value + 1);
-    } catch {
-      setError('The interview was not scheduled. Check recruitment management permission and choose a future time.');
-    } finally {
-      setSavingInterviewId('');
-    }
+        setApplications(payload.applications);
+        setStages(payload.available_stages);
+        setTotalCount(payload.total_count);
+      } catch {
+        if (request !== requestSequence.current || tenantRef.current !== requestTenantId) return;
+        setApplications([]);
+        setStages([]);
+        setTotalCount(0);
+        setError('Unable to load applications for this organization. Check your recruitment access and try again.');
+      } finally {
+        if (request === requestSequence.current && tenantRef.current === requestTenantId) setLoading(false);
+      }
+    })();
+    return () => { requestSequence.current += 1; };
+  }, [tenantId, submittedSearch, stage, offset, revision]);
+
+  useEffect(() => { setRecentlyScheduledApplicationIds(new Set()); }, [tenantId]);
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setOffset(0);
+    setSubmittedSearch(search.trim());
   }
 
-  async function assignAssessment(application: CandidateApplication) {
-    const draft = assessmentDrafts[application.id] || emptyAssessmentDraft();
-    if (!draft.title.trim() || !draft.assessmentType.trim() || !draft.instructions.trim() || !draft.deadlineDate) {
-      setError('Assessment title, type, instructions and deadline are required.');
-      return;
-    }
-    setSavingAssessmentId(application.id);
-    setError('');
-    setNotice('');
-    try {
-      const { error: assignmentError } = await supabase.rpc('admin_assign_assessment', {
-        p_application_id: application.id,
-        p_payload: {
-          title: draft.title.trim(),
-          assessment_type: draft.assessmentType.trim(),
-          instructions: draft.instructions.trim(),
-          deadline_date: draft.deadlineDate
-        }
-      });
-      if (assignmentError) throw assignmentError;
-      setNotice('Assessment assigned in HRIS and the candidate has been notified.');
-      setAssessmentDrafts(current => ({ ...current, [application.id]: emptyAssessmentDraft() }));
-      setReloadKey(value => value + 1);
-    } catch {
-      setError('The assessment was not assigned. Check recruitment management permission and use a current deadline.');
-    } finally {
-      setSavingAssessmentId('');
-    }
+  function exportApplications() {
+    downloadCsv(`recruitment-applications-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Candidate', 'Job reference', 'Job title', 'Stage', 'Applied at'],
+      applications.map(application => [application.candidate_name, application.job_reference,
+        application.job_title, stageLabel(application.stage), application.applied_at]));
   }
 
-  async function reviewAssessment(assessment: RecruiterAssessment) {
-    if (access !== 'manage' || assessment.status !== 'submitted') return;
-    setReviewingAssessmentId(assessment.id);
-    setError('');
-    setNotice('');
-    try {
-      const { error: reviewError } = await supabase.rpc('admin_review_assessment', {
-        p_assessment_id: assessment.id,
-        p_note: assessmentReviewNotes[assessment.id]?.trim() || null
-      });
-      if (reviewError) throw reviewError;
-      setNotice('Assessment evaluation saved in HRIS.');
-      setAssessmentReviewNotes(current => ({ ...current, [assessment.id]: '' }));
-      setReloadKey(value => value + 1);
-    } catch {
-      setError('The assessment review was not saved. Confirm the candidate submission and recruitment management permission.');
-    } finally {
-      setReviewingAssessmentId('');
-    }
-  }
+  const first = totalCount === 0 ? 0 : offset + 1;
+  const last = Math.min(offset + applications.length, totalCount);
 
-  if (access === 'checking' && loading) return <section className="bg-white border border-slate-200 rounded-xl p-5" role="status">Checking recruitment permissions…</section>;
-
-  return <section aria-label="Recruiter candidate pipeline" className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-    <header className="p-5 border-b border-slate-200 flex flex-wrap items-start justify-between gap-3">
+  return <section aria-labelledby="recruitment-pipeline-heading" className="space-y-4">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h3 className="font-semibold text-slate-900">Candidate applications</h3>
-        <p className="text-sm text-slate-600 mt-1">Live HRIS applications · permission-checked · no sample records</p>
+        <h3 id="recruitment-pipeline-heading" className="text-xl font-semibold text-[#1E1B39]">Candidate pipeline</h3>
+        <p className="mt-1 text-sm text-slate-600">Tenant-authorized applications and candidate-visible milestone history.</p>
       </div>
-      <p className="text-xs text-slate-500">{access === 'manage' ? 'Recruitment management enabled' : access === 'view' ? 'Read only' : 'Access restricted'}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={loading} onClick={() => { setRecentlyIssuedApplicationIds(new Set()); setRevision(value => value + 1); }}
+          aria-label="Refresh candidate applications"
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
+        </button>
+        <button type="button" disabled={loading || applications.length === 0} onClick={exportApplications}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#085587] bg-white px-3 text-sm text-[#085587] disabled:opacity-50">
+          <Download className="h-4 w-4" aria-hidden="true" /> Export current page
+        </button>
+      </div>
     </header>
-    {notice && <p role="status" className="mx-4 mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">{notice}</p>}
-    {error && <p role="alert" className="mx-4 mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-    {loading ? <p role="status" className="p-5 text-sm text-slate-600">Loading authorized applications…</p> : access === 'denied' ?
-      <p className="p-5 text-sm text-slate-600">Candidate records are hidden because this session does not have verified recruitment access.</p> :
-      applications.length === 0 ? <p className="p-5 text-sm text-slate-600">No applications are available for review in the current HRIS database.</p> :
-      <ul className="divide-y divide-slate-200">
-        {applications.map(application => {
-          const answers = applicationAnswers(application);
-          const isClosed = ['hired', 'withdrawn', 'offer_declined'].includes(application.stage || '');
-          const path = privateCvPath(application);
-          const applicationInterviews = interviews.filter(interview => interview.application_id === application.id);
-          const applicationAssessments = assessments.filter(assessment => assessment.application_id === application.id);
-          const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Dhaka';
-          return <li key={application.id} className="p-4 sm:p-5 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+
+    <p className="rounded-lg border border-[#B9DCE2] bg-[#F4FAFB] p-3 text-sm text-slate-700">
+      This read-only view excludes application answers, CVs, uploaded files, private recruiter notes, and panel evaluations.
+    </p>
+
+    <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_220px_auto]">
+      <label className="relative block text-xs font-medium text-slate-600">
+        Search candidate, vacancy or stage
+        <Search className="pointer-events-none absolute left-3 top-[2.35rem] h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+        <input type="search" value={search} onChange={event => setSearch(event.target.value)}
+          aria-label="Search candidate applications" placeholder="Name, job title, reference or stage"
+          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900" />
+      </label>
+      <label className="block text-xs font-medium text-slate-600">
+        Application stage
+        <select value={stage} onChange={event => { setStage(event.target.value); setOffset(0); }}
+          aria-label="Filter candidate applications by stage"
+          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">
+          <option value="">All stages</option>
+          {stages.map(value => <option key={value} value={value}>{stageLabel(value)}</option>)}
+        </select>
+      </label>
+      <div className="flex items-end"><button type="submit" disabled={loading}
+        className="min-h-11 w-full rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto">Apply filters</button></div>
+    </form>
+
+    {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+      <p>{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="mt-2 min-h-9 font-semibold underline">Retry</button>
+    </div>}
+
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading authorized applications…</p>
+      : <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 text-sm">
+          <h4 className="font-medium text-slate-800">Applications</h4>
+          <p aria-live="polite" className="text-slate-500">{first}–{last} of {totalCount}</p>
+        </div>
+        {applications.length === 0 ? <div className="p-6 text-center">
+          <p className="font-medium text-slate-800">{totalCount ? 'No applications on this page' : 'No applications found'}</p>
+          <p className="mt-1 text-sm text-slate-600">Try another search or stage, or refresh to check for new applications.</p>
+        </div> : <ul className="divide-y divide-slate-100">
+          {applications.map(application => <li key={application.application_id} data-application-id={application.application_id} className="p-4 sm:p-5">
+            <article className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <h4 className="font-semibold text-slate-900 break-words">{readable(application.full_name)}</h4>
-                <p className="text-sm text-slate-700 mt-1">{readable(application.job_title)}{application.job_reference ? ` · ${application.job_reference}` : ''}</p>
-                <p className="text-xs text-slate-500 mt-1">Submitted {dateLabel(application.applied_at)}</p>
+                <p className="break-words font-semibold text-slate-900">{application.candidate_name}</p>
+                <p className="mt-1 break-words text-sm text-slate-700">{application.job_title}</p>
+                <p className="mt-1 text-xs text-slate-500">{application.job_reference} · Applied {dateTime(application.applied_at)}</p>
               </div>
-              <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{readable(application.stage)}</span>
-            </div>
-
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2 text-sm">
-              <div><dt className="text-xs text-slate-500">Email</dt><dd className="break-all">{readable(application.email)}</dd></div>
-              <div><dt className="text-xs text-slate-500">Phone</dt><dd>{readable(application.phone)}</dd></div>
-              <div><dt className="text-xs text-slate-500">Location</dt><dd>{readable(application.current_location)}</dd></div>
-              <div><dt className="text-xs text-slate-500">Experience</dt><dd>{application.years_experience == null ? '—' : `${application.years_experience} years`}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs text-slate-500">Skills</dt><dd>{readable(application.skills)}</dd></div>
-            </dl>
-
-            {(answers.length > 0 || application.cover_letter) && <details className="rounded-md border border-slate-200 p-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-800">Application responses</summary>
-              {application.cover_letter && <p className="whitespace-pre-wrap text-sm text-slate-700 mt-3">{application.cover_letter}</p>}
-              {answers.length > 0 && <dl className="mt-3 space-y-2">{answers.map((answer, index) => <div key={`${answer.questionId}-${index}`}>
-                <dt className="text-xs text-slate-500">Screening question {answer.questionId}</dt>
-                <dd className="text-sm text-slate-800">{readable(answer.answer)}</dd>
-              </div>)}</dl>}
-            </details>}
-
-            {application.status_note && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-950"><span className="font-medium">Internal recruiter note:</span> {application.status_note}</p>}
-
-            <div className="flex flex-wrap items-center gap-2">
-              {path ? <>
-                <button type="button" disabled={cvLoadingId === application.id} onClick={() => void createCvLink(application)} className="min-h-10 rounded-md border border-slate-300 px-3 text-sm hover:bg-slate-50 disabled:opacity-50">
-                  {cvLoadingId === application.id ? 'Preparing private CV link…' : cvLinks[application.id] ? 'Refresh private CV link' : 'Prepare private CV link'}
-                </button>
-                {cvLinks[application.id] && <a href={cvLinks[application.id]} target="_blank" rel="noopener noreferrer" className="min-h-10 inline-flex items-center rounded-md px-3 text-sm font-medium text-blue-800 underline">Open CV (valid 1 minute)</a>}
-              </> : <p className="text-xs text-slate-500">No verified CV file is attached.</p>}
-            </div>
-
-            {application.stage_history?.length ? <details className="rounded-md border border-slate-200 p-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-800">Stage history ({application.stage_history.length})</summary>
-              <ol className="mt-3 space-y-2">{application.stage_history.map((entry, index) => <li key={`${entry.created_at || 'event'}-${index}`} className="text-sm">
-                <span className="font-medium">{readable(entry.stage)}</span><span className="text-xs text-slate-500"> · {dateLabel(entry.created_at)}</span>
-                {entry.note && <p className="mt-1 whitespace-pre-wrap text-slate-700">{entry.note}</p>}
-              </li>)}</ol>
-            </details> : null}
-
-            {access === 'manage' && <fieldset disabled={isClosed || savingId === application.id} className="rounded-md border border-slate-200 p-3 disabled:opacity-70">
-              <legend className="px-1 text-sm font-medium text-slate-800">Recruiter decision</legend>
-              <div className="grid grid-cols-1 md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,2fr)_auto] gap-3 items-end">
-                <div><label htmlFor={`stage-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Next stage</label>
-                  <select id={`stage-${application.id}`} value={selectedStages[application.id] || ''} onChange={event => setSelectedStages(current => ({ ...current, [application.id]: event.target.value as ReviewStage | '' }))} className="min-h-10 w-full rounded-md border border-slate-300 px-2 text-sm">
-                    <option value="">Choose a stage</option>{reviewStages.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
-                  </select>
-                </div>
-                <div><label htmlFor={`note-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Internal note</label>
-                  <input id={`note-${application.id}`} value={notes[application.id] || ''} onChange={event => setNotes(current => ({ ...current, [application.id]: event.target.value }))} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" placeholder="Optional recruiter note" />
-                </div>
-                <button type="button" disabled={!selectedStages[application.id]} onClick={() => void updateStage(application)} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770] disabled:cursor-not-allowed disabled:opacity-50">{savingId === application.id ? 'Saving…' : 'Save decision'}</button>
-              </div>
-              {isClosed && <p className="mt-2 text-xs text-slate-600">This application is closed and cannot be changed from the pipeline.</p>}
-              <p className="mt-2 text-xs text-slate-500">Stage changes are checked and audited by HRIS. Candidate accounts do not receive internal notes.</p>
-            </fieldset>}
-
-            {(applicationInterviews.length > 0 || access === 'manage') && <section className="rounded-md border border-slate-200 p-3 space-y-3" aria-label={`Interview coordination for ${readable(application.full_name)}`}>
-              <h5 className="text-sm font-semibold text-slate-900">Interview coordination</h5>
-              {applicationInterviews.length ? <ul className="space-y-2">{applicationInterviews.map(interview => <li key={interview.id} className="rounded-md bg-slate-50 p-3 text-sm">
-                <p className="font-medium">{readable(interview.interview_type)} · {dateLabel(interview.scheduled_at)} ({readable(interview.timezone)})</p>
-                <p className="text-xs text-slate-600 mt-1">{readable(interview.status)} · {interview.duration_minutes ?? 60} minutes · {readable(interview.location_or_link)}</p>
-                {interview.panel_members?.length ? <p className="text-xs text-slate-600 mt-1">Panel: {interview.panel_members.join(', ')}</p> : null}
-                {interview.instructions && <p className="mt-2 whitespace-pre-wrap text-slate-700">Candidate instructions: {interview.instructions}</p>}
-                {interview.candidate_response && <p className="mt-2 text-xs text-slate-700">Candidate response: {interview.candidate_response}{interview.candidate_response_note ? ` · ${interview.candidate_response_note}` : ''}{interview.candidate_proposed_times ? ` · Availability: ${interview.candidate_proposed_times}` : ''}</p>}
-                {interview.panel_notes && <p className="mt-2 text-xs text-amber-900">Private panel note: {interview.panel_notes}</p>}
-              </li>)}</ul> : <p className="text-xs text-slate-600">No interview is scheduled for this application.</p>}
-              {access === 'manage' && !isClosed && <details className="rounded-md border border-slate-200 p-3">
-                <summary className="cursor-pointer text-sm font-medium text-slate-800">Schedule interview</summary>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                  <div><label htmlFor={`interview-time-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Date and time ({localTimeZone})</label>
-                    <input id={`interview-time-${application.id}`} type="datetime-local" value={interviewDrafts[application.id]?.scheduledAt || ''} onChange={event => updateInterviewDraft(application.id, 'scheduledAt', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-2 text-sm" /></div>
-                  <div><label htmlFor={`interview-type-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Interview type</label>
-                    <input id={`interview-type-${application.id}`} value={interviewDrafts[application.id]?.interviewType ?? emptyInterviewDraft.interviewType} onChange={event => updateInterviewDraft(application.id, 'interviewType', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
-                  <div><label htmlFor={`interview-location-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Meeting location or link</label>
-                    <input id={`interview-location-${application.id}`} value={interviewDrafts[application.id]?.locationOrLink || ''} onChange={event => updateInterviewDraft(application.id, 'locationOrLink', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
-                  <div><label htmlFor={`interview-duration-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Duration in minutes</label>
-                    <input id={`interview-duration-${application.id}`} type="number" min="1" max="600" value={interviewDrafts[application.id]?.durationMinutes ?? '60'} onChange={event => updateInterviewDraft(application.id, 'durationMinutes', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
-                  <div className="sm:col-span-2"><label htmlFor={`interview-panel-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Panel members</label>
-                    <input id={`interview-panel-${application.id}`} value={interviewDrafts[application.id]?.panelMembers || ''} onChange={event => updateInterviewDraft(application.id, 'panelMembers', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" placeholder="Names separated by commas" /></div>
-                  <div className="sm:col-span-2"><label htmlFor={`interview-instructions-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Candidate instructions</label>
-                    <textarea id={`interview-instructions-${application.id}`} value={interviewDrafts[application.id]?.instructions || ''} onChange={event => updateInterviewDraft(application.id, 'instructions', event.target.value)} rows={2} className="w-full rounded-md border border-slate-300 p-3 text-sm" /></div>
-                  <div className="sm:col-span-2"><label htmlFor={`interview-notes-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Private panel notes</label>
-                    <textarea id={`interview-notes-${application.id}`} value={interviewDrafts[application.id]?.panelNotes || ''} onChange={event => updateInterviewDraft(application.id, 'panelNotes', event.target.value)} rows={2} className="w-full rounded-md border border-slate-300 p-3 text-sm" /></div>
-                </div>
-                <button type="button" disabled={savingInterviewId === application.id} onClick={() => void scheduleInterview(application)} className="min-h-10 mt-3 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{savingInterviewId === application.id ? 'Scheduling…' : 'Schedule interview'}</button>
-                <p className="mt-2 text-xs text-slate-500">Saved through HRIS. The listed time is converted from {localTimeZone} and the candidate is notified by the existing recruitment workflow.</p>
-              </details>}
-            </section>}
-
-            {(applicationAssessments.length > 0 || access === 'manage') && <section className="rounded-md border border-slate-200 p-3 space-y-3" aria-label={`Assessment review for ${readable(application.full_name)}`}>
-              <h5 className="text-sm font-semibold text-slate-900">Assessment and panel review</h5>
-              {applicationAssessments.length ? <ul className="space-y-2">{applicationAssessments.map(assessment => {
-                const submissionText = assessment.submission_data?.submission_text;
-                return <li key={assessment.id} className="rounded-md bg-slate-50 p-3 text-sm">
-                  <p className="font-medium">{readable(assessment.title)} · {readable(assessment.status)}</p>
-                  <p className="text-xs text-slate-600 mt-1">{readable(assessment.assessment_type)} · Due {readable(assessment.deadline_date)}{assessment.submitted_at ? ` · Submitted ${dateLabel(assessment.submitted_at)}` : ''}</p>
-                  {assessment.instructions && <p className="mt-2 whitespace-pre-wrap text-slate-700">Candidate instructions: {assessment.instructions}</p>}
-                  {submissionText !== undefined && <p className="mt-2 whitespace-pre-wrap text-slate-700"><span className="font-medium">Candidate submission:</span> {readable(submissionText)}</p>}
-                  {assessment.review_note && <p className="mt-2 whitespace-pre-wrap text-amber-900"><span className="font-medium">Private panel evaluation:</span> {assessment.review_note}</p>}
-                  {access === 'manage' && assessment.status === 'submitted' && <div className="mt-3 space-y-2">
-                    <label htmlFor={`assessment-review-${assessment.id}`} className="block text-xs font-medium text-slate-600">Panel evaluation note</label>
-                    <textarea id={`assessment-review-${assessment.id}`} value={assessmentReviewNotes[assessment.id] || ''} onChange={event => setAssessmentReviewNotes(current => ({ ...current, [assessment.id]: event.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 p-3 text-sm" />
-                    <button type="button" disabled={reviewingAssessmentId === assessment.id} onClick={() => void reviewAssessment(assessment)} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{reviewingAssessmentId === assessment.id ? 'Saving evaluation…' : 'Save panel evaluation'}</button>
-                  </div>}
-                </li>;
-              })}</ul> : <p className="text-xs text-slate-600">No assessments are assigned to this application.</p>}
-              {access === 'manage' && !isClosed && <details className="rounded-md border border-slate-200 p-3">
-                <summary className="cursor-pointer text-sm font-medium text-slate-800">Assign assessment</summary>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                  <div><label htmlFor={`assessment-title-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Assessment title</label>
-                    <input id={`assessment-title-${application.id}`} value={assessmentDrafts[application.id]?.title || ''} onChange={event => updateAssessmentDraft(application.id, 'title', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
-                  <div><label htmlFor={`assessment-type-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Assessment type</label>
-                    <input id={`assessment-type-${application.id}`} value={assessmentDrafts[application.id]?.assessmentType || ''} onChange={event => updateAssessmentDraft(application.id, 'assessmentType', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
-                  <div><label htmlFor={`assessment-deadline-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Deadline</label>
-                    <input id={`assessment-deadline-${application.id}`} type="date" min={todayDate()} value={assessmentDrafts[application.id]?.deadlineDate ?? tomorrowDate()} onChange={event => updateAssessmentDraft(application.id, 'deadlineDate', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
-                  <div className="sm:col-span-2"><label htmlFor={`assessment-instructions-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Candidate assessment instructions</label>
-                    <textarea id={`assessment-instructions-${application.id}`} value={assessmentDrafts[application.id]?.instructions || ''} onChange={event => updateAssessmentDraft(application.id, 'instructions', event.target.value)} rows={3} className="w-full rounded-md border border-slate-300 p-3 text-sm" /></div>
-                </div>
-                <button type="button" disabled={savingAssessmentId === application.id} onClick={() => void assignAssessment(application)} className="min-h-10 mt-3 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{savingAssessmentId === application.id ? 'Assigning…' : 'Assign assessment'}</button>
-                <p className="mt-2 text-xs text-slate-500">Saved through HRIS, which updates the application stage and notifies the candidate.</p>
-              </details>}
-            </section>}
-          </li>;
-        })}
-      </ul>}
+              <span className="w-fit shrink-0 rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{stageLabel(application.stage)}</span>
+            </article>
+            <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+              <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium text-[#085587]">View candidate-visible milestones</summary>
+              {application.milestones.length === 0 ? <p className="py-2 text-sm text-slate-600">No milestones recorded yet.</p>
+                : <ol className="mt-2 space-y-2 border-l border-[#B9DCE2] pl-4">
+                  {application.milestones.map((milestone, index) => <li key={`${milestone.created_at}-${milestone.stage}-${index}`} className="relative text-sm">
+                    <span className="absolute -left-[1.32rem] top-1.5 h-2 w-2 rounded-full bg-[#085587]" aria-hidden="true" />
+                    <span className="font-medium text-slate-800">{stageLabel(milestone.stage)}</span>
+                    <span className="block text-xs text-slate-500">{dateTime(milestone.created_at)}</span>
+                  </li>)}
+                </ol>}
+            </details>
+            {canManageApplicationStages && <ApplicationStageForm key={`${tenantId}-${application.application_id}`} tenantId={tenantId} application={application} onUpdated={result => {
+              if (!result.changed || !result.stage || !result.history_id || !result.created_at) return;
+              setApplications(current => current.flatMap(value => {
+                if (value.application_id !== application.application_id) return [value];
+                if (stage && stage !== result.stage) return [];
+                return [{ ...value, stage: result.stage!, milestones: [...value.milestones, { stage: result.stage!, created_at: result.created_at! }] }];
+              }));
+              if (stage && stage !== result.stage) setTotalCount(value => Math.max(0, value - 1));
+              setStages(current => current.includes(result.stage!) ? current : [...current, result.stage!].sort());
+            }} />}
+            {canManageOffers && recentlyIssuedApplicationIds.has(application.application_id)
+              && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Offer issued to the candidate. Their response is tracked separately from this application workflow.</p>}
+            {canManageOffers && !recentlyIssuedApplicationIds.has(application.application_id) && application.stage !== 'offer_extended' && !['withdrawn', 'rejected', 'offer_accepted', 'hired'].includes(application.stage)
+              && <OfferIssueForm key={`${tenantId}-${application.application_id}`} tenantId={tenantId} application={application} onIssued={() => {
+                setApplications(current => current.map(value => value.application_id === application.application_id ? { ...value, stage: 'offer_extended' } : value));
+                setRecentlyIssuedApplicationIds(current => new Set(current).add(application.application_id));
+              }} />}
+            {canManageOffers && !recentlyIssuedApplicationIds.has(application.application_id) && application.stage === 'offer_extended'
+              && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">An offer is awaiting the candidate’s response.</p>}
+            {canManageOffers && recentlyScheduledApplicationIds.has(application.application_id)
+              && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Interview invitation scheduled. The candidate can now review and respond from Interviews.</p>}
+            {canManageOffers && !recentlyScheduledApplicationIds.has(application.application_id) && application.stage !== 'interview_scheduled'
+              && !['withdrawn', 'rejected', 'offer_extended', 'offer_accepted', 'offer_declined', 'hired'].includes(application.stage)
+              && <InterviewScheduleForm key={`${tenantId}-${application.application_id}`} tenantId={tenantId} applicationId={application.application_id} onScheduled={() => {
+                setRecentlyScheduledApplicationIds(current => new Set(current).add(application.application_id));
+                setApplications(current => current.map(value => value.application_id === application.application_id ? { ...value, stage: 'interview_scheduled' } : value));
+                setRevision(value => value + 1);
+              }} />}
+            {canManageOffers && !['withdrawn', 'rejected', 'offer_accepted', 'hired'].includes(application.stage)
+              && <CandidateAssessmentAssignment tenantId={tenantId} application={application} locale={locale} onAssigned={() => setAssessmentRevision(value => value + 1)} />}
+          </li>)}
+        </ul>}
+        <footer className="flex items-center justify-between gap-3 border-t border-slate-100 p-3">
+          <button type="button" disabled={loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - PAGE_SIZE))}
+            className="min-h-10 rounded-md border border-slate-300 px-3 text-sm disabled:opacity-50">Previous</button>
+          <p className="text-xs text-slate-500">Page size {PAGE_SIZE}</p>
+          <button type="button" disabled={loading || offset + PAGE_SIZE >= totalCount} onClick={() => setOffset(value => value + PAGE_SIZE)}
+            className="min-h-10 rounded-md border border-slate-300 px-3 text-sm disabled:opacity-50">Next</button>
+        </footer>
+      </div>}
+    {canManageOffers && <CandidateInterviewResponses tenantId={tenantId} revision={revision} locale={locale} onRescheduled={applicationId => {
+      setRecentlyScheduledApplicationIds(current => new Set(current).add(applicationId));
+      setApplications(current => current.map(value => value.application_id === applicationId ? { ...value, stage: 'interview_scheduled' } : value));
+      setRevision(value => value + 1);
+    }} />}
+    {canManageOffers && <CandidateAssessmentQueue tenantId={tenantId} revision={assessmentRevision} locale={locale} />}
+    {canManagePreboarding && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} />}
   </section>;
 }

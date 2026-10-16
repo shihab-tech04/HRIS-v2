@@ -1,0 +1,14 @@
+{
+  "status": "BLOCKED_SOURCE_NOT_RECOVERED",
+  "expected_story_count": 1047,
+  "expected_module_count": 153,
+  "mapped_story_count": 0,
+  "accepted_end_to_end_story_count": 0,
+  "source": {
+    "repository": "shihabshajib01-cell/HRIS--Main",
+    "path": "docs/HRIS_USER_STORY_EXECUTION_LEDGER.json",
+    "recovery_status": "GitHub read returned HTTP 403: account suspended; no local or Drive copy was found in the available recovery searches."
+  },
+  "stories": [],
+  "integrity_rule": "Do not infer story IDs, role assignments, descriptions, acceptance criteria, or completion from summary counts. Populate records only from the recovered authoritative ledger and executed evidence."
+}

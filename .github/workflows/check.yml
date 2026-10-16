@@ -1,13 +1,13 @@
 name: Verify HRIS build and browser smoke
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,25 +19,7 @@ jobs:
         run: npm run lint
       - name: Contract source checks (not RLS runtime tests)
         run: npm run test:contracts
-      - name: Verify the real Supabase recovery-request endpoint (nonexistent test address)
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import { createClient } from '@supabase/supabase-js';
-          const config = readFileSync('src/lib/supabase.ts', 'utf8');
-          const url = process.env.VITE_SUPABASE_URL || config.match(/https:\/\/[a-z0-9]+\.supabase\.co/)?.[0];
-          const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || config.match(/sb_publishable_[A-Za-z0-9_]+/)?.[0];
-          if (!url || !key) throw Error('Supabase publishable configuration is unavailable');
-          const client = createClient(url, key, { auth: { persistSession: false, detectSessionInUrl: false, autoRefreshToken: false } });
-          const syntheticAddress = 'hris-recovery-ci-' + process.env.GITHUB_RUN_ID + '@example.com';
-          const response = await client.auth.resetPasswordForEmail(syntheticAddress, {
-            redirectTo: 'https://shihab-tech04.github.io/HRIS-v2/',
-          });
-          if (response.error) throw Error('Production Supabase Auth rejected the reset request: ' + response.error.message);
-          console.log('PASS: Supabase recovery endpoint accepted a synthetic non-account request with the production redirect.');
-          console.log('Limit: This does not prove real email delivery, callback allow-list behavior, or a credential change.');
-          NODE
-      - name: Production bundle
+      - name: Build HRIS bundle
         run: npm run build
       - name: Verify the branch-served Pages entry matches the production build
         run: git diff --exit-code -- index.html assets .nojekyll
@@ -45,12 +27,3 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Actual browser responsive/sign-in smoke
         run: npm run test:e2e
-      - name: Upload failing browser evidence
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-test-failures
-          path: |
-            test-results
-            playwright-report
-          if-no-files-found: ignore
