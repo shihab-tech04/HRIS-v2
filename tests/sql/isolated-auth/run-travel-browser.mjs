@@ -153,7 +153,7 @@ try {
   const employeeCard = employeePage.locator(`[data-travel-request="${requestId}"]`);
   await employeeCard.waitFor({ state: 'visible' });
   await employeeCard.getByText('খসড়া', { exact: true }).waitFor({ state: 'visible' });
-  if (!(await newTravelRequestButton.evaluate(element => element === document.activeElement))) throw new Error('Saving a travel draft did not restore focus to its trigger.');
+  if (!(await employeePage.getByRole('heading', { name: 'আমার ভ্রমণ অনুরোধ', exact: true }).evaluate(element => element === document.activeElement))) throw new Error('Saving a travel draft did not restore focus to the stable request heading.');
   await employeeCard.getByText(/৮২৫ BDT/).waitFor({ state: 'visible' });
   await assertNoOverflow(employeePage, 'Travel draft mobile');
 

@@ -103,7 +103,9 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
   const requestCards = useRef(new Map<string, HTMLElement>());
   const editorDialogRef = useRef<HTMLDivElement>(null);
   const destinationInputRef = useRef<HTMLInputElement>(null);
+  const pageHeadingRef = useRef<HTMLHeadingElement>(null);
   const savingRef = useRef(saving);
+  const completedSaveRef = useRef(false);
   const focusHandled = useRef(onFocusHandled);
   focusHandled.current = onFocusHandled;
   savingRef.current = saving;
@@ -115,6 +117,8 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
     if (!editorOpen) return;
     return activateModalFocusTrap(editorDialogRef.current, {
       initialFocus: destinationInputRef.current,
+      returnFocus: () => completedSaveRef.current ? pageHeadingRef.current : undefined,
+      fallbackFocus: pageHeadingRef.current,
       onEscape: () => { if (!savingRef.current) closeEditor(); },
     });
   }, [editorOpen]);
@@ -166,6 +170,7 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
   }, [focusRequestId, loading, error, requests, locale]);
 
   function startDraft(request?: PersonalTravelRequest) {
+    completedSaveRef.current = false;
     setActionError(''); setMessage('');
     setDraft(request ? {
       id: request.id, destination: request.destination || '', fromDate: request.from_date || '',
@@ -200,6 +205,7 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
       if (typeof result.data !== 'string' || !result.data) {
         throw new Error('The draft save was not confirmed. Refresh your travel requests and try again.');
       }
+      completedSaveRef.current = true;
       setEditorOpen(false); setDraft(emptyDraft()); setMessage(tx('Travel request draft saved.'));
       setRevision(value => value + 1);
     } catch (cause) {
@@ -225,7 +231,7 @@ export function MyTravelRequests({ tenantId, locale, focusRequestId, onFocusHand
 
   return <section aria-labelledby="my-travel-heading" className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="my-travel-heading" className="text-2xl font-medium text-[#49454F]">{tx('My Travel Requests')}</h2>
+      <div><h2 ref={pageHeadingRef} tabIndex={-1} id="my-travel-heading" className="text-2xl font-medium text-[#49454F]">{tx('My Travel Requests')}</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">{tx('Save a draft, submit it for review, and update a request if it is returned.')}</p></div>
       <div className="flex flex-wrap gap-2">
         <button type="button" aria-label={tx('Refresh my travel requests')} onClick={() => setRevision(value => value + 1)} disabled={loading || saving} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true"/>{tx('Refresh')}</button>
