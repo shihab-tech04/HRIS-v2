@@ -179,6 +179,13 @@ try {
   await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).click();
   const releaseDialog = pmPage.getByRole('alertdialog');
   await assertVisibleText(releaseDialog, 'Collaborators whose assignments overlapped will receive required peer reviews. The release will not wait for feedback.');
+  const releaseCancel = releaseDialog.getByRole('button', { name: 'Cancel' });
+  const releaseConfirm = releaseDialog.getByRole('button', { name: 'Confirm release' });
+  if (!(await releaseCancel.evaluate(element => element === document.activeElement))) throw new Error('Release dialog did not move keyboard focus to its safe initial action.');
+  await pmPage.keyboard.press('Shift+Tab');
+  if (!(await releaseConfirm.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the release dialog instead of wrapping to its last action.');
+  await pmPage.keyboard.press('Tab');
+  if (!(await releaseCancel.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the release dialog instead of wrapping to its first action.');
   await releaseDialog.getByRole('button', { name: 'Cancel' }).click();
   await releaseDialog.waitFor({ state: 'detached' });
   await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);
@@ -188,6 +195,12 @@ try {
   await assertVisibleText(task, 'Feedback Pending · 1 required reviews');
   await task.getByRole('button', { name: 'Mark complete' }).click();
   const completionDialog = pmPage.getByRole('alertdialog');
+  const completionCancel = completionDialog.getByRole('button', { name: 'Cancel' });
+  const completionConfirm = completionDialog.getByRole('button', { name: 'Confirm completion' });
+  await pmPage.keyboard.press('Tab');
+  if (!(await completionConfirm.evaluate(element => element === document.activeElement))) throw new Error('Completion dialog did not keep forward keyboard focus inside the dialog.');
+  await pmPage.keyboard.press('Tab');
+  if (!(await completionCancel.evaluate(element => element === document.activeElement))) throw new Error('Completion dialog did not wrap forward keyboard focus to its first action.');
   await pmPage.keyboard.press('Escape');
   await completionDialog.waitFor({ state: 'detached' });
   await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);

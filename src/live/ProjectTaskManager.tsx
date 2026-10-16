@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { CheckCircle2, Plus, RefreshCw, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
+import { activateModalFocusTrap } from './modal-focus';
 
 type MemberOption = { id: string; employee_name: string; employee_number: string; status: string };
 type TaskMember = { id: string; project_allocation_id: string; employee_id: string; employee_name: string; released_at: string | null };
@@ -36,29 +37,22 @@ export function ProjectTaskManager({ tenantId, projectId, members, locale }: { t
   const [taskEdit, setTaskEdit] = useState<TaskEdit | null>(null);
   const requestSequence = useRef(0);
   const savingRef = useRef(false);
+  const confirmationDialogRef = useRef<HTMLDivElement>(null);
   const cancelConfirmationRef = useRef<HTMLButtonElement>(null);
   const confirmationOriginRef = useRef<HTMLElement | null>(null);
   savingRef.current = saving;
 
   useEffect(() => {
     if (!pendingConfirmation) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancelConfirmationRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !savingRef.current) {
-        event.preventDefault();
+    return activateModalFocusTrap(confirmationDialogRef.current, {
+      initialFocus: cancelConfirmationRef.current,
+      returnFocus: confirmationOriginRef.current,
+      onEscape: () => {
+        if (savingRef.current) return;
         setPendingConfirmation(null);
         setError('');
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      const target = confirmationOriginRef.current?.isConnected
-        ? confirmationOriginRef.current
-        : previousFocus?.isConnected ? previousFocus : null;
-      target?.focus();
-    };
+      },
+    });
   }, [pendingConfirmation]);
 
   useEffect(() => {
@@ -185,7 +179,7 @@ export function ProjectTaskManager({ tenantId, projectId, members, locale }: { t
         {task.feedback_pending > 0 && <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">{tx('Feedback Pending')} · {task.feedback_pending} {locale === 'bn' ? 'টি প্রয়োজনীয় পর্যালোচনা' : 'required reviews'}</p>}
         <div className="mt-3 flex flex-wrap justify-end gap-2">{task.status === 'open' && <button type="button" disabled={saving} onClick={() => void callTaskAction('hris_start_project_task', { p_tenant_id: tenantId, p_task_id: task.id }, tx('Task started.'))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm">{tx('Start task')}</button>}{task.status !== 'completed' && <button type="button" disabled={saving} onClick={event => { confirmationOriginRef.current = event.currentTarget.closest('article')?.querySelector('h5') || event.currentTarget; setError(''); setPendingConfirmation({ kind: 'complete', taskId: task.id, taskTitle: task.title }); }} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" aria-hidden="true"/>{saving ? tx('Saving…') : tx('Mark complete')}</button>}</div>
       </article>)}</div>}
-    {pendingConfirmation && <div role="alertdialog" aria-modal="true" aria-labelledby="project-task-confirm-title" aria-describedby="project-task-confirm-description" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) { setPendingConfirmation(null); setError(''); } }}>
+    {pendingConfirmation && <div ref={confirmationDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="project-task-confirm-title" aria-describedby="project-task-confirm-description" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) { setPendingConfirmation(null); setError(''); } }}>
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
         <h5 id="project-task-confirm-title" className="text-lg font-semibold text-slate-900">{pendingConfirmation.kind === 'release' ? tx('Release task member?') : tx('Complete this task?')}</h5>
         <p id="project-task-confirm-description" className="mt-2 text-sm text-slate-600">{pendingConfirmation.kind === 'release'

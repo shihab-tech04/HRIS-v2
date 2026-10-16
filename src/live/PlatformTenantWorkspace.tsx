@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Building2, Pencil, Plus, RefreshCw, Save, ShieldCheck, X } from 'lucide-react';
 import {
@@ -11,6 +11,7 @@ import {
 } from './platformTenantApi';
 import type { PlatformTenant } from './platformTenantApi';
 import { projectText, type Locale } from './project-locale';
+import { activateModalFocusTrap } from './modal-focus';
 
 type TenantForm = {
   code: string;
@@ -69,6 +70,18 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
   const [editLocale, setEditLocale] = useState<'en' | 'bn'>('en');
   const [adminEmails, setAdminEmails] = useState<Record<string, string>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<{ tenantId: string; email: string } | null>(null);
+  const revokeDialogRef = useRef<HTMLElement>(null);
+  const cancelRevokeRef = useRef<HTMLButtonElement>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+
+  useEffect(() => {
+    if (!confirmRevoke) return;
+    return activateModalFocusTrap(revokeDialogRef.current, {
+      initialFocus: cancelRevokeRef.current,
+      onEscape: () => { if (!busyRef.current) setConfirmRevoke(null); },
+    });
+  }, [Boolean(confirmRevoke)]);
 
   async function loadTenants(showLoading = true): Promise<boolean> {
     if (showLoading) setLoading(true);
@@ -246,9 +259,9 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       </>}
 
     {confirmRevoke && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setConfirmRevoke(null); }}>
-      <section role="alertdialog" aria-modal="true" aria-labelledby="revoke-admin-title" aria-describedby="revoke-admin-description" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+      <section ref={revokeDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="revoke-admin-title" aria-describedby="revoke-admin-description" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
         <h2 id="revoke-admin-title" className="text-lg font-semibold text-slate-900">{tx('Revoke tenant administrator?')}</h2><p id="revoke-admin-description" className="mt-2 break-all text-sm text-slate-600">{tx('This removes active administrator access for')} {confirmRevoke.email}. {tx('The last active tenant administrator cannot be removed.')}</p>
-        <div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setConfirmRevoke(null)} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm">{tx('Cancel')}</button><button type="button" onClick={() => void revokeAdministrator()} disabled={Boolean(busy)} className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy.startsWith('revoke:') ? tx('Revoking…') : tx('Confirm revocation')}</button></div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2"><button ref={cancelRevokeRef} type="button" onClick={() => setConfirmRevoke(null)} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm">{tx('Cancel')}</button><button type="button" onClick={() => void revokeAdministrator()} disabled={Boolean(busy)} className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy.startsWith('revoke:') ? tx('Revoking…') : tx('Confirm revocation')}</button></div>
       </section>
     </div>}
   </section>;

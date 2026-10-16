@@ -163,9 +163,17 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await openAdministratorControls(tenantCard);
     await tenantCard.getByLabel('Administrator email address').fill(secondAdmin.email);
     await tenantCard.getByRole('button', { name: 'Revoke by email', exact: true }).click();
-    await desktop.getByRole('alertdialog', { name: 'Revoke tenant administrator?' }).waitFor({ state: 'visible' });
-    await desktop.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await desktop.getByRole('alertdialog', { name: 'Revoke tenant administrator?' }).waitFor({ state: 'hidden' });
+    const revokeDialog = desktop.getByRole('alertdialog', { name: 'Revoke tenant administrator?' });
+    await revokeDialog.waitFor({ state: 'visible' });
+    const revokeCancel = revokeDialog.getByRole('button', { name: 'Cancel', exact: true });
+    const revokeConfirm = revokeDialog.getByRole('button', { name: 'Confirm revocation', exact: true });
+    if (!(await revokeCancel.evaluate(element => element === document.activeElement))) throw new Error('Tenant administrator dialog did not move keyboard focus to Cancel.');
+    await desktop.keyboard.press('Shift+Tab');
+    if (!(await revokeConfirm.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the tenant administrator dialog.');
+    await desktop.keyboard.press('Tab');
+    if (!(await revokeCancel.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the tenant administrator dialog.');
+    await desktop.keyboard.press('Escape');
+    await revokeDialog.waitFor({ state: 'hidden' });
     const stillAssigned = await admin.from('tenant_memberships').select('status')
       .eq('tenant_id', createdRow.data.id).eq('user_id', secondAdmin.id).single();
     assert.ifError(stillAssigned.error);
