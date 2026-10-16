@@ -567,10 +567,6 @@ psqlSync(`INSERT INTO public.attendance_records(
   (('${previousAttendanceMonthDate}'::date + time '17:00') AT TIME ZONE 'Asia/Dhaka'),
   'office','present','employee','Synthetic isolated prior-month attendance acceptance fixture'
 );`);
-psqlSync(`UPDATE public.leave_requests
-  SET from_date='${localCurrentDate}'::date,to_date='${localCurrentDate}'::date
-  WHERE id='${ids.leaveApprove}'::uuid`);
-
 const results = [];
 function record(label, ok, note = '') {
   results.push({ label, ok });
@@ -4439,7 +4435,10 @@ const leaveBalance = balance(ids.leaveTypeA, 2026);
 record('Tenant A leave approval applies holiday-aware balance and audit atomically',
   leaveApproved.success === true && approvedRow.status === 'approved'
   && Number(leaveBalance.pending_days) === 4 && Number(leaveBalance.used_days) === 1
-  && auditCount(ids.leaveApprove, 'leave.request.approved') === 1);
+  && auditCount(ids.leaveApprove, 'leave.request.approved') === 1,
+  JSON.stringify({ decision: leaveApproved, status: approvedRow.status,
+    pendingDays: leaveBalance.pending_days, usedDays: leaveBalance.used_days,
+    auditCount: auditCount(ids.leaveApprove, 'leave.request.approved') }));
 const persistedLeaveDecision = queryAdmin(`SELECT jsonb_build_object(
   'count',count(*)::integer,'kind',max(kind),'tenant_id',max(tenant_id::text),
   'request_id',max(leave_request_id::text),'recipient_id',max(recipient_employee_id::text),
@@ -4484,14 +4483,19 @@ const year2026 = balance(ids.leaveTypeA, 2026);
 const year2027 = balance(ids.leaveTypeA, 2027);
 record('Cross-year leave updates only the matching yearly ledgers', yearApproval.success === true
   && Number(year2026.pending_days) === 3 && Number(year2026.used_days) === 2
-  && Number(year2027.pending_days) === 0 && Number(year2027.used_days) === 1);
+  && Number(year2027.pending_days) === 0 && Number(year2027.used_days) === 1,
+  JSON.stringify({ decision: yearApproval, year2026: {
+    pendingDays: year2026.pending_days, usedDays: year2026.used_days,
+  }, year2027: { pendingDays: year2027.pending_days, usedDays: year2027.used_days } }));
 
 const halfReject = resolveLeave(managerA, ids.leaveHalfDay, 'rejected', 'isolated rejection');
 const halfRow = tableRow('leave_requests', ids.leaveHalfDay);
 const afterHalf = balance(ids.leaveTypeA, 2026);
 record('Half-day rejection releases pending days without increasing used days', halfReject.success === true
   && halfRow.status === 'rejected' && Number(afterHalf.pending_days) === 2.5
-  && Number(afterHalf.used_days) === 2);
+  && Number(afterHalf.used_days) === 2,
+  JSON.stringify({ decision: halfReject, status: halfRow.status,
+    pendingDays: afterHalf.pending_days, usedDays: afterHalf.used_days }));
 
 const missingLedger = attemptAs(managerA, `SELECT public.admin_resolve_leave_request(
   '${ids.leaveMissingLedger}'::uuid,'approved',NULL)::jsonb`);
