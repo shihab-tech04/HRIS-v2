@@ -6,6 +6,7 @@ const migration = readFileSync(new URL('../../supabase/migrations/20261013221600
 const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../../src/live/OrganizationHolidayCalendar.tsx', import.meta.url), 'utf8');
+const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-holiday-calendar-browser.mjs', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
@@ -41,6 +42,17 @@ test('holiday calendar is exposed only to the tenant permission and uses RPCs in
   assert.match(ui, /Retry/);
   assert.match(ui, /Deactivate/);
   assert.doesNotMatch(ui, /\.from\(['"]holidays['"]\)/);
+});
+
+test('every literal holiday-calendar label has a distinct Bengali translation', () => {
+  const keys = [...ui.matchAll(/\btx\('((?:[^'\\]|\\.)*)'\)/g)].map(match => match[1]);
+  assert.ok(keys.length > 20, 'the holiday page should route its user-facing copy through the shared locale catalog');
+  for (const key of new Set(keys)) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const translation = locale.match(new RegExp(`^\\s*'${escaped}':\\s*'([^']*)',?$`, 'm'));
+    assert.ok(translation, `missing Bengali translation for ${key}`);
+    assert.notEqual(translation[1], key, `Bengali translation for ${key} must not fall back to English`);
+  }
 });
 
 test('local Auth/Postgres and browser acceptance exercises tenant denial and the holiday management journey', () => {

@@ -451,6 +451,7 @@ const bengali: Record<string, string> = {
   'Holiday calendar': 'ছুটির ক্যালেন্ডার',
   'Manage the dates shown across your organization. Deactivated holidays remain in the calendar history.': 'প্রতিষ্ঠানের ছুটির ক্যালেন্ডারে দেখানো তারিখ পরিচালনা করুন। নিষ্ক্রিয় ছুটিও ক্যালেন্ডারের ইতিহাসে থাকবে।',
   'Refresh holiday calendar': 'ছুটির ক্যালেন্ডার রিফ্রেশ করুন',
+  'Add holiday': 'ছুটি যোগ করুন',
   'Holiday added to the organization calendar.': 'প্রতিষ্ঠানের ক্যালেন্ডারে ছুটি যোগ হয়েছে।',
   'Holiday updated.': 'ছুটি হালনাগাদ হয়েছে।',
   'Holiday deactivated.': 'ছুটি নিষ্ক্রিয় হয়েছে।',
