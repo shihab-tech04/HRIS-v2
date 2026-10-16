@@ -116,6 +116,10 @@ test('linked employee can complete the private evidence leave request on mobile'
       correctionPayload = request.postDataJSON() as Record<string, unknown>;
       correctionSubmitted = true;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('f8888888-8888-4888-8888-888888888888') });
+    } else if (endpoint === 'hris_get_my_leave_calendar') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        approved_leave: [], holidays: [],
+      }) });
     } else if (endpoint === 'hris_get_my_attendance_period') {
       const payload = request.postDataJSON() as { p_tenant_id?: string; p_month_start?: string };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
@@ -303,6 +307,8 @@ test('linked employee can complete the private evidence leave request on mobile'
   await moduleNav.getByRole('button', { name: 'My Leave', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Personal leave' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Available leave breakdown' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My leave calendar' })).toBeVisible();
+  await expect(page.getByText('No approved leave on this date.')).toBeVisible();
   const history = page.getByRole('table', { name: `Personal leave history for ${new Date().getFullYear()}` });
   const submittedHistoryRow = history.getByRole('row', { name: /Synthetic mobile leave request/ });
   await expect(submittedHistoryRow).toContainText(/pending/i);
