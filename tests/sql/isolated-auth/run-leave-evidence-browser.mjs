@@ -464,6 +464,52 @@ try {
   await signIn(refreshedEmployee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
   await navigateTo(refreshedEmployee, 'My Leave');
   await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const personalCalendarDate = process.env.HRIS_LOCAL_LEAVE_REQUEST_DATE;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(personalCalendarDate || '')) {
+    throw new Error('The isolated leave calendar fixture has no valid approved request date.');
+  }
+  const personalCalendarMonth = personalCalendarDate.slice(0, 7);
+  const personalCalendarMonthLabel = new Date(`${personalCalendarMonth}-01T12:00:00Z`).toLocaleDateString('en-US', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+  const personalCalendar = refreshedEmployee.getByRole('region', {
+    name: `My leave calendar ${personalCalendarMonthLabel}`,
+  });
+  const personalCalendarMonthInput = refreshedEmployee.getByLabel('Month', { exact: true });
+  await personalCalendarMonthInput.fill(personalCalendarMonth);
+  await personalCalendar.waitFor({ state: 'visible' });
+  const personalLeaveDay = new Date(`${personalCalendarDate}T12:00:00Z`).toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC',
+  });
+  const personalLeaveDayButton = personalCalendar.getByRole('button', { name: new RegExp(personalLeaveDay) });
+  await personalLeaveDayButton.waitFor({ state: 'visible' });
+  await personalLeaveDayButton.click();
+  const ownApprovedLeaveDetails = refreshedEmployee.getByRole('heading', { name: /My approved leave on/ }).locator('..');
+  await ownApprovedLeaveDetails.getByText('Synthetic evidence-required leave').waitFor({ state: 'visible' });
+  if ((await ownApprovedLeaveDetails.innerText()).includes('Synthetic evidence-backed leave request')) {
+    throw new Error('The personal calendar exposed a private leave request reason.');
+  }
+  const holidayDate = process.env.HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE;
+  const holidayDayLabel = new Date(`${holidayDate}T12:00:00Z`).toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC',
+  });
+  await personalCalendar.getByRole('button', { name: new RegExp(holidayDayLabel) }).click();
+  const holidayDetails = refreshedEmployee.getByRole('heading', { name: /Organization holidays on/ }).locator('..');
+  await holidayDetails.getByText('Synthetic personal calendar holiday').waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee personal leave calendar mobile');
+  await refreshedEmployee.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee personal leave calendar desktop');
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'ব্যক্তিগত ছুটি' }).waitFor({ state: 'visible' });
+  const personalCalendarMonthLabelBn = new Date(`${personalCalendarMonth}-01T12:00:00Z`).toLocaleDateString('bn-BD', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+  await refreshedEmployee.getByRole('region', { name: `আমার ছুটির ক্যালেন্ডার ${personalCalendarMonthLabelBn}` }).waitFor({ state: 'visible' });
+  await refreshedEmployee.getByLabel('মাস', { exact: true }).waitFor({ state: 'visible' });
+  await refreshedEmployee.setViewportSize({ width: 375, height: 812 });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee personal leave calendar Bengali mobile');
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
   const refreshedHistory = refreshedEmployee.getByRole('table', {
     name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,
   });

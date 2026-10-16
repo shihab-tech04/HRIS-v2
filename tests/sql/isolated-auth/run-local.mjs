@@ -418,6 +418,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016092922_candidate_context_authenticated_execute.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -3173,6 +3174,9 @@ record('Employee creates a distinct tenant-bound leave request for the manager r
     && tableRow('leave_requests', leaveRejectionRequestId)?.status === 'pending',
   leaveRejectionSubmit.error?.message || 'pending rejection fixture persisted');
 
+psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
+  VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true);`);
+
 let leaveEvidenceBrowserOutput = '';
 let leaveEvidenceBrowserError = '';
 try {
@@ -3191,6 +3195,8 @@ try {
       HRIS_LOCAL_LEAVE_EVIDENCE_PATH: evidencePathA,
       HRIS_LOCAL_LEAVE_REQUEST_REASON: 'Synthetic evidence-backed leave request',
       HRIS_LOCAL_LEAVE_HISTORY_YEAR: String(evidenceRequest?.from_date).slice(0, 4),
+      HRIS_LOCAL_LEAVE_REQUEST_DATE: String(evidenceRequest?.from_date),
+      HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
     },
@@ -3268,6 +3274,59 @@ record('Real manager UI rejection persists its note, releases pending balance, a
   && employeeRejectedLeave?.resolution_note === leaveRejectionNote,
   JSON.stringify({ managerRow: browserRejectedLeave, balance: postBrowserAnnualBalance,
     employeeRow: employeeRejectedLeave }));
+
+const employeeCalendarA = await employeeA.client.rpc('hris_get_my_leave_calendar', {
+  p_tenant_id: ids.tenantA, p_start_date: '2026-10-01', p_end_date: '2026-10-31',
+});
+const employeeCalendarB = await employeeB.client.rpc('hris_get_my_leave_calendar', {
+  p_tenant_id: ids.tenantB, p_start_date: '2026-10-01', p_end_date: '2026-10-31',
+});
+const employeeCalendarCrossTenant = await employeeB.client.rpc('hris_get_my_leave_calendar', {
+  p_tenant_id: ids.tenantA, p_start_date: '2026-10-01', p_end_date: '2026-10-31',
+});
+const globalOnlyCalendar = await globalOnly.client.rpc('hris_get_my_leave_calendar', {
+  p_tenant_id: ids.tenantA, p_start_date: '2026-10-01', p_end_date: '2026-10-31',
+});
+const anonymousCalendarClient = createClient(services.API_URL, services.ANON_KEY, authOptions);
+const anonymousCalendar = await anonymousCalendarClient.rpc('hris_get_my_leave_calendar', {
+  p_tenant_id: ids.tenantA, p_start_date: '2026-10-01', p_end_date: '2026-10-31',
+});
+const malformedCalendarRange = await employeeA.client.rpc('hris_get_my_leave_calendar', {
+  p_tenant_id: ids.tenantA, p_start_date: '2026-10-02', p_end_date: '2026-10-31',
+});
+const employeeCalendarHoliday = employeeCalendarA.data?.holidays?.find(row => row.name === 'Synthetic personal calendar holiday');
+const employeeCalendarOwnApprovedLeave = employeeCalendarA.data?.approved_leave?.find(row => row.id === evidenceRequestId);
+const employeeCalendarPrivileges = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_leave_calendar(uuid,date,date)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_leave_calendar(uuid,date,date)','EXECUTE'),
+  'private_anon',has_function_privilege('anon','private.hris_get_my_leave_calendar(uuid,date,date)','EXECUTE'),
+  'private_authenticated',has_function_privilege('authenticated','private.hris_get_my_leave_calendar(uuid,date,date)','EXECUTE'))`);
+record('Personal leave calendar returns only the linked employee’s approved dates and active tenant holidays without reasons or reviewer data',
+  !employeeCalendarA.error
+    && employeeCalendarOwnApprovedLeave?.leave_type_name === 'Synthetic evidence-required leave'
+    && !('reason' in (employeeCalendarOwnApprovedLeave || {}))
+    && !('resolution_note' in (employeeCalendarOwnApprovedLeave || {}))
+    && !('resolved_by' in (employeeCalendarOwnApprovedLeave || {}))
+    && employeeCalendarHoliday?.name === 'Synthetic personal calendar holiday'
+    && employeeCalendarB.data?.approved_leave?.every(row => row.id !== evidenceRequestId)
+    && employeeCalendarB.data?.holidays?.every(row => row.name !== 'Synthetic personal calendar holiday')
+    && Boolean(employeeCalendarCrossTenant.error?.code === '42501')
+    && Boolean(globalOnlyCalendar.error?.code === '42501')
+    && Boolean(anonymousCalendar.error)
+    && Boolean(malformedCalendarRange.error?.code === '22000')
+    && employeeCalendarPrivileges.anon === false
+    && employeeCalendarPrivileges.authenticated === true
+    && employeeCalendarPrivileges.private_anon === false
+    && employeeCalendarPrivileges.private_authenticated === true,
+  JSON.stringify({ ownerRows: employeeCalendarA.data?.approved_leave?.length,
+    ownLeaveReturned: Boolean(employeeCalendarOwnApprovedLeave),
+    holidayReturned: Boolean(employeeCalendarHoliday),
+    crossTenantDenied: employeeCalendarCrossTenant.error?.code,
+    globalOnlyDenied: globalOnlyCalendar.error?.code,
+    anonymousDenied: Boolean(anonymousCalendar.error),
+    malformedRangeDenied: malformedCalendarRange.error?.code,
+    privileges: employeeCalendarPrivileges }));
+
 record('Ordinary employees can read their own attendance and leave summary without admin or membership roles',
   employeeSummaryA.attendance.records.length === 1
   && employeeSummaryA.attendance.records[0].id === ids.attendanceRecord
