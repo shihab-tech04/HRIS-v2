@@ -425,6 +425,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016230201_hris_employee_roster_notifications.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -3082,6 +3083,7 @@ FROM (VALUES
   ('public.hris_get_tenant_project_workspace(uuid)'),
   ('public.hris_get_my_projects(uuid)'),
   ('public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'),
+  ('public.hris_get_my_shift_roster(uuid,date,date)'),
   ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
   ('public.hris_assign_tenant_project_allocation(uuid,uuid,uuid,text,numeric,date,date)'),
   ('public.hris_release_tenant_project_allocation(uuid,uuid)'),
@@ -3185,6 +3187,90 @@ const rosterForeignShift = attemptAs(managerA, `SELECT public.hris_assign_tenant
 record('Roster assignment write denies employees and rejects another tenant’s employee or shift',
   !rosterEmployeeWrite.ok && !rosterCrossTenantWrite.ok
   && !rosterForeignEmployee.ok && !rosterForeignShift.ok);
+
+const employeeRosterAssignmentDate = addCalendarDays(localCurrentDate, 2);
+const employeeRosterAssignment = await managerA.client.rpc('hris_assign_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_shift_id: '33333333-3333-4333-8333-333333333333',
+  p_assignment_date: employeeRosterAssignmentDate,
+});
+const employeeRosterAssignmentId = employeeRosterAssignment.data || null;
+const employeeRosterDuplicateAssignment = await managerA.client.rpc('hris_assign_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA,
+  p_employee_id: '55555555-5555-4555-8555-555555555555',
+  p_shift_id: '33333333-3333-4333-8333-333333333333',
+  p_assignment_date: employeeRosterAssignmentDate,
+});
+const employeeOwnRoster = await employeeA.client.rpc('hris_get_my_shift_roster', {
+  p_tenant_id: ids.tenantA, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const employeeOwnRosterRows = employeeOwnRoster.data?.assignments || [];
+const employeeForeignRoster = await employeeA.client.rpc('hris_get_my_shift_roster', {
+  p_tenant_id: ids.tenantB, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const managerOwnRosterDenied = await managerA.client.rpc('hris_get_my_shift_roster', {
+  p_tenant_id: ids.tenantA, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const employeeRosterBadRange = await employeeA.client.rpc('hris_get_my_shift_roster', {
+  p_tenant_id: ids.tenantA, p_start: localCurrentDate, p_end: addCalendarDays(localCurrentDate, 31),
+});
+const employeeRosterTenantBAssignment = await managerB.client.rpc('hris_assign_tenant_employee_shift', {
+  p_tenant_id: ids.tenantB,
+  p_employee_id: '66666666-6666-4666-8666-666666666666',
+  p_shift_id: '44444444-4444-4444-8444-444444444444',
+  p_assignment_date: employeeRosterAssignmentDate,
+});
+const employeeRosterTenantBAssignmentId = employeeRosterTenantBAssignment.data || null;
+const employeeRosterDirectRows = await employeeA.client.from('roster_change_notifications')
+  .select('id,tenant_id,recipient_employee_id,employee_shift_assignment_id,kind')
+  .eq('tenant_id', ids.tenantA);
+const employeeRosterForeignDirectRows = await employeeA.client.from('roster_change_notifications')
+  .select('id').eq('tenant_id', ids.tenantB);
+const employeeRosterTenantBDirectRows = await employeeB.client.from('roster_change_notifications')
+  .select('id,tenant_id,recipient_employee_id,employee_shift_assignment_id,kind')
+  .eq('tenant_id', ids.tenantB);
+const employeeRosterDirectInsert = await employeeA.client.from('roster_change_notifications').insert({
+  tenant_id: ids.tenantA,
+  recipient_employee_id: '55555555-5555-4555-8555-555555555555',
+  employee_shift_assignment_id: employeeRosterAssignmentId,
+  kind: 'assigned',
+  created_at: new Date().toISOString(),
+});
+record('Employees read only their own date-filtered shift roster and assignment-created notification; tenant, identity, range, direct-write denials persist',
+  !employeeRosterAssignment.error && Boolean(employeeRosterAssignmentId)
+    && !employeeOwnRoster.error && employeeOwnRosterRows.length === 1
+    && employeeOwnRosterRows[0].assignment_id === employeeRosterAssignmentId
+    && employeeOwnRosterRows[0].assignment_date === employeeRosterAssignmentDate
+    && employeeOwnRosterRows[0].shift_name === 'Synthetic Day Shift'
+    && Boolean(employeeForeignRoster.error?.code === '42501')
+    && Boolean(managerOwnRosterDenied.error?.code === '42501')
+    && Boolean(employeeRosterBadRange.error?.code === '22023')
+    && !employeeRosterTenantBAssignment.error && Boolean(employeeRosterTenantBAssignmentId)
+    && !employeeRosterDirectRows.error
+    && employeeRosterDirectRows.data?.length === 1
+    && employeeRosterDirectRows.data[0].recipient_employee_id === '55555555-5555-4555-8555-555555555555'
+    && Boolean(employeeRosterDuplicateAssignment.error?.code === '23505')
+    && !employeeRosterForeignDirectRows.error && employeeRosterForeignDirectRows.data?.length === 0
+    && !employeeRosterTenantBDirectRows.error && employeeRosterTenantBDirectRows.data?.length === 1
+    && employeeRosterTenantBDirectRows.data[0].recipient_employee_id === '66666666-6666-4666-8666-666666666666'
+    && Boolean(employeeRosterDirectInsert.error?.code === '42501'),
+  JSON.stringify({ assignment: employeeRosterAssignment.error?.code || 'created',
+    ownRoster: employeeOwnRoster.error?.code || employeeOwnRosterRows.length,
+    crossTenant: employeeForeignRoster.error?.code, managerWithoutEmployee: managerOwnRosterDenied.error?.code,
+    invalidRange: employeeRosterBadRange.error?.code,
+    ownNotificationCount: employeeRosterDirectRows.data?.length,
+    foreignNotificationCount: employeeRosterForeignDirectRows.data?.length,
+    tenantBNotificationCount: employeeRosterTenantBDirectRows.data?.length,
+    duplicateAssignment: employeeRosterDuplicateAssignment.error?.code,
+    directInsert: employeeRosterDirectInsert.error?.code }));
+const rosterReadAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_shift_roster(uuid,date,date)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_shift_roster(uuid,date,date)','EXECUTE'),
+  'service_role',has_function_privilege('service_role','public.hris_get_my_shift_roster(uuid,date,date)','EXECUTE'))`);
+record('Employee roster RPC execute is restricted to authenticated sessions',
+  rosterReadAcl.anon === false && rosterReadAcl.authenticated === true && rosterReadAcl.service_role === false,
+  JSON.stringify(rosterReadAcl));
 
 const tenantBAuth = queryAs(managerB, `SELECT jsonb_build_object(
   'legacy_permission',public.has_permission('leave.manage'),
@@ -5692,6 +5778,8 @@ const unifiedLeaveRowsA = unifiedProjectRows.filter(row => row.source === 'leave
 const unifiedLeaveRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'leave_decision');
 const unifiedServiceRequestRowsA = unifiedProjectRows.filter(row => row.source === 'service_request_decision');
 const unifiedServiceRequestRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'service_request_decision');
+const unifiedRosterRowsA = unifiedProjectRows.filter(row => row.source === 'roster_change');
+const unifiedRosterRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'roster_change');
 const travelApprovalNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'approved');
 const travelRejectionNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'rejected');
 const travelApprovalNotificationB = unifiedTravelRowsB.find(row => row.travel_request_id === travelIds.requestB && row.kind === 'approved');
@@ -5703,6 +5791,8 @@ const leaveApprovalNotificationB = unifiedLeaveRowsB.find(row => row.leave_reque
 const serviceRequestCompletedNotificationA = unifiedServiceRequestRowsA.find(row => row.service_request_id === serviceRequestId && row.kind === 'completed');
 const serviceRequestRejectedNotificationA = unifiedServiceRequestRowsA.find(row => row.service_request_id === serviceRequestRejectId && row.kind === 'rejected');
 const serviceRequestRejectedNotificationB = unifiedServiceRequestRowsB.find(row => row.service_request_id === serviceRequestTenantBId && row.kind === 'rejected');
+const employeeRosterNotification = unifiedRosterRowsA.find(row => row.roster_assignment_id === employeeRosterAssignmentId);
+const employeeRosterNotificationB = unifiedRosterRowsB.find(row => row.roster_assignment_id === employeeRosterTenantBAssignmentId);
 const unifiedProjectReviewRow = unifiedProjectRows.find(row => row.source === 'project_review' && row.task_id === projectTaskId);
 const unifiedLearningRowCount = unifiedProjectRows.filter(row => row.source === 'learning_completion').length;
 record('Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership',
@@ -5711,7 +5801,7 @@ record('Unified notification feed merges leave decisions with project, learning,
     && unifiedLearningRows[0].source === 'project_review'
     && unifiedLearningRows[0].task_id === projectTaskId
     && !unifiedLearningNotificationsPageTwo.error && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
-    && ['project_review','learning_completion','travel_decision','leave_decision','service_request_decision'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
+    && ['project_review','learning_completion','travel_decision','leave_decision','service_request_decision','roster_change'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
     && unifiedLearningNotificationsPageTwo.data.notifications[0].id !== unifiedLearningRows[0].id
     && unifiedProjectRows.some(row => row.id === unifiedLearningNotificationsPageTwo.data.notifications[0].id
       && row.source === unifiedLearningNotificationsPageTwo.data.notifications[0].source)
@@ -5729,12 +5819,19 @@ record('Unified notification feed merges leave decisions with project, learning,
     && serviceRequestCompletedNotificationA?.service_request_type === 'other'
     && serviceRequestRejectedNotificationA?.service_request_type === 'shift_change'
     && serviceRequestRejectedNotificationB?.service_request_type === 'other'
+    && employeeRosterNotification?.kind === 'assigned'
+    && employeeRosterNotification?.roster_assignment_date === employeeRosterAssignmentDate
+    && employeeRosterNotification?.roster_shift_name === 'Synthetic Day Shift'
+    && employeeRosterNotification?.roster_start_time === '09:00:00'
+    && employeeRosterNotification?.roster_end_time === '17:00:00'
+    && employeeRosterNotificationB?.roster_shift_name === 'Synthetic Tenant B Shift'
     && !Object.keys(serviceRequestCompletedNotificationA || {}).some(key => /note|reason|employee|recipient|actor|resolved_by/i.test(key))
     && !Object.keys(leaveApprovalNotificationA || {}).some(key => /note|reason|employee|recipient/i.test(key))
     && !Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key))
     && !unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB)
     && !unifiedTenantBNotifications.error
-    && unifiedTenantBNotifications.data.notifications.every(row => ['travel_decision','leave_decision','service_request_decision'].includes(row.source))
+    && unifiedTenantBNotifications.data.notifications.every(row => ['travel_decision','leave_decision','service_request_decision','roster_change'].includes(row.source))
+    && unifiedRosterRowsB.length === 1
     && Boolean(unifiedCrossTenantNotifications.error?.code === '42501')
     && Boolean(unifiedGlobalNotifications.error?.code === '42501') && !unifiedAnonymousNotifications.ok
     && functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon === false,
@@ -5744,6 +5841,7 @@ record('Unified notification feed merges leave decisions with project, learning,
       travel: unifiedTravelRowsA.length,
       leave: unifiedLeaveRowsA.length,
       serviceRequest: unifiedServiceRequestRowsA.length,
+      roster: unifiedRosterRowsA.length,
       projectReview: unifiedProjectRows.filter(row => row.source === 'project_review').length },
     travelApprovalA: travelApprovalNotificationA?.travel_destination,
     travelRejectionA: travelRejectionNotificationA?.kind,
@@ -5756,6 +5854,10 @@ record('Unified notification feed merges leave decisions with project, learning,
     serviceRequestCompleted: serviceRequestCompletedNotificationA?.service_request_id,
     serviceRequestRejected: serviceRequestRejectedNotificationA?.service_request_id,
     tenantBServiceRequest: serviceRequestRejectedNotificationB?.service_request_id,
+    employeeRoster: employeeRosterNotification && { date: employeeRosterNotification.roster_assignment_date,
+      shift: employeeRosterNotification.roster_shift_name, start: employeeRosterNotification.roster_start_time },
+    tenantBRosterCount: unifiedRosterRowsB.length,
+    tenantBRosterShift: employeeRosterNotificationB?.roster_shift_name,
     taskReviewStatus: unifiedProjectReviewRow?.review_status,
     learningError: unifiedLearningNotifications.error?.code,
     pageTwoError: unifiedLearningNotificationsPageTwo.error?.code,
@@ -6209,6 +6311,9 @@ try {
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_ATTENDANCE_EMPLOYEE_EMAIL: emails[5],
       HRIS_LOCAL_ATTENDANCE_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_ROSTER_ASSIGNMENT_ID: employeeRosterAssignmentId,
+      HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE: employeeRosterAssignmentDate,
+      HRIS_LOCAL_ROSTER_SHIFT_NAME: 'Synthetic Day Shift',
       HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH: currentAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),

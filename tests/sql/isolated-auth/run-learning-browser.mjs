@@ -1,6 +1,9 @@
 // Exercises the employee learning workflow against disposable local Auth and Postgres.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
+import { resolve } from 'node:path';
+import { stopChildProcess } from './stop-child-process.mjs';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
@@ -10,10 +13,21 @@ const required = [
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
 const repo = process.cwd();
-const port = '48376';
+const port = await new Promise((resolvePort, reject) => {
+  const probe = createNetServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close(() => reject(new Error('Unable to select an available loopback port for the learning browser journey.')));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolvePort(String(address.port)));
+  });
+});
 const origin = `http://127.0.0.1:${port}`;
 let authOutcome = 'no password-token response observed';
-const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
   env: {
     ...process.env,
@@ -757,8 +771,5 @@ try {
   console.log('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed; employee timesheet draft creation, full reload persistence, tenant-scoped save/submit RPCs, Bengali validation, and 375px/1280px layouts also passed.');
 } finally {
   if (browser) await browser.close();
-  if (server.exitCode === null) {
-    server.kill('SIGTERM');
-    await new Promise(resolve => server.once('exit', resolve));
-  }
+  await stopChildProcess(server);
 }

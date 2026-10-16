@@ -8,6 +8,7 @@ import { OrganizationTeams } from './OrganizationTeams';
 import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { ProjectNotifications } from './ProjectNotifications';
+import { MyEmployeeRoster } from './MyEmployeeRoster';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
@@ -69,7 +70,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -3361,6 +3362,7 @@ export function LiveHrisWorkspace({
   const [travelFocusRequestId, setTravelFocusRequestId] = useState<string | null>(null);
   const [leaveFocusRequestId, setLeaveFocusRequestId] = useState<string | null>(null);
   const [serviceRequestFocusId, setServiceRequestFocusId] = useState<string | null>(null);
+  const [rosterFocusDate, setRosterFocusDate] = useState<string | null>(null);
   const nav = useMemo(() => {
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
     if (permissions.dashboard) items.push({ id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" />, group: 'HRIS' });
@@ -3390,6 +3392,7 @@ export function LiveHrisWorkspace({
     if (permissions.payroll) items.push({ id: 'payroll-register', label: 'Payroll register', icon: <Receipt className="h-5 w-5" />, group: 'HRIS' });
     if (isEmployee) items.push({ id: 'my-dashboard', label: 'My Overview', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-projects', label: 'My Projects', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-roster', label: 'My Roster', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-notifications', label: 'Notifications', icon: <Bell className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-learning', label: 'My Learning', icon: <BookOpen className="h-5 w-5" />, group: 'Personal' });
@@ -3429,7 +3432,10 @@ export function LiveHrisWorkspace({
       const items = localizedNav.filter(item => item.group === group);
       return items.length ? <div key={group} className="space-y-1">
         <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{projectText(locale, group === 'HRIS' ? 'Workforce' : 'Self service')}</p>
-        {items.map(item => <button key={item.id} type="button" title={item.label} onClick={() => navigate(item.id)} aria-current={page === item.id ? 'page' : undefined}
+        {items.map(item => <button key={item.id} type="button" title={item.label} onClick={() => {
+          if (item.id === 'my-roster') setRosterFocusDate(null);
+          navigate(item.id);
+        }} aria-current={page === item.id ? 'page' : undefined}
           className={`flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-lg px-2 text-center text-[11px] focus-visible:outline-2 focus-visible:outline-[#085587] ${page === item.id ? 'bg-[#DCEFF4] text-[#085587] font-semibold' : 'text-slate-700 hover:bg-white hover:text-[#085587]'}`}>
           {item.icon}<span className="leading-tight">{item.label}</span>
         </button>)}
@@ -3497,9 +3503,11 @@ export function LiveHrisWorkspace({
             <MyProjects tenantId={tenantId} locale={locale} />
             <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />
           </>}
+          {page === 'my-roster' && isEmployee && <MyEmployeeRoster tenantId={tenantId} locale={locale} focusDate={rosterFocusDate} />}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
-            onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} onOpenServiceRequest={openServiceRequest} />}
+            onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} onOpenServiceRequest={openServiceRequest}
+            onOpenRoster={assignmentDate => { setRosterFocusDate(assignmentDate); navigate('my-roster'); }} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}

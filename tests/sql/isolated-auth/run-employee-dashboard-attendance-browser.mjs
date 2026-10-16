@@ -1,19 +1,34 @@
 // Exercises the employee attendance month selector against disposable local Auth and Postgres.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
+import { resolve } from 'node:path';
+import { stopChildProcess } from './stop-child-process.mjs';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
   'HRIS_LOCAL_ATTENDANCE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_ATTENDANCE_TENANT_ID',
   'HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH', 'HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH',
   'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
+  'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
 const repo = process.cwd();
-const port = '48381';
+const port = await new Promise((resolvePort, reject) => {
+  const probe = createNetServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close(() => reject(new Error('Unable to select an available loopback port for the employee browser journey.')));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolvePort(String(address.port)));
+  });
+});
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
   env: {
     ...process.env,
@@ -47,14 +62,24 @@ try {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let failInitialPeriodRead = true;
   let failInitialIdentityCardRead = true;
+  let failInitialRosterRead = true;
   const identityCardRequests = [];
   const periodRequests = [];
+  const rosterRequests = [];
+  const directRosterTableRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
     const url = new URL(request.url());
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_attendance_period') && request.method() === 'POST') {
       const body = request.postDataJSON();
       periodRequests.push({ tenantId: body?.p_tenant_id, monthStart: body?.p_month_start });
+    }
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_shift_roster') && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      rosterRequests.push({ tenantId: body?.p_tenant_id, start: body?.p_start, end: body?.p_end });
+    }
+    if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
+      directRosterTableRequests.push(url.pathname);
     }
     if (/\/rest\/v1\/attendance_records(?:\?|$)/.test(url.pathname + url.search)) {
       directAttendanceTableRequests.push(url.pathname);
@@ -80,6 +105,14 @@ try {
         failInitialPeriodRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary attendance-history outage.',
+        }) });
+        return;
+      }
+      if (failInitialRosterRead && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_shift_roster')
+          && route.request().method() === 'POST') {
+        failInitialRosterRead = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+          code: 'XX000', message: 'Synthetic temporary roster outage.',
         }) });
         return;
       }
@@ -115,6 +148,66 @@ try {
   await assertNoOverflow(page, 'Employee digital ID mobile');
   await identityDialog.getByRole('button', { name: 'Close', exact: true }).click();
   await identityDialog.waitFor({ state: 'detached' });
+
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'Notifications', exact: true }).click();
+  await page.getByRole('heading', { name: 'Notifications', exact: true }).waitFor({ state: 'visible' });
+  const rosterNotification = page.locator(`[data-notification-source="roster_change"][data-roster-assignment-id="${process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_ID}"]`);
+  await rosterNotification.waitFor({ state: 'visible' });
+  await rosterNotification.getByRole('heading', { name: 'Your roster was updated', exact: true }).waitFor({ state: 'visible' });
+  await rosterNotification.getByText(process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, { exact: true }).waitFor({ state: 'visible' });
+  await rosterNotification.getByRole('button', { name: 'Open roster', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Roster', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('alert').filter({ hasText: 'Unable to load your roster. Try again.' }).waitFor({ state: 'visible' });
+  if (failInitialRosterRead) throw new Error('The injected initial employee roster outage was not observed.');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  const employeeRosterCard = page.locator(`[data-roster-assignment-id="${process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_ID}"]`);
+  await employeeRosterCard.waitFor({ state: 'visible' });
+  for (const value of [process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, '09:00 – 17:00', 'Sunday, Saturday']) {
+    await employeeRosterCard.getByText(value, { exact: true }).waitFor({ state: 'visible' });
+  }
+  if (await page.locator('#my-roster-start').inputValue() !== process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE
+      || await page.locator('#my-roster-end').inputValue() !== process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE) {
+    throw new Error('The roster notification did not focus its exact assigned date.');
+  }
+  await page.getByRole('button', { name: 'Next 7 days', exact: true }).click();
+  await employeeRosterCard.waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'This month', exact: true }).click();
+  await employeeRosterCard.waitFor({ state: 'visible' });
+  const rosterStart = page.locator('#my-roster-start');
+  const rosterEnd = page.locator('#my-roster-end');
+  await rosterStart.fill(process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE);
+  await rosterEnd.fill(process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE);
+  await page.getByRole('button', { name: 'Apply dates', exact: true }).click();
+  await employeeRosterCard.waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee roster mobile');
+  await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
+  await page.getByRole('heading', { name: 'আমার রোস্টার', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'তারিখ প্রয়োগ করুন', exact: true }).waitFor({ state: 'visible' });
+  await employeeRosterCard.getByText(process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, { exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee roster Bengali mobile');
+  await page.getByRole('button', { name: 'রোস্টার রিফ্রেশ করুন', exact: true }).click();
+  await employeeRosterCard.waitFor({ state: 'visible' });
+  await page.reload();
+  await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  if (await page.locator('html').getAttribute('lang') !== 'bn') throw new Error('Roster navigation lost Bengali locale on refresh.');
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'আমার রোস্টার', exact: true }).click();
+  await page.getByRole('heading', { name: 'আমার রোস্টার', exact: true }).waitFor({ state: 'visible' });
+  await employeeRosterCard.waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee roster Bengali mobile after refresh');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Employee roster Bengali desktop');
+  if (rosterRequests.length < 5 || rosterRequests.some(request => request.tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
+    throw new Error(`Roster reads were missing or not tenant-bound: ${JSON.stringify(rosterRequests)}.`);
+  }
+  if (!rosterRequests.some(request => request.start === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE
+      && request.end === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE)) {
+    throw new Error(`Focused assignment dates were not requested: ${JSON.stringify(rosterRequests)}.`);
+  }
+  if (directRosterTableRequests.length) {
+    throw new Error(`Employee roster bypassed the secured RPC: ${JSON.stringify(directRosterTableRequests)}.`);
+  }
 
   await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
@@ -251,8 +344,9 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Employee attendance month Bengali desktop');
   console.log('EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS');
-  console.log('Local Auth/Postgres employee attendance and identity-card journeys passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outages with retry, own identity card fields, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
+  console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
+  console.log('Local Auth/Postgres employee attendance, identity-card, and roster journeys passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outages with retry, own identity card fields, month and roster selection, persisted work hours and shift assignment, notification-to-roster navigation, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
 } finally {
   await browser?.close();
-  server.kill('SIGTERM');
+  await stopChildProcess(server);
 }

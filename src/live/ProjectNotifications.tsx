@@ -53,7 +53,18 @@ type ServiceRequestNotification = {
   service_request_type: string;
   created_at: string;
 };
-type Notification = ProjectNotification | LearningNotification | TravelNotification | LeaveNotification | ServiceRequestNotification;
+type RosterNotification = {
+  id: string;
+  source: 'roster_change';
+  kind: 'assigned';
+  roster_assignment_id: string;
+  roster_assignment_date: string;
+  roster_shift_name: string;
+  roster_start_time: string | null;
+  roster_end_time: string | null;
+  created_at: string;
+};
+type Notification = ProjectNotification | LearningNotification | TravelNotification | LeaveNotification | ServiceRequestNotification | RosterNotification;
 type Cursor = { createdAt: string; source: Notification['source']; id: string };
 type NotificationResponse = {
   notifications?: Notification[];
@@ -77,7 +88,7 @@ function message(error: unknown): string {
   return 'Unable to load your notifications.';
 }
 
-export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenLearning, onOpenTravel, onOpenLeave, onOpenServiceRequest }: {
+export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenLearning, onOpenTravel, onOpenLeave, onOpenServiceRequest, onOpenRoster }: {
   tenantId: string;
   locale: Locale;
   onOpenProjects: () => void;
@@ -85,6 +96,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
   onOpenTravel: (travelRequestId: string) => void;
   onOpenLeave: (leaveRequestId: string) => void;
   onOpenServiceRequest: (serviceRequestId: string) => void;
+  onOpenRoster: (assignmentDate: string) => void;
 }) {
   const tx = (english: string) => projectText(locale, english);
   const [items, setItems] = useState<Notification[]>([]);
@@ -164,7 +176,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 id="project-notifications-heading" className="text-2xl font-medium text-[#49454F]">{tx('Notifications')}</h2>
-        <p className="mt-1 text-sm text-slate-500">{tx('Project review alerts, learning completion decisions, travel requests, leave, and service request outcomes from your organization.')}</p>
+        <p className="mt-1 text-sm text-slate-500">{tx('Project review alerts, learning completion decisions, travel requests, leave, service request outcomes, and roster updates from your organization.')}</p>
       </div>
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900">{unreadCount.toLocaleString()} {tx('unread project review alerts')}</span>
@@ -180,6 +192,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
         const isTravelDecision = item.source === 'travel_decision';
         const isLeaveDecision = item.source === 'leave_decision';
         const isServiceRequestDecision = item.source === 'service_request_decision';
+        const isRosterChange = item.source === 'roster_change';
         const needsCorrection = item.source === 'learning_completion' && item.kind === 'returned_for_correction';
         const needsAction = pending || needsCorrection;
         const decisionRejected = (isTravelDecision || isLeaveDecision || isServiceRequestDecision) && item.kind === 'rejected';
@@ -190,6 +203,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
           : '';
         return <article key={`${item.source}:${item.id}`} data-notification-source={item.source} data-notification-kind={item.kind}
           data-notification-request-id={isLeaveDecision ? item.leave_request_id : isServiceRequestDecision ? item.service_request_id : undefined}
+          data-roster-assignment-id={isRosterChange ? item.roster_assignment_id : undefined}
           className={`rounded-xl border p-4 shadow-sm sm:p-5 ${needsAction ? 'border-amber-200 bg-white' : decisionRejected ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
@@ -217,6 +231,12 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
                   <p className="text-xs font-medium text-slate-500">{tx('Service request update')}</p>
                   <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'completed' ? 'Service request completed' : 'Service request rejected')}</h3>
                   <p className="mt-1 text-sm text-slate-600">{tx(item.kind === 'completed' ? 'Your service request was completed.' : 'Your service request was rejected.')}</p>
+                </> : isRosterChange ? <>
+                  <p className="text-xs font-medium text-slate-500">{tx('Roster update')}</p>
+                  <h3 className="mt-1 break-words font-semibold text-slate-900">{tx('Your roster was updated')}</h3>
+                  <p className="mt-1 break-words text-sm font-medium text-slate-700">{item.roster_shift_name}</p>
+                  <p className="mt-1 text-sm text-slate-600">{new Date(`${item.roster_assignment_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')}</p>
+                  {item.roster_start_time && item.roster_end_time && <p className="mt-1 text-sm text-slate-600">{item.roster_start_time.slice(0, 5)} – {item.roster_end_time.slice(0, 5)}</p>}
                 </> : <>
                   <p className="text-xs font-medium text-slate-500">{tx('Learning update')}</p>
                   <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'verified' ? 'Learning completion verified' : 'Learning completion returned for correction')}</h3>
@@ -231,6 +251,7 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
             {isTravelDecision && <button type="button" onClick={() => onOpenTravel(item.travel_request_id)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open travel')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
             {isLeaveDecision && <button type="button" onClick={() => onOpenLeave(item.leave_request_id)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open leave')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
             {isServiceRequestDecision && <button type="button" onClick={() => onOpenServiceRequest(item.service_request_id)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open service request')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
+            {isRosterChange && <button type="button" onClick={() => onOpenRoster(item.roster_assignment_date)} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white">{tx('Open roster')} <ArrowRight className="h-4 w-4" aria-hidden="true"/></button>}
           </div>
         </article>;
       })}</div>}

@@ -90,6 +90,7 @@ DROP TABLE IF EXISTS public.payslips CASCADE;
 DROP TABLE IF EXISTS public.performance_cycles CASCADE;
 DROP TABLE IF EXISTS public.performance_appraisals CASCADE;
 DROP TABLE IF EXISTS public.performance_goals CASCADE;
+DROP TABLE IF EXISTS public.roster_change_notifications CASCADE;
 DROP TABLE IF EXISTS public.project_performance_reviews CASCADE;
 DROP TABLE IF EXISTS public.hris_in_app_notifications CASCADE;
 DROP TABLE IF EXISTS public.project_task_peer_reviews CASCADE;
