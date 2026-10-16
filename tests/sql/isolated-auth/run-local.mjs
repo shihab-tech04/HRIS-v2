@@ -4319,7 +4319,14 @@ const noticeRequest = await employeeA.client.rpc('hris_employee_submit_leave_req
     to_date: leavePolicyEligibleDate.date, day_portion: 'full', reason: 'Synthetic valid notice boundary' },
 });
 const noticeRequestRow = noticeRequest.data ? tableRow('leave_requests', noticeRequest.data) : null;
-const noticeBalance = balance(noticePolicyId, Number(leavePolicyEligibleDate.date?.slice(0, 4)));
+const noticeBalance = queryAdmin(`SELECT jsonb_build_object('balance',(
+  SELECT to_jsonb(b) FROM public.employee_leave_balances b
+  WHERE b.tenant_id='${ids.tenantA}'::uuid
+    AND b.employee_id=(SELECT e.id FROM public.employees e
+      WHERE e.user_id='${employeeA.userId}'::uuid AND e.tenant_id='${ids.tenantA}'::uuid)
+    AND b.leave_type_id='${noticePolicyId}'::uuid
+    AND b.balance_year=${Number(leavePolicyEligibleDate.date?.slice(0, 4))}
+  LIMIT 1))`).balance;
 record('Minimum advance notice is enforced at submission; an eligible work date persists with its balance',
   !noticePolicyCreate.error && Boolean(leavePolicyEligibleDate.date)
     && Boolean(tooSoonRequest.error?.code === '22000')
@@ -4327,11 +4334,11 @@ record('Minimum advance notice is enforced at submission; an eligible work date 
     && tooSoonRows.count === 0 && !noticeRequest.error
     && noticeRequestRow?.status === 'pending'
     && noticeRequestRow?.from_date === leavePolicyEligibleDate.date
-    && Number(noticeBalance.pending_days) === 1,
+    && Number(noticeBalance?.pending_days) === 1,
   JSON.stringify({ tooSoonDate, tooSoonError: tooSoonRequest.error?.message,
     tooSoonRows: tooSoonRows.count, eligibleDate: leavePolicyEligibleDate.date,
     validRequestError: noticeRequest.error?.code || null, validRequestStatus: noticeRequestRow?.status,
-    pendingDays: noticeBalance.pending_days }));
+    pendingDays: noticeBalance?.pending_days ?? null }));
 
 const leaveApproved = resolveLeave(managerA, ids.leaveApprove, 'approved', 'isolated local acceptance');
 const approvedRow = tableRow('leave_requests', ids.leaveApprove);
