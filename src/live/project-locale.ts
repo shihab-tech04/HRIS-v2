@@ -51,6 +51,7 @@ const bengali: Record<string, string> = {
   'Learning requests': 'শেখার অনুরোধ',
   'My Learning': 'আমার শেখা',
   'My Requests': 'আমার অনুরোধ',
+  'Service Requests': 'পরিষেবা অনুরোধ',
   'Self service': 'স্ব-সেবা',
   'Travel requests': 'ভ্রমণ অনুরোধ',
   'My Travel': 'আমার ভ্রমণ',

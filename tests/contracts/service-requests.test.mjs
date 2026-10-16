@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql', import.meta.url), 'utf8');
+const reviewMigration = readFileSync(new URL('../../supabase/migrations/20261016061104_hris_employee_service_request_review.sql', import.meta.url), 'utf8');
 const component = readFileSync(new URL('../../src/live/MyServiceRequests.tsx', import.meta.url), 'utf8');
+const reviewComponent = readFileSync(new URL('../../src/live/ServiceRequestReview.tsx', import.meta.url), 'utf8');
 const locale = readFileSync(new URL('../../src/live/service-request-locale.ts', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const localRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
@@ -44,4 +46,44 @@ test('employee service-request UI submits through scoped RPCs and recovers histo
   assert.match(localRunner, /run-service-requests-browser\.mjs/);
   assert.match(readFileSync(new URL('../sql/isolated-auth/run-service-requests-browser.mjs', import.meta.url), 'utf8'), /Switch language to Bengali/);
   assert.match(readFileSync(new URL('../sql/isolated-auth/run-service-requests-browser.mjs', import.meta.url), 'utf8'), /Bengali service request desktop/);
+});
+
+test('HR service-request review is tenant-scoped to employees.manage and limits transitions with concurrency-safe outcomes', () => {
+  assert.match(reviewMigration, /public\.has_tenant_permission\(p_tenant_id,'employees\.manage'\)/);
+  assert.match(reviewMigration, /p_expected_status/);
+  assert.match(reviewMigration, /FOR UPDATE/);
+  assert.match(reviewMigration, /v_request\.status IS DISTINCT FROM p_expected_status/);
+  assert.match(reviewMigration, /pending.*in_progress.*rejected/s);
+  assert.match(reviewMigration, /p_expected_status='in_progress' AND p_next_status IN \('completed','rejected'\)/);
+  assert.match(reviewMigration, /p_next_status='completed' AND v_note IS NULL/);
+  assert.match(reviewMigration, /p_next_status='rejected' AND v_note IS NULL/);
+  assert.match(reviewMigration, /CREATE TABLE public\.service_request_status_history/);
+  assert.match(reviewMigration, /ALTER TABLE public\.service_request_status_history ENABLE ROW LEVEL SECURITY/);
+  assert.match(reviewMigration, /INSERT INTO public\.admin_audit_logs/);
+  assert.match(reviewMigration, /GRANT EXECUTE ON FUNCTION public\.hris_resolve_tenant_service_request\(uuid,uuid,text,text,text\) TO authenticated/);
+  assert.match(reviewMigration, /REVOKE ALL ON FUNCTION public\.hris_resolve_tenant_service_request\(uuid,uuid,text,text,text\) FROM PUBLIC,anon/);
+  assert.match(localRunner, /workflowReviewerServiceQueue/);
+  assert.match(localRunner, /wrongTenantManagerServiceQueue/);
+  assert.match(localRunner, /duplicateCompletedDecision/);
+  assert.match(localRunner, /completeWithoutOutcome/);
+  assert.match(localRunner, /rejectWithoutReason/);
+  assert.match(localRunner, /service_request_status_history/);
+});
+
+test('HR review queue supports decision validation, refresh recovery, request history, and existing responsive navigation', () => {
+  assert.match(reviewComponent, /hris_get_tenant_service_requests/);
+  assert.match(reviewComponent, /hris_resolve_tenant_service_request/);
+  assert.match(reviewComponent, /Start review/);
+  assert.match(reviewComponent, /Complete request/);
+  assert.match(reviewComponent, /Rejection reason/);
+  assert.match(reviewComponent, /Resolution outcome/);
+  assert.match(reviewComponent, /disabled=\{savingId === request\.id \|\| !decision\.note\.trim\(\)\}/);
+  assert.match(reviewComponent, /Refresh before retrying/);
+  assert.match(reviewComponent, /No requests match this status/);
+  assert.match(reviewComponent, /request\.history/);
+  assert.match(reviewComponent, /serviceRequestText\(locale, english\)/);
+  assert.match(workspace, /id: 'service-requests', label: 'Service Requests'/);
+  assert.match(workspace, /page === 'service-requests' && permissions\.employeesManage/);
+  assert.match(readFileSync(new URL('../sql/isolated-auth/run-service-requests-browser.mjs', import.meta.url), 'utf8'), /HRIS_LOCAL_SERVICE_MANAGER_EMAIL/);
+  assert.match(readFileSync(new URL('../sql/isolated-auth/run-service-requests-browser.mjs', import.meta.url), 'utf8'), /Bengali service request manager mobile/);
 });

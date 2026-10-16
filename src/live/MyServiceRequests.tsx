@@ -7,6 +7,13 @@ import { serviceRequestText } from './service-request-locale';
 
 type RequestType = 'employment_certificate' | 'noc_letter' | 'salary_certificate' | 'other'
   | 'work_from_home' | 'movement' | 'shift_change' | 'shift_swap';
+type ServiceRequestEvent = {
+  id: string;
+  previous_status: string | null;
+  new_status: string;
+  note: string | null;
+  created_at: string;
+};
 type ServiceRequest = {
   id: string;
   request_type: RequestType;
@@ -15,6 +22,7 @@ type ServiceRequest = {
   submitted_at: string;
   resolved_at?: string | null;
   resolution_note?: string | null;
+  history?: ServiceRequestEvent[];
 };
 
 const requestTypes: { value: RequestType; label: string }[] = [
@@ -180,6 +188,16 @@ export function MyServiceRequests({ tenantId, locale }: { tenantId: string; loca
             {request.resolution_note && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{tx('HR response')}</p><p className="mt-1 whitespace-pre-wrap break-words text-slate-600">{request.resolution_note}</p>
             </div>}
+            {!!request.history?.length && <details className="mt-3 rounded-lg border border-slate-200 px-3 py-2">
+              <summary className="cursor-pointer py-1 text-sm font-medium text-slate-700">{tx('Status history')} ({request.history.length})</summary>
+              <ol className="mt-2 space-y-2 border-l border-slate-200 pl-3">
+                {request.history.map(event => <li key={event.id} className="text-xs text-slate-600">
+                  <p className="font-medium text-slate-800">{event.previous_status ? `${tx(statusLabels[event.previous_status] || event.previous_status)} → ` : ''}{tx(statusLabels[event.new_status] || event.new_status)}</p>
+                  <p>{submittedLabel(event.created_at, locale, tx)}</p>
+                  {event.note && <p className="mt-1 whitespace-pre-wrap break-words">{event.note}</p>}
+                </li>)}
+              </ol>
+            </details>}
           </li>)}
         </ul>}
     </section>

@@ -394,6 +394,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016061104_hris_employee_service_request_review.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013175151_employee_referral_workflow.sql'),
@@ -3785,6 +3786,145 @@ record('Employee service requests bind the active employee and tenant, validate 
     emptyReason: serviceRequestEmptyReason.error?.code, directWrite: serviceRequestDirectInsert.error?.code,
     otherTenantContext: serviceRequestOtherTenantContext.error?.code }));
 
+const managerServiceQueue = await managerA.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantA });
+const managerServiceRows = Array.isArray(managerServiceQueue.data) ? managerServiceQueue.data : [];
+const managerVisibleRequest = managerServiceRows.find(row => row.id === serviceRequestId);
+const viewerServiceQueue = await employeesViewer.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantA });
+const workflowReviewerServiceQueue = await managerA2.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantA });
+const noMembershipServiceQueue = await globalOnly.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantA });
+const wrongTenantManagerServiceQueue = await managerB.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantA });
+const wrongTenantRequestServiceQueue = await managerA.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantB });
+const employeeDirectServiceHistory = await employeeA.client.from('service_request_status_history')
+  .select('id').eq('tenant_id', ids.tenantA).limit(1);
+const managerDirectServiceQueue = await managerA.client.from('service_requests')
+  .select('id,status').eq('tenant_id', ids.tenantA);
+record('Only an active tenant employees.manage membership can review the tenant service queue and history stays RPC-private',
+  !managerServiceQueue.error && managerVisibleRequest?.employee_name === 'Synthetic Employee A'
+    && managerVisibleRequest?.status === 'pending'
+    && Boolean(viewerServiceQueue.error?.code === '42501')
+    && Boolean(workflowReviewerServiceQueue.error?.code === '42501')
+    && Boolean(noMembershipServiceQueue.error?.code === '42501')
+    && Boolean(wrongTenantManagerServiceQueue.error?.code === '42501')
+    && Boolean(wrongTenantRequestServiceQueue.error?.code === '42501')
+    && Boolean(employeeDirectServiceHistory.error)
+    && !managerDirectServiceQueue.error
+    && managerDirectServiceQueue.data.some(row => row.id === serviceRequestId),
+  JSON.stringify({ viewer: viewerServiceQueue.error?.code, reviewer: workflowReviewerServiceQueue.error?.code,
+    globalOnly: noMembershipServiceQueue.error?.code, tenantB: wrongTenantManagerServiceQueue.error?.code,
+    managerOtherTenant: wrongTenantRequestServiceQueue.error?.code,
+    directHistory: employeeDirectServiceHistory.error?.code }));
+
+const managerStartReview = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'pending', p_next_status: 'in_progress', p_note: null,
+});
+const duplicateStartReview = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'pending', p_next_status: 'in_progress', p_note: null,
+});
+const completeBeforeReview = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'pending', p_next_status: 'completed', p_note: 'Must first enter in progress.',
+});
+const completeWithoutOutcome = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'in_progress', p_next_status: 'completed', p_note: '   ',
+});
+const serviceRejectWithoutReason = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'in_progress', p_next_status: 'rejected', p_note: '   ',
+});
+const employeeUnauthorizedDecision = await employeeA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'in_progress', p_next_status: 'completed', p_note: 'Not allowed.',
+});
+const managerCompletedRequest = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'in_progress', p_next_status: 'completed', p_note: 'Employment certificate prepared for the employee.',
+});
+const duplicateCompletedDecision = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestId,
+  p_expected_status: 'in_progress', p_next_status: 'completed', p_note: 'Duplicate completion must be denied.',
+});
+const resolvedEmployeeHistory = await employeeA.client.rpc('hris_get_my_service_requests', { p_tenant_id: ids.tenantA });
+const resolvedEmployeeHistoryRow = resolvedEmployeeHistory.data?.requests?.find(row => row.id === serviceRequestId);
+const serviceStatusAudit = queryAdmin(`SELECT jsonb_build_object(
+  'statuses',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history WHERE tenant_id='${ids.tenantA}'::uuid AND service_request_id='${serviceRequestId}'::uuid),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs WHERE target_type='service_request' AND target_id='${serviceRequestId}'))`);
+const directServiceRequestUpdate = await managerA.client.from('service_requests')
+  .update({ status: 'rejected' }).eq('tenant_id', ids.tenantA).eq('id', serviceRequestId).select('id');
+record('Service-request review enforces allowed transitions, required outcomes, duplicate prevention, employee denial, and immutable audit history',
+  !managerStartReview.error && Boolean(duplicateStartReview.error?.code === '40001')
+    && Boolean(completeBeforeReview.error?.code === '22023')
+    && Boolean(completeWithoutOutcome.error?.code === '22023')
+    && Boolean(serviceRejectWithoutReason.error?.code === '22023')
+    && Boolean(employeeUnauthorizedDecision.error?.code === '42501')
+    && !managerCompletedRequest.error && managerCompletedRequest.data?.status === 'completed'
+    && Boolean(duplicateCompletedDecision.error?.code === '40001')
+    && resolvedEmployeeHistoryRow?.status === 'completed'
+    && resolvedEmployeeHistoryRow?.history?.map(event => event.new_status).join(',') === 'pending,in_progress,completed'
+    && resolvedEmployeeHistoryRow?.history?.at(-1)?.note === 'Employment certificate prepared for the employee.'
+    && JSON.stringify(serviceStatusAudit.statuses) === JSON.stringify(['pending','in_progress','completed'])
+    && serviceStatusAudit.audit_count === 3
+    && Boolean(directServiceRequestUpdate.error)
+    && queryAdmin(`SELECT status FROM public.service_requests WHERE id='${serviceRequestId}'::uuid`).status === 'completed',
+  JSON.stringify({ start: managerStartReview.error?.code, duplicateStart: duplicateStartReview.error?.code,
+    completeBeforeReview: completeBeforeReview.error?.code,
+    completeNoOutcome: completeWithoutOutcome.error?.code, rejectNoReason: serviceRejectWithoutReason.error?.code,
+    employeeDecision: employeeUnauthorizedDecision.error?.code, completion: managerCompletedRequest.error?.code,
+    duplicateCompletion: duplicateCompletedDecision.error?.code, status: resolvedEmployeeHistoryRow?.status,
+    history: resolvedEmployeeHistoryRow?.history?.map(event => event.new_status), audit: serviceStatusAudit.audit_count,
+    directUpdate: directServiceRequestUpdate.error?.code }));
+
+const serviceRequestRejectDraft = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantA, p_request_type: 'shift_change', p_reason: 'Request a shift change for the next schedule.',
+});
+const serviceRequestRejectId = serviceRequestRejectDraft.data?.id;
+const pendingReject = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestRejectId,
+  p_expected_status: 'pending', p_next_status: 'rejected', p_note: 'The requested shift is not available for the selected schedule.',
+});
+const duplicatePendingReject = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestRejectId,
+  p_expected_status: 'pending', p_next_status: 'rejected', p_note: 'Duplicate rejection must be denied.',
+});
+const wrongTransition = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: serviceRequestRejectId,
+  p_expected_status: 'rejected', p_next_status: 'completed', p_note: 'No transition out of rejected.',
+});
+record('Employees receive a recorded rejection reason and rejected requests cannot be decided again',
+  !serviceRequestRejectDraft.error && !pendingReject.error && pendingReject.data?.status === 'rejected'
+    && pendingReject.data?.resolution_note === 'The requested shift is not available for the selected schedule.'
+    && Boolean(duplicatePendingReject.error?.code === '40001')
+    && Boolean(wrongTransition.error?.code === '22023'),
+  JSON.stringify({ create: serviceRequestRejectDraft.error?.message, reject: pendingReject.error?.code,
+    duplicate: duplicatePendingReject.error?.code, invalid: wrongTransition.error?.code }));
+
+const concurrentServiceDraft = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantA, p_request_type: 'work_from_home', p_reason: 'Synthetic concurrency review request.',
+});
+const concurrentServiceId = concurrentServiceDraft.data?.id;
+const concurrentServiceDecisions = await Promise.all([1, 2].map(() => managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: concurrentServiceId,
+  p_expected_status: 'pending', p_next_status: 'in_progress', p_note: null,
+})));
+const concurrentServiceState = queryAdmin(`SELECT jsonb_build_object(
+  'status',r.status,'history_count',(SELECT count(*)::integer FROM public.service_request_status_history h WHERE h.service_request_id=r.id),
+  'decision_events',(SELECT count(*)::integer FROM public.service_request_status_history h
+    WHERE h.service_request_id=r.id AND h.new_status='in_progress'))
+  FROM public.service_requests r WHERE r.id='${concurrentServiceId}'::uuid`);
+record('Concurrent service-request review calls create exactly one state change and one audit-history event',
+  !concurrentServiceDraft.error
+    && concurrentServiceDecisions.filter(result => !result.error).length === 1
+    && concurrentServiceDecisions.filter(result => result.error?.code === '40001').length === 1
+    && concurrentServiceState.status === 'in_progress'
+    && concurrentServiceState.history_count === 2
+    && concurrentServiceState.decision_events === 1,
+  JSON.stringify({ draft: concurrentServiceDraft.error?.message,
+    decisions: concurrentServiceDecisions.map(result => result.error?.code || result.data?.status),
+    state: concurrentServiceState }));
+
 let expenseBrowserOutput = '';
 let expenseBrowserError = '';
 try {
@@ -3834,6 +3974,7 @@ try {
       HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
       HRIS_LOCAL_TEST_PASSWORD: password,
       HRIS_LOCAL_SERVICE_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_SERVICE_MANAGER_EMAIL: emails[0],
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -3842,18 +3983,38 @@ try {
   serviceBrowserError = String(error.stderr || error.message || 'local service-request browser run failed').slice(-1800);
 }
 const serviceBrowserId = serviceBrowserOutput.match(/SERVICE_REQUEST_ACCEPTANCE_ID=([0-9a-f-]{36})/i)?.[1];
+const serviceBrowserRejectedId = serviceBrowserOutput.match(/SERVICE_REQUEST_REJECTION_ACCEPTANCE_ID=([0-9a-f-]{36})/i)?.[1];
 const browserServicePersistence = serviceBrowserId ? queryAdmin(`SELECT jsonb_build_object(
   'tenant_id',tenant_id,'employee_id',employee_id,'request_type',request_type,'reason',reason,
-  'status',status,'submitted_by',submitted_by IS NOT NULL)
+  'status',status,'submitted_by',submitted_by IS NOT NULL,'resolution_note',resolution_note,
+  'history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history h WHERE h.service_request_id=service_requests.id),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs a
+    WHERE a.target_type='service_request' AND a.target_id=service_requests.id::text))
   FROM public.service_requests WHERE id=${sqlLiteral(serviceBrowserId)}::uuid`) : null;
-record('Real employee browser service-request submission and refreshed history persist at mobile and desktop widths',
-  serviceBrowserOutput.includes('Local employee service-request submission and refreshed status history persisted across mobile and desktop.')
+const browserServiceRejected = serviceBrowserRejectedId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id,'employee_id',employee_id,'status',status,'resolution_note',resolution_note,
+  'history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history h WHERE h.service_request_id=service_requests.id),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs a
+    WHERE a.target_type='service_request' AND a.target_id=service_requests.id::text))
+  FROM public.service_requests WHERE id=${sqlLiteral(serviceBrowserRejectedId)}::uuid`) : null;
+record('Real Auth/Postgres employee-to-HR service-request review, outcomes, history and refresh recovery persist in EN/BN on mobile and desktop',
+  serviceBrowserOutput.includes('Local Auth/Postgres employee submission, HR review, outcome, rejection, status history, refresh recovery, EN/BN, and mobile/desktop journeys persisted.')
     && browserServicePersistence?.tenant_id === ids.tenantA
     && browserServicePersistence?.employee_id === '55555555-5555-4555-8555-555555555555'
     && browserServicePersistence?.request_type === 'employment_certificate'
-    && browserServicePersistence?.status === 'pending'
-    && browserServicePersistence?.submitted_by === true,
-  serviceBrowserError || JSON.stringify(browserServicePersistence));
+    && browserServicePersistence?.status === 'completed'
+    && browserServicePersistence?.resolution_note?.startsWith('Synthetic HR resolution outcome ')
+    && JSON.stringify(browserServicePersistence?.history) === JSON.stringify(['pending','in_progress','completed'])
+    && browserServicePersistence?.audit_count === 3
+    && browserServiceRejected?.tenant_id === ids.tenantA
+    && browserServiceRejected?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserServiceRejected?.status === 'rejected'
+    && browserServiceRejected?.resolution_note === 'The requested schedule is not available.'
+    && JSON.stringify(browserServiceRejected?.history) === JSON.stringify(['pending','rejected'])
+    && browserServiceRejected?.audit_count === 2,
+  serviceBrowserError || JSON.stringify({ completed: browserServicePersistence, rejected: browserServiceRejected }));
 
 psqlSync(`UPDATE public.employees SET employment_status='terminated'
   WHERE id='55555555-5555-4555-8555-555555555555';`);
