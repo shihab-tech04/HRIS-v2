@@ -259,7 +259,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   const profile = page.getByRole('region', { name: 'My profile' });
   await expect(profile.getByText('Synthetic Employee')).toBeVisible();
   await expect(profile.getByText('SYN-001')).toBeVisible();
-  await expect(profile.getByText('Sam')).toBeVisible();
+  await expect(profile.getByText('Sam', { exact: true })).toBeVisible();
   await expect(profile.getByText('synthetic.employee@example.org')).toBeVisible();
   await expect(profile.getByText('sam.personal@example.org')).toBeVisible();
   await expect(profile.getByText('+8801712345678')).toBeVisible();
