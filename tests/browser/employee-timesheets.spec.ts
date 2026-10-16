@@ -184,7 +184,7 @@ test('linked employee completes the timesheet journey in Bengali and English wit
   await expect(timesheetCard.getByText('জমা হয়েছে', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await expect(page.getByRole('heading', { name: 'My timesheets', exact: true })).toBeVisible();
-  await expect(timesheetCard.getByText('submitted', { exact: true })).toBeVisible();
+  await expect(timesheetCard.getByText('Submitted', { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 

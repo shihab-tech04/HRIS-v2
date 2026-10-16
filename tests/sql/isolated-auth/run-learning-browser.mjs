@@ -689,7 +689,7 @@ try {
   await persistedTimesheet.getByText('জমা হয়েছে', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await page.getByRole('heading', { name: 'My timesheets', exact: true }).waitFor({ state: 'visible' });
-  await persistedTimesheet.getByText('submitted', { exact: true }).waitFor({ state: 'visible' });
+  await persistedTimesheet.getByText('Submitted', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'English submitted timesheet mobile');
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'English submitted timesheet desktop');
