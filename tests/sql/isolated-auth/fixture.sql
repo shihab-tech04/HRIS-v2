@@ -1196,8 +1196,11 @@ INSERT INTO public.employee_family_members(id,employee_id,name,relationship,date
   ('a1111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','Synthetic Dependent A','Child','2015-06-17',true),
   ('a2222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','Synthetic Dependent B','Parent','1965-03-21',false);
 INSERT INTO public.employee_documents(id,employee_id,name,document_type,file_url,verification_status) VALUES
-  ('a3333333-3333-4333-8333-333333333333','55555555-5555-4555-8555-555555555555','Synthetic Employee A document','identity','employee-a/document-a.pdf','verified'),
-  ('a4444444-4444-4444-8444-444444444444','66666666-6666-4666-8666-666666666666','Synthetic Employee B document','identity','employee-b/document-b.pdf','pending');
+  ('a3333333-3333-4333-8333-333333333333','55555555-5555-4555-8555-555555555555','Synthetic Employee A document','identity',(SELECT id::text || '/synthetic-document.pdf' FROM auth.users WHERE email='employee-a@hris.test'),'verified'),
+  ('a3333333-3333-4333-8333-333333333334','55555555-5555-4555-8555-555555555555','Synthetic rejected identity document','identity',(SELECT id::text || '/synthetic-document.pdf' FROM auth.users WHERE email='employee-a@hris.test'),'rejected'),
+  ('a4444444-4444-4444-8444-444444444444','66666666-6666-4666-8666-666666666666','Synthetic Employee B document','identity',(SELECT id::text || '/synthetic-document-b.pdf' FROM auth.users WHERE email='employee-b@hris.test'),'pending');
+UPDATE public.employee_documents SET verification_note='Synthetic correction reason for the employee.'
+WHERE id='a3333333-3333-4333-8333-333333333334';
 INSERT INTO public.performance_goals(id,tenant_id,employee_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin) VALUES
   ('88888888-8888-4888-8888-888888888801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A goal','Synthetic own goal','Individual','Complete local acceptance',20,'2026-12-31','in_progress',50,'assigned'),
   ('88888888-8888-4888-8888-888888888802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B goal','Synthetic other-tenant goal','Individual','Complete local acceptance',10,'2026-12-31','in_progress',50,'assigned');

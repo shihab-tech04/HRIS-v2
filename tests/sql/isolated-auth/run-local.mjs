@@ -423,6 +423,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -718,12 +719,12 @@ const documentRowA = 'a3333333-3333-4333-8333-333333333333';
 const documentRowB = 'a4444444-4444-4444-8444-444444444444';
 record('Employee-document managers and directory viewers read only documents in their active tenant',
   !documentManagerA.error && !documentManagerB.error && !documentViewerA.error
-    && documentManagerA.data?.length === 1 && documentManagerA.data[0]?.id === documentRowA
+    && documentManagerA.data?.length === 2 && documentManagerA.data.some(row => row.id === documentRowA)
     && documentManagerB.data?.length === 1 && documentManagerB.data[0]?.id === documentRowB
-    && documentViewerA.data?.length === 1 && documentViewerA.data[0]?.id === documentRowA);
+    && documentViewerA.data?.length === 2 && documentViewerA.data.some(row => row.id === documentRowA));
 record('Employees read only their own document metadata and global roles alone grant no document access',
   !documentEmployeeA.error && !documentEmployeeB.error && !documentGlobalOnly.error
-    && documentEmployeeA.data?.length === 1 && documentEmployeeA.data[0]?.id === documentRowA
+    && documentEmployeeA.data?.length === 2 && documentEmployeeA.data.some(row => row.id === documentRowA)
     && documentEmployeeB.data?.length === 1 && documentEmployeeB.data[0]?.id === documentRowB
     && documentGlobalOnly.data?.length === 0);
 const directAnonymousEmployeeDocuments = attemptAs(null,
@@ -744,6 +745,23 @@ const documentStorageGlobalOnly = await globalOnly.client.storage.from('employee
 record('Employee-document object reads stay owner-only until a tenant-safe storage path contract exists',
   !documentStorageOwner.error && Boolean(documentStoragePeer.error)
     && Boolean(documentStorageManager.error) && Boolean(documentStorageGlobalOnly.error));
+const ownEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
+const otherTenantEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantB });
+const crossTenantEmployeeDocuments = await employeeB.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
+const managerEmployeeDocuments = await managerA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
+const anonymousEmployeeDocuments = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
+const ownDocumentRows = ownEmployeeDocuments.data?.documents;
+const rejectedEmployeeDocument = ownDocumentRows?.find(row => row.id === 'a3333333-3333-4333-8333-333333333334');
+record('Employee document self-service returns only own metadata and exposes correction reasons only for rejected documents',
+  !ownEmployeeDocuments.error && ownEmployeeDocuments.data?.tenant_id === ids.tenantA
+    && ownEmployeeDocuments.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && ownDocumentRows?.length === 2
+    && ownDocumentRows.some(row => row.id === documentRowA && row.verification_note === null)
+    && rejectedEmployeeDocument?.verification_note === 'Synthetic correction reason for the employee.');
+record('Employee document self-service denies mismatched tenant, cross-tenant identity, manager, and anonymous sessions',
+  Boolean(otherTenantEmployeeDocuments.error) && Boolean(crossTenantEmployeeDocuments.error)
+    && Boolean(managerEmployeeDocuments.error) && Boolean(anonymousEmployeeDocuments.error));
 
 const candidateStageHistoryAccess = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
@@ -3294,6 +3312,11 @@ try {
       HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
+      HRIS_LOCAL_DOCUMENT_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_DOCUMENT_ID: documentRowA,
+      HRIS_LOCAL_DOCUMENT_NAME: 'Synthetic Employee A document',
+      HRIS_LOCAL_DOCUMENT_REJECTED_NAME: 'Synthetic rejected identity document',
+      HRIS_LOCAL_DOCUMENT_REJECTION_REASON: 'Synthetic correction reason for the employee.',
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -3319,6 +3342,9 @@ if (uiLeaveAcceptanceMatch) {
 const leaveEvidenceBrowserPassed = leaveEvidenceBrowserOutput.includes('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
 record('Real Auth/Postgres/Storage employee and same-tenant manager browsers retrieve persisted private leave evidence',
   leaveEvidenceBrowserPassed,
+  leaveEvidenceBrowserError);
+record('Employee document self-service browser reads, recovers, downloads, localizes, and stays responsive',
+  leaveEvidenceBrowserOutput.includes('EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS'),
   leaveEvidenceBrowserError);
 const browserApprovedEvidence = evidenceRequestId ? tableRow('leave_requests', evidenceRequestId) : null;
 const browserUiLeave = uiLeaveAcceptance?.id ? tableRow('leave_requests', uiLeaveAcceptance.id) : null;

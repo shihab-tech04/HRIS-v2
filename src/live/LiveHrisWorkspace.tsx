@@ -11,6 +11,7 @@ import { ProjectNotifications } from './ProjectNotifications';
 import { MyPerformance } from './MyPerformance';
 import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
+import { EmployeeDocumentVault } from './EmployeeDocumentVault';
 import { EmployeeLeaveCalendar } from './EmployeeLeaveCalendar';
 import { PayrollRegister } from './PayrollRegister';
 import { LearningRequests } from './LearningRequests';
@@ -32,7 +33,7 @@ import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
-  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2,
+  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -67,7 +68,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'my-dashboard' | 'my-projects' | 'my-notifications' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -3391,6 +3392,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-performance', label: 'My Performance', icon: <Target className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-learning', label: 'My Learning', icon: <BookOpen className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-payslips', label: 'My Payslips', icon: <Receipt className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-documents', label: 'My Documents', icon: <FileText className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-travel', label: 'My Travel', icon: <MapPin className="h-5 w-5" />, group: 'Personal' });
@@ -3499,6 +3501,7 @@ export function LiveHrisWorkspace({
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
+          {page === 'my-documents' && isEmployee && <EmployeeDocumentVault tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId}
             focusRequestId={leaveFocusRequestId} onFocusHandled={clearLeaveRequestFocus} locale={locale} />}
           {page === 'my-timesheets' && isEmployee && <EmployeeTimesheets tenantId={tenantId} tenantName={tenantName} locale={locale} />}

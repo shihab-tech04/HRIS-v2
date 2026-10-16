@@ -14,6 +14,8 @@ const required = [
   'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
   'HRIS_LOCAL_LEAVE_REQUEST_REASON', 'HRIS_LOCAL_LEAVE_HISTORY_YEAR',
   'HRIS_LOCAL_LEAVE_REJECTION_NOTE', 'HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID',
+  'HRIS_LOCAL_DOCUMENT_TENANT_ID', 'HRIS_LOCAL_DOCUMENT_ID', 'HRIS_LOCAL_DOCUMENT_NAME',
+  'HRIS_LOCAL_DOCUMENT_REJECTED_NAME', 'HRIS_LOCAL_DOCUMENT_REJECTION_REASON',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -463,7 +465,7 @@ try {
   const refreshedEmployee = await refreshedEmployeeContext.newPage();
   await signIn(refreshedEmployee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
   await navigateTo(refreshedEmployee, 'My Leave');
-  await refreshedEmployee.getByRole('heading', { name: 'ব্যক্তিগত ছুটি' }).waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
   const personalCalendarDate = process.env.HRIS_LOCAL_LEAVE_REQUEST_DATE;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(personalCalendarDate || '')) {
     throw new Error('The isolated leave calendar fixture has no valid approved request date.');
@@ -548,7 +550,7 @@ try {
   await refreshedEmployee.getByRole('heading', { name: 'ছুটির অনুরোধ অনুমোদিত' }).first().waitFor({ state: 'visible' });
   const bengaliApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);
   await bengaliApprovalCard.getByRole('button', { name: 'ছুটির তথ্য খুলুন', exact: true }).click();
-  await refreshedEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('heading', { name: 'ব্যক্তিগত ছুটি' }).waitFor({ state: 'visible' });
   const focusedUiRequest = refreshedEmployee.locator(`[data-leave-request-id="${uiLeaveRequestId}"]`);
   await focusedUiRequest.waitFor({ state: 'visible' });
   await refreshedEmployee.waitForFunction(expectedId =>
@@ -573,10 +575,50 @@ try {
   if (focusedRejectedRequestId !== process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID) {
     throw new Error('Opening the rejected leave notification did not focus its matching request history row.');
   }
+
+  let documentRpcAttempts = 0;
+  await refreshedEmployee.route('**/rest/v1/rpc/hris_get_my_employee_documents', async route => {
+    documentRpcAttempts += 1;
+    if (documentRpcAttempts === 1) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic temporary outage.' }) });
+      return;
+    }
+    await route.continue();
+  });
+  await navigateTo(refreshedEmployee, 'My Documents');
+  await refreshedEmployee.getByRole('heading', { name: 'My Documents' }).waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('alert').filter({ hasText: 'Unable to load your documents.' }).waitFor({ state: 'visible' });
+  await refreshedEmployee.getByRole('button', { name: 'Retry', exact: true }).click();
+  const ownDocumentCard = refreshedEmployee.locator(`[data-employee-document-id="${process.env.HRIS_LOCAL_DOCUMENT_ID}"]`);
+  const rejectedDocumentCard = refreshedEmployee.locator('[data-employee-document-id="a3333333-3333-4333-8333-333333333334"]');
+  await ownDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_NAME, { exact: true }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTED_NAME, { exact: true }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: true }).waitFor({ state: 'visible' });
+  await ownDocumentCard.getByText('Verified', { exact: true }).waitFor({ state: 'visible' });
+  await refreshedEmployee.unroute('**/rest/v1/rpc/hris_get_my_employee_documents');
+  await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
+  await ownDocumentCard.waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee document self-service desktop');
+  await refreshedEmployee.setViewportSize({ width: 375, height: 812 });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee document self-service mobile');
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await refreshedEmployee.getByRole('heading', { name: 'আমার নথি' }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText('সংশোধনের কারণ', { exact: false }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee documents Bengali mobile');
+  await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
+  const documentDownload = refreshedEmployee.waitForEvent('download');
+  await ownDocumentCard.getByRole('button', { name: 'Download', exact: true }).click();
+  await assertDownloadedEvidence(refreshedEmployee, await documentDownload,
+    'Synthetic Employee A document', 'synthetic employee document');
+  await refreshedEmployee.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(refreshedEmployee, 'Employee document self-service refreshed desktop');
+  await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
+  await ownDocumentCard.waitFor({ state: 'visible' });
   await refreshedEmployeeContext.close();
 
   console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves and rejects, refreshed employee history and owner-only decision notifications persist, Bengali and English notification actions return to the matching request on mobile and desktop.');
   console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
+  console.log('EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS');
 } finally {
   if (browser) await browser.close();
   await stopChildProcess(server);
