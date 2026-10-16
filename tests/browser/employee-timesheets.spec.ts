@@ -197,7 +197,7 @@ test('linked employee completes the timesheet journey in Bengali and English wit
   rejected = true;
   submitted = false;
   await page.getByRole('button', { name: 'রিফ্রেশ', exact: true }).click();
-  await expect(timesheetCard.getByText('প্রত্যাখ্যাত', { exact: true })).toBeVisible();
+  await expect(timesheetCard.getByText('প্রত্যাখ্যাত', { exact: true }).first()).toBeVisible();
   await expect(timesheetCard).toContainText('Please correct the logged hours before resubmitting.');
   await timesheetCard.getByRole('button', { name: 'এই প্রকল্প অংশ সংশোধন করুন', exact: true }).click();
   await page.getByLabel('ঘণ্টা', { exact: true }).nth(1).fill('2.75');

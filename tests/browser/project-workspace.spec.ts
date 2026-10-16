@@ -151,6 +151,9 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: Mode) 
     if (endpoint === 'hris_get_my_project_peer_reviews') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reviews: peerReviews }) });
     }
+    if (endpoint === 'hris_get_my_project_timesheet_reviews') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ can_review: false, reviews: [] }) });
+    }
     if (endpoint === 'hris_create_project_task') {
       const body = request.postDataJSON() as Record<string, unknown>;
       taskRpcBodies.push({ name: endpoint, body });
