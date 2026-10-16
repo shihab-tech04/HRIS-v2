@@ -24,7 +24,10 @@ test('leave decisions use the saved allocation and retain the legacy path for ea
 });
 
 test('isolated Auth/Postgres acceptance changes the calendar before resolving a new request', () => {
-  assert.match(runner, /20261016183000_hris_leave_balance_allocation_snapshot\.sql/);
+  const stagedResolverIndex = runner.indexOf('supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql');
+  const allocationResolverIndex = runner.indexOf('supabase/migrations/20261016183000_hris_leave_balance_allocation_snapshot.sql');
+  assert.ok(stagedResolverIndex > -1 && allocationResolverIndex > stagedResolverIndex,
+    'the allocation-aware resolver must be applied after the staged legacy resolver');
   assert.match(runner, /Leave approval consumes the submission allocation after the holiday calendar changes/);
   assert.match(runner, /private from employee and manager table reads/);
   assert.match(runner, /generate_series\('2098-01-01'::date,'2098-02-28'::date/);

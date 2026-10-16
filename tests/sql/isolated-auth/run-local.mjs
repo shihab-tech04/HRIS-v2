@@ -394,13 +394,16 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261015195145_hris_leave_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016105659_hris_tenant_leave_date_filter.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016142000_hris_leave_type_policy_management.sql'),
-  path.join(mainRoot, 'supabase/migrations/20261016183000_hris_leave_balance_allocation_snapshot.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016061104_hris_employee_service_request_review.sql'),
+  // The staged tenant-guard contract below replaces the same leave resolver.
+  // Apply the newer submission-allocation contract after it so local acceptance
+  // verifies the shipped resolver rather than the older staged replacement.
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql'),
   path.join(mainRoot, 'supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016183000_hris_leave_balance_allocation_snapshot.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013175151_employee_referral_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221600_hris_organization_holiday_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221700_employee_leave_history_private_evidence.sql'),
