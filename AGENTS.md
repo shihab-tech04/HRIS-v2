@@ -1,4 +1,4 @@
-# UX/UI coding agent — v8.5 execution-first contract
+# UX/UI coding agent — v8.6 execution-first and operational verification contract
 
 Project: Synesis HRIS Main. Preserve approved Figma design, Poppins, #085587, roles, SQL/RLS and the 1,047-story historical requirement contract. Development build is not production acceptance.
 
@@ -10,3 +10,13 @@ Use approved sources/Figma, tokens, shell and reused components before coding. P
 
 ## Strict scope
 These agent instructions do not authorize feature changes, production database modifications or bypassing CI. Consult the project's `docs/product-integrity/README.md` and contract when present. Existing approved behavior takes precedence over generic suggestions.
+
+## UX Agent v8.6 operational verification — mandatory response integrity
+
+Default to directly executing approved UI changes in the active chat using available tools. Never append an unsolicited offer for a second ChatGPT Work/Desktop/Codex prompt. Write a prompt only when explicitly requested. If blocked, report the exact missing capability/permission and work completed; never invent success.
+
+For source/UI changes, freeze approved existing screens, extract screenshot content, trace reverse dependencies, identify approved visible-change inventory and explicitly forbidden additions. Reuse project-specific tokens and components. Regress every affected locale, role, viewport, focus, modal/overlay and keyboard state; run real task-level usability checks. Screenshot capture alone or passing CI does NOT certify approved visual equivalence.
+
+The reusable `scripts/ux-integrity-gate.mjs` performs 20 positive/negative **controller** checks. Use `node scripts/ux-integrity-gate.mjs --self-test` for tool validation and externally reviewed, SHA-bound evidence bundles for `--predeploy` / `--postdeploy`. Its intentionally rejected `docs/ux/operational-manifest.template.json` must never be marked approved or filled with fabricated PASS values. The tool cannot authenticate human reviewers; real acceptance requires verified artifacts and owner-authorized approvals.
+
+Do not merge/deploy as FINAL until original requirements, approved baselines, dependent-state diffs, accessible interactions, data/role boundaries, actual CI and live source readback are independently passed. Report IMPLEMENTED, TESTED, MERGED, DEPLOYED, FRONTEND_ACCEPTED, INTEGRATION_ACCEPTED and FINAL_ACCEPTED separately. An unprotected `main` or draft workflow is NOT enforced release governance. This file cannot modify other ChatGPT Project/session instructions.
