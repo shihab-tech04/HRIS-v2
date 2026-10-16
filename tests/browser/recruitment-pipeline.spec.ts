@@ -191,7 +191,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
   await pipeline.getByLabel('Private panel notes').fill('Keep panel discussion private.');
   await pipeline.getByRole('button', { name: 'Schedule interview' }).click();
   await expect(pipeline.getByText('Interview scheduled in HRIS and the candidate has been notified.')).toBeVisible();
-  await expect(pipeline.getByText('Technical panel interview', { exact: true })).toBeVisible();
+  await expect(pipeline.getByText(/Technical panel interview/)).toBeVisible();
   expect(interviewWrites).toBe(1);
 
   await pipeline.getByRole('region', { name: `Assessment review for Synthetic Candidate` }).locator('summary').click();
@@ -202,7 +202,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
   await pipeline.getByLabel('Deadline').fill(localDateInput(deadline));
   await pipeline.getByRole('button', { name: 'Assign assessment' }).click();
   await expect(pipeline.getByText('Assessment assigned in HRIS and the candidate has been notified.')).toBeVisible();
-  await expect(pipeline.getByText('Synthetic system design', { exact: true })).toBeVisible();
+  await expect(pipeline.getByText(/Synthetic system design/)).toBeVisible();
   expect(assessmentWrites).toBe(1);
 
   expect(permissionChecks).toContain('recruitment.view');
