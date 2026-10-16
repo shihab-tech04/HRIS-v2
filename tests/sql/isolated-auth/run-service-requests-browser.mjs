@@ -220,7 +220,7 @@ try {
   await employee.waitForFunction(requestId => document.activeElement?.getAttribute('data-service-request') === requestId, saved.id);
   const focusedRequestId = await employee.evaluate(() => document.activeElement?.getAttribute('data-service-request'));
   if (focusedRequestId !== saved.id) throw new Error(`Notification did not focus its matching service request history row: ${focusedRequestId}.`);
-  await finalEmployeeCard.getByText(outcome, { exact: true }).waitFor({ state: 'visible' });
+  await finalEmployeeCard.getByText(outcome, { exact: true }).first().waitFor({ state: 'visible' });
   await employee.getByRole('button', { name: 'Open navigation menu' }).click();
   await employee.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'বিজ্ঞপ্তি', exact: true }).click();
   await rejectedNotification.getByRole('button', { name: 'পরিষেবা অনুরোধ খুলুন', exact: true }).click();
@@ -228,7 +228,7 @@ try {
   await employee.waitForFunction(requestId => document.activeElement?.getAttribute('data-service-request') === requestId, secondSaved.id);
   const focusedRejectedRequestId = await employee.evaluate(() => document.activeElement?.getAttribute('data-service-request'));
   if (focusedRejectedRequestId !== secondSaved.id) throw new Error(`Rejection notification did not focus its matching service request history row: ${focusedRejectedRequestId}.`);
-  await finalRejectedCard.getByText(rejection, { exact: true }).waitFor({ state: 'visible' });
+  await finalRejectedCard.getByText(rejection, { exact: true }).first().waitFor({ state: 'visible' });
   console.log('SERVICE_REQUEST_NOTIFICATION_ACCEPTANCE=PASS');
 
   console.log(`SERVICE_REQUEST_ACCEPTANCE_ID=${saved.id}`);
