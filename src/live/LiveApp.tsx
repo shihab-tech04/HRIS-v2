@@ -47,6 +47,9 @@ function normalizeEmployeeAddresses(value: unknown): EmployeeAddress[] {
       city_village: text('city_village'),
       road_block_house: text('road_block_house'),
     };
+  }).sort((left, right) => {
+    const order: Record<EmployeeAddress['address_type'], number> = { Present: 0, Permanent: 1, Other: 2 };
+    return order[left.address_type] - order[right.address_type] || (left.id || '').localeCompare(right.id || '');
   });
 }
 const protectedProfileFields = [
@@ -259,9 +262,10 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     setAddressesLoading(true);
     setAddressesError('');
     try {
-      const { data, error: addressError } = await supabase.rpc('employee_get_my_addresses_v2');
+      const { data, error: addressError } = await supabase.from('employee_addresses')
+        .select('id,address_type,district,thana,post_code,city_village,road_block_house');
       if (addressError) throw addressError;
-      setAddresses(normalizeEmployeeAddresses(data));
+      setAddresses(normalizeEmployeeAddresses(data || []));
     } catch {
       setAddressesError('Your address details are temporarily unavailable. Refresh to try again.');
     } finally {
