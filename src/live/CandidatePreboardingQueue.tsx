@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
@@ -29,8 +29,14 @@ function formatValue(value: unknown, locale: Locale) {
   return typeof value === 'string' && value.trim() ? value : '—';
 }
 
-export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
-  tenantId: string; locale?: Locale;
+type ActivationForm = { employeeNumber: string; joiningDate: string; detailsVerified: boolean };
+
+function initialActivationForm(packet: PreboardingPacket): ActivationForm {
+  return { employeeNumber: '', joiningDate: packet.proposed_joining_date || '', detailsVerified: false };
+}
+
+export function CandidatePreboardingQueue({ tenantId, locale = 'en', canActivate = false }: {
+  tenantId: string; locale?: Locale; canActivate?: boolean;
 }) {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
@@ -39,7 +45,15 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [activationForms, setActivationForms] = useState<Record<string, ActivationForm>>({});
+  const [activationErrors, setActivationErrors] = useState<Record<string, string>>({});
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [activationNotice, setActivationNotice] = useState('');
   const tx = (copy: string) => projectText(locale, copy);
+
+  useEffect(() => {
+    setActivationForms({}); setActivationErrors({}); setActivationNotice('');
+  }, [tenantId]);
 
   useEffect(() => {
     const request = ++sequence.current;
@@ -64,6 +78,80 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
     return () => { sequence.current += 1; };
   }, [tenantId, revision, locale]);
 
+  const updateActivationForm = (packet: PreboardingPacket, patch: Partial<ActivationForm>) => {
+    setActivationForms(current => ({
+      ...current,
+      [packet.handoff_id]: { ...initialActivationForm(packet), ...current[packet.handoff_id], ...patch },
+    }));
+  };
+
+  const activateEmployee = async (event: FormEvent<HTMLFormElement>, packet: PreboardingPacket) => {
+    event.preventDefault();
+    if (!canActivate || activatingId) return;
+    const form = { ...initialActivationForm(packet), ...activationForms[packet.handoff_id] };
+    if (!form.employeeNumber.trim()) {
+      setActivationErrors(current => ({ ...current, [packet.handoff_id]: tx('Enter the employee number assigned by HR.') }));
+      return;
+    }
+    if (!form.joiningDate) {
+      setActivationErrors(current => ({ ...current, [packet.handoff_id]: tx('Confirm the employee joining date.') }));
+      return;
+    }
+    if (!form.detailsVerified) {
+      setActivationErrors(current => ({ ...current, [packet.handoff_id]: tx('Confirm that you verified all submitted details.') }));
+      return;
+    }
+
+    setActivationErrors(current => ({ ...current, [packet.handoff_id]: '' }));
+    setActivatingId(packet.handoff_id);
+    try {
+      const result = await supabase.rpc('hris_activate_candidate_employee', {
+        p_tenant_id: tenantId,
+        p_application_id: packet.application_id,
+        p_employee_number: form.employeeNumber.trim(),
+        p_joining_date: form.joiningDate,
+        p_details_verified: form.detailsVerified,
+      });
+      if (result.error) {
+        const message = result.error.message.toLowerCase();
+        if (message.includes('employee role is not configured')) {
+          throw new Error(tx('The active Employee role is not configured for this organization. Configure it before activation.'));
+        }
+        if (message.includes('joining date has not arrived')) {
+          throw new Error(tx('Activation is available on or after the confirmed joining date.'));
+        }
+        if (message.includes('already assigned') || message.includes('already linked')) {
+          throw new Error(tx('That employee number or Auth identity is already linked in this organization.'));
+        }
+        if (message.includes('details were verified')) {
+          throw new Error(tx('Confirm that you verified all submitted details.'));
+        }
+        throw result.error;
+      }
+      if (!(result.data as { success?: boolean } | null)?.success) {
+        throw new Error(tx('Employee activation could not be completed. Check the employee number and joining date, then retry.'));
+      }
+      setActivationNotice(tx('Employee activated. The candidate keeps the same sign-in identity.'));
+      setRevision(value => value + 1);
+    } catch (cause) {
+      const knownMessages = [
+        'The active Employee role is not configured for this organization. Configure it before activation.',
+        'Activation is available on or after the confirmed joining date.',
+        'That employee number or Auth identity is already linked in this organization.',
+        'Confirm that you verified all submitted details.',
+      ].map(tx);
+      setActivationErrors(current => ({
+        ...current,
+        [packet.handoff_id]: cause instanceof Error
+          ? (knownMessages.includes(cause.message)
+            ? cause.message : tx('Employee activation could not be completed. Check the employee number and joining date, then retry.'))
+          : tx('Employee activation could not be completed. Check the employee number and joining date, then retry.'),
+      }));
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
   return <section aria-labelledby="preboarding-queue-heading" className="mt-8 space-y-4">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div>
@@ -75,9 +163,7 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
         <RefreshCw className="h-4 w-4" aria-hidden="true" /> {tx('Refresh')}
       </button>
     </header>
-    <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-      {tx('Employee conversion is on hold until employee status and role-mapping rules are approved.')}
-    </p>
+    {activationNotice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{activationNotice}</p>}
     {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
       <p>{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="mt-2 min-h-9 font-semibold underline">{tx('Retry')}</button>
     </div>}
@@ -93,6 +179,7 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
           const completionSummary = locale === 'bn'
             ? `৪টির মধ্যে ${completedCount}টি বিভাগ সম্পন্ন`
             : `${completedCount} of 4 sections`;
+          const activationForm = { ...initialActivationForm(packet), ...activationForms[packet.handoff_id] };
           return <li key={packet.handoff_id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0"><h4 className="break-words font-semibold text-slate-900">{packet.candidate_name}</h4>
@@ -107,6 +194,31 @@ export function CandidatePreboardingQueue({ tenantId, locale = 'en' }: {
               {fields.map(([key, label]) => <div key={key} className="min-w-0"><dt className="text-xs font-medium text-slate-500">{tx(label)}</dt><dd className="mt-1 break-words text-sm text-slate-900">{formatValue(packet.candidate_personal_data?.[key], locale)}</dd></div>)}
             </dl>
           </details>
+          {canActivate && <form className="mt-4 space-y-3 border-t border-slate-100 pt-4" onSubmit={event => void activateEmployee(event, packet)}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">{tx('Employee number')}
+                <input required maxLength={32} autoComplete="off" value={activationForm.employeeNumber}
+                  onChange={event => updateActivationForm(packet, { employeeNumber: event.target.value })}
+                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">{tx('Confirm joining date')}
+                <input required type="date" value={activationForm.joiningDate}
+                  onChange={event => updateActivationForm(packet, { joiningDate: event.target.value })}
+                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" />
+              </label>
+            </div>
+            <label className="flex min-h-11 items-start gap-3 text-sm text-slate-700">
+              <input type="checkbox" checked={activationForm.detailsVerified}
+                onChange={event => updateActivationForm(packet, { detailsVerified: event.target.checked })}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300" />
+              <span>{tx('I verified the submitted details and confirm the employee number and joining date.')}</span>
+            </label>
+            {activationErrors[packet.handoff_id] && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{activationErrors[packet.handoff_id]}</p>}
+            <button type="submit" disabled={loading || activatingId !== null}
+              className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#085587] px-4 py-2 text-sm font-semibold text-white hover:bg-[#06466f] disabled:cursor-not-allowed disabled:opacity-60">
+              {activatingId === packet.handoff_id ? tx('Activating...') : tx('Activate employee')}
+            </button>
+          </form>}
           </li>;
         })}
       </ul>}

@@ -1,6 +1,17 @@
 -- Synthetic Supabase Auth fixture for candidate_get_recruitment_context.
 -- Columns used by this fixture mirror the production information_schema
 -- contract; rows are created only by run-local-tenant-auth.mjs.
+CREATE TABLE IF NOT EXISTS public.roles (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  active boolean NOT NULL DEFAULT true
+);
+INSERT INTO public.roles(id,name,active) VALUES
+  ('qa_recruitment_manager','Recruitment Manager',true),
+  ('qa_recruitment_viewer','Recruitment Viewer',true),
+  ('qa_employee_manager','Employee Manager',true)
+ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,active=EXCLUDED.active;
+
 CREATE TABLE public.candidate_profiles (
   user_id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
