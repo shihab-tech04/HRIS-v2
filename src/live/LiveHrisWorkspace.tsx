@@ -1856,7 +1856,7 @@ function PersonalLeaveRequests({
       {showHistory && <div>
         <h4 id="personal-leave-history-heading" className="mb-2 font-medium text-slate-800">{tx('Leave request history')}</h4>
         {!requests.length ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave requests yet.')}</p> :
-          <div role="region" aria-labelledby="personal-leave-history-heading" tabIndex={0}
+          <div role="region" aria-label={tx('Leave request history table')} tabIndex={0}
             className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#08558B]">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
@@ -2548,7 +2548,7 @@ function PersonalAttendanceCorrections({
         </button>
       </div>
       {success && <p role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
-      {corrections.length ? <div role="region" aria-labelledby="employee-attendance-corrections-heading" tabIndex={0}
+      {corrections.length ? <div role="region" aria-label={tx('Attendance correction history table')} tabIndex={0}
         className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#08558B]"><table className="w-full min-w-[760px] text-left text-sm">
         <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
           {['Date', 'Requested change', 'Reason', 'Status', 'Resolution'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}
@@ -2918,7 +2918,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
       <section aria-labelledby="employee-leave-history-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h3 id="employee-leave-history-heading" className="font-semibold text-[#08263D]">{tx('My leave requests')}</h3>
           <p className="mt-1 text-xs text-slate-500">{tx('Status and resolution updates from this organization')}</p></div><span className="text-xs text-slate-500">{txf('{count} requests', { count: employeeNumber(requests.length) })}</span></div>
-        {requests.length ? <div role="region" aria-labelledby="employee-leave-history-heading" tabIndex={0}
+        {requests.length ? <div role="region" aria-label={tx('My leave request history table')} tabIndex={0}
           className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#08558B]"><table className="w-full min-w-[680px] text-left text-sm">
           <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{['Leave type', 'From', 'To', 'Days', 'Reason', 'Status'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{requests.map((item, index) => <tr key={String(item.id || index)}>
