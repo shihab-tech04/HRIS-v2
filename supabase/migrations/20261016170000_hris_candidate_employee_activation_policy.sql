@@ -214,6 +214,17 @@ BEGIN
   ) VALUES (
     gen_random_uuid(),p_application_id,'hired','Employee activation completed.','recruitment',auth.uid(),now()
   );
+  INSERT INTO public.admin_audit_logs(actor_id,action,target_type,target_id,details)
+  VALUES (
+    auth.uid(),'candidate.employee.activated','employee',v_employee_id::text,
+    jsonb_build_object(
+      'tenant_id',p_tenant_id,
+      'application_id',p_application_id,
+      'candidate_user_id',v_candidate_user_id,
+      'employee_number',v_employee_number,
+      'joining_date',p_joining_date
+    )
+  );
 
   RETURN jsonb_build_object('success',true,'employee_id',v_employee_id,'idempotent',false);
 END

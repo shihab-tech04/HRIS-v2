@@ -21,6 +21,7 @@ test('candidate activation uses the approved HR-only, explicitly verified, tenan
   assert.match(activationPolicy, /employee_number=v_employee_number[\s\S]*joining_date=p_joining_date/);
   assert.match(activationPolicy, /verified_at=now\(\),verified_by=auth\.uid\(\)/);
   assert.match(activationPolicy, /stage='hired'[\s\S]*candidate_application_stage_history/);
+  assert.match(activationPolicy, /candidate\.employee\.activated'[\s\S]*'employee',v_employee_id::text[\s\S]*'application_id',p_application_id/);
   assert.match(activationPolicy, /tenant_memberships_role_id_fkey/);
   assert.match(activationPolicy, /GRANT EXECUTE ON FUNCTION public\.hris_activate_candidate_employee\(uuid,uuid,text,date,boolean\)\s+TO authenticated,service_role/);
 });
