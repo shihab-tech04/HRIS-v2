@@ -77,7 +77,10 @@ test('employee sees only their own tenant-local attendance summary', async ({ pa
   const attendance = page.getByRole('region', { name: "Today's attendance" });
   await expect(attendance.getByText('Late')).toBeVisible();
   await expect(attendance.getByText('Working remotely')).toBeVisible();
+  await expect(attendance.getByText('09:00', { exact: true })).toBeVisible();
+  await expect(attendance.getByText('Not checked out', { exact: true })).toBeVisible();
   expect(attendanceFilter).toMatchObject({
+    select: 'status,work_mode,check_in,check_out',
     tenant_id: `eq.${tenantId}`,
     employee_id: `eq.${employeeId}`,
   });
