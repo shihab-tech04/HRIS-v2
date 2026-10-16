@@ -3142,9 +3142,10 @@ FROM (VALUES
   ('public.hris_own_employee_for_tenant(uuid)'),
   ('public.hris_admin_can_read_tenant(uuid,text)')
 ) f(fn)`);
-record('Tenant and employee RPC grants exclude anon and permit authenticated/service_role',
-  Object.values(functionGrantMatrix).every(grants => grants.anon === false
-    && grants.authenticated === true && grants.service_role === true),
+record('Tenant and employee RPC grants exclude anon and preserve each function’s least-privilege service grant',
+  Object.entries(functionGrantMatrix).every(([fn, grants]) => grants.anon === false
+    && grants.authenticated === true
+    && grants.service_role === (fn === 'public.hris_get_my_shift_roster(uuid,date,date)' ? false : true)),
   JSON.stringify(functionGrantMatrix));
 
 const rosterA = queryAs(managerA, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.assignment_date,r.full_name),'[]'::jsonb)
@@ -5407,6 +5408,10 @@ record('Assigned Project Manager can add members across projects within the shar
     && Boolean(allocationAOver.error) && Boolean(foreignEmployeeAllocation.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.assigned') === 1
     && auditCount(allocationA40.data?.id, 'project.allocation.assigned') === 1);
+// This test temporarily marks the employee on leave to exercise allocation
+// eligibility. Restore the synthetic identity before later dashboard browsers.
+psqlSync(`UPDATE public.employees SET employment_status='active'
+  WHERE tenant_id='${ids.tenantA}'::uuid AND id='55555555-5555-4555-8555-555555555555'::uuid;`);
 
 // Project-scoped timesheet acceptance: one employee, two projects, two assigned
 // Project Managers. All test identities and records exist only in local Postgres.

@@ -36,8 +36,11 @@ const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vit
 
 let browser;
 let failInitialRead = true;
+let injectedInitialReadFailure = false;
 let showEmptyOnNextRead = false;
 const noticeRequests = [];
+const isNoticeRead = request => request.method() === 'GET'
+  && new URL(request.url()).pathname.replace(/\/+$/, '').endsWith('/rest/v1/notices');
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
@@ -60,14 +63,15 @@ try {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
   page.on('request', request => {
     const url = new URL(request.url());
-    if (url.pathname.endsWith('/rest/v1/notices') && request.method() === 'GET') noticeRequests.push(url.search);
+    if (isNoticeRead(request)) noticeRequests.push(url.search);
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
-      if (url.pathname.endsWith('/rest/v1/notices') && route.request().method() === 'GET') {
+      if (isNoticeRead(route.request())) {
         if (failInitialRead) {
           failInitialRead = false;
+          injectedInitialReadFailure = true;
           await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
             code: 'XX000', message: 'Synthetic temporary notice read outage.',
           }) });
@@ -94,7 +98,8 @@ try {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'Announcements', exact: true }).click();
   await page.getByRole('heading', { name: 'Announcements', exact: true }).waitFor({ state: 'visible' });
-  await page.getByRole('alert').filter({ hasText: 'Announcements are unavailable.' }).waitFor({ state: 'visible' });
+  if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
+  await page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ }).waitFor({ state: 'visible' });
   if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
   await page.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
 
