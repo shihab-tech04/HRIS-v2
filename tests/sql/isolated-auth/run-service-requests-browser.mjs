@@ -197,7 +197,7 @@ try {
   await finalRejectedCard.getByText('প্রত্যাখ্যাত', { exact: true }).first().waitFor({ state: 'visible' });
   await finalRejectedCard.getByText(rejection, { exact: true }).first().waitFor({ state: 'visible' });
   await finalEmployeeCard.getByText('অবস্থার ইতিহাস', { exact: false }).click();
-  await finalEmployeeCard.getByText('চলমান', { exact: true }).waitFor({ state: 'visible' });
+  await finalEmployeeCard.getByText('অপেক্ষমাণ → চলমান', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(employee, 'Bengali service request employee mobile after HR decisions');
 
   console.log(`SERVICE_REQUEST_ACCEPTANCE_ID=${saved.id}`);
