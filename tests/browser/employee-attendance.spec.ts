@@ -140,7 +140,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     else if (table === 'employees') {
       employeeProfileFilter = Object.fromEntries(url.searchParams.entries());
       data = url.searchParams.get('user_id') === `eq.${userId}`
-        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', preferred_name: updatedProfileFields.preferred_name ?? 'Sam', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', personal_email: 'sam.personal@example.org', phone: '+8801712345678', official_phone: '+88029000000', gender: updatedProfileFields.gender ?? 'Female', date_of_birth: updatedProfileFields.date_of_birth ?? '1990-04-12', nationality: updatedProfileFields.nationality ?? 'Bangladeshi', marital_status: updatedProfileFields.marital_status ?? 'Single', employment_status: 'active' }]
+        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', preferred_name: updatedProfileFields.preferred_name ?? 'Sam', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', personal_email: updatedProfileFields.personal_email ?? 'sam.personal@example.org', phone: updatedProfileFields.phone ?? '+8801712345678', official_phone: '+88029000000', gender: updatedProfileFields.gender ?? 'Female', date_of_birth: updatedProfileFields.date_of_birth ?? '1990-04-12', nationality: updatedProfileFields.nationality ?? 'Bangladeshi', marital_status: updatedProfileFields.marital_status ?? 'Single', employment_status: 'active' }]
         : [];
     } else if (table === 'admin_users') data = { active: false, is_super_admin: false };
     else if (table === 'tenants') data = [{ id: tenantId, name: 'Test tenant', slug: 'test-tenant', timezone: 'Asia/Dhaka' }];
@@ -282,12 +282,16 @@ test('employee sees own attendance, pending requests and dashboard records', asy
 
   await profile.getByRole('button', { name: 'Edit personal information' }).click();
   await profile.getByLabel('Preferred name').fill('Sammy');
+  await profile.getByLabel('Personal email').fill('sammy.personal@example.org');
+  await profile.getByLabel('Personal phone').fill('+8801812345678');
   await profile.getByLabel('Gender').selectOption('Other');
   await profile.getByLabel('Date of birth').fill('1990-04-13');
   await profile.getByLabel('Nationality').fill('Bangladeshi');
   await profile.getByLabel('Marital status').fill('Single');
   await profile.getByRole('button', { name: 'Save personal information' }).click();
-  await expect(profile.getByText('Sammy')).toBeVisible();
+  await expect(profile.getByText('Sammy', { exact: true })).toBeVisible();
+  await expect(profile.getByText('sammy.personal@example.org')).toBeVisible();
+  await expect(profile.getByText('+8801812345678')).toBeVisible();
   await expect(profile.getByRole('status')).toHaveText('Personal information saved.');
   await expect(profile.getByText('Other', { exact: true })).toBeVisible();
   await expect(profile.getByText('1990-04-13')).toBeVisible();
@@ -296,6 +300,8 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   expect(profileUpdateMethod).toBe('POST');
   expect(profileUpdatePayload).toEqual({ p_payload: {
     preferred_name: 'Sammy',
+    personal_email: 'sammy.personal@example.org',
+    phone: '+8801812345678',
     gender: 'Other',
     date_of_birth: '1990-04-13',
     nationality: 'Bangladeshi',

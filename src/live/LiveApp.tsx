@@ -190,6 +190,8 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   const [profileChangeForm, setProfileChangeForm] = useState({ field_key: 'official_email', requested_value: '', reason: '' });
   const [form, setForm] = useState({
     preferred_name: profile.preferred_name || '',
+    personal_email: profile.personal_email || '',
+    phone: profile.phone || '',
     gender: profile.gender || '',
     date_of_birth: profile.date_of_birth || '',
     nationality: profile.nationality || '',
@@ -198,6 +200,8 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   useEffect(() => {
     setForm({
       preferred_name: profile.preferred_name || '',
+      personal_email: profile.personal_email || '',
+      phone: profile.phone || '',
       gender: profile.gender || '',
       date_of_birth: profile.date_of_birth || '',
       nationality: profile.nationality || '',
@@ -230,6 +234,8 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     try {
       const { error: updateError } = await supabase.rpc('employee_update_my_profile', { p_payload: {
         preferred_name: form.preferred_name.trim(),
+        personal_email: form.personal_email.trim(),
+        phone: form.phone.trim(),
         gender: form.gender,
         date_of_birth: form.date_of_birth,
         nationality: form.nationality.trim(),
@@ -279,12 +285,14 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     {editing ? <form className="p-4" onSubmit={submit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div><label htmlFor="employee-profile-preferred-name" className="block text-xs font-medium text-slate-600">Preferred name</label><input id="employee-profile-preferred-name" maxLength={120} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.preferred_name} onChange={event => setForm(value => ({ ...value, preferred_name: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-personal-email" className="block text-xs font-medium text-slate-600">Personal email</label><input id="employee-profile-personal-email" type="email" autoComplete="email" maxLength={254} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.personal_email} onChange={event => setForm(value => ({ ...value, personal_email: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-phone" className="block text-xs font-medium text-slate-600">Personal phone</label><input id="employee-profile-phone" type="tel" autoComplete="tel" maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.phone} onChange={event => setForm(value => ({ ...value, phone: event.target.value }))}/></div>
         <div><label htmlFor="employee-profile-gender" className="block text-xs font-medium text-slate-600">Gender</label><select id="employee-profile-gender" className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.gender} onChange={event => setForm(value => ({ ...value, gender: event.target.value }))}><option value="">Not provided</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
         <div><label htmlFor="employee-profile-date-of-birth" className="block text-xs font-medium text-slate-600">Date of birth</label><input id="employee-profile-date-of-birth" type="date" max={new Date().toISOString().slice(0, 10)} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.date_of_birth} onChange={event => setForm(value => ({ ...value, date_of_birth: event.target.value }))}/></div>
         <div><label htmlFor="employee-profile-nationality" className="block text-xs font-medium text-slate-600">Nationality</label><input id="employee-profile-nationality" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.nationality} onChange={event => setForm(value => ({ ...value, nationality: event.target.value }))}/></div>
         <div><label htmlFor="employee-profile-marital-status" className="block text-xs font-medium text-slate-600">Marital status</label><input id="employee-profile-marital-status" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.marital_status} onChange={event => setForm(value => ({ ...value, marital_status: event.target.value }))}/></div>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save personal information'}</button><button type="button" disabled={saving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setForm({ preferred_name: profile.preferred_name || '', gender: profile.gender || '', date_of_birth: profile.date_of_birth || '', nationality: profile.nationality || '', marital_status: profile.marital_status || '' }); setEditing(false); setError(''); }}>Cancel</button></div>
+      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save personal information'}</button><button type="button" disabled={saving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setForm({ preferred_name: profile.preferred_name || '', personal_email: profile.personal_email || '', phone: profile.phone || '', gender: profile.gender || '', date_of_birth: profile.date_of_birth || '', nationality: profile.nationality || '', marital_status: profile.marital_status || '' }); setEditing(false); setError(''); }}>Cancel</button></div>
     </form> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
       <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{profile.full_name || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Preferred name</dt><dd className="font-medium">{profile.preferred_name || 'Not provided'}</dd></div>

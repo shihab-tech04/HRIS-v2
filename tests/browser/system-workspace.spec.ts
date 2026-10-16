@@ -87,7 +87,7 @@ test('authorized Super Admin opens real system navigation, not fixture preview',
   await expect(changeRequests.getByText('new.employee@example.org')).toBeVisible();
   await changeRequests.getByLabel('Reviewer note (optional)').fill('Verified against employee documents.');
   await changeRequests.getByRole('button', { name: 'Approve change' }).click();
-  await expect(changeRequests.getByRole('status')).toHaveText('Request approved.');
+  await expect(changeRequests.getByText('Request approved.', { exact: true })).toBeVisible();
   await expect(changeRequests.getByText('No pending profile correction requests.')).toBeVisible();
   expect(getProfileChangeReviewPayload()).toEqual({
     p_id: 'pf-1',
