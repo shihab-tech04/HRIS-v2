@@ -200,6 +200,35 @@ try {
   await finalEmployeeCard.getByText('অপেক্ষমাণ → চলমান', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(employee, 'Bengali service request employee mobile after HR decisions');
 
+  await employee.getByRole('button', { name: 'Open navigation menu' }).click();
+  const employeeNav = employee.getByRole('navigation', { name: 'HRIS modules' });
+  await employeeNav.getByRole('button', { name: 'বিজ্ঞপ্তি', exact: true }).click();
+  const completedNotification = employee.locator(`[data-notification-source="service_request_decision"][data-notification-request-id="${saved.id}"]`);
+  const rejectedNotification = employee.locator(`[data-notification-source="service_request_decision"][data-notification-request-id="${secondSaved.id}"]`);
+  await completedNotification.getByText('পরিষেবা অনুরোধ সম্পন্ন হয়েছে', { exact: true }).waitFor({ state: 'visible' });
+  await rejectedNotification.getByText('পরিষেবা অনুরোধ প্রত্যাখ্যাত হয়েছে', { exact: true }).waitFor({ state: 'visible' });
+  if (await rejectedNotification.getByText(rejection, { exact: true }).count()) {
+    throw new Error('Service-request notifications exposed the private rejection reason instead of requiring owner history access.');
+  }
+  await employee.getByRole('button', { name: 'রিফ্রেশ', exact: true }).click();
+  await completedNotification.waitFor({ state: 'visible' });
+  await assertNoOverflow(employee, 'Bengali service request notifications mobile');
+  await employee.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(employee, 'Bengali service request notifications desktop');
+  await completedNotification.getByRole('button', { name: 'পরিষেবা অনুরোধ খুলুন', exact: true }).click();
+  await employee.getByRole('heading', { name: 'আমার পরিষেবা অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  const focusedRequestId = await employee.evaluate(() => document.activeElement?.getAttribute('data-service-request'));
+  if (focusedRequestId !== saved.id) throw new Error(`Notification did not focus its matching service request history row: ${focusedRequestId}.`);
+  await finalEmployeeCard.getByText(outcome, { exact: true }).waitFor({ state: 'visible' });
+  await employee.getByRole('button', { name: 'Open navigation menu' }).click();
+  await employee.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'বিজ্ঞপ্তি', exact: true }).click();
+  await rejectedNotification.getByRole('button', { name: 'পরিষেবা অনুরোধ খুলুন', exact: true }).click();
+  await employee.getByRole('heading', { name: 'আমার পরিষেবা অনুরোধ', exact: true }).waitFor({ state: 'visible' });
+  const focusedRejectedRequestId = await employee.evaluate(() => document.activeElement?.getAttribute('data-service-request'));
+  if (focusedRejectedRequestId !== secondSaved.id) throw new Error(`Rejection notification did not focus its matching service request history row: ${focusedRejectedRequestId}.`);
+  await finalRejectedCard.getByText(rejection, { exact: true }).waitFor({ state: 'visible' });
+  console.log('SERVICE_REQUEST_NOTIFICATION_ACCEPTANCE=PASS');
+
   console.log(`SERVICE_REQUEST_ACCEPTANCE_ID=${saved.id}`);
   console.log(`SERVICE_REQUEST_REJECTION_ACCEPTANCE_ID=${secondSaved.id}`);
   console.log('Local Auth/Postgres employee submission, HR review, outcome, rejection, status history, refresh recovery, EN/BN, and mobile/desktop journeys persisted.');

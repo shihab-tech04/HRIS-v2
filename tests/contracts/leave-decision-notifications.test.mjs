@@ -33,7 +33,7 @@ test('leave decision notifications are persisted by the existing tenant leave de
 
 test('notification opens the matching leave history row and supports Bengali', () => {
   assert.match(component, /source: 'leave_decision'/);
-  assert.match(component, /data-notification-request-id=\{isLeaveDecision \? item\.leave_request_id : undefined\}/);
+  assert.match(component, /data-notification-request-id=\{isLeaveDecision \? item\.leave_request_id : isServiceRequestDecision \? item\.service_request_id : undefined\}/);
   assert.match(component, /onOpenLeave\(item\.leave_request_id\)/);
   assert.match(workspace, /const openLeaveRequest = \(requestId: string\) => \{ setLeaveFocusRequestId\(requestId\); navigate\('my-leave'\); \}/);
   assert.match(workspace, /focusRequestId=\{leaveFocusRequestId\} onFocusHandled=\{clearLeaveRequestFocus\}/);

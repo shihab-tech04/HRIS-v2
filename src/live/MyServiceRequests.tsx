@@ -67,7 +67,12 @@ function statusClass(status: string) {
   return 'bg-amber-50 text-amber-800';
 }
 
-export function MyServiceRequests({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+export function MyServiceRequests({ tenantId, locale, focusRequestId, onFocusHandled }: {
+  tenantId: string;
+  locale: Locale;
+  focusRequestId?: string | null;
+  onFocusHandled?: (requestId: string) => void;
+}) {
   const tx = useCallback((english: string) => serviceRequestText(locale, english), [locale]);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [requestType, setRequestType] = useState<RequestType>('employment_certificate');
@@ -98,6 +103,20 @@ export function MyServiceRequests({ tenantId, locale }: { tenantId: string; loca
   }, [tenantId, locale, tx]);
 
   useEffect(() => { void loadRequests(); }, [loadRequests]);
+
+  useEffect(() => {
+    if (!focusRequestId || loading || loadError) return;
+    if (!requests.some(request => request.id === focusRequestId)) {
+      onFocusHandled?.(focusRequestId);
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(`[data-service-request="${focusRequestId}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.focus({ preventScroll: true });
+      onFocusHandled?.(focusRequestId);
+    }
+  }, [focusRequestId, requests, loading, loadError, onFocusHandled]);
 
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -178,7 +197,7 @@ export function MyServiceRequests({ tenantId, locale }: { tenantId: string; loca
           <p className="mt-1 text-sm text-slate-600">{tx('Your submitted requests will appear here.')}</p>
         </div>
         : <ul className="grid gap-3 lg:grid-cols-2">
-          {requests.map(request => <li key={request.id} data-service-request={request.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          {requests.map(request => <li key={request.id} data-service-request={request.id} tabIndex={-1} className="rounded-xl border border-slate-200 bg-white p-4 focus:outline-2 focus:outline-[#08558B]">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div><h4 className="font-semibold text-slate-900">{requestLabel(request.request_type, tx)}</h4>
                 <p className="mt-1 text-xs text-slate-500">{tx('Submitted')} {submittedLabel(request.submitted_at, locale, tx)}</p></div>

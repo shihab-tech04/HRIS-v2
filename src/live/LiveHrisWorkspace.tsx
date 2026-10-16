@@ -3345,6 +3345,7 @@ export function LiveHrisWorkspace({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [travelFocusRequestId, setTravelFocusRequestId] = useState<string | null>(null);
   const [leaveFocusRequestId, setLeaveFocusRequestId] = useState<string | null>(null);
+  const [serviceRequestFocusId, setServiceRequestFocusId] = useState<string | null>(null);
   const nav = useMemo(() => {
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
     if (permissions.dashboard) items.push({ id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" />, group: 'HRIS' });
@@ -3403,6 +3404,8 @@ export function LiveHrisWorkspace({
   const clearTravelRequestFocus = (requestId: string) => setTravelFocusRequestId(currentId => currentId === requestId ? null : currentId);
   const openLeaveRequest = (requestId: string) => { setLeaveFocusRequestId(requestId); navigate('my-leave'); };
   const clearLeaveRequestFocus = (requestId: string) => setLeaveFocusRequestId(currentId => currentId === requestId ? null : currentId);
+  const openServiceRequest = (requestId: string) => { setServiceRequestFocusId(requestId); navigate('my-service-requests'); };
+  const clearServiceRequestFocus = (requestId: string) => setServiceRequestFocusId(currentId => currentId === requestId ? null : currentId);
   const current = localizedNav.find(item => item.id === page);
 
   const navigation = <nav aria-label="HRIS modules" className="space-y-1">
@@ -3480,7 +3483,7 @@ export function LiveHrisWorkspace({
           </>}
           {page === 'my-notifications' && isEmployee && <ProjectNotifications tenantId={tenantId} locale={locale}
             onOpenProjects={() => navigate('my-projects')} onOpenLearning={() => navigate('my-learning')}
-            onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} />}
+            onOpenTravel={openTravelRequest} onOpenLeave={openLeaveRequest} onOpenServiceRequest={openServiceRequest} />}
           {page === 'my-performance' && isEmployee && <MyPerformance tenantId={tenantId} userId={userId} locale={locale} />}
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
@@ -3490,7 +3493,8 @@ export function LiveHrisWorkspace({
           {page === 'my-travel' && isEmployee && <MyTravelRequests tenantId={tenantId} locale={locale}
             focusRequestId={travelFocusRequestId} onFocusHandled={clearTravelRequestFocus} />}
           {page === 'my-expenses' && isEmployee && <ExpenseClaims tenantId={tenantId} userId={userId} mode="personal" />}
-          {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} locale={locale} />}
+          {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} locale={locale}
+            focusRequestId={serviceRequestFocusId} onFocusHandled={clearServiceRequestFocus} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>

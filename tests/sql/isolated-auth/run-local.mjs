@@ -392,6 +392,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014160002_hris_system_notifications_inbox.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015022305_hris_travel_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015195145_hris_leave_decision_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016141629_hris_service_request_decision_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016105659_hris_tenant_leave_date_filter.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016142000_hris_leave_type_policy_management.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015050029_candidate_application_update_notifications.sql'),
@@ -4028,6 +4029,20 @@ const serviceRequestRejectDraft = await employeeA.client.rpc('hris_submit_my_ser
   p_tenant_id: ids.tenantA, p_request_type: 'shift_change', p_reason: 'Request a shift change for the next schedule.',
 });
 const serviceRequestRejectId = serviceRequestRejectDraft.data?.id;
+const serviceRequestTenantBDraft = await employeeB.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantB, p_request_type: 'other', p_reason: 'Synthetic tenant B service request.',
+});
+const serviceRequestTenantBId = serviceRequestTenantBDraft.data?.id;
+const serviceRequestTenantBDecision = await managerB.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantB, p_request_id: serviceRequestTenantBId,
+  p_expected_status: 'pending', p_next_status: 'rejected', p_note: 'Synthetic tenant B decision.',
+});
+record('Tenant B service requests can be decided only in tenant B and retain their own employee owner',
+  !serviceRequestTenantBDraft.error && !serviceRequestTenantBDecision.error
+    && serviceRequestTenantBDecision.data?.status === 'rejected'
+    && serviceRequestTenantBDecision.data?.tenant_id === ids.tenantB,
+  JSON.stringify({ draft: serviceRequestTenantBDraft.error?.code, decision: serviceRequestTenantBDecision.error?.code,
+    tenant: serviceRequestTenantBDecision.data?.tenant_id }));
 const pendingReject = await managerA.client.rpc('hris_resolve_tenant_service_request', {
   p_tenant_id: ids.tenantA, p_request_id: serviceRequestRejectId,
   p_expected_status: 'pending', p_next_status: 'rejected', p_note: 'The requested shift is not available for the selected schedule.',
@@ -4148,6 +4163,7 @@ const browserServiceRejected = serviceBrowserRejectedId ? queryAdmin(`SELECT jso
   FROM public.service_requests WHERE id=${sqlLiteral(serviceBrowserRejectedId)}::uuid`) : null;
 record('Real Auth/Postgres employee-to-HR service-request review, outcomes, history and refresh recovery persist in EN/BN on mobile and desktop',
   serviceBrowserOutput.includes('Local Auth/Postgres employee submission, HR review, outcome, rejection, status history, refresh recovery, EN/BN, and mobile/desktop journeys persisted.')
+    && serviceBrowserOutput.includes('SERVICE_REQUEST_NOTIFICATION_ACCEPTANCE=PASS')
     && browserServicePersistence?.tenant_id === ids.tenantA
     && browserServicePersistence?.employee_id === '55555555-5555-4555-8555-555555555555'
     && browserServicePersistence?.request_type === 'employment_certificate'
@@ -5364,6 +5380,8 @@ const unifiedTravelRowsA = unifiedProjectRows.filter(row => row.source === 'trav
 const unifiedTravelRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'travel_decision');
 const unifiedLeaveRowsA = unifiedProjectRows.filter(row => row.source === 'leave_decision');
 const unifiedLeaveRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'leave_decision');
+const unifiedServiceRequestRowsA = unifiedProjectRows.filter(row => row.source === 'service_request_decision');
+const unifiedServiceRequestRowsB = (unifiedTenantBNotifications.data?.notifications || []).filter(row => row.source === 'service_request_decision');
 const travelApprovalNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'approved');
 const travelRejectionNotificationA = unifiedTravelRowsA.find(row => row.travel_request_id === travelIds.requestA && row.kind === 'rejected');
 const travelApprovalNotificationB = unifiedTravelRowsB.find(row => row.travel_request_id === travelIds.requestB && row.kind === 'approved');
@@ -5372,6 +5390,9 @@ const leaveRejectionNotificationA = unifiedLeaveRowsA.find(row => row.leave_requ
 const leaveBrowserApprovalNotificationA = unifiedLeaveRowsA.find(row => row.leave_request_id === uiLeaveAcceptance?.id && row.kind === 'approved');
 const leaveBrowserRejectionNotificationA = unifiedLeaveRowsA.find(row => row.leave_request_id === leaveRejectionRequestId && row.kind === 'rejected');
 const leaveApprovalNotificationB = unifiedLeaveRowsB.find(row => row.leave_request_id === ids.leaveTenantB && row.kind === 'approved');
+const serviceRequestCompletedNotificationA = unifiedServiceRequestRowsA.find(row => row.service_request_id === serviceRequestId && row.kind === 'completed');
+const serviceRequestRejectedNotificationA = unifiedServiceRequestRowsA.find(row => row.service_request_id === serviceRequestRejectId && row.kind === 'rejected');
+const serviceRequestRejectedNotificationB = unifiedServiceRequestRowsB.find(row => row.service_request_id === serviceRequestTenantBId && row.kind === 'rejected');
 const unifiedProjectReviewRow = unifiedProjectRows.find(row => row.source === 'project_review' && row.task_id === projectTaskId);
 const unifiedLearningRowCount = unifiedProjectRows.filter(row => row.source === 'learning_completion').length;
 record('Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership',
@@ -5380,7 +5401,7 @@ record('Unified notification feed merges leave decisions with project, learning,
     && unifiedLearningRows[0].source === 'project_review'
     && unifiedLearningRows[0].task_id === projectTaskId
     && !unifiedLearningNotificationsPageTwo.error && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
-    && ['project_review','learning_completion','travel_decision','leave_decision'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
+    && ['project_review','learning_completion','travel_decision','leave_decision','service_request_decision'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
     && unifiedLearningNotificationsPageTwo.data.notifications[0].id !== unifiedLearningRows[0].id
     && unifiedProjectRows.some(row => row.id === unifiedLearningNotificationsPageTwo.data.notifications[0].id
       && row.source === unifiedLearningNotificationsPageTwo.data.notifications[0].source)
@@ -5395,11 +5416,15 @@ record('Unified notification feed merges leave decisions with project, learning,
     && leaveBrowserApprovalNotificationA?.leave_type_name === 'Synthetic evidence-required leave'
     && leaveBrowserRejectionNotificationA?.kind === 'rejected'
     && leaveApprovalNotificationB?.leave_type_name === 'Synthetic tenant B leave'
+    && serviceRequestCompletedNotificationA?.service_request_type === 'other'
+    && serviceRequestRejectedNotificationA?.service_request_type === 'shift_change'
+    && serviceRequestRejectedNotificationB?.service_request_type === 'other'
+    && !Object.keys(serviceRequestCompletedNotificationA || {}).some(key => /note|reason|employee|recipient|actor|resolved_by/i.test(key))
     && !Object.keys(leaveApprovalNotificationA || {}).some(key => /note|reason|employee|recipient/i.test(key))
     && !Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key))
     && !unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB)
     && !unifiedTenantBNotifications.error
-    && unifiedTenantBNotifications.data.notifications.every(row => ['travel_decision','leave_decision'].includes(row.source))
+    && unifiedTenantBNotifications.data.notifications.every(row => ['travel_decision','leave_decision','service_request_decision'].includes(row.source))
     && Boolean(unifiedCrossTenantNotifications.error?.code === '42501')
     && Boolean(unifiedGlobalNotifications.error?.code === '42501') && !unifiedAnonymousNotifications.ok
     && functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon === false,
@@ -5408,6 +5433,7 @@ record('Unified notification feed merges leave decisions with project, learning,
     sourceCounts: { total: unifiedProjectRows.length, learning: unifiedLearningRowCount,
       travel: unifiedTravelRowsA.length,
       leave: unifiedLeaveRowsA.length,
+      serviceRequest: unifiedServiceRequestRowsA.length,
       projectReview: unifiedProjectRows.filter(row => row.source === 'project_review').length },
     travelApprovalA: travelApprovalNotificationA?.travel_destination,
     travelRejectionA: travelRejectionNotificationA?.kind,
@@ -5417,6 +5443,9 @@ record('Unified notification feed merges leave decisions with project, learning,
     leaveBrowserApproval: leaveBrowserApprovalNotificationA?.leave_type_name,
     leaveBrowserRejection: leaveBrowserRejectionNotificationA?.kind,
     leaveApprovalB: leaveApprovalNotificationB?.leave_type_name,
+    serviceRequestCompleted: serviceRequestCompletedNotificationA?.service_request_id,
+    serviceRequestRejected: serviceRequestRejectedNotificationA?.service_request_id,
+    tenantBServiceRequest: serviceRequestRejectedNotificationB?.service_request_id,
     taskReviewStatus: unifiedProjectReviewRow?.review_status,
     learningError: unifiedLearningNotifications.error?.code,
     pageTwoError: unifiedLearningNotificationsPageTwo.error?.code,
@@ -5426,6 +5455,44 @@ record('Unified notification feed merges leave decisions with project, learning,
     tenantB: unifiedTenantBNotifications.data?.notifications?.length,
     crossTenant: unifiedCrossTenantNotifications.error?.code,
     globalOnly: unifiedGlobalNotifications.error?.code, anonymousDenied: !unifiedAnonymousNotifications.ok }));
+const directServiceRequestNotificationsA = await employeeA.client.from('service_request_notifications')
+  .select('id,tenant_id,service_request_id,recipient_employee_id,kind').eq('tenant_id', ids.tenantA);
+const directServiceRequestNotificationsForeign = await employeeA.client.from('service_request_notifications')
+  .select('id').eq('tenant_id', ids.tenantB);
+const directServiceRequestNotificationInsert = await employeeA.client.from('service_request_notifications').insert({
+  tenant_id: ids.tenantA, service_request_id: serviceRequestId, recipient_employee_id: '55555555-5555-4555-8555-555555555555',
+  kind: 'completed', created_at: new Date().toISOString(),
+});
+const directServiceRequestNotificationUpdate = await employeeA.client.from('service_request_notifications')
+  .update({ kind: 'rejected' }).eq('service_request_id', serviceRequestId);
+const directServiceRequestNotificationDelete = await employeeA.client.from('service_request_notifications')
+  .delete().eq('service_request_id', serviceRequestId);
+const anonDirectServiceRequestNotifications = attemptAs(null,
+  'SELECT id FROM public.service_request_notifications', 'anon');
+const serviceRequestNotificationIntegrity = queryAdmin(`SELECT jsonb_build_object(
+  'a_notifications',(SELECT count(*)::integer FROM public.service_request_notifications WHERE tenant_id='${ids.tenantA}'::uuid),
+  'a_terminal_history',(SELECT count(*)::integer FROM public.service_request_status_history WHERE tenant_id='${ids.tenantA}'::uuid AND new_status IN ('completed','rejected')),
+  'b_notifications',(SELECT count(*)::integer FROM public.service_request_notifications WHERE tenant_id='${ids.tenantB}'::uuid),
+  'b_terminal_history',(SELECT count(*)::integer FROM public.service_request_status_history WHERE tenant_id='${ids.tenantB}'::uuid AND new_status IN ('completed','rejected')),
+  'mismatched_links',(SELECT count(*)::integer FROM public.service_request_notifications n
+    JOIN public.service_requests r ON r.id=n.service_request_id
+    WHERE n.tenant_id<>r.tenant_id OR n.recipient_employee_id<>r.employee_id OR n.kind<>r.status))`);
+record('Service-request decision notifications are owner-readable, tenant-isolated, immutable, and linked to terminal history',
+  !directServiceRequestNotificationsA.error && directServiceRequestNotificationsA.data.length >= 2
+    && !directServiceRequestNotificationsForeign.error && directServiceRequestNotificationsForeign.data.length === 0
+    && Boolean(directServiceRequestNotificationInsert.error)
+    && Boolean(directServiceRequestNotificationUpdate.error)
+    && Boolean(directServiceRequestNotificationDelete.error)
+    && !anonDirectServiceRequestNotifications.ok
+    && serviceRequestNotificationIntegrity.a_notifications === serviceRequestNotificationIntegrity.a_terminal_history
+    && serviceRequestNotificationIntegrity.b_notifications === serviceRequestNotificationIntegrity.b_terminal_history
+    && serviceRequestNotificationIntegrity.mismatched_links === 0,
+  JSON.stringify({ ownerRows: directServiceRequestNotificationsA.data?.length,
+    crossTenantRows: directServiceRequestNotificationsForeign.data?.length,
+    insert: directServiceRequestNotificationInsert.error?.code,
+    update: directServiceRequestNotificationUpdate.error?.code,
+    delete: directServiceRequestNotificationDelete.error?.code,
+    anonDenied: !anonDirectServiceRequestNotifications.ok, ...serviceRequestNotificationIntegrity }));
 const directTravelDecisionRowsA = await employeeA.client.from('travel_request_notifications')
   .select('id,tenant_id,travel_request_id,travel_status_history_id,recipient_employee_id,kind')
   .eq('tenant_id', ids.tenantA).eq('travel_request_id', travelIds.requestA);
