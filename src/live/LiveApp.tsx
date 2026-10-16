@@ -155,11 +155,10 @@ function attendanceDateLabel(now: Date, timeZone: string | null) {
   return `Today · ${tenantAttendanceDate(now, timeZone || 'UTC')}`;
 }
 
-function EmployeeProfileSection({ profile, onSaved }: { profile: DashboardProfile; onSaved: () => void }) {
+function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: DashboardProfile; savedMessage: string; onSaved: (message: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState('');
   const [form, setForm] = useState({
     preferred_name: profile.preferred_name || '',
     gender: profile.gender || '',
@@ -182,7 +181,6 @@ function EmployeeProfileSection({ profile, onSaved }: { profile: DashboardProfil
     event.preventDefault();
     setSaving(true);
     setError('');
-    setSaved('');
     try {
       const { error: updateError } = await supabase.rpc('employee_update_my_profile', { p_payload: {
         preferred_name: form.preferred_name.trim(),
@@ -193,8 +191,7 @@ function EmployeeProfileSection({ profile, onSaved }: { profile: DashboardProfil
       } });
       if (updateError) throw updateError;
       setEditing(false);
-      setSaved('Personal information saved.');
-      onSaved();
+      onSaved('Personal information saved.');
     } catch {
       setError('Unable to save your personal information. Refresh and try again.');
     } finally {
@@ -203,8 +200,8 @@ function EmployeeProfileSection({ profile, onSaved }: { profile: DashboardProfil
   }
 
   return <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-    <div className="border-b p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>{!editing && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setError(''); setSaved(''); setEditing(true); }}>Edit personal information</button>}</div>
-    {saved && <p role="status" className="border-b p-3 text-sm text-emerald-800">{saved}</p>}
+    <div className="border-b p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>{!editing && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setError(''); onSaved(''); setEditing(true); }}>Edit personal information</button>}</div>
+    {savedMessage && <p role="status" className="border-b p-3 text-sm text-emerald-800">{savedMessage}</p>}
     {error && <p role="alert" className="border-b p-3 text-sm text-red-800">{error}</p>}
     {editing ? <form className="p-4" onSubmit={submit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -363,6 +360,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [employeeProfileSavedMessage, setEmployeeProfileSavedMessage] = useState('');
   const lastAccessUserId = useRef<string | null>(null);
   const [error, setError] = useState('');
 
@@ -425,6 +423,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   useEffect(() => {
     if (!user) {
       lastAccessUserId.current = null;
+      setEmployeeProfileSavedMessage('');
       setTenants([]);
       setMemberships([]);
       setTenantId('');
@@ -439,6 +438,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     let active = true;
     const switchedIdentity = lastAccessUserId.current !== user.id;
     lastAccessUserId.current = user.id;
+    if (switchedIdentity) setEmployeeProfileSavedMessage('');
     setMembershipLoading(true);
     setTenants([]);
     setRecords(empty());
@@ -752,7 +752,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                 </dl></details>
               </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No released payslips are available.</p>}
             </section>
-            {records.employeeProfile ? <EmployeeProfileSection profile={records.employeeProfile} onSaved={() => setRefreshKey(n => n + 1)} /> : <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div><p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p></section>}
+            {records.employeeProfile ? <EmployeeProfileSection profile={records.employeeProfile} savedMessage={employeeProfileSavedMessage} onSaved={message => { setEmployeeProfileSavedMessage(message); if (message) setRefreshKey(n => n + 1); }} /> : <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div><p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p></section>}
             <section aria-label="Upcoming schedule" className="bg-white border rounded-lg overflow-hidden">
               <div className="border-b p-4"><h2 className="font-semibold">Upcoming schedule</h2><p className="text-xs text-slate-500">Assigned interviews, training, and review dates</p></div>
               {records.scheduleError ? <p role="status" className="p-4 text-sm text-slate-600">Schedule information is temporarily unavailable. Refresh to try again.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
