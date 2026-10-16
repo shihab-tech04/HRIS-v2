@@ -74,7 +74,8 @@ try {
   const failedResponse = await completionResponse;
   if (failedResponse.status() !== 500) throw new Error(`Expected an injected one-time completion failure, received ${failedResponse.status()}.`);
   await card.getByRole('alert').waitFor({ state: 'visible' });
-  await card.getByRole('button', { name: 'Mark interview complete', exact: true }).waitFor({ state: 'enabled' });
+  const retryAction = card.getByRole('button', { name: 'Mark interview complete', exact: true });
+  if (!(await retryAction.isEnabled())) throw new Error('Interview completion did not recover to an enabled retry action.');
 
   completionResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_complete_candidate_interview'));
   await card.getByRole('button', { name: 'Mark interview complete', exact: true }).click();

@@ -2279,8 +2279,8 @@ record('Recruiter stage transitions persist one sanitized history event per acce
   stageRejectionBrowserOutput.includes('Recruiter rejection confirmation, cancellation, persistence, refresh, and mobile/desktop states passed after candidate confirmation.')
     && !persistedStageA1.error && persistedStageA1.data.stage === 'screening'
     && !persistedStageA2.error && persistedStageA2.data.stage === 'rejected'
-    && !transitionHistoryA1.error && acceptedTransitionHistoryA1.length === 2
-    && acceptedTransitionHistoryA1.map(row => row.stage).sort().join(',') === 'screening,under_review'
+    && !transitionHistoryA1.error && acceptedTransitionHistoryA1.length === 3
+    && acceptedTransitionHistoryA1.map(row => row.stage).sort().join(',') === 'interview_scheduled,screening,under_review'
     && acceptedTransitionHistoryA1.every(row => row.actor_user_id === recruitmentManagerA.userId)
     && !transitionHistoryA2.error && transitionHistoryA2.data.length === 3
     && transitionHistoryA2.data.filter(row => row.stage === 'interview_scheduled').length === 2
