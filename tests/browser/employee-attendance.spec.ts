@@ -289,7 +289,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await profile.getByLabel('Nationality').fill('Bangladeshi');
   await profile.getByLabel('Marital status').fill('Single');
   await profile.getByRole('button', { name: 'Save personal information' }).click();
-  await expect(profile.getByText('Sammy')).toBeVisible();
+  await expect(profile.getByText('Sammy', { exact: true })).toBeVisible();
   await expect(profile.getByText('sammy.personal@example.org')).toBeVisible();
   await expect(profile.getByText('+8801812345678')).toBeVisible();
   await expect(profile.getByRole('status')).toHaveText('Personal information saved.');
