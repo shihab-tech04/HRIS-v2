@@ -72,7 +72,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     occupation: 'Student',
     academic_qualification: 'Primary',
     blood_group: 'O+',
-    gender: 'Female',
+    gender: 'Male',
     created_at: '2026-01-01T00:00:00.000Z',
   }];
   await page.route('**/auth/v1/**', async route => {
