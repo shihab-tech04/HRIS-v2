@@ -1528,7 +1528,7 @@ const browserLearningProgramPersistence = queryAdmin(`SELECT jsonb_build_object(
   LEFT JOIN public.learning_enrollments e ON e.tenant_id=p.tenant_id AND e.program_id=p.id
   WHERE p.tenant_id='${ids.tenantA}'::uuid AND p.title=${sqlLiteral(browserLearningProgramTitle)}`);
 record('Manager-published learning program and session persist and become employee enrollment history',
-  learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed.')
+  learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed;')
     && browserLearningProgramPersistence.program_count === 1 && browserLearningProgramPersistence.active
     && browserLearningProgramPersistence.self_enrollment && browserLearningProgramPersistence.session_count === 1
     && browserLearningProgramPersistence.scheduled && browserLearningProgramPersistence.enrollment_count === 1,
