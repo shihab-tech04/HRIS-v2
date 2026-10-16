@@ -41,7 +41,7 @@ jobs:
         run: git clone --depth 1 --branch "$HRIS_CANDIDATE_REF" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.21.0'
       - uses: supabase/setup-cli@v1
         with:
           version: 2.120.0

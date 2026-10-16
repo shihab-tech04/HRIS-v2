@@ -17,7 +17,7 @@ jobs:
         run: git clone --depth 1 --branch release/candidate-stable-20261017 https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.21.0'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: TypeScript check
