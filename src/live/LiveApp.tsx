@@ -21,8 +21,9 @@ type DashboardLearningSession = { id: string; title: string; start_at: string; e
 type DashboardInterview = { id: string; job_title: string; interview_type: string; scheduled_at: string; location_or_link: string | null };
 type DashboardSchedule = { training: DashboardTraining[]; performance_cycles: DashboardCycle[]; learning_sessions: DashboardLearningSession[]; interviews: DashboardInterview[] };
 type DashboardGoal = { id: string; title: string; category: string; target_metric: string | null; current_progress: number; due_date: string | null; status: string; origin: 'assigned' | 'personal' };
+type DashboardNotice = { id: string; title: string; category: string; body: string; published_at: string; pinned: boolean };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; attendanceToday: AttendanceToday | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
 const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
 function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
@@ -46,7 +47,21 @@ function normalizeDashboardGoals(value: unknown): DashboardGoal[] {
 function goalIsOverdue(goal: DashboardGoal, today: string) {
   return Boolean(goal.due_date && goal.due_date < today && !['completed', 'cancelled'].includes(goal.status));
 }
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, attendanceToday: null });
+function normalizeDashboardNotices(value: unknown): DashboardNotice[] {
+  if (!value || typeof value !== 'object') return [];
+  const notices = (value as { notices?: unknown }).notices;
+  if (!Array.isArray(notices)) return [];
+  return notices.filter((notice): notice is DashboardNotice => Boolean(notice && typeof notice === 'object'
+    && typeof (notice as DashboardNotice).id === 'string'
+    && typeof (notice as DashboardNotice).title === 'string'
+    && typeof (notice as DashboardNotice).category === 'string'
+    && typeof (notice as DashboardNotice).body === 'string'
+    && typeof (notice as DashboardNotice).published_at === 'string'
+    && Number.isFinite(Date.parse((notice as DashboardNotice).published_at))
+    && Date.parse((notice as DashboardNotice).published_at) <= Date.now()))
+    .map(notice => ({ ...notice, pinned: notice.pinned === true }));
+}
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, notices: [], noticesError: false, attendanceToday: null });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -376,6 +391,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const performanceContext = currentView === 'employee'
           ? supabase.rpc('employee_get_my_performance_context')
           : Promise.resolve({ data: null, error: null });
+        const noticesContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_notice_context')
+          : Promise.resolve({ data: null, error: null });
         const attendance = (async () => {
           // Resolve only the authenticated user's employee record. RLS applies to
           // both reads; the attendance query is additionally constrained by this
@@ -391,7 +409,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             .eq('attendance_date', attendanceDate)
             .maybeSingle();
         })();
-        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult] = await Promise.all([
+        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult, noticesContextResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
@@ -400,6 +418,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           leaveContext,
           scheduleContext,
           performanceContext,
+          noticesContext,
         ]);
         const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -412,6 +431,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           scheduleError: Boolean(scheduleContextResult.error),
           goals: normalizeDashboardGoals(performanceContextResult.data),
           goalsError: Boolean(performanceContextResult.error),
+          notices: normalizeDashboardNotices(noticesContextResult.data).slice(0, 8),
+          noticesError: Boolean(noticesContextResult.error),
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
@@ -549,6 +570,14 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                 </li>;
               })}</ul> : <p className="p-4 text-sm text-slate-500">No performance goals are currently listed for you.</p>}
               <p className="border-t px-4 py-3 text-xs text-slate-500">This workspace provides performance goals; standalone task assignments are not available here.</p>
+            </section>
+            <section aria-label="Recent HR announcements" className="bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4"><h2 className="font-semibold">Recent HR announcements</h2><p className="text-xs text-slate-500">Published notices for your organization and audience</p></div>
+              {records.noticesError ? <p role="status" className="p-4 text-sm text-slate-600">Announcements are temporarily unavailable. Refresh to try again.</p> : records.notices.length ? <ul className="divide-y">{records.notices.map(notice => <li key={notice.id} className="p-4">
+                <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{notice.title}</p>{notice.pinned && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">Pinned</span>}</div>
+                <p className="text-xs text-slate-500 mt-1">{notice.category} · {tenantAttendanceDateTime(notice.published_at, current.timezone || 'UTC') || 'Date not available'}</p>
+                <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">{notice.body}</p>
+              </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No recent announcements are available for your audience.</p>}
             </section>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>

@@ -24,11 +24,12 @@ const jwtPayload = Buffer.from(JSON.stringify({
 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-test('employee sees own tenant-local attendance, leave, holidays, schedule and goals', async ({ page }) => {
+test('employee sees own tenant-local attendance, leave, holidays, schedule, goals and announcements', async ({ page }) => {
   let attendanceFilter: Record<string, string> = {};
   let leaveContextMethod = '';
   let scheduleMethod = '';
   let performanceContextMethod = '';
+  let noticeContextMethod = '';
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -74,6 +75,14 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule and g
         { id: 'ea222222-2222-4222-8222-222222222222', title: 'Completed safety induction', category: 'Skill', target_metric: null, current_progress: 100, due_date: '1900-01-01', status: 'completed', origin: 'assigned' },
       ] };
     }
+    else if (path.endsWith('/rpc/employee_get_notice_context')) {
+      noticeContextMethod = route.request().method();
+      data = { can_manage: false, notices: [
+        { id: 'eb111111-1111-4111-8111-111111111111', title: 'Benefits enrollment timeline', category: 'Benefits', body: 'Enrollment closes on 30 November.', published_at: '2000-01-01T00:00:00.000Z', pinned: true },
+        { id: 'eb222222-2222-4222-8222-222222222222', title: 'October town hall', category: 'Events', body: 'Join the monthly town hall.', published_at: '2025-10-01T00:00:00.000Z', pinned: false },
+        { id: 'eb333333-3333-4333-8333-333333333333', title: 'Future announcement', category: 'Events', body: 'Not published yet.', published_at: '2999-01-01T00:00:00.000Z', pinned: true },
+      ] };
+    }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
       data = url.searchParams.get('user_id') === `eq.${userId}`
@@ -111,6 +120,7 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule and g
   expect(leaveContextMethod).toBe('POST');
   expect(scheduleMethod).toBe('POST');
   expect(performanceContextMethod).toBe('POST');
+  expect(noticeContextMethod).toBe('POST');
   const balances = page.getByRole('region', { name: 'Remaining leave balances' });
   await expect(balances.getByText('Annual Leave')).toBeVisible();
   await expect(balances.getByText('15 days available')).toBeVisible();
@@ -139,4 +149,15 @@ test('employee sees own tenant-local attendance, leave, holidays, schedule and g
   await expect(goals.getByText('Completed safety induction')).toBeVisible();
   await expect(goals.getByText('Completed · 100% complete')).toBeVisible();
   await expect(goals.getByText('This workspace provides performance goals; standalone task assignments are not available here.')).toBeVisible();
+
+  const announcements = page.getByRole('region', { name: 'Recent HR announcements' });
+  await expect(announcements.getByText('Benefits enrollment timeline')).toBeVisible();
+  await expect(announcements.getByText('Pinned', { exact: true })).toBeVisible();
+  await expect(announcements.getByText('Enrollment closes on 30 November.')).toBeVisible();
+  await expect(announcements.getByText('October town hall')).toBeVisible();
+  await expect(announcements.getByText('Future announcement')).toHaveCount(0);
+  const announcementRows = await announcements.getByRole('listitem').allTextContents();
+  expect(announcementRows).toHaveLength(2);
+  expect(announcementRows[0]).toContain('Benefits enrollment timeline');
+  expect(announcementRows[1]).toContain('October town hall');
 });
