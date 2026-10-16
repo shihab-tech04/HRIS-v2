@@ -126,6 +126,7 @@ test('tenant recruiter moves an application through the privacy-safe pipeline', 
     p_offset: 0,
   });
 
+  await pipeline.getByText('Update application progress', { exact: true }).click();
   await pipeline.getByLabel('Next application stage for Synthetic Candidate').selectOption('under_review');
   await pipeline.getByRole('button', { name: 'Save stage' }).click();
   await expect(pipeline.getByText('Application progress updated.')).toBeVisible();

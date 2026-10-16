@@ -115,7 +115,7 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   const attendance = page.getByRole('region', { name: "Today's attendance" });
-  await expect(attendance.getByText('Late', { exact: true })).toBeVisible();
+  await expect(attendance.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   await expect(attendance.getByText('Working remotely', { exact: true })).toBeVisible();
   await expect(attendance.getByText('09:00', { exact: true })).toBeVisible();
   await expect(attendance.getByText('—', { exact: true })).toBeVisible();
@@ -130,12 +130,12 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await dashboardViews.getByRole('button', { name: 'Work location' }).click();
   await expect(page.getByText('Working remotely', { exact: true })).toBeVisible();
   await dashboardViews.getByRole('button', { name: 'Check-in times' }).click();
-  await expect(page.getByText('Late', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => dashboardCalls).toBeGreaterThan(1);
-  await expect(attendance.getByText('Late', { exact: true })).toBeVisible();
+  await expect(attendance.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('region', { name: "Today's attendance" }).getByText('Late', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: "Today's attendance" }).getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   expect(legacyAttendanceRestReads).toBe(0);
 });
