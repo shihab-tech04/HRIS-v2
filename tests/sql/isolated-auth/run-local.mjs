@@ -3868,7 +3868,7 @@ record('Service-request review enforces allowed transitions, required outcomes, 
     && JSON.stringify(serviceStatusAudit.statuses) === JSON.stringify(['pending','in_progress','completed'])
     && serviceStatusAudit.audit_count === 3
     && Boolean(directServiceRequestUpdate.error)
-    && queryAdmin(`SELECT status FROM public.service_requests WHERE id='${serviceRequestId}'::uuid`).status === 'completed',
+    && queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.service_requests WHERE id='${serviceRequestId}'::uuid`).status === 'completed',
   JSON.stringify({ start: managerStartReview.error?.code, duplicateStart: duplicateStartReview.error?.code,
     completeBeforeReview: completeBeforeReview.error?.code,
     completeNoOutcome: completeWithoutOutcome.error?.code, rejectNoReason: serviceRejectWithoutReason.error?.code,
