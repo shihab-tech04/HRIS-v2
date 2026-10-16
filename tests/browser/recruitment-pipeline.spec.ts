@@ -179,7 +179,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
   await pipeline.getByLabel('Panel evaluation note').fill('Panel recommends progression to final review.');
   await pipeline.getByRole('button', { name: 'Save panel evaluation' }).click();
   await expect(pipeline.getByText('Assessment evaluation saved in HRIS.')).toBeVisible();
-  await expect(pipeline.getByText('reviewed', { exact: true })).toBeVisible();
+  await expect(pipeline.getByText('Synthetic take-home assessment · reviewed', { exact: true })).toBeVisible();
   expect(assessmentReviews).toBe(1);
 
   await pipeline.getByText('Schedule interview', { exact: true }).click();
