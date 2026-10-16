@@ -567,6 +567,9 @@ psqlSync(`INSERT INTO public.attendance_records(
   (('${previousAttendanceMonthDate}'::date + time '17:00') AT TIME ZONE 'Asia/Dhaka'),
   'office','present','employee','Synthetic isolated prior-month attendance acceptance fixture'
 );`);
+// Preserve the seeded holiday-boundary request dates. Rewriting them to the
+// runner's current date makes the charge depend on its weekday and skews the
+// separate current-day dashboard fixture.
 const results = [];
 function record(label, ok, note = '') {
   results.push({ label, ok });
@@ -4794,7 +4797,7 @@ const dashboardAValid = Number(dashboardA.team_members) === 6
   && Number(dashboardA.wfo_today) === 3
   && Number(dashboardA.wfh_today) === 1
   && Number(dashboardA.client_meeting_today) === 1
-  && Number(dashboardA.on_leave_today) === 2
+  && Number(dashboardA.on_leave_today) === 1
   && Number(dashboardA.late_today) === 1
   && dashboardA.attendance_last_7_days.length === 7
   && dashboardA.attendance_last_30_days.length === 30;
