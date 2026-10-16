@@ -3,6 +3,9 @@
 import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
+import { resolve } from 'node:path';
+import { stopChildProcess } from './stop-child-process.mjs';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
@@ -27,22 +30,59 @@ if (evidenceParts.length !== 3
 }
 
 const repo = process.cwd();
-const port = '48380';
+const port = await new Promise((resolvePort, reject) => {
+  const probe = createNetServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close(() => reject(new Error('Unable to select an available loopback port for the leave-evidence browser journey.')));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolvePort(String(address.port)));
+  });
+});
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: repo,
   env: {
     ...process.env,
     VITE_SUPABASE_URL: process.env.HRIS_LOCAL_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: process.env.HRIS_LOCAL_SUPABASE_ANON_KEY,
   },
-  stdio: 'ignore',
+  stdio: ['ignore', 'ignore', 'pipe'],
 });
 
 let browser;
+let serverStderr = '';
+let serverSpawnError = '';
+server.stderr.on('data', chunk => { serverStderr = `${serverStderr}${chunk.toString()}`.slice(-4000); });
+server.on('error', error => { serverSpawnError = error.code || error.name || 'spawn_error'; });
+
+function safeServerDiagnostic() {
+  let diagnostic = serverStderr;
+  for (const key of [
+    'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
+    'HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_LEAVE_MANAGER_EMAIL',
+  ]) {
+    const secret = process.env[key];
+    if (secret) diagnostic = diagnostic.replaceAll(secret, '[REDACTED]');
+  }
+  diagnostic = diagnostic
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\b/g, '[REDACTED_TOKEN]')
+    .replace(/\b(?:sb_secret|sb_publishable)_[A-Za-z0-9_-]+\b/g, '[REDACTED_KEY]')
+    .replace(/(authorization:\s*bearer\s+)\S+/gi, '$1[REDACTED]')
+    .trim();
+  return diagnostic.slice(-1000);
+}
+
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
+    if (serverSpawnError) throw new Error(`Local Vite server could not start (${serverSpawnError}).`);
+    if (server.exitCode !== null) {
+      const diagnostic = safeServerDiagnostic();
+      throw new Error(`Local Vite server exited with ${server.exitCode}.${diagnostic ? ` Startup diagnostic: ${diagnostic}` : ''}`);
+    }
     try {
       const response = await fetch(origin);
       if (response.ok && (await response.text()).includes('Synesis HRIS 360°')) return;
@@ -347,8 +387,5 @@ try {
   console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
 } finally {
   if (browser) await browser.close();
-  if (server.exitCode === null) {
-    server.kill('SIGTERM');
-    await new Promise(resolve => server.once('exit', resolve));
-  }
+  await stopChildProcess(server);
 }

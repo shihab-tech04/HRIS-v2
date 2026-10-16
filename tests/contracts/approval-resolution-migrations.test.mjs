@@ -44,4 +44,6 @@ test('isolated leave evidence browser accepts configured loopback ports and reje
   assert.match(leaveEvidenceBrowser, /HRIS_SUPABASE_API_PORT \|\| '55421'/);
   assert.match(leaveEvidenceBrowser, /apiUrl\.hostname !== '127\.0\.0\.1'/);
   assert.match(leaveEvidenceBrowser, /apiUrl\.port !== expectedApiPort/);
+  assert.match(leaveEvidenceBrowser, /probe\.listen\(0, '127\.0\.0\.1'/);
+  assert.match(leaveEvidenceBrowser, /stopChildProcess\(server\)/);
 });
