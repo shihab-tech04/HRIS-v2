@@ -12,6 +12,7 @@ const downloadAsset = readFileSync(new URL('../../src/assets/attendance-download
 const filterAsset = readFileSync(new URL('../../src/assets/attendance-filter.svg', import.meta.url), 'utf8');
 const teamSortAsset = readFileSync(new URL('../../src/assets/attendance-team-sort.svg', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
+const sqlRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/attendance-information.spec.ts', import.meta.url), 'utf8');
 
 test('attendance report team labels come from tenant-checked employee team joins', () => {
@@ -34,6 +35,8 @@ test('attendance detail returns only same-tenant team labels and keeps executabl
   assert.match(detailMigration, /LEFT JOIN public\.teams t ON t\.id=e\.team_id AND t\.tenant_id=p_tenant_id/);
   assert.match(detailMigration, /FROM PUBLIC, anon/);
   assert.match(detailMigration, /TO authenticated, service_role/);
+  assert.match(sqlRunner, /supabase\/migrations\/20261016003910_attendance_detail_team_name\.sql/);
+  assert.match(sqlRunner, /Attendance detail resolves same-tenant teams and suppresses cross-tenant team references/);
   assert.match(workspace, /'designation_title', 'team_name', 'department_name', 'attendance_date'/);
   assert.match(workspace, /projectText\(locale, 'Team Name'\)/);
   assert.match(browser, /Synthetic Product Team/);
