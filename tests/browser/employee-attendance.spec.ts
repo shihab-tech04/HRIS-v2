@@ -55,6 +55,26 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     city_village: 'Dhanmondi',
     road_block_house: 'Road 27',
   }];
+  let familyGetMethods: string[] = [];
+  let familySaveMethod = '';
+  let familySavePayload: { p_rows?: Array<Record<string, unknown>> } = {};
+  let employeeFamilyMembers: Array<Record<string, unknown>> = [{
+    id: 'ef111111-1111-4111-8111-111111111111',
+    name: 'Synthetic Dependent',
+    phone: '+8801711000001',
+    nid_number: 'SYN-FAM-001',
+    date_of_birth: '2015-06-17',
+    relationship: 'Child',
+    present_address: 'Synthetic present address',
+    permanent_address: 'Synthetic permanent address',
+    is_nominee: false,
+    working_in_synesis: false,
+    occupation: 'Student',
+    academic_qualification: 'Primary',
+    blood_group: 'O+',
+    gender: 'Female',
+    created_at: '2026-01-01T00:00:00.000Z',
+  }];
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -89,6 +109,16 @@ test('employee sees own attendance, pending requests and dashboard records', asy
         id: typeof row.id === 'string' ? row.id : `ed222222-2222-4222-8222-${String(index + 1).padStart(12, '0')}`,
       }));
       data = employeeAddresses.length;
+    }
+    else if (path.endsWith('/rpc/employee_save_my_family_members_v2')) {
+      familySaveMethod = route.request().method();
+      familySavePayload = JSON.parse(route.request().postData() || '{}');
+      employeeFamilyMembers = (familySavePayload.p_rows || []).map((row, index) => ({
+        ...row,
+        id: typeof row.id === 'string' ? row.id : `ef222222-2222-4222-8222-${String(index + 1).padStart(12, '0')}`,
+        created_at: `2026-10-16T12:00:0${index}.000Z`,
+      }));
+      data = employeeFamilyMembers.length;
     }
     else if (path.endsWith('/rpc/employee_submit_profile_change_request')) {
       profileChangeMethod = route.request().method();
@@ -160,6 +190,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     else if (table === 'employee_addresses') {
       addressGetMethods.push(route.request().method());
       data = employeeAddresses;
+    } else if (table === 'employee_family_members') {
+      familyGetMethods.push(route.request().method());
+      data = employeeFamilyMembers;
     }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
@@ -384,6 +417,79 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     },
   ] });
   expect(broadProfileRpcCalled).toBe(false);
+
+  const family = profile.getByRole('region', { name: 'Dependents and family members' });
+  await expect(family.getByText('Synthetic Dependent', { exact: true })).toBeVisible();
+  await expect(family.getByText('Child', { exact: true })).toBeVisible();
+  await family.getByRole('button', { name: 'Edit family information' }).click();
+  await family.getByLabel('Family member 1 name').fill('Morgan Employee');
+  await family.getByLabel('Family member 1 phone').fill('+8801711000002');
+  await family.getByLabel('Family member 1 national ID number').fill('SYN-CHILD-009');
+  await family.getByLabel('Family member 1 date of birth').fill('2016-07-18');
+  await family.getByLabel('Family member 1 relationship').fill('Child');
+  await family.getByLabel('Family member 1 gender').selectOption('Male');
+  await family.getByLabel('Family member 1 present address').fill('New synthetic present address');
+  await family.getByLabel('Family member 1 permanent address').fill('New synthetic permanent address');
+  await family.getByLabel('Family member 1 occupation').fill('Student');
+  await family.getByLabel('Family member 1 academic qualification').fill('Class 5');
+  await family.getByLabel('Family member 1 blood group').fill('O+');
+  await family.getByLabel('Family member 1 nominee').check();
+  await family.getByRole('button', { name: 'Add another family member' }).click();
+  await family.getByLabel('Family member 2 name').fill('Casey Employee');
+  await family.getByLabel('Family member 2 phone').fill('+8801711000003');
+  await family.getByLabel('Family member 2 national ID number').fill('SYN-DEP-010');
+  await family.getByLabel('Family member 2 date of birth').fill('1965-03-21');
+  await family.getByLabel('Family member 2 relationship').fill('Parent');
+  await family.getByLabel('Family member 2 gender').selectOption('Female');
+  await family.getByLabel('Family member 2 present address').fill('Parent synthetic present address');
+  await family.getByLabel('Family member 2 permanent address').fill('Parent synthetic permanent address');
+  await family.getByLabel('Family member 2 occupation').fill('Teacher');
+  await family.getByLabel('Family member 2 academic qualification').fill("Bachelor's degree");
+  await family.getByLabel('Family member 2 blood group').fill('AB-');
+  await family.getByLabel('Family member 2 nominee').check();
+  await family.getByLabel('Family member 2 works in Synesis').check();
+  await family.getByRole('button', { name: 'Save family information' }).click();
+  await expect(family.getByText('Morgan Employee', { exact: true })).toBeVisible();
+  await expect(family.getByText('Casey Employee', { exact: true })).toBeVisible();
+  await expect(family.getByText('New synthetic present address')).toBeVisible();
+  await expect(family.getByText('AB-')).toBeVisible();
+  await expect(family.getByText('Family information saved.')).toBeVisible();
+  expect(familyGetMethods.length).toBeGreaterThanOrEqual(2);
+  expect(familyGetMethods.every(method => method === 'GET')).toBe(true);
+  expect(familySaveMethod).toBe('POST');
+  expect(familySavePayload).toEqual({ p_rows: [
+    {
+      id: 'ef111111-1111-4111-8111-111111111111',
+      name: 'Morgan Employee',
+      phone: '+8801711000002',
+      nid_number: 'SYN-CHILD-009',
+      date_of_birth: '2016-07-18',
+      relationship: 'Child',
+      present_address: 'New synthetic present address',
+      permanent_address: 'New synthetic permanent address',
+      is_nominee: true,
+      working_in_synesis: false,
+      occupation: 'Student',
+      academic_qualification: 'Class 5',
+      blood_group: 'O+',
+      gender: 'Male',
+    },
+    {
+      name: 'Casey Employee',
+      phone: '+8801711000003',
+      nid_number: 'SYN-DEP-010',
+      date_of_birth: '1965-03-21',
+      relationship: 'Parent',
+      present_address: 'Parent synthetic present address',
+      permanent_address: 'Parent synthetic permanent address',
+      is_nominee: true,
+      working_in_synesis: true,
+      occupation: 'Teacher',
+      academic_qualification: "Bachelor's degree",
+      blood_group: 'AB-',
+      gender: 'Female',
+    },
+  ] });
 
   await profile.getByText('Request a protected profile change').click();
   await profile.getByLabel('Profile field').selectOption('official_email');
