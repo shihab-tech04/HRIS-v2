@@ -197,7 +197,7 @@ test('linked employee can complete the private evidence leave request on mobile'
     { p_tenant_id: tenantId, p_event: 'check_in' },
     { p_tenant_id: tenantId, p_event: 'check_out' },
   ]);
-  await expect(page.getByText('8.5 hr')).toBeVisible();
+  await expect(page.locator('p.text-right').getByText('8.5 hr', { exact: true })).toBeVisible();
   const dashboardTabs = page.getByRole('group', { name: 'Personal dashboard views' });
   await expect(dashboardTabs.getByRole('button', { name: 'Working hours' })).toBeVisible();
   await expect(dashboardTabs.getByRole('button', { name: 'Work location' })).toBeVisible();
