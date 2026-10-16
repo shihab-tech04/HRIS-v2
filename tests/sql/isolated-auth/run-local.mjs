@@ -4510,7 +4510,7 @@ record('All project portions must pass before overall approval, with append-only
     && finalProjectTimesheetState.project_a === 'approved' && finalProjectTimesheetState.project_b === 'approved'
     && finalProjectTimesheetState.events === 6 && finalProjectTimesheetState.review_audit === 4);
 
-const mixedProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'daily', localCurrentDate, localCurrentDate, [
+const mixedProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'weekly', previousWorkDate, localCurrentDate, [
   projectHourEntries[0], { activity_id: '88888888-8888-4888-8888-888888888901', work_date: localCurrentDate, hours: 1,
     note: 'Synthetic unlinked non-project work' },
 ]);
@@ -4521,7 +4521,8 @@ record('Non-project hours remain submitted after project approval because no non
   queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${mixedProjectTimesheet.id}'::uuid`).status === 'submitted'
     && queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).count === 1);
 
-const concurrentProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'daily', localCurrentDate, localCurrentDate,
+const concurrentProjectTimesheet = saveTimesheet(managerA2, ids.tenantA, null, 'weekly', localCurrentDate,
+  addCalendarDays(localCurrentDate, 1),
   [projectHourEntries[0]]);
 submitTimesheet(managerA2, ids.tenantA, concurrentProjectTimesheet.id);
 const concurrentProjectDecisions = await Promise.allSettled([
