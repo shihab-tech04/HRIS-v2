@@ -1,0 +1,42 @@
+name: UX Agent Operational Controller — negative self-tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/ux-integrity-gate.mjs"
+      - "docs/ux/operational-manifest.template.json"
+      - "docs/ux/operational-controller.md"
+      - "AGENTS.md"
+      - ".github/workflows/ux-agent-operational.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate-controller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate controller syntax
+        run: node --check scripts/ux-integrity-gate.mjs
+      - name: Exercise 20 positive and negative validation cases
+        run: node scripts/ux-integrity-gate.mjs --self-test
+      - name: Prove an unapproved release manifest fails closed
+        shell: bash
+        run: |
+          set +e
+          node scripts/ux-integrity-gate.mjs --manifest docs/ux/operational-manifest.template.json --repo-root . --audit > ux-audit.json
+          code=$?
+          set -e
+          test "$code" -eq 2
+          node -e "const j=require('./ux-audit.json');if(j.status!=='BLOCKED'||j.errors.length<5)process.exit(1);console.log('PASS: intentionally incomplete release is BLOCKED with',j.errors.length,'errors')"
+      - name: Preserve gate diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ux-agent-operational-audit
+          path: ux-audit.json
+          retention-days: 30
