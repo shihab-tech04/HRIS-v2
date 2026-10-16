@@ -57,11 +57,10 @@ BEGIN
     RETURN pg_catalog.jsonb_build_object('success', true, 'changed', false, 'stage', 'withdrawn');
   END IF;
 
-  -- Match the existing recruiter/interview/offer closed-stage contract.
-  IF v_application.stage IN (
-    'offer', 'offer_extended', 'offer_accepted', 'offer_declined', 'rejected', 'hired'
-  ) THEN
-    RAISE EXCEPTION 'A closed or offered application cannot be withdrawn.' USING errcode = '22023';
+  -- Preserve the current application UI contract: rejection is terminal,
+  -- while offer-stage applications still expose the candidate withdrawal action.
+  IF v_application.stage = 'rejected' THEN
+    RAISE EXCEPTION 'A rejected application cannot be withdrawn.' USING errcode = '22023';
   END IF;
 
   UPDATE public.job_applications a

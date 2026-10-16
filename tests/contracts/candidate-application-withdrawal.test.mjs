@@ -14,7 +14,7 @@ test('candidate withdrawal is authenticated, active-profile scoped, and row-lock
   assert.match(migration, /TO authenticated/);
 });
 
-test('candidate withdrawal validates current UI reasons, protects closed stages, and is retry-safe', () => {
+test('candidate withdrawal validates current UI reasons, preserves open offer-stage behavior, and is retry-safe', () => {
   for (const reason of [
     'Accepted another job offer',
     'Location / Commute constraints',
@@ -22,7 +22,8 @@ test('candidate withdrawal validates current UI reasons, protects closed stages,
     'Personal / Family circumstances',
     'Other',
   ]) assert.ok(migration.includes(`'${reason}'`), `Missing supported withdrawal reason: ${reason}`);
-  assert.match(migration, /'offer', 'offer_extended', 'offer_accepted', 'offer_declined', 'rejected', 'hired'/);
+  assert.match(migration, /IF v_application\.stage = 'rejected' THEN/);
+  assert.doesNotMatch(migration, /'offer_accepted'|'offer_extended'|'hired'/);
   assert.match(migration, /IF v_application\.stage = 'withdrawn' THEN[\s\S]+?'changed', false/);
   assert.match(migration, /SET stage = 'withdrawn', status_note = v_reason, updated_at/);
   assert.match(migration, /candidate_application_stage_history[\s\S]+?'withdrawn', v_reason,[\s\S]+'candidate', auth\.uid\(\)/);
