@@ -136,9 +136,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [adminAllowed, setAdminAllowed] = useState(false);
+  const [recruitmentAllowed, setRecruitmentAllowed] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   // Legacy permissions are globally stored, therefore valid for Synesis only.
   const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
+  const canUseSystemWorkspace = canAdminSelectedTenant || (recruitmentAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it'));
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
   const [records, setRecords] = useState<Records>(empty);
@@ -210,6 +212,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       setMemberships([]);
       setTenantId('');
       setAdminAllowed(false);
+      setRecruitmentAllowed(false);
       setIsSuperAdmin(false);
       setRecords(empty());
       setMembershipLoading(false);
@@ -223,6 +226,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setTenants([]);
     setRecords(empty());
     setAdminAllowed(false);
+    setRecruitmentAllowed(false);
     setIsSuperAdmin(false);
     if (switchedIdentity) {
       setTenantId('');
@@ -247,14 +251,18 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           .filter(e => !['resigned','terminated'].includes(e.employment_status))
           .map(e => e.tenant_id);
         const permissions = await Promise.all(
-          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage']
+          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage','recruitment.view','recruitment.manage']
             .map(id => supabase.rpc('has_permission', { p_permission_id: id }))
         );
         const isLegacyAdmin = adminResult.data?.active === true &&
-          permissions.some(right => !right.error && right.data === true);
+          permissions.slice(0, 5).some(right => !right.error && right.data === true);
+        // Recruiter access is limited to active legacy admins with an explicit
+        // recruitment permission; the recruiter RPCs enforce this again in SQL.
+        const recruitmentWorkspaceAllowed = adminResult.data?.active === true &&
+          permissions.slice(5).some(right => !right.error && right.data === true);
         // Existing admin_users grants are specific to the legacy Synesis tenant:
         // global roles are NOT valid for any other tenant.
-        const legacyTenant = isLegacyAdmin
+        const legacyTenant = isLegacyAdmin || recruitmentWorkspaceAllowed
           ? await supabase.from('tenants').select('id').eq('slug','synesis-it').eq('is_active', true).maybeSingle()
           : { data: null, error: null };
         if (legacyTenant.error) throw legacyTenant.error;
@@ -275,6 +283,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         setTenantId(previous => (found.data || []).some(t => t.id === previous)
           ? previous : (found.data?.[0]?.id || ''));
         setAdminAllowed(isLegacyAdmin);
+        setRecruitmentAllowed(recruitmentWorkspaceAllowed);
         setIsSuperAdmin(isLegacyAdmin && adminResult.data?.is_super_admin === true);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');
@@ -350,7 +359,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
-  const currentView = (view === 'admin' || view === 'system') && !canAdminSelectedTenant ? 'employee' : view;
+  const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) ? 'employee' : view;
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -369,7 +378,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No authorized HRIS organization</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but no active tenant membership, linked employee, or authorized Synesis administrator scope was found. Contact your system administrator. No sample organization is substituted.</p></section>}
       {current && <>
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
-          {canAdminSelectedTenant && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
+          {canUseSystemWorkspace && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
           <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
           {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
           {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
