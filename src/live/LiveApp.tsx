@@ -10,7 +10,7 @@ import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
 type Employee = { id: string; full_name: string; employee_number: string; employment_status: string };
-type DashboardProfile = { full_name: string; employee_number: string; official_email: string | null; employment_status: string };
+type DashboardProfile = { full_name: string; preferred_name: string | null; employee_number: string; official_email: string | null; personal_email: string | null; phone: string | null; official_phone: string | null; gender: string | null; date_of_birth: string | null; nationality: string | null; marital_status: string | null; employment_status: string };
 type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
@@ -474,7 +474,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           // Resolve only the authenticated user's minimized profile. RLS applies
           // to this read; the attendance query is additionally constrained by
           // this row's tenant and employee IDs.
-          const linkedEmployee = await supabase.from('employees').select('id,full_name,employee_number,official_email,employment_status')
+          const linkedEmployee = await supabase.from('employees').select('id,full_name,preferred_name,employee_number,official_email,personal_email,phone,official_phone,gender,date_of_birth,nationality,marital_status,employment_status')
             .eq('tenant_id', tenantId).eq('user_id', user!.id).limit(1).maybeSingle();
           if (linkedEmployee.error) return { data: null, profile: null, error: linkedEmployee.error, pendingCorrections: [], pendingCorrectionsError: true };
           if (!linkedEmployee.data) return { data: null, profile: null, error: null, pendingCorrections: [], pendingCorrectionsError: false };
@@ -676,11 +676,19 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
               </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No released payslips are available.</p>}
             </section>
             <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Basic details from your linked employee record</p></div>
+              <div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>
               {records.employeeProfile ? <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
                 <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{records.employeeProfile.full_name || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Preferred name</dt><dd className="font-medium">{records.employeeProfile.preferred_name || 'Not provided'}</dd></div>
                 <div><dt className="text-xs text-slate-500">Employee number</dt><dd className="font-medium">{records.employeeProfile.employee_number || 'Not provided'}</dd></div>
                 <div><dt className="text-xs text-slate-500">Official email</dt><dd className="font-medium">{records.employeeProfile.official_email || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Personal email</dt><dd className="font-medium">{records.employeeProfile.personal_email || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Personal phone</dt><dd className="font-medium">{records.employeeProfile.phone || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Official phone</dt><dd className="font-medium">{records.employeeProfile.official_phone || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Gender</dt><dd className="font-medium">{records.employeeProfile.gender || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Date of birth</dt><dd className="font-medium">{records.employeeProfile.date_of_birth || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Nationality</dt><dd className="font-medium">{records.employeeProfile.nationality || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{records.employeeProfile.marital_status || 'Not provided'}</dd></div>
                 <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{records.employeeProfile.employment_status.replace(/_/g, ' ')}</dd></div>
               </dl> : <p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p>}
             </section>
