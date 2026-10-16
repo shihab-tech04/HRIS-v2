@@ -4,6 +4,7 @@ import { Download, Pencil, RefreshCw, Save, Search, Users, X } from 'lucide-reac
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
+import { activateModalFocusTrap } from './modal-focus';
 
 type EmployeeRow = {
   employee_id: string;
@@ -105,6 +106,7 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
   const requestSequence = useRef(0);
   const contactRequestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
+  const directoryHeadingRef = useRef<HTMLHeadingElement>(null);
   const detailDialogRef = useRef<HTMLDivElement>(null);
   const detailCloseButtonRef = useRef<HTMLButtonElement>(null);
   const detailReturnFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -185,34 +187,17 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
 
   useEffect(() => {
     if (!selectedEmployee) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeDetailsHandlerRef.current();
-        return;
-      }
-      if (event.key !== 'Tab' || !detailDialogRef.current) return;
-      const focusable = [...detailDialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )];
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', onKeyDown);
-    detailCloseButtonRef.current?.focus();
+    const restoreFocus = activateModalFocusTrap(detailDialogRef.current, {
+      initialFocus: detailCloseButtonRef.current,
+      returnFocus: () => detailReturnFocusRef.current,
+      fallbackFocus: directoryHeadingRef.current,
+      onEscape: () => closeDetailsHandlerRef.current(),
+    });
     return () => {
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', onKeyDown);
-      if (detailReturnFocusRef.current?.isConnected) detailReturnFocusRef.current.focus();
+      restoreFocus();
     };
   }, [selectedEmployee]);
 
@@ -366,7 +351,7 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
   return <section aria-labelledby="employee-directory-heading" className="space-y-4">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h2 id="employee-directory-heading" className="text-2xl font-medium text-[#49454F]">{tx('Employee directory')}</h2>
+        <h2 id="employee-directory-heading" ref={directoryHeadingRef} tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx('Employee directory')}</h2>
         <p className="mt-1 text-sm text-slate-500">{tx('Authorized employee records for your current organization.')}</p>
       </div>
       <div className="flex flex-wrap gap-2">

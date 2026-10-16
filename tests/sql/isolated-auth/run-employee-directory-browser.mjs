@@ -125,6 +125,18 @@ async function assertNoOverflow(page, label) {
   if (dimensions.document > dimensions.viewport) throw new Error(`${label} overflowed: ${JSON.stringify(dimensions)}.`);
 }
 
+async function assertFocused(locator, description) {
+  await locator.waitFor({ state: 'visible' });
+  const focusRecovered = await locator.evaluate(async element => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (element === document.activeElement) return true;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    return element === document.activeElement;
+  });
+  if (!focusRecovered) throw new Error(`${description} did not receive keyboard focus.`);
+}
+
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
@@ -181,6 +193,16 @@ try {
   await mobileDetailTrigger.click();
   const mobileDetails = page.getByRole('dialog', { name: 'Synthetic Employee A' });
   await mobileDetails.waitFor({ state: 'visible' });
+  const mobileCloseRecord = mobileDetails.getByRole('button', { name: 'Close employee record' });
+  const mobileFooterClose = mobileDetails.getByRole('button', { name: 'Close', exact: true });
+  await assertFocused(mobileCloseRecord, 'Employee detail dialog initial focus');
+  await page.getByRole('heading', { name: 'Employee directory', exact: true }).evaluate(element => element.focus());
+  await page.keyboard.press('Tab');
+  await assertFocused(mobileCloseRecord, 'Employee detail dialog focus recovery from outside');
+  await page.keyboard.press('Shift+Tab');
+  await assertFocused(mobileFooterClose, 'Employee detail dialog reverse focus wrap');
+  await page.keyboard.press('Tab');
+  await assertFocused(mobileCloseRecord, 'Employee detail dialog forward focus wrap');
   for (const field of ['Employee record', 'QA-A-001', 'QA A department', 'QA A designation', 'QA A Team', 'Active']) {
     if (!(await mobileDetails.getByText(field, { exact: false }).count())) throw new Error(`Employee details did not show the authorized field: ${field}.`);
   }

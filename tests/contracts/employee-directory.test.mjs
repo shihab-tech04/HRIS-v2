@@ -62,9 +62,11 @@ test('isolated integration runner executes a local Auth-to-Postgres mobile and d
 test('employee detail sheet preserves permission-limited directory fields and adds manager-only contact editing with keyboard recovery', () => {
   assert.match(page, /selectedEmployee/);
   assert.match(page, /role="dialog" aria-modal="true" aria-labelledby="employee-record-heading"/);
-  assert.match(page, /Escape/);
-  assert.match(page, /event\.key !== 'Tab'/);
-  assert.match(page, /detailReturnFocusRef\.current\.focus\(\)/);
+  assert.match(page, /activateModalFocusTrap\(detailDialogRef\.current/);
+  assert.match(page, /returnFocus: \(\) => detailReturnFocusRef\.current/);
+  assert.match(page, /fallbackFocus: directoryHeadingRef\.current/);
+  assert.match(page, /onEscape: \(\) => closeDetailsHandlerRef\.current\(\)/);
+  assert.match(page, /tabIndex=\{-1\}/);
   assert.match(page, /setSelectedEmployee\(null\)/);
   assert.match(page, /setSelectedEmployee\(null\);[\s\S]*?setLoading\(true\)/);
   assert.match(page, /View details/);
@@ -87,6 +89,8 @@ test('employee detail sheet preserves permission-limited directory fields and ad
   const browser = readFileSync(new URL('../sql/isolated-auth/run-employee-directory-browser.mjs', import.meta.url), 'utf8');
   assert.match(browser, /getByRole\('dialog'/);
   assert.match(browser, /keyboard\.press\('Escape'\)/);
+  assert.match(browser, /Employee detail dialog focus recovery from outside/);
+  assert.match(browser, /Employee detail dialog reverse focus wrap/);
   assert.match(browser, /managerDetailsAfterRefresh\.getByRole\('button', \{ name: 'Close', exact: true \}\)\.click\(\);[\s\S]*?Switch language to Bengali/);
 });
 
