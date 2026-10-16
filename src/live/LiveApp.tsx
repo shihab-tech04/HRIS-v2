@@ -28,7 +28,26 @@ type AttendanceToday = { status: string; work_mode: string; check_in: string | n
 type DashboardPayslip = { id: string; pay_period_name: string; pay_date: string | null; currency: string; net_salary: number; basic_salary: number | null; house_rent_allowance: number | null; medical_allowance: number | null; transport_allowance: number | null; special_allowance: number | null; overtime_pay: number | null; bonus: number | null; tax_deduction: number | null; provident_fund_deduction: number | null; leave_without_pay_deduction: number | null; other_deductions: number | null; gross_earnings: number | null; total_deductions: number | null };
 type ProfileChangeRequest = { id: string; field_key: string; reason: string; status: string; submitted_at: string; reviewed_at: string | null; review_note: string | null };
 type EmployeeAddress = { id: string | null; address_type: 'Present' | 'Permanent' | 'Other'; district: string; thana: string; post_code: string; city_village: string; road_block_house: string };
+type EmployeeEmploymentInfo = { joining_date: string; employment_type: string; department_name: string; department_code: string; designation_title: string; designation_code: string; manager_name: string; work_location_name: string; grade_name: string; grade_code: string };
 type EmployeeFamilyMember = { id: string | null; name: string; phone: string; nid_number: string; date_of_birth: string; relationship: string; present_address: string; permanent_address: string; is_nominee: boolean; working_in_synesis: boolean; occupation: string; academic_qualification: string; blood_group: string; gender: '' | 'Male' | 'Female' | 'Other' };
+function normalizeEmployeeEmploymentInfo(value: unknown): EmployeeEmploymentInfo | null {
+  const item = Array.isArray(value) ? value[0] : value;
+  if (!item || typeof item !== 'object') return null;
+  const row = item as Record<string, unknown>;
+  const text = (key: keyof EmployeeEmploymentInfo) => typeof row[key] === 'string' ? row[key] as string : '';
+  return {
+    joining_date: text('joining_date'),
+    employment_type: text('employment_type'),
+    department_name: text('department_name'),
+    department_code: text('department_code'),
+    designation_title: text('designation_title'),
+    designation_code: text('designation_code'),
+    manager_name: text('manager_name'),
+    work_location_name: text('work_location_name'),
+    grade_name: text('grade_name'),
+    grade_code: text('grade_code'),
+  };
+}
 function emptyEmployeeFamilyMember(): EmployeeFamilyMember {
   return { id: null, name: '', phone: '', nid_number: '', date_of_birth: '', relationship: '', present_address: '', permanent_address: '', is_nominee: false, working_in_synesis: false, occupation: '', academic_qualification: '', blood_group: '', gender: '' };
 }
@@ -233,7 +252,7 @@ function attendanceDateLabel(now: Date, timeZone: string | null) {
   return `Today · ${tenantAttendanceDate(now, timeZone || 'UTC')}`;
 }
 
-function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: DashboardProfile; savedMessage: string; onSaved: (message: string) => void }) {
+function EmployeeProfileSection({ profile, tenantId, savedMessage, onSaved }: { profile: DashboardProfile; tenantId: string; savedMessage: string; onSaved: (message: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -256,6 +275,10 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   const [familySaving, setFamilySaving] = useState(false);
   const [familyError, setFamilyError] = useState('');
   const [familySavedMessage, setFamilySavedMessage] = useState('');
+  const [employmentInfo, setEmploymentInfo] = useState<EmployeeEmploymentInfo | null>(null);
+  const [employmentInfoLoading, setEmploymentInfoLoading] = useState(true);
+  const [employmentInfoError, setEmploymentInfoError] = useState('');
+  const employmentInfoRequestId = useRef(0);
   const [form, setForm] = useState({
     preferred_name: profile.preferred_name || '',
     personal_email: profile.personal_email || '',
@@ -300,6 +323,26 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
   }
 
   useEffect(() => { void loadProfileChangeRequests(); }, []);
+
+  async function loadEmploymentInfo() {
+    const requestId = ++employmentInfoRequestId.current;
+    setEmploymentInfoLoading(true);
+    setEmploymentInfoError('');
+    setEmploymentInfo(null);
+    try {
+      const { data, error: employmentError } = await supabase.rpc('employee_get_my_employment_info_v1', { p_tenant_id: tenantId });
+      if (employmentError) throw employmentError;
+      const normalized = normalizeEmployeeEmploymentInfo(data);
+      if (!normalized) throw new Error('Employment information was not returned.');
+      if (requestId === employmentInfoRequestId.current) setEmploymentInfo(normalized);
+    } catch {
+      if (requestId === employmentInfoRequestId.current) setEmploymentInfoError('Your employment information is temporarily unavailable. Refresh to try again.');
+    } finally {
+      if (requestId === employmentInfoRequestId.current) setEmploymentInfoLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadEmploymentInfo(); }, [tenantId]);
 
   async function loadAddresses() {
     setAddressesLoading(true);
@@ -512,6 +555,18 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
       <div><dt className="text-xs text-slate-500">Emergency contact relationship</dt><dd className="font-medium">{profile.emergency_contact_relation || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{profile.employment_status.replace(/_/g, ' ')}</dd></div>
     </dl>}
+    <section id="employee-employment-information" aria-label="Employment information" className="border-t">
+      <div className="border-b p-4"><h3 className="font-semibold">Employment information</h3><p className="mt-1 text-xs text-slate-500">Read-only employment details from your linked HR record.</p></div>
+      {employmentInfoLoading ? <p className="p-4 text-sm text-slate-500">Loading employment information…</p> : employmentInfoError ? <div className="flex flex-wrap items-center gap-3 p-4"><p role="alert" className="text-sm text-red-800">{employmentInfoError}</p><button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { void loadEmploymentInfo(); }}>Retry</button></div> : employmentInfo && <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2">
+        <div><dt className="text-xs text-slate-500">Joining date</dt><dd className="font-medium">{employmentInfo.joining_date || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Employment type</dt><dd className="font-medium">{employmentInfo.employment_type || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Department</dt><dd className="font-medium">{employmentInfo.department_name ? `${employmentInfo.department_name}${employmentInfo.department_code ? ` (${employmentInfo.department_code})` : ''}` : 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Designation</dt><dd className="font-medium">{employmentInfo.designation_title ? `${employmentInfo.designation_title}${employmentInfo.designation_code ? ` (${employmentInfo.designation_code})` : ''}` : 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Manager</dt><dd className="font-medium">{employmentInfo.manager_name || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Work location</dt><dd className="font-medium">{employmentInfo.work_location_name || 'Not provided'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Grade</dt><dd className="font-medium">{employmentInfo.grade_name ? `${employmentInfo.grade_name}${employmentInfo.grade_code ? ` (${employmentInfo.grade_code})` : ''}` : 'Not provided'}</dd></div>
+      </dl>}
+    </section>
     <section id="employee-addresses" aria-label="Present and permanent addresses" className="border-t">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
         <div><h3 className="font-semibold">Present and permanent addresses</h3><p className="mt-1 text-xs text-slate-500">Manage the address details linked to your employee record.</p></div>
@@ -1147,7 +1202,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                 </dl></details>
               </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No released payslips are available.</p>}
             </section>
-            {records.employeeProfile ? <EmployeeProfileSection profile={records.employeeProfile} savedMessage={employeeProfileSavedMessage} onSaved={message => { setEmployeeProfileSavedMessage(message); if (message) setRefreshKey(n => n + 1); }} /> : <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div><p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p></section>}
+            {records.employeeProfile ? <EmployeeProfileSection profile={records.employeeProfile} tenantId={tenantId} savedMessage={employeeProfileSavedMessage} onSaved={message => { setEmployeeProfileSavedMessage(message); if (message) setRefreshKey(n => n + 1); }} /> : <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div><p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p></section>}
             <section aria-label="Upcoming schedule" className="bg-white border rounded-lg overflow-hidden">
               <div className="border-b p-4"><h2 className="font-semibold">Upcoming schedule</h2><p className="text-xs text-slate-500">Assigned interviews, training, and review dates</p></div>
               {records.scheduleError ? <p role="status" className="p-4 text-sm text-slate-600">Schedule information is temporarily unavailable. Refresh to try again.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">

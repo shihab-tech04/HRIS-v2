@@ -1,0 +1,52 @@
+name: HRIS employee employment-info privacy checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261016161030_employee_get_my_employment_info.sql'
+      - 'tests/sql/employment-info/**'
+      - '.github/workflows/employment-info-postgres.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261016161030_employee_get_my_employment_info.sql'
+      - 'tests/sql/employment-info/**'
+      - '.github/workflows/employment-info-postgres.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  employment-info-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_employment_info
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d hris_employment_info"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Verify scoped employee employment information
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: test_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: hris_employment_info
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/employment-info/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016161030_employee_get_my_employment_info.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/employment-info/verify.sql
+          echo "Passed against synthetic PostgreSQL 17; this is not production Auth/RLS certification."
