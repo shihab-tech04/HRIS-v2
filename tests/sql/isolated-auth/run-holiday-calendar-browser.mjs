@@ -93,6 +93,17 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await page.getByText('Loading holiday calendar…', { exact: true }).waitFor({ state: 'detached' });
 
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await page.getByRole('heading', { name: 'ছুটির ক্যালেন্ডার', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'ছুটি যোগ করুন', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('textbox', { name: 'ছুটির ক্যালেন্ডার খুঁজুন' }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Holiday calendar mobile Bengali');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Holiday calendar desktop Bengali');
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.getByRole('heading', { name: 'Holiday calendar', exact: true }).waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 375, height: 812 });
+
   await page.getByRole('button', { name: 'Add holiday', exact: true }).first().click();
   const form = page.locator('form[aria-labelledby="holiday-form-heading"]');
   await form.waitFor({ state: 'visible' });
@@ -177,7 +188,7 @@ try {
     throw new Error(`Employee holiday view bypassed the linked-employee dashboard RPC: ${JSON.stringify(employeeDirectHolidayTableRequests)}.`);
   }
   await assertNoOverflow(employeePage, 'Employee holiday view mobile');
-  console.log('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, persisted employee upcoming-holiday visibility, tenant isolation, refresh, and mobile/desktop layouts.');
+  console.log('Local Auth/Postgres holiday calendar journey passed: outage retry, cancel, manager create/edit/deactivate/activate, EN/BN mobile/desktop, persisted employee upcoming-holiday visibility, tenant isolation, and refresh.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');

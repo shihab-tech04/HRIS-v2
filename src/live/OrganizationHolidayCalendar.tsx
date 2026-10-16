@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { CalendarDays, Check, Pencil, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { projectText, type Locale } from './project-locale';
 
 type Holiday = {
   id: string;
@@ -35,20 +36,21 @@ function holidayRows(value: unknown): Holiday[] {
   });
 }
 
-function readableDate(value: string): string {
+function readableDate(value: string, locale: Locale): string {
   const parsed = new Date(`${value}T12:00:00`);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString(undefined, {
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', {
     year: 'numeric', month: 'short', day: 'numeric',
   });
 }
 
-function dates(holiday: Pick<HolidayDraft, 'start_date' | 'end_date'>): string {
+function dates(holiday: Pick<HolidayDraft, 'start_date' | 'end_date'>, locale: Locale): string {
   return holiday.start_date === holiday.end_date
-    ? readableDate(holiday.start_date)
-    : `${readableDate(holiday.start_date)} – ${readableDate(holiday.end_date)}`;
+    ? readableDate(holiday.start_date, locale)
+    : `${readableDate(holiday.start_date, locale)} – ${readableDate(holiday.end_date, locale)}`;
 }
 
-export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) {
+export function OrganizationHolidayCalendar({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [draft, setDraft] = useState<HolidayDraft | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) 
         if (result.error) throw result.error;
         setHolidays(holidayRows(result.data));
       } catch (cause) {
-        if (current()) setError(cause instanceof Error ? cause.message : 'Unable to load the holiday calendar.');
+        if (current()) setError(cause instanceof Error ? tx(cause.message) : tx('Unable to load the holiday calendar.'));
       } finally {
         if (current()) setLoading(false);
       }
@@ -128,7 +130,7 @@ export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) 
     event.preventDefault();
     if (!draft || saving) return;
     if (draft.end_date < draft.start_date) {
-      setError('The end date must be the same as or later than the start date.');
+      setError(tx('The end date must be the same as or later than the start date.'));
       return;
     }
     setSaving(true);
@@ -146,12 +148,12 @@ export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) 
         p_active: draft.active,
       });
       if (result.error) throw result.error;
-      setMessage(editingId ? 'Holiday updated.' : 'Holiday added to the organization calendar.');
+      setMessage(tx(editingId ? 'Holiday updated.' : 'Holiday added to the organization calendar.'));
       setDraft(null);
       setEditingId(null);
       setRevision(value => value + 1);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to save this holiday. Check the details and retry.');
+      setError(cause instanceof Error ? tx(cause.message) : tx('Unable to save this holiday. Check the details and retry.'));
     } finally {
       setSaving(false);
     }
@@ -159,7 +161,10 @@ export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) 
 
   async function toggleActive(holiday: Holiday) {
     if (saving || savingId) return;
-    if (holiday.active && !window.confirm(`Deactivate “${holiday.name}”? It will no longer appear in employee holiday calendars.`)) return;
+    const confirmation = locale === 'bn'
+      ? `“${holiday.name}” ছুটিটি নিষ্ক্রিয় করবেন? ${tx('It will no longer appear in employee holiday calendars.')}`
+      : `Deactivate “${holiday.name}”? ${tx('It will no longer appear in employee holiday calendars.')}`;
+    if (holiday.active && !window.confirm(confirmation)) return;
     setSavingId(holiday.id);
     setError('');
     setMessage('');
@@ -175,10 +180,10 @@ export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) 
         p_active: !holiday.active,
       });
       if (result.error) throw result.error;
-      setMessage(holiday.active ? 'Holiday deactivated.' : 'Holiday activated.');
+      setMessage(tx(holiday.active ? 'Holiday deactivated.' : 'Holiday activated.'));
       setRevision(value => value + 1);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to update this holiday. Retry or refresh the calendar.');
+      setError(cause instanceof Error ? tx(cause.message) : tx('Unable to update this holiday. Retry or refresh the calendar.'));
     } finally {
       setSavingId(null);
     }
@@ -189,42 +194,42 @@ export function OrganizationHolidayCalendar({ tenantId }: { tenantId: string }) 
 
   return <section aria-labelledby="organization-holidays-title" className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0"><h2 id="organization-holidays-title" className="text-2xl font-medium text-[#49454F]">Holiday calendar</h2>
-        <p className="mt-1 max-w-3xl text-sm text-slate-600">Manage the dates shown across your organization. Deactivated holidays remain in the calendar history.</p></div>
+      <div className="min-w-0"><h2 id="organization-holidays-title" className="text-2xl font-medium text-[#49454F]">{tx('Holiday calendar')}</h2>
+        <p className="mt-1 max-w-3xl text-sm text-slate-600">{tx('Manage the dates shown across your organization. Deactivated holidays remain in the calendar history.')}</p></div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" aria-label="Refresh holiday calendar" onClick={() => { setMessage(''); setRevision(value => value + 1); }} disabled={loading || saving || Boolean(savingId)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true"/>Refresh</button>
-        <button type="button" onClick={startCreate} disabled={saving || Boolean(savingId)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50"><Plus className="h-4 w-4" aria-hidden="true"/>Add holiday</button>
+        <button type="button" aria-label={tx('Refresh holiday calendar')} onClick={() => { setMessage(''); setRevision(value => value + 1); }} disabled={loading || saving || Boolean(savingId)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true"/>{tx('Refresh')}</button>
+        <button type="button" onClick={startCreate} disabled={saving || Boolean(savingId)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50"><Plus className="h-4 w-4" aria-hidden="true"/>{tx('Add holiday')}</button>
       </div>
     </div>
 
-    {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">Retry</button></div>}
+    {error && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-lg border border-rose-300 bg-white px-3 font-medium">{tx('Retry')}</button></div>}
     {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
 
     {draft && <form onSubmit={saveHoliday} aria-labelledby="holiday-form-heading" className="rounded-xl border border-[#B9DCE2] bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex items-center justify-between gap-3"><div><h3 id="holiday-form-heading" className="font-semibold text-[#1E1B39]">{editingId ? 'Edit holiday' : 'Add an organization holiday'}</h3><p className="mt-1 text-xs text-slate-600">The selected dates are stored as calendar dates for this organization.</p></div><button type="button" onClick={cancelForm} disabled={saving} aria-label="Cancel holiday form" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50"><X className="h-4 w-4" aria-hidden="true"/></button></div>
+      <div className="flex items-center justify-between gap-3"><div><h3 id="holiday-form-heading" className="font-semibold text-[#1E1B39]">{tx(editingId ? 'Edit holiday' : 'Add an organization holiday')}</h3><p className="mt-1 text-xs text-slate-600">{tx('The selected dates are stored as calendar dates for this organization.')}</p></div><button type="button" onClick={cancelForm} disabled={saving} aria-label={tx('Cancel holiday form')} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50"><X className="h-4 w-4" aria-hidden="true"/></button></div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <label className={labelClass}>Holiday name *<input id="holiday-name" required maxLength={160} value={draft.name} onChange={event => setDraft(value => value && ({ ...value, name: event.target.value }))} className={fieldClass}/></label>
-        <label className={labelClass}>Type<input maxLength={80} value={draft.holiday_type} onChange={event => setDraft(value => value && ({ ...value, holiday_type: event.target.value }))} className={fieldClass}/></label>
-        <label className="flex min-h-11 items-center gap-2 self-end pb-2 text-sm text-slate-700"><input type="checkbox" checked={draft.active} onChange={event => setDraft(value => value && ({ ...value, active: event.target.checked }))} className="h-4 w-4 accent-[#08558B]"/>Active and visible to employees</label>
-        <label className={labelClass}>Start date *<input type="date" required value={draft.start_date} onChange={event => setDraft(value => value && ({ ...value, start_date: event.target.value }))} className={fieldClass}/></label>
-        <label className={labelClass}>End date *<input type="date" required min={draft.start_date || undefined} value={draft.end_date} onChange={event => setDraft(value => value && ({ ...value, end_date: event.target.value }))} className={fieldClass}/></label>
-        <label className={`${labelClass} sm:col-span-2 xl:col-span-1`}>Description<textarea rows={2} maxLength={2000} value={draft.description || ''} onChange={event => setDraft(value => value && ({ ...value, description: event.target.value }))} className={`${fieldClass} resize-y`}/></label>
+        <label className={labelClass}>{tx('Holiday name')} *<input id="holiday-name" required maxLength={160} value={draft.name} onChange={event => setDraft(value => value && ({ ...value, name: event.target.value }))} className={fieldClass}/></label>
+        <label className={labelClass}>{tx('Type')}<input maxLength={80} value={draft.holiday_type} onChange={event => setDraft(value => value && ({ ...value, holiday_type: event.target.value }))} className={fieldClass}/></label>
+        <label className="flex min-h-11 items-center gap-2 self-end pb-2 text-sm text-slate-700"><input type="checkbox" checked={draft.active} onChange={event => setDraft(value => value && ({ ...value, active: event.target.checked }))} className="h-4 w-4 accent-[#08558B]"/>{tx('Active and visible to employees')}</label>
+        <label className={labelClass}>{tx('Start date')} *<input type="date" required value={draft.start_date} onChange={event => setDraft(value => value && ({ ...value, start_date: event.target.value }))} className={fieldClass}/></label>
+        <label className={labelClass}>{tx('End date')} *<input type="date" required min={draft.start_date || undefined} value={draft.end_date} onChange={event => setDraft(value => value && ({ ...value, end_date: event.target.value }))} className={fieldClass}/></label>
+        <label className={`${labelClass} sm:col-span-2 xl:col-span-1`}>{tx('Description')}<textarea rows={2} maxLength={2000} value={draft.description || ''} onChange={event => setDraft(value => value && ({ ...value, description: event.target.value }))} className={`${fieldClass} resize-y`}/></label>
       </div>
-      <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={cancelForm} disabled={saving} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">Cancel</button><button type="submit" disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" aria-hidden="true"/>{saving ? 'Saving…' : editingId ? 'Save changes' : 'Add holiday'}</button></div>
+      <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={cancelForm} disabled={saving} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-50">{tx('Cancel')}</button><button type="submit" disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" aria-hidden="true"/>{saving ? tx('Saving…') : tx(editingId ? 'Save changes' : 'Add holiday')}</button></div>
     </form>}
 
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between">
-      <label className="block w-full min-w-0 sm:max-w-xl"><span className="text-xs font-medium text-slate-600">Search holiday calendar</span><span className="relative mt-1 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true"/><input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search holiday calendar" placeholder="Name, type, or description" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"/></span></label>
-      <label className="block w-full sm:w-52"><span className="text-xs font-medium text-slate-600">Show</span><select aria-label="Filter holiday status" value={filter} onChange={event => setFilter(event.target.value as HolidayFilter)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="active">Active holidays</option><option value="inactive">Inactive holidays</option><option value="all">All holidays</option></select></label>
+      <label className="block w-full min-w-0 sm:max-w-xl"><span className="text-xs font-medium text-slate-600">{tx('Search holiday calendar')}</span><span className="relative mt-1 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true"/><input value={search} onChange={event => setSearch(event.target.value)} aria-label={tx('Search holiday calendar')} placeholder={tx('Name, type, or description')} className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"/></span></label>
+      <label className="block w-full sm:w-52"><span className="text-xs font-medium text-slate-600">{tx('Show')}</span><select aria-label={tx('Filter holiday status')} value={filter} onChange={event => setFilter(event.target.value as HolidayFilter)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="active">{tx('Active holidays')}</option><option value="inactive">{tx('Inactive holidays')}</option><option value="all">{tx('All holidays')}</option></select></label>
     </div>
 
-    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading holiday calendar…</p>
-      : visibleHolidays.length === 0 ? <div role="status" className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-6 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[#08558B]" aria-hidden="true"/><h3 className="mt-2 font-semibold text-slate-800">{search ? 'No holidays match this search' : filter === 'active' ? 'No active holidays' : 'No holidays found'}</h3><p className="mt-1 text-sm text-slate-600">{search ? 'Try a different name, type, or description.' : 'Add a holiday to make it available in the organization calendar.'}</p></div>
+    {loading ? <p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">{tx('Loading holiday calendar…')}</p>
+      : visibleHolidays.length === 0 ? <div role="status" className="rounded-xl border border-dashed border-[#B9DCE2] bg-white p-6 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[#08558B]" aria-hidden="true"/><h3 className="mt-2 font-semibold text-slate-800">{tx(search ? 'No holidays match this search' : filter === 'active' ? 'No active holidays' : 'No holidays found')}</h3><p className="mt-1 text-sm text-slate-600">{tx(search ? 'Try a different name, type, or description.' : 'Add a holiday to make it available in the organization calendar.')}</p></div>
         : <ul className="grid min-w-0 gap-3 xl:grid-cols-2">{visibleHolidays.map(holiday => <li key={holiday.id} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-[#615E83]">{holiday.holiday_type || 'general'} · {dates(holiday)}</p><h3 className="mt-1 break-words text-lg font-semibold text-[#1E1B39]">{holiday.name}</h3></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${holiday.active ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{holiday.active ? 'Active' : 'Inactive'}</span></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wide text-[#615E83]">{holiday.holiday_type || 'general'} · {dates(holiday, locale)}</p><h3 className="mt-1 break-words text-lg font-semibold text-[#1E1B39]">{holiday.name}</h3></div><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${holiday.active ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{tx(holiday.active ? 'Active' : 'Inactive')}</span></div>
           {holiday.description && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">{holiday.description}</p>}
-          <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => startEdit(holiday)} disabled={Boolean(savingId) || saving} aria-label={`Edit ${holiday.name}`} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium disabled:opacity-50"><Pencil className="h-4 w-4" aria-hidden="true"/>Edit</button><button type="button" onClick={() => void toggleActive(holiday)} disabled={Boolean(savingId) || saving} aria-label={`${holiday.active ? 'Deactivate' : 'Activate'} ${holiday.name}`} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium disabled:opacity-50">{savingId === holiday.id ? 'Updating…' : holiday.active ? 'Deactivate' : 'Activate'}</button></div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => startEdit(holiday)} disabled={Boolean(savingId) || saving} aria-label={`${tx('Edit')} ${holiday.name}`} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium disabled:opacity-50"><Pencil className="h-4 w-4" aria-hidden="true"/>{tx('Edit')}</button><button type="button" onClick={() => void toggleActive(holiday)} disabled={Boolean(savingId) || saving} aria-label={`${tx(holiday.active ? 'Deactivate' : 'Activate')} ${holiday.name}`} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-medium disabled:opacity-50">{savingId === holiday.id ? tx('Updating…') : tx(holiday.active ? 'Deactivate' : 'Activate')}</button></div>
         </li>)}</ul>}
-    <p className="text-xs text-slate-500">{visibleHolidays.length} {visibleHolidays.length === 1 ? 'holiday' : 'holidays'} shown. Deactivated records remain available in the inactive filter.</p>
+    <p className="text-xs text-slate-500">{new Intl.NumberFormat(locale === 'bn' ? 'bn-BD' : 'en-US').format(visibleHolidays.length)} {tx(visibleHolidays.length === 1 ? 'holiday shown' : 'holidays shown')} {tx('Deactivated records remain available in the inactive filter.')}</p>
   </section>;
 }

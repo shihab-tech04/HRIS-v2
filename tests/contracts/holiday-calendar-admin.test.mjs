@@ -31,11 +31,13 @@ test('holiday calendar is exposed only to the tenant permission and uses RPCs in
   assert.match(app, /'holidays\.manage'/);
   assert.match(app, /holidayManage: grants\.get\('holidays\.manage'\) === true/);
   assert.match(workspace, /id: 'holidays', label: 'Holiday calendar'/);
-  assert.match(workspace, /page === 'holidays' && permissions\.holidayManage && <OrganizationHolidayCalendar tenantId=\{tenantId\} \/>/);
+  assert.match(workspace, /page === 'holidays' && permissions\.holidayManage && <OrganizationHolidayCalendar tenantId=\{tenantId\} locale=\{locale\} \/>/);
   assert.match(workspace, /Upcoming holidays/);
   assert.match(ui, /hris_get_org_holiday_calendar/);
   assert.match(ui, /hris_save_org_holiday/);
   assert.match(ui, /No active holidays/);
+  assert.match(ui, /projectText\(locale, value\)/);
+  assert.match(ui, /toLocaleDateString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
   assert.match(ui, /Retry/);
   assert.match(ui, /Deactivate/);
   assert.doesNotMatch(ui, /\.from\(['"]holidays['"]\)/);
