@@ -16,9 +16,13 @@ if (!['audit', 'release', 'self-test', 'pr'].includes(mode)) {
   console.error('Valid modes: audit | pr | release | self-test'); process.exit(2);
 }
 function readRelative(file, base = root) {
-  const full = path.resolve(base, file);
-  if (full !== base && !full.startsWith(base + path.sep)) throw Error('Path escapes repository: ' + file);
+  const canonicalBase = fs.realpathSync(base);
+  const full = fs.realpathSync(path.resolve(base, file));
+  if (!full.startsWith(canonicalBase + path.sep)) throw Error('Path escapes repository: ' + file);
   return fs.readFileSync(full, 'utf8');
+}
+function checkedHead() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding:'utf8'}).trim();
 }
 function probe(check, base = root) {
   let source;
@@ -47,7 +51,7 @@ function probe(check, base = root) {
   } else throw Error('Unsupported probe operation: ' + check.op);
   return { id: check.id, pass: matched, detail: matched ? 'Observed' : `Mismatch: ${check.path} (${check.op})` };
 }
-function validate(contract) {
+function validate(contract, sourceSha = null) {
   assert.equal(contract.schema, 'product-integrity/1');
   assert.ok(contract.product && contract.sourceOfApproval);
   assert.ok(Array.isArray(contract.checks) && contract.checks.length > 0);
@@ -68,6 +72,8 @@ function validate(contract) {
     assert.ok(!ids.has(x.id)); ids.add(x.id);
     if (x.status === 'VERIFIED') {
       assert.ok(x.reviewer && x.evidence && x.verifiedSourceSha, `VERIFIED requires independent reviewer, evidence and observed source SHA: ${x.id}`);
+      assert.match(x.verifiedSourceSha, /^[a-f0-9]{40}$/i, `VERIFIED requires a full source SHA: ${x.id}`);
+      if (sourceSha) assert.equal(x.verifiedSourceSha, sourceSha, `Stale VERIFIED evidence for ${x.id}`);
     }
   }
 }
@@ -92,13 +98,24 @@ function selfTest() {
     assert.equal(probe({...base, text:'/my-account'}, tmp).pass, false);
     assert.equal(probe({...base, op:'contains', text:'/my-account'}, tmp).pass, true);
     assert.equal(probe({...base, path:'../escape'}, tmp).pass, false);
+    const outside = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp','product-integrity-outside-'));
+    try {
+      fs.writeFileSync(path.join(outside,'secret.txt'), 'approved route /my-account');
+      fs.symlinkSync(path.join(outside,'secret.txt'), path.join(tmp,'external-link.txt'));
+      assert.equal(probe({...base,path:'external-link.txt',op:'contains',text:'/my-account'},tmp).pass,false);
+    } finally { fs.rmSync(outside,{recursive:true,force:true}); }
     fs.writeFileSync(path.join(tmp, 'story.json'), JSON.stringify({ mapped_story_count: 0 }));
     assert.equal(probe({id:'count',path:'story.json',op:'json_field_equals',field:'mapped_story_count',value:1047},tmp).pass,false);
     assert.equal(probe({id:'stories',path:'story.json',op:'json_story_coverage',value:1047},tmp).pass,false);
     fs.mkdirSync(path.join(tmp,'docs/product-integrity'),{recursive:true});
     fs.writeFileSync(path.join(tmp,'docs/product-integrity/ui-change-manifest.json'),JSON.stringify({schema:'approved-ui-change/1',changes:[]}));
+    const valid={schema:'product-integrity/1',product:'Example',sourceOfApproval:'accepted requirements',
+      checks:[{id:'SRC-1',path:'source.txt',op:'contains',text:'/my-account',reason:'route',approvalReference:'decision',enforcement:'release'}],
+      requiredEvidence:[{id:'E-1',description:'browser evidence',reference:'run',status:'VERIFIED',reviewer:'reviewer',evidence:'approved review',verifiedSourceSha:'a'.repeat(40)}]};
+    assert.doesNotThrow(()=>validate(valid,'a'.repeat(40)));
+    assert.throws(()=>validate(valid,'b'.repeat(40)),/Stale VERIFIED evidence/);
     // UI-change manifest accepts only explicitly traced changes; see checkUiManifest path in repository execution.
-    console.log('PASS — negative wrong-route, missing proof, forbidden path and zero-story cases correctly reject.');
+    console.log('PASS — wrong-route, zero-story, symlink-escape and stale-evidence-SHA cases correctly reject.');
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 if (mode === 'self-test') { selfTest(); process.exit(0); }
@@ -113,14 +130,17 @@ if (mode === 'pr') {
   } catch (error) { console.error('BLOCKED — cannot verify PR change inventory:', error.message); process.exit(2); }
 }
 let contract;
-try { contract = JSON.parse(readRelative('docs/product-integrity/contract.json')); validate(contract); }
+let sourceSha;
+try { sourceSha = checkedHead(); }
+catch (error) { if(mode==='release'){ console.error('BLOCKED — cannot verify source commit:',error.message); process.exit(2); } sourceSha = null; }
+try { contract = JSON.parse(readRelative('docs/product-integrity/contract.json')); validate(contract,sourceSha); }
 catch (error) { console.error('BLOCKED — invalid/missing approved product contract:', error.message); process.exit(2); }
 const results = contract.checks.map(probeCheck => ({ ...probe(probeCheck), enforcement:probeCheck.enforcement, reason:probeCheck.reason }));
 const unresolved = contract.requiredEvidence.filter(e => e.status !== 'VERIFIED');
 const blockers = results.filter(r => !r.pass && (mode === 'release' || r.enforcement === 'always'));
 for (const item of results) console.log(`${item.pass?'PASS':'FAIL'} ${item.id}: ${item.detail} — ${item.reason}`);
 for (const item of contract.requiredEvidence) console.log(`${item.status} ${item.id}: ${item.description}; reference=${item.reference}`);
-const report = {schema:'product-integrity-report/1', product:contract.product, mode, sourceSha:process.env.GITHUB_SHA || 'LOCAL_UNVERIFIED', staticChecks:results, requiredEvidence:contract.requiredEvidence, verdict:mode==='release'?(blockers.length||unresolved.length?'NOT_ACCEPTED':'STATIC_GATE_PASS_REQUIRES_LIVE_REVIEW'):'DIAGNOSTIC_ONLY_NOT_ACCEPTANCE'};
+const report = {schema:'product-integrity-report/1', product:contract.product, mode, sourceSha:sourceSha || 'LOCAL_UNVERIFIED', staticChecks:results, requiredEvidence:contract.requiredEvidence, verdict:mode==='release'?(blockers.length||unresolved.length?'NOT_ACCEPTED':'STATIC_GATE_PASS_REQUIRES_LIVE_REVIEW'):'DIAGNOSTIC_ONLY_NOT_ACCEPTANCE'};
 const output = process.env.PRODUCT_INTEGRITY_REPORT || path.join(root, 'product-integrity-report.json');
 fs.writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
 console.log(`RESULT ${report.verdict}; static mismatches=${results.filter(x=>!x.pass).length}; unresolved evidence=${unresolved.length}; report=${output}`);
