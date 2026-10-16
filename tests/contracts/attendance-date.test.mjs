@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tenantAttendanceDate, tenantAttendanceTime } from '../../src/live/attendanceDate.mjs';
+import { tenantAttendanceDate, tenantAttendanceDateTime, tenantAttendanceTime } from '../../src/live/attendanceDate.mjs';
 
 test('uses the tenant calendar day when UTC has not crossed midnight there', () => {
   const now = new Date('2026-10-15T20:00:00.000Z');
@@ -23,4 +23,11 @@ test('formats attendance timestamps in the tenant timezone and handles missing p
 
 test('falls back to UTC for an invalid tenant timezone', () => {
   assert.equal(tenantAttendanceTime('2026-10-16T03:00:00.000Z', 'Not/A-Timezone'), '03:00');
+});
+
+test('formats upcoming schedule timestamps with the tenant-local date and time', () => {
+  assert.equal(tenantAttendanceDateTime('2026-11-16T03:00:00.000Z', 'Asia/Dhaka'), '16 Nov 2026, 09:00');
+  assert.equal(tenantAttendanceDateTime('2026-11-16T03:00:00.000Z', 'Not/A-Timezone'), '16 Nov 2026, 03:00');
+  assert.equal(tenantAttendanceDateTime(null, 'Asia/Dhaka'), null);
+  assert.equal(tenantAttendanceDateTime('not-a-timestamp', 'Asia/Dhaka'), null);
 });

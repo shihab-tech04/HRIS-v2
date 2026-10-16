@@ -30,3 +30,20 @@ export function tenantAttendanceTime(value, timeZone = 'UTC') {
     return new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' }).format(date);
   }
 }
+
+/** Format a stored timestamptz as a tenant-local date and time. */
+export function tenantAttendanceDateTime(value, timeZone = 'UTC') {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const options = {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  };
+  try {
+    return new Intl.DateTimeFormat('en-GB', { ...options, timeZone: timeZone || 'UTC' }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' }).format(date);
+  }
+}
