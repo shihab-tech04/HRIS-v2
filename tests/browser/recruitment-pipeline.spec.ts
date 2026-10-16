@@ -182,7 +182,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
   await expect(pipeline.getByText('Synthetic take-home assessment · reviewed', { exact: true })).toBeVisible();
   expect(assessmentReviews).toBe(1);
 
-  await pipeline.getByText('Schedule interview', { exact: true }).click();
+  await pipeline.getByRole('region', { name: `Interview coordination for Synthetic Candidate` }).locator('summary').click();
   await pipeline.getByLabel(/Date and time/).fill(futureLocalDateTime());
   await pipeline.getByLabel('Interview type').fill('Technical panel interview');
   await pipeline.getByLabel('Meeting location or link').fill('https://meet.example.test/synthetic');
@@ -194,7 +194,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
   await expect(pipeline.getByText('Technical panel interview', { exact: true })).toBeVisible();
   expect(interviewWrites).toBe(1);
 
-  await pipeline.getByText('Assign assessment', { exact: true }).click();
+  await pipeline.getByRole('region', { name: `Assessment review for Synthetic Candidate` }).locator('summary').click();
   await pipeline.getByLabel('Assessment title').fill('Synthetic system design');
   await pipeline.getByLabel('Assessment type').fill('Technical assessment');
   await pipeline.getByLabel('Candidate assessment instructions').fill('Complete the documented system design task.');
