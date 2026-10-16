@@ -30,6 +30,13 @@ test('recruiter response projection keeps completed rows and internal notes serv
   assert.match(runner, /20261016081154_hris_candidate_interview_completion\.sql/);
 });
 
+test('isolated Auth/Postgres harness applies the newest stage constraint after legacy Candidate migrations', () => {
+  const legacyConstraintMigration = runner.indexOf('20261015050029_candidate_application_update_notifications.sql');
+  const completionConstraintMigration = runner.lastIndexOf('20261016081154_hris_candidate_interview_completion.sql');
+  assert.ok(legacyConstraintMigration >= 0 && completionConstraintMigration > legacyConstraintMigration);
+  assert.match(runner, /candidateStageHistoryConstraint\.includes\('interview_completed'\)/);
+});
+
 test('manager completion UI supports error retry, persistent status, mobile/desktop and EN/BN copy', () => {
   assert.match(ui, /rpc\('hris_complete_candidate_interview'/);
   assert.match(ui, /row\.interview_status === 'scheduled' && row\.candidate_response === 'confirmed'/);

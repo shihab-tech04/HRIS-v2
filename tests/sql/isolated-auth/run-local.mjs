@@ -368,7 +368,6 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221500_hris_candidate_interview_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014153343_hris_candidate_interview_panel_debrief.sql'),
-  path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013203000_hris_travel_request_workflow.sql'),
@@ -406,7 +405,17 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013215431_employee_dashboard_attendance_period_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014150000_hris_candidate_initial_application_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014012249_recruiter_application_stage_transition.sql'),
+  // Apply the newest Candidate stage-history contract after older notification
+  // migrations that recreate its check constraint.
+  path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
 ]) applySql(file);
+const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
+  FROM pg_constraint
+  WHERE conrelid='public.candidate_application_stage_history'::regclass
+    AND conname='candidate_application_stage_history_stage_check';`).trim();
+if (!candidateStageHistoryConstraint.includes('interview_completed')) {
+  throw new Error('The isolated Candidate stage-history constraint is missing interview_completed.');
+}
 // The local PostgREST container predates SQL applied directly by this harness.
 // Refresh its function catalog before testing newly installed RPCs.
 psqlSync("NOTIFY pgrst, 'reload schema';");
