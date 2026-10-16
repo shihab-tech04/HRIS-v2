@@ -10,6 +10,7 @@ import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
 type Employee = { id: string; full_name: string; employee_number: string; employment_status: string };
+type DashboardProfile = { full_name: string; employee_number: string; official_email: string | null; employment_status: string };
 type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
@@ -24,7 +25,8 @@ type DashboardGoal = { id: string; title: string; category: string; target_metri
 type DashboardNotice = { id: string; title: string; category: string; body: string; published_at: string; pinned: boolean };
 type DashboardActionRequest = { id: string; category: string; title: string; status: string; requestDate: string | null; submittedAt: string | null };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; pendingRequests: DashboardActionRequest[]; pendingRequestErrors: string[]; attendanceToday: AttendanceToday | null };
+type DashboardPayslip = { id: string; pay_period_name: string; pay_date: string | null; currency: string; net_salary: number; basic_salary: number | null; house_rent_allowance: number | null; medical_allowance: number | null; transport_allowance: number | null; special_allowance: number | null; overtime_pay: number | null; bonus: number | null; tax_deduction: number | null; provident_fund_deduction: number | null; leave_without_pay_deduction: number | null; other_deductions: number | null; gross_earnings: number | null; total_deductions: number | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; pendingRequests: DashboardActionRequest[]; pendingRequestErrors: string[]; attendanceToday: AttendanceToday | null; employeeProfile: DashboardProfile | null; payslips: DashboardPayslip[]; payslipsError: boolean };
 type View = 'employee' | 'admin' | 'preview' | 'system';
 const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
 function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
@@ -81,12 +83,49 @@ function normalizePendingRequests(value: unknown, category: string, pendingStatu
     }];
   });
 }
+function normalizeDashboardPayslips(value: unknown): DashboardPayslip[] {
+  if (!Array.isArray(value)) return [];
+  const amount = (row: Record<string, unknown>, field: string): number | null => {
+    const parsed = typeof row[field] === 'number' ? row[field] : typeof row[field] === 'string' ? Number(row[field]) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return value.flatMap((item): DashboardPayslip[] => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const netSalary = amount(row, 'net_salary');
+    if (typeof row.id !== 'string' || row.status !== 'released' || netSalary === null) return [];
+    const currency = typeof row.currency === 'string' && /^[A-Z]{3}$/.test(row.currency) ? row.currency : '---';
+    return [{
+      id: row.id,
+      pay_period_name: typeof row.pay_period_name === 'string' ? row.pay_period_name : 'Payslip',
+      pay_date: typeof row.pay_date === 'string' ? row.pay_date : null,
+      currency,
+      net_salary: netSalary,
+      basic_salary: amount(row, 'basic_salary'),
+      house_rent_allowance: amount(row, 'house_rent_allowance'),
+      medical_allowance: amount(row, 'medical_allowance'),
+      transport_allowance: amount(row, 'transport_allowance'),
+      special_allowance: amount(row, 'special_allowance'),
+      overtime_pay: amount(row, 'overtime_pay'),
+      bonus: amount(row, 'bonus'),
+      tax_deduction: amount(row, 'tax_deduction'),
+      provident_fund_deduction: amount(row, 'provident_fund_deduction'),
+      leave_without_pay_deduction: amount(row, 'leave_without_pay_deduction'),
+      other_deductions: amount(row, 'other_deductions'),
+      gross_earnings: amount(row, 'gross_earnings'),
+      total_deductions: amount(row, 'total_deductions'),
+    }];
+  });
+}
+function formatPayslipAmount(amount: number, currency: string) {
+  return `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
+}
 function contextRows(value: unknown, key: string): unknown[] {
   if (!value || typeof value !== 'object') return [];
   const rows = (value as Record<string, unknown>)[key];
   return Array.isArray(rows) ? rows : [];
 }
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, notices: [], noticesError: false, pendingRequests: [], pendingRequestErrors: [], attendanceToday: null });
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, notices: [], noticesError: false, pendingRequests: [], pendingRequestErrors: [], attendanceToday: null, employeeProfile: null, payslips: [], payslipsError: false });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -428,14 +467,17 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const selfServiceContext = currentView === 'employee'
           ? supabase.rpc('employee_get_self_service_context')
           : Promise.resolve({ data: null, error: null });
+        const payslipContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_my_payslips')
+          : Promise.resolve({ data: null, error: null });
         const attendance = (async () => {
-          // Resolve only the authenticated user's employee record. RLS applies to
-          // both reads; the attendance query is additionally constrained by this
-          // row's tenant and employee IDs.
-          const linkedEmployee = await supabase.from('employees').select('id')
+          // Resolve only the authenticated user's minimized profile. RLS applies
+          // to this read; the attendance query is additionally constrained by
+          // this row's tenant and employee IDs.
+          const linkedEmployee = await supabase.from('employees').select('id,full_name,employee_number,official_email,employment_status')
             .eq('tenant_id', tenantId).eq('user_id', user!.id).limit(1).maybeSingle();
-          if (linkedEmployee.error) return { data: null, error: linkedEmployee.error, pendingCorrections: [], pendingCorrectionsError: true };
-          if (!linkedEmployee.data) return { data: null, error: null, pendingCorrections: [], pendingCorrectionsError: false };
+          if (linkedEmployee.error) return { data: null, profile: null, error: linkedEmployee.error, pendingCorrections: [], pendingCorrectionsError: true };
+          if (!linkedEmployee.data) return { data: null, profile: null, error: null, pendingCorrections: [], pendingCorrectionsError: false };
           const [today, corrections] = await Promise.all([
             supabase.from('attendance_records')
               .select('status,work_mode,check_in,check_out')
@@ -453,9 +495,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                   .limit(20)
               : Promise.resolve({ data: [], error: null }),
           ]);
-          return { data: today.data, error: today.error, pendingCorrections: corrections.data || [], pendingCorrectionsError: Boolean(corrections.error) };
+          return { data: today.data, profile: linkedEmployee.data, error: today.error, pendingCorrections: corrections.data || [], pendingCorrectionsError: Boolean(corrections.error) };
         })();
-        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult, noticesContextResult, expenseContextResult, travelContextResult, selfServiceContextResult] = await Promise.all([
+        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult, noticesContextResult, expenseContextResult, travelContextResult, selfServiceContextResult, payslipContextResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
@@ -468,6 +510,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           expenseContext,
           travelContext,
           selfServiceContext,
+          payslipContext,
         ]);
         const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -498,6 +541,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
+          employeeProfile: attendanceResult.profile as DashboardProfile | null,
+          payslips: normalizeDashboardPayslips(payslipContextResult.data),
+          payslipsError: Boolean(payslipContextResult.error),
         });
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Database read failed.');
@@ -575,7 +621,19 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <div className="bg-white border rounded-lg p-4"><ShieldAlert className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Access model</p><p className="font-semibold">Supabase Auth + RLS</p><p className="text-xs text-slate-500">No service-role token in browser</p></div>
           </section>
           {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="space-y-4">
-            <section aria-label="Today's attendance" className="bg-white border rounded-lg overflow-hidden">
+            <nav aria-label="Employee quick access" className="bg-white border rounded-lg p-4">
+              <h2 className="font-semibold">Quick access</h2>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {[
+                  ['#today-attendance', 'Attendance'],
+                  ['#leave-balances', 'Leave'],
+                  ['#my-payslips', 'Payslips'],
+                  ['#employee-profile', 'Profile'],
+                  ['#pending-requests', 'Requests'],
+                ].map(([href, label]) => <li key={href}><a href={href} className="inline-flex min-h-10 items-center rounded-md border border-blue-200 px-3 text-sm font-medium text-blue-900 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-800">{label}</a></li>)}
+              </ul>
+            </nav>
+            <section id="today-attendance" aria-label="Today's attendance" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
               <div className="border-b p-4">
                 <h2 className="font-semibold">Today's attendance</h2>
                 <p className="text-xs text-slate-500">{attendanceDateLabel(new Date(), current.timezone)}</p>
@@ -592,7 +650,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                 </dl>
               </div> : <p className="p-4 text-sm text-slate-600">No attendance record is available for today.</p>}
             </section>
-            <section aria-label="Requests awaiting action" className="bg-white border rounded-lg overflow-hidden">
+            <section id="pending-requests" aria-label="Requests awaiting action" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
               <div className="border-b p-4"><h2 className="font-semibold">Requests awaiting action</h2><p className="text-xs text-slate-500">Your unresolved leave, attendance, expense, travel, and service requests</p></div>
               {records.pendingRequestErrors.length > 0 && <p role="status" className="border-b p-4 text-sm text-slate-600">Some request categories are temporarily unavailable: {records.pendingRequestErrors.join(', ')}. Refresh to try again.</p>}
               {records.pendingRequests.length ? <ul className="divide-y">{records.pendingRequests.map(request => <li key={`${request.category}-${request.id}`} className="p-4 flex flex-wrap items-start justify-between gap-3">
@@ -603,9 +661,29 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My visible leave requests</h2><p className="text-xs text-slate-500">Last 50 RLS-visible requests</p></div>{records.leaves.length ? <ul className="divide-y">{records.leaves.map(item => <li key={item.id} className="p-4 flex justify-between gap-3"><p className="text-sm">{item.from_date} – {item.to_date} ({item.requested_days} days)</p><p className="text-xs font-medium">{item.status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible requests, or access is restricted.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized leave types</h2><p className="text-xs text-slate-500">Current tenant policy records</p></div>{records.leaveTypes.length ? <ul className="divide-y">{records.leaveTypes.map(item => <li key={item.id} className="p-4 flex justify-between gap-3 text-sm"><p>{item.name}</p><p>{item.annual_entitlement == null ? 'Policy-defined' : String(item.annual_entitlement) + ' days'}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible leave types.</p>}</section>
-            <section aria-label="Remaining leave balances" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Remaining leave balances</h2><p className="text-xs text-slate-500">Available days after used and pending leave</p></div>{records.leaveBalances.length ? <ul className="divide-y">{records.leaveBalances.map(item => <li key={item.leave_type_id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{item.leave_type_name}</p><p className="text-xs text-slate-500">{item.balance_year} · {item.used_days} used · {item.pending_days} pending</p></div><p className="text-sm font-semibold">{item.available_days} days available</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No leave balances are available for this year.</p>}</section>
+            <section id="leave-balances" aria-label="Remaining leave balances" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Remaining leave balances</h2><p className="text-xs text-slate-500">Available days after used and pending leave</p></div>{records.leaveBalances.length ? <ul className="divide-y">{records.leaveBalances.map(item => <li key={item.leave_type_id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{item.leave_type_name}</p><p className="text-xs text-slate-500">{item.balance_year} · {item.used_days} used · {item.pending_days} pending</p></div><p className="text-sm font-semibold">{item.available_days} days available</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No leave balances are available for this year.</p>}</section>
             <section aria-label="Upcoming holidays" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Upcoming holidays</h2><p className="text-xs text-slate-500">Current tenant calendar</p></div>{records.holidays.length ? <ul className="divide-y">{records.holidays.map(item => <li key={item.id} className="p-4"><p className="text-sm font-medium">{item.name}</p><p className="text-xs text-slate-600">{item.start_date === item.end_date ? item.start_date : `${item.start_date} – ${item.end_date}`}{item.holiday_type ? ` · ${item.holiday_type}` : ''}</p>{item.description && <p className="text-xs text-slate-500 mt-1">{item.description}</p>}</li>)}</ul> : <p className="p-4 text-sm text-slate-500">No upcoming holidays are scheduled.</p>}</section>
             </div>
+            <section id="my-payslips" aria-label="My payslips" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4"><h2 className="font-semibold">My payslips</h2><p className="text-xs text-slate-500">Released payslips for your linked employee record</p></div>
+              {records.payslipsError ? <p role="status" className="p-4 text-sm text-slate-600">Payslip information is temporarily unavailable. Refresh to try again.</p> : records.payslips.length ? <ul className="divide-y">{records.payslips.map(payslip => <li key={payslip.id} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-medium">{payslip.pay_period_name}</p><p className="text-xs text-slate-500">Pay date: {payslip.pay_date || 'Not listed'}</p></div><p className="text-sm font-semibold">Net pay: {formatPayslipAmount(payslip.net_salary, payslip.currency)}</p></div>
+                <details className="mt-3 text-sm"><summary className="min-h-10 flex cursor-pointer items-center font-medium text-blue-900">View pay details</summary><dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 border-t pt-3">
+                  {([
+                    ['Gross earnings', payslip.gross_earnings], ['Basic salary', payslip.basic_salary], ['House rent allowance', payslip.house_rent_allowance], ['Medical allowance', payslip.medical_allowance], ['Transport allowance', payslip.transport_allowance], ['Special allowance', payslip.special_allowance], ['Overtime pay', payslip.overtime_pay], ['Bonus', payslip.bonus], ['Total deductions', payslip.total_deductions], ['Tax deduction', payslip.tax_deduction], ['Provident fund deduction', payslip.provident_fund_deduction], ['Leave without pay deduction', payslip.leave_without_pay_deduction], ['Other deductions', payslip.other_deductions],
+                  ] as Array<[string, number | null]>).filter(([, amount]) => amount !== null).map(([label, amount]) => <div key={label} className="flex justify-between gap-3"><dt className="text-slate-600">{label}</dt><dd className="font-medium">{formatPayslipAmount(amount!, payslip.currency)}</dd></div>)}
+                </dl></details>
+              </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No released payslips are available.</p>}
+            </section>
+            <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Basic details from your linked employee record</p></div>
+              {records.employeeProfile ? <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
+                <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{records.employeeProfile.full_name || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Employee number</dt><dd className="font-medium">{records.employeeProfile.employee_number || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Official email</dt><dd className="font-medium">{records.employeeProfile.official_email || 'Not provided'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{records.employeeProfile.employment_status.replace(/_/g, ' ')}</dd></div>
+              </dl> : <p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p>}
+            </section>
             <section aria-label="Upcoming schedule" className="bg-white border rounded-lg overflow-hidden">
               <div className="border-b p-4"><h2 className="font-semibold">Upcoming schedule</h2><p className="text-xs text-slate-500">Assigned interviews, training, and review dates</p></div>
               {records.scheduleError ? <p role="status" className="p-4 text-sm text-slate-600">Schedule information is temporarily unavailable. Refresh to try again.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
