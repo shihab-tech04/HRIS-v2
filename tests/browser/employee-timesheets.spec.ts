@@ -157,7 +157,8 @@ test('linked employee completes the timesheet journey in Bengali and English wit
   await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('প্রতিটি এন্ট্রির কার্যক্রম, কাজের তারিখ ও ঘণ্টা পূরণ করুন।');
   await page.getByLabel('কার্যক্রম', { exact: true }).selectOption(activityId);
-  await page.getByLabel('কাজের তারিখ', { exact: true }).fill(await page.getByLabel('সময়সীমা শুরু', { exact: true }).inputValue());
+  const workDate = await page.getByLabel('সময়সীমা শুরু', { exact: true }).inputValue();
+  await page.getByLabel('কাজের তারিখ', { exact: true }).fill(workDate);
   await page.getByLabel('ঘণ্টা', { exact: true }).fill('3.5');
   await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('প্রতিটি প্রকল্প এন্ট্রির জন্য প্রকল্প বরাদ্দ বেছে নিন।');
@@ -216,8 +217,8 @@ test('linked employee completes the timesheet journey in Bengali and English wit
   ]);
   expect(rpcPayloads[0].body).toMatchObject({ p_tenant_id: tenantId, p_id: null, p_period_type: 'weekly' });
   expect(rpcPayloads[0].body.p_entries).toEqual([
-    { activity_id: activityId, project_allocation_id: allocationId, work_date: rpcPayloads[0].body.p_start, hours: 3.5, note: 'Synthetic implementation work' },
-    { activity_id: activityId, project_allocation_id: allocationId, work_date: rpcPayloads[0].body.p_start, hours: 2.25, note: null },
+    { activity_id: activityId, project_allocation_id: allocationId, work_date: workDate, hours: 3.5, note: 'Synthetic implementation work' },
+    { activity_id: activityId, project_allocation_id: allocationId, work_date: workDate, hours: 2.25, note: null },
   ]);
   expect(rpcPayloads[1].body).toMatchObject({ p_tenant_id: tenantId, p_id: timesheetId, p_period_type: 'weekly' });
   expect(rpcPayloads[1].body.p_entries).toEqual([
@@ -228,8 +229,8 @@ test('linked employee completes the timesheet journey in Bengali and English wit
   expect(rpcPayloads[2].body).toEqual({ p_tenant_id: tenantId, p_id: timesheetId });
   expect(rpcPayloads[3].body).toMatchObject({ p_tenant_id: tenantId, p_timesheet_id: timesheetId, p_project_id: projectId, p_expected_revision: 1 });
   expect(rpcPayloads[3].body.p_entries).toEqual([
-    { activity_id: activityId, project_allocation_id: allocationId, work_date: rpcPayloads[3].body.p_start, hours: 3.5, note: 'Synthetic implementation work' },
-    { activity_id: activityId, project_allocation_id: allocationId, work_date: rpcPayloads[3].body.p_start, hours: 2.75, note: null },
+    { activity_id: activityId, project_allocation_id: allocationId, work_date: workDate, hours: 3.5, note: 'Synthetic implementation work' },
+    { activity_id: activityId, project_allocation_id: allocationId, work_date: workDate, hours: 2.75, note: null },
   ]);
   expect(externalRequests).toEqual([]);
 });
