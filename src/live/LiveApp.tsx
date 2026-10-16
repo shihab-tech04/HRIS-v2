@@ -20,8 +20,9 @@ type DashboardCycle = { id: string; name: string; start_date: string; end_date: 
 type DashboardLearningSession = { id: string; title: string; start_at: string; end_at: string | null; location: string | null };
 type DashboardInterview = { id: string; job_title: string; interview_type: string; scheduled_at: string; location_or_link: string | null };
 type DashboardSchedule = { training: DashboardTraining[]; performance_cycles: DashboardCycle[]; learning_sessions: DashboardLearningSession[]; interviews: DashboardInterview[] };
+type DashboardGoal = { id: string; title: string; category: string; target_metric: string | null; current_progress: number; due_date: string | null; status: string; origin: 'assigned' | 'personal' };
 type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; attendanceToday: AttendanceToday | null };
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; attendanceToday: AttendanceToday | null };
 type View = 'employee' | 'admin' | 'preview' | 'system';
 const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
 function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
@@ -33,7 +34,19 @@ function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
     interviews: Array.isArray(schedule.interviews) ? schedule.interviews : [],
   };
 }
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, attendanceToday: null });
+function normalizeDashboardGoals(value: unknown): DashboardGoal[] {
+  if (!value || typeof value !== 'object') return [];
+  const goals = (value as { goals?: unknown }).goals;
+  if (!Array.isArray(goals)) return [];
+  return goals.filter((goal): goal is DashboardGoal => Boolean(goal && typeof goal === 'object'
+    && typeof (goal as DashboardGoal).id === 'string'
+    && typeof (goal as DashboardGoal).title === 'string'
+    && typeof (goal as DashboardGoal).status === 'string'));
+}
+function goalIsOverdue(goal: DashboardGoal, today: string) {
+  return Boolean(goal.due_date && goal.due_date < today && !['completed', 'cancelled'].includes(goal.status));
+}
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, attendanceToday: null });
 
 function attendanceStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -360,6 +373,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const scheduleContext = currentView === 'employee'
           ? supabase.rpc('employee_get_dashboard_schedule')
           : Promise.resolve({ data: null, error: null });
+        const performanceContext = currentView === 'employee'
+          ? supabase.rpc('employee_get_my_performance_context')
+          : Promise.resolve({ data: null, error: null });
         const attendance = (async () => {
           // Resolve only the authenticated user's employee record. RLS applies to
           // both reads; the attendance query is additionally constrained by this
@@ -375,7 +391,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             .eq('attendance_date', attendanceDate)
             .maybeSingle();
         })();
-        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult] = await Promise.all([
+        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
           canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
@@ -383,6 +399,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           attendance,
           leaveContext,
           scheduleContext,
+          performanceContext,
         ]);
         const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
         if (denied?.error) throw denied.error;
@@ -393,6 +410,8 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           holidays: ((leaveContextResult.data as { holidays?: Holiday[] } | null)?.holidays || []),
           dashboardSchedule: normalizeDashboardSchedule(scheduleContextResult.data),
           scheduleError: Boolean(scheduleContextResult.error),
+          goals: normalizeDashboardGoals(performanceContextResult.data),
+          goalsError: Boolean(performanceContextResult.error),
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
           attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
@@ -437,6 +456,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError} onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
   }
   const current = tenants.find(t => t.id === tenantId);
+  const dashboardToday = tenantAttendanceDate(new Date(), current?.timezone || 'UTC');
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -518,6 +538,17 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
                   <p className="mt-2 text-sm text-slate-500">Company event dates are not available in this workspace calendar.</p>
                 </section>
               </div>}
+            </section>
+            <section aria-label="My goals and overdue actions" className="bg-white border rounded-lg overflow-hidden">
+              <div className="border-b p-4"><h2 className="font-semibold">My goals and overdue actions</h2><p className="text-xs text-slate-500">Goals and due dates assigned to your employee record</p></div>
+              {records.goalsError ? <p role="status" className="p-4 text-sm text-slate-600">Goal information is temporarily unavailable. Refresh to try again.</p> : records.goals.length ? <ul className="divide-y">{records.goals.map(goal => {
+                const overdue = goalIsOverdue(goal, dashboardToday);
+                return <li key={goal.id} className="p-4 flex flex-wrap items-start justify-between gap-3">
+                  <div><p className="text-sm font-medium">{goal.title}</p><p className="text-xs text-slate-500">{goal.origin === 'assigned' ? 'Assigned goal' : 'Personal goal'}{goal.category ? ` · ${goal.category}` : ''}</p></div>
+                  <div className="text-sm sm:text-right"><p className="font-medium capitalize">{goal.status.replace(/_/g, ' ')} · {goal.current_progress}% complete</p><p className="text-xs text-slate-600">{goal.due_date ? `Due ${goal.due_date}` : 'No due date'}</p>{goal.target_metric && <p className="text-xs text-slate-500">Target: {goal.target_metric}</p>}{overdue && <p role="status" className="text-xs font-semibold text-red-700">Overdue</p>}</div>
+                </li>;
+              })}</ul> : <p className="p-4 text-sm text-slate-500">No performance goals are currently listed for you.</p>}
+              <p className="border-t px-4 py-3 text-xs text-slate-500">This workspace provides performance goals; standalone task assignments are not available here.</p>
             </section>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>

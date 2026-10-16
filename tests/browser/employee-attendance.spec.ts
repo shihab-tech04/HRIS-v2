@@ -24,10 +24,11 @@ const jwtPayload = Buffer.from(JSON.stringify({
 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-test('employee sees own tenant-local attendance, leave, holidays and upcoming schedule', async ({ page }) => {
+test('employee sees own tenant-local attendance, leave, holidays, schedule and goals', async ({ page }) => {
   let attendanceFilter: Record<string, string> = {};
   let leaveContextMethod = '';
   let scheduleMethod = '';
+  let performanceContextMethod = '';
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -66,6 +67,13 @@ test('employee sees own tenant-local attendance, leave, holidays and upcoming sc
         performance_cycles: [{ id: 'e9999999-9999-4999-8999-999999999999', name: '2026 Annual Review', start_date: '2026-11-01', end_date: '2026-12-31', self_review_deadline: '2026-11-30', manager_review_deadline: '2026-12-15', status: 'active' }],
       };
     }
+    else if (path.endsWith('/rpc/employee_get_my_performance_context')) {
+      performanceContextMethod = route.request().method();
+      data = { goals: [
+        { id: 'ea111111-1111-4111-8111-111111111111', title: 'Complete onboarding', category: 'Operational', target_metric: 'Complete 5 modules', current_progress: 40, due_date: '1900-01-01', status: 'in_progress', origin: 'assigned' },
+        { id: 'ea222222-2222-4222-8222-222222222222', title: 'Completed safety induction', category: 'Skill', target_metric: null, current_progress: 100, due_date: '1900-01-01', status: 'completed', origin: 'assigned' },
+      ] };
+    }
     else if (table === 'tenant_memberships') data = [];
     else if (table === 'employees') {
       data = url.searchParams.get('user_id') === `eq.${userId}`
@@ -102,6 +110,7 @@ test('employee sees own tenant-local attendance, leave, holidays and upcoming sc
   expect(attendanceFilter.attendance_date).toMatch(/^eq\.\d{4}-\d{2}-\d{2}$/);
   expect(leaveContextMethod).toBe('POST');
   expect(scheduleMethod).toBe('POST');
+  expect(performanceContextMethod).toBe('POST');
   const balances = page.getByRole('region', { name: 'Remaining leave balances' });
   await expect(balances.getByText('Annual Leave')).toBeVisible();
   await expect(balances.getByText('15 days available')).toBeVisible();
@@ -123,4 +132,11 @@ test('employee sees own tenant-local attendance, leave, holidays and upcoming sc
   await expect(reviews.getByText('Self review due 2026-11-30')).toBeVisible();
   const events = schedule.getByRole('region', { name: 'Company events' });
   await expect(events.getByText('Company event dates are not available in this workspace calendar.')).toBeVisible();
+
+  const goals = page.getByRole('region', { name: 'My goals and overdue actions' });
+  await expect(goals.getByText('Complete onboarding')).toBeVisible();
+  await expect(goals.getByText('Overdue', { exact: true })).toHaveCount(1);
+  await expect(goals.getByText('Completed safety induction')).toBeVisible();
+  await expect(goals.getByText('Completed · 100% complete')).toBeVisible();
+  await expect(goals.getByText('This workspace provides performance goals; standalone task assignments are not available here.')).toBeVisible();
 });
