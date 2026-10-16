@@ -249,12 +249,31 @@ try {
       || request.p_unassigned !== false || request.p_report_date !== selectedReportDate)) {
     throw new Error(`Team detail retry did not retain the selected tenant/team/date scope: ${JSON.stringify(teamDetailRequests)}.`);
   }
+  const detailDownloadWait = waitForCsvDownload(page, 'tenant-backed team detail report');
+  await detailDialog.getByRole('button', { name: 'Download details', exact: true }).click();
+  const detailDownload = await detailDownloadWait;
+  if (detailDownload.suggestedFilename() !== `managerial-dashboard-team-details-${selectedReportDate}.csv`) {
+    throw new Error(`Team detail export did not retain the selected report date: ${detailDownload.suggestedFilename()}.`);
+  }
+  const detailStream = await detailDownload.createReadStream();
+  const detailChunks = [];
+  for await (const chunk of detailStream) detailChunks.push(chunk);
+  const detailCsv = parseCsvRows(Buffer.concat(detailChunks).toString('utf8'));
+  const expectedDetailHeaders = ['Employee', 'Employee number', 'Designation', 'Department', 'Attendance days', 'Office hours', 'Working hours', 'Deviation'];
+  if (JSON.stringify(detailCsv[0]) !== JSON.stringify(expectedDetailHeaders)
+      || detailCsv.length < 2 || !detailCsv.some(row => row[1] === 'QA-A-001')
+      || detailCsv.some(row => row[1] === 'QA-B-001')) {
+    throw new Error(`Tenant-backed detail CSV did not match the selected team detail rows: ${JSON.stringify(detailCsv)}.`);
+  }
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
   const refresh = teamReport.getByRole('button', { name: 'Refresh', exact: true });
   const refreshResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_dashboard_team_report') && response.ok());
   await refresh.click();
   await refreshResponse;
+  if (teamReportDates.at(-1) !== selectedReportDate || await reportDate.inputValue() !== selectedReportDate) {
+    throw new Error('Refreshing the report did not retain the selected report date.');
+  }
   const downloadWait = waitForCsvDownload(page, 'team report');
   await teamReport.getByRole('button', { name: 'Download Report', exact: true }).click();
   const download = await downloadWait;

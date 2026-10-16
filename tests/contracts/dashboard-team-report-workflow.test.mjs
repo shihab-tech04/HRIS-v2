@@ -73,7 +73,10 @@ test('isolated acceptance covers selected dates, role denials, team scoping, ret
   assert.match(browserRunner, /safeServerDiagnostic\(\)/);
   assert.match(browserRunner, /const csvDownloadTimeoutMs = 30_000/);
   assert.match(browserRunner, /page\.waitForEvent\('download', \{ timeout: csvDownloadTimeoutMs \}\)/);
-  assert.equal((browserRunner.match(/waitForCsvDownload\(page, '/g) || []).length, 3);
+  assert.equal((browserRunner.match(/waitForCsvDownload\(page, '/g) || []).length, 4);
+  assert.match(browserRunner, /tenant-backed team detail report/);
+  assert.match(browserRunner, /managerial-dashboard-team-details-\$\{selectedReportDate\}\.csv/);
+  assert.match(browserRunner, /teamReportDates\.at\(-1\) !== selectedReportDate/);
   assert.doesNotMatch(browserRunner, /const port = '48386'/);
   assert.match(browserRunner, /setViewportSize\(\{ width: 1280, height: 900 \}\)/);
   assert.match(browserSpec, /Apply date/);
