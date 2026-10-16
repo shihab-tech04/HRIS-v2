@@ -25,6 +25,17 @@ test('recruiter stage changes use the permission-checked audit RPC and supported
   assert.match(pipeline, /Stage changes are checked and audited by HRIS/);
 });
 
+test('interviews and panel assessments persist through the live recruiter RPCs', () => {
+  assert.match(pipeline, /rpc\('admin_schedule_interview',\s*\{\s*p_application_id:\s*application\.id,\s*p_payload:/);
+  assert.match(pipeline, /rpc\('admin_assign_assessment',\s*\{\s*p_application_id:\s*application\.id,\s*p_payload:/);
+  assert.match(pipeline, /rpc\('admin_review_assessment',\s*\{\s*p_assessment_id:\s*assessment\.id,\s*p_note:/);
+  assert.match(pipeline, /access\s*!==\s*'manage'\s*\|\|\s*assessment\.status\s*!==\s*'submitted'/);
+  assert.match(pipeline, /interviewDrafts\[application\.id\]/);
+  assert.match(pipeline, /Assessment and panel review/);
+  assert.match(pipeline, /Candidate submission:/);
+  assert.match(pipeline, /Panel evaluation note/);
+});
+
 test('candidate CVs stay private and are opened through short-lived owner-scoped links', () => {
   assert.match(pipeline, /segments\[0\]\s*!==\s*owner/);
   assert.match(pipeline, /segment === '\.' \|\| segment === '\.\.'/);
