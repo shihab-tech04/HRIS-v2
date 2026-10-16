@@ -138,6 +138,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
 
     let data: unknown = [];
     if (endpoint === 'admin_users') data = { active: true, is_super_admin: false };
+    else if (endpoint === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'recruiter', status: 'active' }];
     else if (endpoint === 'tenants') data = url.searchParams.get('select') === 'id'
       ? { id: tenantId } : [{ id: tenantId, name: 'Synthetic Synesis', slug: 'synesis-it', timezone: 'Asia/Dhaka' }];
     if (request.method() === 'HEAD') {

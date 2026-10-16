@@ -194,7 +194,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
       familyGetMethods.push(route.request().method());
       data = employeeFamilyMembers;
     }
-    else if (table === 'tenant_memberships') data = [];
+    else if (table === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'employee', status: 'active' }];
     else if (table === 'employees') {
       employeeProfileFilter = Object.fromEntries(url.searchParams.entries());
       data = url.searchParams.get('user_id') === `eq.${userId}`
