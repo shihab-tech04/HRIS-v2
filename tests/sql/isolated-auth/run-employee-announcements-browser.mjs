@@ -36,6 +36,7 @@ const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vit
 
 let browser;
 let failInitialRead = true;
+let armInitialReadFailure = false;
 let injectedInitialReadFailure = false;
 let showEmptyOnNextRead = false;
 const noticeRequests = [];
@@ -69,8 +70,9 @@ try {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
       if (isNoticeRead(route.request())) {
-        if (failInitialRead) {
+        if (failInitialRead && armInitialReadFailure) {
           failInitialRead = false;
+          armInitialReadFailure = false;
           injectedInitialReadFailure = true;
           await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
             code: 'XX000', message: 'Synthetic temporary notice read outage.',
@@ -96,6 +98,7 @@ try {
   await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
   const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  armInitialReadFailure = true;
   await navigation.getByRole('button', { name: 'Announcements', exact: true }).click();
   await page.getByRole('heading', { name: 'Announcements', exact: true }).waitFor({ state: 'visible' });
   if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);

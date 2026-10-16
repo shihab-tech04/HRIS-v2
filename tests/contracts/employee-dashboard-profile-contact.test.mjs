@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const migration = read('../../supabase/migrations/20261016233237_employee_dashboard_official_phone.sql');
+const component = read('../../src/live/LiveHrisWorkspace.tsx');
+const runner = read('../sql/isolated-auth/run-local.mjs');
+const browser = read('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs');
+const upcomingTraining = read('../../src/live/EmployeeUpcomingTraining.tsx');
+const locale = read('../../src/live/project-locale.ts');
+const catalogue = JSON.parse(read('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json'));
+
+test('employee profile phone uses the existing authenticated linked-employee dashboard projection', () => {
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.hris_get_my_dashboard_data\(p_tenant_id uuid\)/);
+  assert.match(migration, /v_employee := public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(migration, /'official_phone',e\.official_phone/);
+  assert.match(migration, /e\.id=v_employee AND e\.tenant_id=p_tenant_id/);
+  assert.match(component, /data-employee-contact="official-phone"/);
+  assert.match(component, /employee\?\.official_phone/);
+  const phoneMigration = runner.indexOf('20261016233237_employee_dashboard_official_phone.sql');
+  assert.ok(phoneMigration > runner.indexOf('20261016230201_hris_employee_roster_notifications.sql'));
+  assert.ok(phoneMigration < runner.indexOf('20261017010000_hris_employee_document_self_service.sql'));
+  assert.match(runner, /20261016233237_employee_dashboard_official_phone\.sql/);
+  assert.match(runner, /employeeSummaryA\.employee\.official_phone === '\+880 2 5550001'/);
+  assert.match(runner, /employeeSummaryB\.employee\.official_phone === null/);
+  assert.match(browser, /data-employee-contact="official-phone"/);
+  assert.match(browser, /1280px|setViewportSize/);
+});
+
+test('employee dashboard upcoming training uses only future sessions confirmed by the employee enrollment RPC', () => {
+  assert.match(upcomingTraining, /hris_get_my_learning_context/);
+  assert.match(upcomingTraining, /data\.tenant_id !== requestedTenant/);
+  assert.match(upcomingTraining, /enrollment\?\.status === 'enrolled'/);
+  assert.match(upcomingTraining, /enrolledSessions\.has\(session\.id\)/);
+  assert.match(upcomingTraining, /Date\.parse\(session\.start_at\) <= now/);
+  assert.doesNotMatch(upcomingTraining, /meeting_url/);
+  assert.match(browser, /EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS/);
+  assert.match(browser, /HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID/);
+  assert.match(locale, /'Upcoming training': 'আসন্ন প্রশিক্ষণ'/);
+  assert.match(locale, /'Open My Learning': 'আমার শেখার পৃষ্ঠা খুলুন'/);
+  const sourceStory = catalogue.stories.find(story => story.story_id === 'E01-06');
+  assert.equal(sourceStory?.verbatim_requirement,
+    'As an employee, I want to see upcoming interviews, training, reviews, or company events relevant to me.');
+  assert.equal(sourceStory?.source_locator.line, 16);
+  assert.match(runner, /E01-06 training visibility is partially implemented/);
+});

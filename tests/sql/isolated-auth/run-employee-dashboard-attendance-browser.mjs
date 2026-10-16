@@ -11,6 +11,7 @@ const required = [
   'HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH', 'HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH',
   'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
+  'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -63,9 +64,11 @@ try {
   let failInitialPeriodRead = true;
   let failInitialIdentityCardRead = true;
   let failInitialRosterRead = true;
+  let failInitialUpcomingTrainingRead = true;
   const identityCardRequests = [];
   const periodRequests = [];
   const rosterRequests = [];
+  const upcomingTrainingRequests = [];
   const directRosterTableRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
@@ -77,6 +80,10 @@ try {
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_shift_roster') && request.method() === 'POST') {
       const body = request.postDataJSON();
       rosterRequests.push({ tenantId: body?.p_tenant_id, start: body?.p_start, end: body?.p_end });
+    }
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context') && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      upcomingTrainingRequests.push(body?.p_tenant_id);
     }
     if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
       directRosterTableRequests.push(url.pathname);
@@ -99,6 +106,15 @@ try {
           }) });
           return;
         }
+      }
+      if (failInitialUpcomingTrainingRead
+          && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context')
+          && route.request().method() === 'POST') {
+        failInitialUpcomingTrainingRead = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+          code: 'XX000', message: 'Synthetic temporary learning-context outage.',
+        }) });
+        return;
       }
       if (failInitialPeriodRead && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_attendance_period')
           && route.request().method() === 'POST') {
@@ -131,6 +147,32 @@ try {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
+  const upcomingTraining = page.locator('section[aria-labelledby="employee-upcoming-training-heading"]');
+  await upcomingTraining.getByRole('alert').filter({ hasText: 'Unable to load upcoming training.' }).waitFor({ state: 'visible' });
+  if (failInitialUpcomingTrainingRead) throw new Error('The injected learning-context outage was not observed.');
+  await upcomingTraining.getByRole('button', { name: 'Retry', exact: true }).click();
+  const confirmedTrainingSession = page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`);
+  await confirmedTrainingSession.waitFor({ state: 'visible' });
+  await confirmedTrainingSession.getByText(process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, { exact: true }).waitFor({ state: 'visible' });
+  if (await upcomingTraining.locator('[data-upcoming-training-session]').count() !== 1
+      || await upcomingTraining.getByText('QA A Approval Learning', { exact: true }).count() !== 0) {
+    throw new Error('Upcoming training included a requested session or a session without an enrolled assignment.');
+  }
+  if (await upcomingTraining.locator('a').count() !== 0) {
+    throw new Error('Upcoming training exposed a join URL instead of linking to the established My Learning journey.');
+  }
+  if (upcomingTrainingRequests.length < 2
+      || upcomingTrainingRequests.some(tenantId => tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
+    throw new Error(`Upcoming training reads were missing or not tenant-bound: ${JSON.stringify(upcomingTrainingRequests)}.`);
+  }
+  await upcomingTraining.getByRole('button', { name: 'Open My Learning', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
   const monthInput = page.locator('input[type="month"][aria-label="Attendance month"]');
   await monthInput.waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'visible' });
@@ -190,6 +232,7 @@ try {
   await employeeRosterCard.waitFor({ state: 'visible' });
   await page.reload();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
   if (await page.locator('html').getAttribute('lang') !== 'bn') throw new Error('Roster navigation lost Bengali locale on refresh.');
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'আমার রোস্টার', exact: true }).click();
@@ -209,8 +252,12 @@ try {
     throw new Error(`Employee roster bypassed the secured RPC: ${JSON.stringify(directRosterTableRequests)}.`);
   }
 
-  await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'আসন্ন প্রশিক্ষণ', exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('আপনার জন্য নির্ধারিত নিশ্চিত সেশন।', { exact: true }).waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await assertNoOverflow(page, 'Employee upcoming training Bengali mobile');
   await page.getByRole('button', { name: 'ডিজিটাল কর্মচারী পরিচয়পত্র দেখুন', exact: true }).click();
   const bengaliIdentityDialog = page.getByRole('dialog', { name: 'ডিজিটাল কর্মচারী পরিচয়পত্র', exact: true });
   await bengaliIdentityDialog.getByText('সক্রিয়', { exact: true }).waitFor({ state: 'visible' });
@@ -343,9 +390,11 @@ try {
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Employee attendance month Bengali desktop');
+  await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
   console.log('EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS');
+  console.log('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
-  console.log('Local Auth/Postgres employee attendance, identity-card, and roster journeys passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outages with retry, own identity card fields, month and roster selection, persisted work hours and shift assignment, notification-to-roster navigation, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.');
+  console.log('Local Auth/Postgres employee dashboard journeys passed: upcoming confirmed training from an employee-specific enrollment, My Learning navigation, English/Bengali, injected training and attendance/identity/roster outages with retry, refresh and routing recovery, own contact fields, tenant-bound RPCs, and 375px/1280px layouts.');
 } finally {
   await browser?.close();
   await stopChildProcess(server);

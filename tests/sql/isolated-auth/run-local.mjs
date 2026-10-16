@@ -423,9 +423,10 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016230201_hris_employee_roster_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016233237_employee_dashboard_official_phone.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
-  path.join(mainRoot, 'supabase/migrations/20261016230201_hris_employee_roster_notifications.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017030000_hris_employee_announcement_audience.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
@@ -862,6 +863,8 @@ const learningIds = {
   approvalCapacitySession: '91000000-0000-4000-8000-000000000006',
   mandatoryEnrollment: '92000000-0000-4000-8000-000000000003',
   completionBrowserEnrollment: '92000000-0000-4000-8000-000000000008',
+  dashboardTrainingEnrollment: '92000000-0000-4000-8000-000000000010',
+  dashboardTrainingRequest: '92000000-0000-4000-8000-000000000011',
   managerApprovalRequest: '92000000-0000-4000-8000-000000000004',
   managerRejectionRequest: '92000000-0000-4000-8000-000000000005',
   capacityRequestOne: '92000000-0000-4000-8000-000000000006',
@@ -3608,11 +3611,13 @@ record('Employee dashboard profile and date belong to the linked tenant-local em
   && employeeSummaryA.employee.employee_number === 'QA-A-001'
   && employeeSummaryA.employee.department_name === 'QA A department'
   && employeeSummaryA.employee.designation_title === 'QA A designation'
+  && employeeSummaryA.employee.official_phone === '+880 2 5550001'
   && employeeSummaryB.dashboard_date === localCurrentDate
   && employeeSummaryB.employee.full_name === 'Synthetic Employee B'
   && employeeSummaryB.employee.employee_number === 'QA-B-001'
   && employeeSummaryB.employee.department_name === 'QA B department'
-  && employeeSummaryB.employee.designation_title === 'QA B designation',
+  && employeeSummaryB.employee.designation_title === 'QA B designation'
+  && employeeSummaryB.employee.official_phone === null,
   JSON.stringify({ employeeA: employeeSummaryA.employee, employeeB: employeeSummaryB.employee,
     dateA: employeeSummaryA.dashboard_date, dateB: employeeSummaryB.dashboard_date }));
 
@@ -6355,6 +6360,17 @@ record('Peer-review submission rechecks assignment overlap in the backend',
 const browserTaskTitle = `Local browser integration ${Date.now()}`;
 let employeeAttendanceBrowserOutput = '';
 let employeeAttendanceBrowserError = '';
+psqlSync(`INSERT INTO public.learning_enrollments(
+  id,tenant_id,employee_id,program_id,session_id,source,status,mandatory,created_by
+) VALUES (
+  '${learningIds.dashboardTrainingEnrollment}','${ids.tenantA}',
+  '55555555-5555-4555-8555-555555555555','${learningIds.directProgram}',
+  '${learningIds.directSession}','admin_assignment','enrolled',true,NULL
+),(
+  '${learningIds.dashboardTrainingRequest}','${ids.tenantA}',
+  '55555555-5555-4555-8555-555555555555','${learningIds.approvalProgram}',
+  '${learningIds.approvalSession}','employee_request','requested',false,NULL
+);`);
 try {
   employeeAttendanceBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-dashboard-attendance-browser.mjs')], {
     cwd: mainRoot,
@@ -6371,6 +6387,8 @@ try {
       HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH: currentAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
+      HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
+      HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE: 'QA A Direct Learning',
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -6379,9 +6397,14 @@ try {
   employeeAttendanceBrowserError = String(error.stderr || error.message || 'local employee attendance browser run failed').slice(-1800);
   employeeAttendanceBrowserOutput = String(error.stdout || '');
 }
+psqlSync(`DELETE FROM public.learning_enrollments WHERE id IN (
+  '${learningIds.dashboardTrainingEnrollment}'::uuid,'${learningIds.dashboardTrainingRequest}'::uuid
+);`);
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
   employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
   employeeAttendanceBrowserError);
+record('E01-06 training visibility is partially implemented: only confirmed upcoming sessions link to My Learning in the active tenant',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';
@@ -6518,6 +6541,13 @@ record('Upcoming allocation status follows the tenant-local date for manager and
     && upcomingAllocation.data?.status === 'upcoming'
     && upcomingRow?.status === 'upcoming' && upcomingSelfRow?.status === 'upcoming');
 
+// Make the intended synthetic state explicit immediately before release so
+// preceding acceptance journeys cannot affect this preservation assertion.
+psqlSync(`UPDATE public.employees SET employment_status='on_leave'
+  WHERE tenant_id='${ids.tenantA}'::uuid AND id='55555555-5555-4555-8555-555555555555'::uuid;`);
+const employeeAStatusBeforeRelease = queryAdmin(`SELECT jsonb_build_object('status',employment_status)
+  FROM public.employees WHERE tenant_id='${ids.tenantA}'::uuid
+    AND id='55555555-5555-4555-8555-555555555555'::uuid`).status;
 const ordinaryAdminRelease = await managerA.client.rpc('hris_release_tenant_project_allocation', {
   p_tenant_id: ids.tenantA, p_allocation_id: allocationA60.data?.id,
 });
@@ -6542,11 +6572,11 @@ const releaseRepeat = await managerA.client.rpc('hris_release_tenant_project_all
 record('Releasing an allocation preserves the employee status and writes one release audit event',
   Boolean(ordinaryAdminRelease.error) && Boolean(ordinaryManagerRelease.error)
     && !releasedA60.error && releasedA60.data?.status === 'released'
-    && employeeAStatusAfterRelease === 'on_leave'
+    && employeeAStatusBeforeRelease === 'on_leave' && employeeAStatusAfterRelease === employeeAStatusBeforeRelease
     && taskMembershipCascade.released === true && taskMembershipCascade.review_count === 2
     && Boolean(releaseRepeat.error)
     && auditCount(allocationA60.data?.id, 'project.allocation.released') === 1,
-  JSON.stringify(taskMembershipCascade));
+  JSON.stringify({ before: employeeAStatusBeforeRelease, after: employeeAStatusAfterRelease, ...taskMembershipCascade }));
 
 const holidayCalendarA = await managerA.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantA });
 const holidayCalendarB = await managerB.client.rpc('hris_get_org_holiday_calendar', { p_tenant_id: ids.tenantB });

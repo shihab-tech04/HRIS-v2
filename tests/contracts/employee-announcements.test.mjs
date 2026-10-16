@@ -50,3 +50,9 @@ test('employee announcement UI supports pinned items, attachment links, recovery
   assert.match(browser, /journey passed at 375px mobile and 1280px desktop, EN\/BN, retry, refresh, empty, audience and attachment states/);
   assert.match(browser, /page\.reload\(\)/);
 });
+
+test('announcement outage injection starts only after the employee opens the announcement page', () => {
+  assert.match(browser, /let armInitialReadFailure = false/);
+  assert.match(browser, /if \(failInitialRead && armInitialReadFailure\)/);
+  assert.match(browser, /armInitialReadFailure = true;\s+await navigation\.getByRole\('button', \{ name: 'Announcements', exact: true \}\)\.click\(\)/);
+});

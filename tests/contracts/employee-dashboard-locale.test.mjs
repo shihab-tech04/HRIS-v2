@@ -35,8 +35,8 @@ test('employee dashboard and inline request journeys have unique Bengali transla
 });
 
 test('Employee Dashboard shares the active locale with date, number, leave, and correction views', () => {
-  assert.match(workspace, /function EmployeeOverview\(\{ tenantId, tenantName, userId, locale \}/);
-  assert.match(workspace, /<EmployeeOverview tenantId=\{tenantId\} tenantName=\{tenantName\} userId=\{userId\} locale=\{locale\} \/>/);
+  assert.match(workspace, /function EmployeeOverview\(\{ tenantId, tenantName, userId, locale, onOpenLearning \}/);
+  assert.match(workspace, /<EmployeeOverview tenantId=\{tenantId\} tenantName=\{tenantName\} userId=\{userId\} locale=\{locale\} onOpenLearning=\{\(\) => navigate\('my-learning'\)\} \/>/);
   assert.match(workspace, /showHistory=\{false\} locale=\{locale\} \/>/);
   assert.ok(workspace.includes('onRefresh={() => load(false)} locale={locale} />'));
   assert.match(workspace, /toLocaleString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);

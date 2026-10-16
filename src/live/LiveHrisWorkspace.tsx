@@ -15,6 +15,7 @@ import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
 import { EmployeeDocumentVault } from './EmployeeDocumentVault';
 import { EmployeeIdentityCard } from './EmployeeIdentityCard';
+import { EmployeeUpcomingTraining } from './EmployeeUpcomingTraining';
 import { EmployeeLeaveCalendar } from './EmployeeLeaveCalendar';
 import { PayrollRegister } from './PayrollRegister';
 import { LearningRequests } from './LearningRequests';
@@ -38,7 +39,7 @@ import { projectText, type Locale } from './project-locale';
 import {
   Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
-  Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
+  Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -2989,7 +2990,7 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: string; tenantName: string; userId: string; locale: Locale }) {
+function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
@@ -3116,6 +3117,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
   const currentTenantDataReady = loadedTenantId === tenantId && Boolean(attendance && leave);
   const employee = asObject(leave?.employee);
   const fullName = typeof employee?.full_name === 'string' ? employee.full_name : '';
+  const officialPhone = typeof employee?.official_phone === 'string' ? employee.official_phone.trim() : '';
   const initials = fullName.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map(part => part.slice(0, 1).toLocaleUpperCase()).join('') || '—';
   const today = typeof leave?.dashboard_date === 'string' ? leave.dashboard_date : '';
@@ -3184,6 +3186,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
             <p className="flex items-start gap-2"><BriefcaseBusiness className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.designation_title)}</span></p>
             <p className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.department_name)}</span></p>
             <p className="flex items-start gap-2 break-all text-xs text-slate-600"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.official_email)}</span></p>
+            {officialPhone && <p aria-label={tx('Official phone')} data-employee-contact="official-phone" className="flex items-start gap-2 break-words text-xs text-slate-600"><Phone className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{officialPhone}</span></p>}
           </div>
           <EmployeeIdentityCard tenantId={tenantId} tenantName={tenantName} locale={locale} />
         </section>
@@ -3301,6 +3304,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale }: { tenantId: 
               <span className="min-w-0 break-words">{display(holiday.name)}</span><span className="shrink-0 text-xs text-slate-500">{employeeDate(holiday.start_date)}{holiday.end_date && holiday.end_date !== holiday.start_date ? ` – ${employeeDate(holiday.end_date)}` : ''}</span>
             </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{tx('No upcoming holidays are published.')}</p>}
           </section>
+          <EmployeeUpcomingTraining tenantId={tenantId} locale={locale} onOpen={onOpenLearning} />
         </aside>
       </div>
 
@@ -3500,7 +3504,7 @@ export function LiveHrisWorkspace({
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
-          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale} />}
+          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale} onOpenLearning={() => navigate('my-learning')} />}
           {page === 'my-projects' && isEmployee && <>
             <MyProjects tenantId={tenantId} locale={locale} />
             <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />
