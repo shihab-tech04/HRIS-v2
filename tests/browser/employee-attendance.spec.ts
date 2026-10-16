@@ -35,6 +35,8 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   let travelContextMethod = '';
   let selfServiceContextMethod = '';
   let payslipMethod = '';
+  let employmentInfoMethod = '';
+  let employmentInfoPayload: Record<string, unknown> = {};
   let employeeProfileFilter: Record<string, string> = {};
   let broadProfileRpcCalled = false;
   let profileUpdateMethod = '';
@@ -100,6 +102,11 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     const table = path.split('/').pop() || '';
     let data: unknown = [];
     if (path.endsWith('/rpc/has_permission')) data = false;
+    else if (path.endsWith('/rpc/employee_get_my_employment_info_v1')) {
+      employmentInfoMethod = route.request().method();
+      employmentInfoPayload = JSON.parse(route.request().postData() || '{}');
+      data = [{ joining_date: '2022-05-01', employment_type: 'Permanent', department_name: 'Synthetic Analytics', department_code: 'ANL', designation_title: 'Senior Analyst', designation_code: 'SA-01', manager_name: 'Morgan Manager', work_location_name: 'Dhaka HQ', grade_name: 'Grade 7', grade_code: 'G7' }];
+    }
     else if (path.endsWith('/rpc/employee_get_my_profile_change_requests')) data = profileChangeHistory;
     else if (path.endsWith('/rpc/employee_save_my_addresses_v2')) {
       addressSaveMethod = route.request().method();
@@ -340,6 +347,16 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(profile.getByText('+8801912345678')).toBeVisible();
   await expect(profile.getByText('Sibling')).toBeVisible();
   await expect(profile.getByText('active')).toBeVisible();
+  const employment = profile.getByRole('region', { name: 'Employment information' });
+  await expect(employment.getByText('2022-05-01')).toBeVisible();
+  await expect(employment.getByText('Permanent')).toBeVisible();
+  await expect(employment.getByText('Synthetic Analytics (ANL)')).toBeVisible();
+  await expect(employment.getByText('Senior Analyst (SA-01)')).toBeVisible();
+  await expect(employment.getByText('Morgan Manager')).toBeVisible();
+  await expect(employment.getByText('Dhaka HQ')).toBeVisible();
+  await expect(employment.getByText('Grade 7 (G7)')).toBeVisible();
+  expect(employmentInfoMethod).toBe('POST');
+  expect(employmentInfoPayload).toEqual({ p_tenant_id: tenantId });
 
   await profile.getByRole('button', { name: 'Edit personal information' }).click();
   await profile.getByLabel('Preferred name').fill('Sammy');
