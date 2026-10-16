@@ -1,0 +1,52 @@
+name: HRIS profile correction workflow SQL checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'
+      - 'tests/sql/profile-change/**'
+      - '.github/workflows/profile-change-postgres.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'
+      - 'tests/sql/profile-change/**'
+      - '.github/workflows/profile-change-postgres.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  profile-change-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_profile_change
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d hris_profile_change"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Apply synthetic fixture and verify policy, permissions, and decisions
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: test_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: hris_profile_change
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/profile-change/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016141000_employee_profile_change_requests.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/profile-change/verify.sql
+          echo "Passed against synthetic PostgreSQL 17; this is not production Auth/RLS certification."

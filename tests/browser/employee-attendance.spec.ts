@@ -40,6 +40,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   let profileUpdateMethod = '';
   let profileUpdatePayload: Record<string, unknown> = {};
   let updatedProfileFields: Record<string, unknown> = {};
+  let profileChangeMethod = '';
+  let profileChangePayload: Record<string, unknown> = {};
+  let profileChangeHistory: Array<Record<string, unknown>> = [];
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -65,6 +68,13 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     const table = path.split('/').pop() || '';
     let data: unknown = [];
     if (path.endsWith('/rpc/has_permission')) data = false;
+    else if (path.endsWith('/rpc/employee_get_my_profile_change_requests')) data = profileChangeHistory;
+    else if (path.endsWith('/rpc/employee_submit_profile_change_request')) {
+      profileChangeMethod = route.request().method();
+      profileChangePayload = JSON.parse(route.request().postData() || '{}');
+      profileChangeHistory = [{ id: 'ef111111-1111-4111-8111-111111111111', field_key: profileChangePayload.p_field_key, reason: profileChangePayload.p_reason, status: 'pending', submitted_at: '2026-10-16T12:00:00.000Z', reviewed_at: null, review_note: null }];
+      data = 'ef111111-1111-4111-8111-111111111111';
+    }
     else if (path.endsWith('/rpc/employee_get_leave_context')) {
       leaveContextMethod = route.request().method();
       data = { balances: [{ leave_type_id: 'e4444444-4444-4444-8444-444444444444', leave_type_name: 'Annual Leave', balance_year: 2026, available_days: 15, used_days: 3, pending_days: 2 }], holidays: [{ id: 'e5555555-5555-4555-8555-555555555555', name: 'National Day', start_date: '2026-12-16', end_date: '2026-12-16', holiday_type: 'Public', description: null }], requests: [{ id: 'ec111111-1111-4111-8111-111111111111', leave_type_name: 'Annual Leave', from_date: '2026-11-01', to_date: '2026-11-02', status: 'pending', submitted_at: '2026-10-15T12:00:00.000Z' }] };
@@ -291,4 +301,20 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     nationality: 'Bangladeshi',
     marital_status: 'Single',
   } });
+
+  await profile.getByText('Request a protected profile change').click();
+  await profile.getByLabel('Profile field').selectOption('official_email');
+  await profile.getByLabel('Proposed value').fill('sammy.employee@example.org');
+  await profile.getByLabel('Reason for change').fill('My official contact address changed.');
+  await profile.getByRole('button', { name: 'Submit profile change request' }).click();
+  await expect(profile.getByText('Your profile change request was submitted for HR review.')).toBeVisible();
+  const changeHistory = profile.getByRole('region', { name: 'My profile change requests' });
+  await expect(changeHistory.getByText('Official email (HR record only)')).toBeVisible();
+  await expect(changeHistory.getByText('pending')).toBeVisible();
+  expect(profileChangeMethod).toBe('POST');
+  expect(profileChangePayload).toEqual({
+    p_field_key: 'official_email',
+    p_requested_value: 'sammy.employee@example.org',
+    p_reason: 'My official contact address changed.',
+  });
 });
