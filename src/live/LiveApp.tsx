@@ -10,7 +10,7 @@ import { LiveSystemWorkspace } from './LiveSystemWorkspace';
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
 type Employee = { id: string; full_name: string; employee_number: string; employment_status: string };
-type DashboardProfile = { full_name: string; preferred_name: string | null; employee_number: string; official_email: string | null; personal_email: string | null; phone: string | null; official_phone: string | null; gender: string | null; date_of_birth: string | null; nationality: string | null; marital_status: string | null; employment_status: string };
+type DashboardProfile = { full_name: string; preferred_name: string | null; employee_number: string; official_email: string | null; personal_email: string | null; phone: string | null; official_phone: string | null; gender: string | null; date_of_birth: string | null; nationality: string | null; marital_status: string | null; emergency_contact_name: string | null; emergency_contact_phone: string | null; emergency_contact_relation: string | null; employment_status: string };
 type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
@@ -227,6 +227,9 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
     date_of_birth: profile.date_of_birth || '',
     nationality: profile.nationality || '',
     marital_status: profile.marital_status || '',
+    emergency_contact_name: profile.emergency_contact_name || '',
+    emergency_contact_phone: profile.emergency_contact_phone || '',
+    emergency_contact_relation: profile.emergency_contact_relation || '',
   });
   useEffect(() => {
     setForm({
@@ -237,6 +240,9 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
       date_of_birth: profile.date_of_birth || '',
       nationality: profile.nationality || '',
       marital_status: profile.marital_status || '',
+      emergency_contact_name: profile.emergency_contact_name || '',
+      emergency_contact_phone: profile.emergency_contact_phone || '',
+      emergency_contact_relation: profile.emergency_contact_relation || '',
     });
     setError('');
   }, [profile]);
@@ -288,6 +294,9 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
         date_of_birth: form.date_of_birth,
         nationality: form.nationality.trim(),
         marital_status: form.marital_status.trim(),
+        emergency_contact_name: form.emergency_contact_name.trim(),
+        emergency_contact_phone: form.emergency_contact_phone.trim(),
+        emergency_contact_relation: form.emergency_contact_relation.trim(),
       } });
       if (updateError) throw updateError;
       setEditing(false);
@@ -380,8 +389,11 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
         <div><label htmlFor="employee-profile-date-of-birth" className="block text-xs font-medium text-slate-600">Date of birth</label><input id="employee-profile-date-of-birth" type="date" max={new Date().toISOString().slice(0, 10)} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.date_of_birth} onChange={event => setForm(value => ({ ...value, date_of_birth: event.target.value }))}/></div>
         <div><label htmlFor="employee-profile-nationality" className="block text-xs font-medium text-slate-600">Nationality</label><input id="employee-profile-nationality" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.nationality} onChange={event => setForm(value => ({ ...value, nationality: event.target.value }))}/></div>
         <div><label htmlFor="employee-profile-marital-status" className="block text-xs font-medium text-slate-600">Marital status</label><input id="employee-profile-marital-status" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.marital_status} onChange={event => setForm(value => ({ ...value, marital_status: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-emergency-contact-name" className="block text-xs font-medium text-slate-600">Emergency contact name</label><input id="employee-profile-emergency-contact-name" maxLength={200} autoComplete="name" className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.emergency_contact_name} onChange={event => setForm(value => ({ ...value, emergency_contact_name: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-emergency-contact-phone" className="block text-xs font-medium text-slate-600">Emergency contact phone</label><input id="employee-profile-emergency-contact-phone" type="tel" autoComplete="tel" maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.emergency_contact_phone} onChange={event => setForm(value => ({ ...value, emergency_contact_phone: event.target.value }))}/></div>
+        <div><label htmlFor="employee-profile-emergency-contact-relation" className="block text-xs font-medium text-slate-600">Emergency contact relationship</label><input id="employee-profile-emergency-contact-relation" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.emergency_contact_relation} onChange={event => setForm(value => ({ ...value, emergency_contact_relation: event.target.value }))}/></div>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save personal information'}</button><button type="button" disabled={saving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setForm({ preferred_name: profile.preferred_name || '', personal_email: profile.personal_email || '', phone: profile.phone || '', gender: profile.gender || '', date_of_birth: profile.date_of_birth || '', nationality: profile.nationality || '', marital_status: profile.marital_status || '' }); setEditing(false); setError(''); }}>Cancel</button></div>
+      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save personal information'}</button><button type="button" disabled={saving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setForm({ preferred_name: profile.preferred_name || '', personal_email: profile.personal_email || '', phone: profile.phone || '', gender: profile.gender || '', date_of_birth: profile.date_of_birth || '', nationality: profile.nationality || '', marital_status: profile.marital_status || '', emergency_contact_name: profile.emergency_contact_name || '', emergency_contact_phone: profile.emergency_contact_phone || '', emergency_contact_relation: profile.emergency_contact_relation || '' }); setEditing(false); setError(''); }}>Cancel</button></div>
     </form> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
       <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{profile.full_name || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Preferred name</dt><dd className="font-medium">{profile.preferred_name || 'Not provided'}</dd></div>
@@ -394,6 +406,9 @@ function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: D
       <div><dt className="text-xs text-slate-500">Date of birth</dt><dd className="font-medium">{profile.date_of_birth || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Nationality</dt><dd className="font-medium">{profile.nationality || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{profile.marital_status || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Emergency contact name</dt><dd className="font-medium">{profile.emergency_contact_name || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Emergency contact phone</dt><dd className="font-medium">{profile.emergency_contact_phone || 'Not provided'}</dd></div>
+      <div><dt className="text-xs text-slate-500">Emergency contact relationship</dt><dd className="font-medium">{profile.emergency_contact_relation || 'Not provided'}</dd></div>
       <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{profile.employment_status.replace(/_/g, ' ')}</dd></div>
     </dl>}
     <section id="employee-addresses" aria-label="Present and permanent addresses" className="border-t">
@@ -776,7 +791,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           // Resolve only the authenticated user's minimized profile. RLS applies
           // to this read; the attendance query is additionally constrained by
           // this row's tenant and employee IDs.
-          const linkedEmployee = await supabase.from('employees').select('id,full_name,preferred_name,employee_number,official_email,personal_email,phone,official_phone,gender,date_of_birth,nationality,marital_status,employment_status')
+          const linkedEmployee = await supabase.from('employees').select('id,full_name,preferred_name,employee_number,official_email,personal_email,phone,official_phone,gender,date_of_birth,nationality,marital_status,emergency_contact_name,emergency_contact_phone,emergency_contact_relation,employment_status')
             .eq('tenant_id', tenantId).eq('user_id', user!.id).limit(1).maybeSingle();
           if (linkedEmployee.error) return { data: null, profile: null, error: linkedEmployee.error, pendingCorrections: [], pendingCorrectionsError: true };
           if (!linkedEmployee.data) return { data: null, profile: null, error: null, pendingCorrections: [], pendingCorrectionsError: false };

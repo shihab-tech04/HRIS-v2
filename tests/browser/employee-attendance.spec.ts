@@ -165,7 +165,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     else if (table === 'employees') {
       employeeProfileFilter = Object.fromEntries(url.searchParams.entries());
       data = url.searchParams.get('user_id') === `eq.${userId}`
-        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', preferred_name: updatedProfileFields.preferred_name ?? 'Sam', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', personal_email: updatedProfileFields.personal_email ?? 'sam.personal@example.org', phone: updatedProfileFields.phone ?? '+8801712345678', official_phone: '+88029000000', gender: updatedProfileFields.gender ?? 'Female', date_of_birth: updatedProfileFields.date_of_birth ?? '1990-04-12', nationality: updatedProfileFields.nationality ?? 'Bangladeshi', marital_status: updatedProfileFields.marital_status ?? 'Single', employment_status: 'active' }]
+        ? [{ id: employeeId, tenant_id: tenantId, full_name: 'Synthetic Employee', preferred_name: updatedProfileFields.preferred_name ?? 'Sam', employee_number: 'SYN-001', official_email: 'synthetic.employee@example.org', personal_email: updatedProfileFields.personal_email ?? 'sam.personal@example.org', phone: updatedProfileFields.phone ?? '+8801712345678', official_phone: '+88029000000', gender: updatedProfileFields.gender ?? 'Female', date_of_birth: updatedProfileFields.date_of_birth ?? '1990-04-12', nationality: updatedProfileFields.nationality ?? 'Bangladeshi', marital_status: updatedProfileFields.marital_status ?? 'Single', emergency_contact_name: updatedProfileFields.emergency_contact_name ?? 'Taylor Employee', emergency_contact_phone: updatedProfileFields.emergency_contact_phone ?? '+8801912345678', emergency_contact_relation: updatedProfileFields.emergency_contact_relation ?? 'Sibling', employment_status: 'active' }]
         : [];
     } else if (table === 'admin_users') data = { active: false, is_super_admin: false };
     else if (table === 'tenants') data = [{ id: tenantId, name: 'Test tenant', slug: 'test-tenant', timezone: 'Asia/Dhaka' }];
@@ -214,7 +214,7 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   expect(selfServiceContextMethod).toBe('POST');
   expect(payslipMethod).toBe('POST');
   expect(employeeProfileFilter).toMatchObject({
-    select: 'id,full_name,preferred_name,employee_number,official_email,personal_email,phone,official_phone,gender,date_of_birth,nationality,marital_status,employment_status',
+    select: 'id,full_name,preferred_name,employee_number,official_email,personal_email,phone,official_phone,gender,date_of_birth,nationality,marital_status,emergency_contact_name,emergency_contact_phone,emergency_contact_relation,employment_status',
     tenant_id: `eq.${tenantId}`,
     user_id: `eq.${userId}`,
   });
@@ -303,6 +303,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(profile.getByText('1990-04-12')).toBeVisible();
   await expect(profile.getByText('Bangladeshi')).toBeVisible();
   await expect(profile.getByText('Single')).toBeVisible();
+  await expect(profile.getByText('Taylor Employee')).toBeVisible();
+  await expect(profile.getByText('+8801912345678')).toBeVisible();
+  await expect(profile.getByText('Sibling')).toBeVisible();
   await expect(profile.getByText('active')).toBeVisible();
 
   await profile.getByRole('button', { name: 'Edit personal information' }).click();
@@ -313,6 +316,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await profile.getByLabel('Date of birth').fill('1990-04-13');
   await profile.getByLabel('Nationality').fill('Bangladeshi');
   await profile.getByLabel('Marital status').fill('Single');
+  await profile.getByLabel('Emergency contact name').fill('Jamie Employee');
+  await profile.getByLabel('Emergency contact phone').fill('+8801811112222');
+  await profile.getByLabel('Emergency contact relationship').fill('Parent');
   await profile.getByRole('button', { name: 'Save personal information' }).click();
   await expect(profile.getByText('Sammy', { exact: true })).toBeVisible();
   await expect(profile.getByText('sammy.personal@example.org')).toBeVisible();
@@ -322,6 +328,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
   await expect(profile.getByText('1990-04-13')).toBeVisible();
   await expect(profile.getByText('Bangladeshi')).toBeVisible();
   await expect(profile.getByText('Single')).toBeVisible();
+  await expect(profile.getByText('Jamie Employee')).toBeVisible();
+  await expect(profile.getByText('+8801811112222')).toBeVisible();
+  await expect(profile.getByText('Parent')).toBeVisible();
   expect(profileUpdateMethod).toBe('POST');
   expect(profileUpdatePayload).toEqual({ p_payload: {
     preferred_name: 'Sammy',
@@ -331,6 +340,9 @@ test('employee sees own attendance, pending requests and dashboard records', asy
     date_of_birth: '1990-04-13',
     nationality: 'Bangladeshi',
     marital_status: 'Single',
+    emergency_contact_name: 'Jamie Employee',
+    emergency_contact_phone: '+8801811112222',
+    emergency_contact_relation: 'Parent',
   } });
 
   const addresses = profile.getByRole('region', { name: 'Present and permanent addresses' });
