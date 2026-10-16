@@ -88,7 +88,6 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
     setNotes({});
     setCvLinks({});
     setError('');
-    setNotice('');
     setLoading(true);
 
     void (async () => {
@@ -129,6 +128,10 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
 
     return () => { active = false; };
   }, [revision, reloadKey, tenantId]);
+
+  useEffect(() => {
+    setNotice('');
+  }, [revision, tenantId]);
 
   async function updateStage(application: CandidateApplication) {
     const stage = selectedStages[application.id];
