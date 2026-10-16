@@ -58,6 +58,9 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/fixture.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261012_01_hris_candidate_c1_least_privilege.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/candidate-c1/verify.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/employee_payslips_fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016132937_hris_require_live_session_for_payslips.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/verify_employee_payslips.sql
       - name: Report boundaries
         run: |
           echo "Executed Phase 2A tenant SQL in synthetic PostgreSQL 17."
