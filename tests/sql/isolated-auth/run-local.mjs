@@ -4560,7 +4560,7 @@ try {
       HRIS_LOCAL_TIMESHEET_TENANT_ID: ids.tenantA,
       HRIS_LOCAL_TIMESHEET_ALLOCATION_ID: submitterProjectAllocationA.data?.id,
       HRIS_LOCAL_TIMESHEET_PROJECT_NAME: projectA.name,
-      HRIS_LOCAL_TIMESHEET_WORK_DATE: localCurrentDate,
+      HRIS_LOCAL_TIMESHEET_WORK_DATE: addCalendarDays(localCurrentDate, 1),
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
