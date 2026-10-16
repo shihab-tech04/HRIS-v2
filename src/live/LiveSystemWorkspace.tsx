@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { RecruitmentPipeline } from './RecruitmentPipeline';
 
 type RowData = Record<string, unknown>;
 type Module = {
@@ -12,6 +13,7 @@ type Module = {
   primary?: string;
   secondary?: string[];
   status?: string;
+  integrated?: boolean;
 };
 const modules: Module[] = [
   { id: 'overview', group: 'Workspace', title: 'System overview', description: 'Live, permission-filtered HRIS operational snapshot.' },
@@ -29,7 +31,7 @@ const modules: Module[] = [
   { id: 'learning', group: 'Performance & Learning', title: 'Learning programs', description: 'Learning program catalog.', table: 'learning_programs', fields: 'id,title,category,delivery_mode,active', primary: 'title', secondary: ['category', 'delivery_mode'], status: 'active' },
   { id: 'requisitions', group: 'Recruitment & Onboarding', title: 'Manpower requisitions', description: 'Hiring requests and approvals.', table: 'manpower_requisitions', fields: 'id,title,reference_number,required_positions,status', primary: 'title', secondary: ['reference_number', 'required_positions'], status: 'status' },
   { id: 'jobs', group: 'Recruitment & Onboarding', title: 'Job postings', description: 'Jobs created in the HRIS database.', table: 'jobs', fields: 'id,title,reference_number,department_name,status', primary: 'title', secondary: ['reference_number', 'department_name'], status: 'status' },
-  { id: 'candidate', group: 'Recruitment & Onboarding', title: 'Candidate pipeline', description: 'Candidate and ATS workflow integration is not yet released in this Admin application.' },
+  { id: 'candidate', group: 'Recruitment & Onboarding', title: 'Candidate pipeline', description: 'Review live applications and update stages with recruitment permissions.', integrated: true },
   { id: 'onboarding', group: 'Recruitment & Onboarding', title: 'Employee onboarding', description: 'Onboarding handoff and approval workflows are not yet connected here.' },
   { id: 'payPeriods', group: 'Compensation & Services', title: 'Payroll periods', description: 'Pay-period schedule only. Confidential employee payslips are not exposed by this view.', table: 'pay_periods', fields: 'id,name,start_date,end_date,status', primary: 'name', secondary: ['start_date', 'end_date'], status: 'status' },
   { id: 'compensation', group: 'Compensation & Services', title: 'Compensation management', description: 'Salary calculations, payroll actions and sensitive employee compensation are not connected here.' },
@@ -108,7 +110,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
                 className={'min-h-10 rounded-md px-3 py-2 w-full flex items-center justify-between text-left gap-2 text-sm ' +
                   (selected.id === module.id ? 'bg-[#085587] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100')}>
                 <span>{module.title}</span>
-                <span aria-label={module.table ? 'Database records' : 'Workflow pending'} className="text-xs opacity-70">{module.table ? '●' : '○'}</span>
+                <span aria-label={module.table ? 'Database records' : module.integrated ? 'Permission-controlled live workflow' : 'Workflow pending'} className="text-xs opacity-70">{module.table || module.integrated ? '●' : '○'}</span>
               </button>
             )}</div>
           </div>)}
@@ -143,7 +145,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
             <p className="text-sm text-slate-600 mt-2">All HRIS areas are listed in the navigation. A filled marker indicates an RLS-filtered live record view. An empty marker indicates a workflow that is not yet integrated. No sample data or simulated saves are displayed.</p>
             <p className="text-sm text-slate-600 mt-2">Employee, Manager, HOD, HR, Admin, Super Admin and CEO workflows require their own verified role-based journeys. Viewing this system index does not impersonate those roles.</p>
           </section>
-        </> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
             <h3 className="font-semibold">Authorized records</h3>
             <p className="text-xs text-slate-500">RLS protected · up to 50 records · read only</p>
