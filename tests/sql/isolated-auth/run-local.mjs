@@ -417,6 +417,7 @@ for (const file of [
   // migrations that recreate its check constraint.
   path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016092922_candidate_context_authenticated_execute.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -575,6 +576,62 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const familyPolicyState = queryAdmin(`SELECT jsonb_build_object(
+  'rls_enabled', c.relrowsecurity,
+  'admin_policy', (SELECT qual FROM pg_policies WHERE schemaname='public'
+    AND tablename='employee_family_members' AND policyname='employee_family_admin_read'),
+  'self_policy', (SELECT qual FROM pg_policies WHERE schemaname='public'
+    AND tablename='employee_family_members' AND policyname='employee_family_members_self_read'),
+  'tenant_guard', (SELECT jsonb_build_object('permissive',permissive,'qual',qual)
+    FROM pg_policies WHERE schemaname='public' AND tablename='employee_family_members'
+      AND policyname='employee_family_tenant_guard'),
+  'select_grant',has_table_privilege('authenticated','public.employee_family_members','SELECT'),
+  'insert_grant',has_table_privilege('authenticated','public.employee_family_members','INSERT'),
+  'update_grant',has_table_privilege('authenticated','public.employee_family_members','UPDATE'),
+  'delete_grant',has_table_privilege('authenticated','public.employee_family_members','DELETE')
+) FROM pg_class c WHERE c.oid='public.employee_family_members'::regclass`);
+record('Family RLS replaces global permission reads with tenant-scoped admin and own-row policies',
+  familyPolicyState.rls_enabled === true
+    && String(familyPolicyState.admin_policy).includes('hris_admin_can_read_tenant')
+    && !String(familyPolicyState.admin_policy).includes('has_permission')
+    && String(familyPolicyState.self_policy).includes('hris_own_employee_for_tenant')
+    && familyPolicyState.tenant_guard?.permissive === 'RESTRICTIVE'
+    && String(familyPolicyState.tenant_guard?.qual).includes('hris_admin_can_read_tenant')
+    && familyPolicyState.select_grant === true
+    && familyPolicyState.insert_grant === false
+    && familyPolicyState.update_grant === false
+    && familyPolicyState.delete_grant === false,
+  JSON.stringify(familyPolicyState));
+
+const [familyAdminA, familyAdminB, familyViewerA, familyEmployeeA, familyEmployeeB, familyGlobalOnly] = await Promise.all([
+  managerA.client.from('employee_family_members').select('id,name').order('id'),
+  managerB.client.from('employee_family_members').select('id,name').order('id'),
+  employeesViewer.client.from('employee_family_members').select('id,name').order('id'),
+  employeeA.client.from('employee_family_members').select('id,name').order('id'),
+  employeeB.client.from('employee_family_members').select('id,name').order('id'),
+  globalOnly.client.from('employee_family_members').select('id,name').order('id'),
+]);
+const familyRowA = 'a1111111-1111-4111-8111-111111111111';
+const familyRowB = 'a2222222-2222-4222-8222-222222222222';
+record('Family read/manage access returns only rows from each manager active tenant',
+  !familyAdminA.error && !familyAdminB.error
+    && familyAdminA.data?.length === 1 && familyAdminA.data[0]?.id === familyRowA
+    && familyAdminB.data?.length === 1 && familyAdminB.data[0]?.id === familyRowB);
+record('Employee directory viewer reads only family rows in its tenant',
+  !familyViewerA.error && familyViewerA.data?.length === 1 && familyViewerA.data[0]?.id === familyRowA);
+record('Employees read only their own linked family rows in either tenant',
+  !familyEmployeeA.error && !familyEmployeeB.error
+    && familyEmployeeA.data?.length === 1 && familyEmployeeA.data[0]?.id === familyRowA
+    && familyEmployeeB.data?.length === 1 && familyEmployeeB.data[0]?.id === familyRowB);
+record('Global legacy role without tenant membership cannot read family rows',
+  !familyGlobalOnly.error && familyGlobalOnly.data?.length === 0);
+const directFamilyWrite = await employeeA.client.from('employee_family_members').insert({
+  id: 'a3333333-3333-4333-8333-333333333333',
+  employee_id: '55555555-5555-4555-8555-555555555555',
+  name: 'Synthetic Unauthorized Dependent',
+}).select('id');
+record('Direct family table writes remain denied', !!directFamilyWrite.error);
 
 const candidateStageHistoryAccess = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,

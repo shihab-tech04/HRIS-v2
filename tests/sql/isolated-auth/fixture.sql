@@ -242,6 +242,28 @@ CREATE TABLE public.employees (
   UNIQUE (tenant_id, official_email)
 );
 
+-- Synthetic copy of the hosted family table. Its first policy intentionally
+-- mirrors the legacy global permission rule that the migration must replace.
+CREATE TABLE public.employee_family_members (
+  id uuid PRIMARY KEY,
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  name text NOT NULL,
+  relationship text,
+  date_of_birth date,
+  phone text,
+  nid_number text,
+  present_address text,
+  permanent_address text,
+  is_nominee boolean NOT NULL DEFAULT false,
+  working_in_synesis boolean NOT NULL DEFAULT false,
+  occupation text,
+  academic_qualification text,
+  blood_group text,
+  gender text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT SELECT ON public.employee_family_members TO authenticated;
+
 -- Synthetic Learning & Development tables for the disposable local Auth suite.
 -- These mirror only the production columns used by the employee self-service flow.
 CREATE TABLE public.learning_programs (
@@ -850,6 +872,7 @@ ALTER TABLE public.performance_appraisals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.performance_goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_performance_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_family_members ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY employees_admin_read ON public.employees
   FOR SELECT TO authenticated USING (
@@ -864,6 +887,14 @@ CREATE POLICY hris_employees_tenant_read_guard ON public.employees
     id=public.hris_own_employee_for_tenant(tenant_id)
     OR public.hris_admin_can_read_tenant(tenant_id,'employees.view')
     OR public.hris_admin_can_read_tenant(tenant_id,'employees.manage')
+  );
+CREATE POLICY employee_family_admin_read ON public.employee_family_members
+  FOR SELECT TO authenticated USING (
+    public.has_permission('employees.view') OR public.has_permission('employees.manage')
+  );
+CREATE POLICY employee_family_members_self_read ON public.employee_family_members
+  FOR SELECT TO authenticated USING (
+    public.is_live_session() AND employee_id=public.employee_for_auth_user()
   );
 CREATE POLICY departments_admin_read ON public.departments
   FOR SELECT TO authenticated USING (
@@ -1133,6 +1164,9 @@ INSERT INTO public.employees(id,tenant_id,user_id,department_id,team_id,designat
   ('55555555-5555-4555-8555-555555555555','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-a@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-001','Synthetic Employee A','employee-a@hris.test','personal-a@hris.test','+880 1700 000001','+880 2 5550001','QA A home address','QA A mailing address','QA A emergency contact','+880 1700 000101','Parent','2026-01-01'),
   ('66666666-6666-4666-8666-666666666666','22222222-2222-4222-8222-222222222222',(SELECT id FROM auth.users WHERE email='employee-b@hris.test'),'eeeeeeee-0000-4000-8000-000000000002','dddddddd-0000-4000-8000-000000000002','ffffffff-0000-4000-8000-000000000002','44444444-4444-4444-8444-444444444444','QA-B-001','Synthetic Employee B','employee-b@hris.test',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-01'),
   ('55555555-5555-4555-8555-555555555560','11111111-1111-4111-8111-111111111111',(SELECT id FROM auth.users WHERE email='employee-clock@hris.test'),'eeeeeeee-0000-4000-8000-000000000001','dddddddd-0000-4000-8000-000000000001','ffffffff-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','QA-A-006','Synthetic Clock Employee','employee-clock@hris.test',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-01');
+INSERT INTO public.employee_family_members(id,employee_id,name,relationship,date_of_birth,is_nominee) VALUES
+  ('a1111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','Synthetic Dependent A','Child','2015-06-17',true),
+  ('a2222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','Synthetic Dependent B','Parent','1965-03-21',false);
 INSERT INTO public.performance_goals(id,tenant_id,employee_id,title,description,category,target_metric,current_progress,due_date,status,weight,origin) VALUES
   ('88888888-8888-4888-8888-888888888801','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','QA A goal','Synthetic own goal','Individual','Complete local acceptance',20,'2026-12-31','in_progress',50,'assigned'),
   ('88888888-8888-4888-8888-888888888802','22222222-2222-4222-8222-222222222222','66666666-6666-4666-8666-666666666666','QA B goal','Synthetic other-tenant goal','Individual','Complete local acceptance',10,'2026-12-31','in_progress',50,'assigned');
