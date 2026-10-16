@@ -27,8 +27,79 @@ type CandidateApplication = {
   job_reference?: string | null;
   stage_history?: StageHistory[] | null;
 };
-type RecruitmentData = { applications?: CandidateApplication[] | null };
+type RecruiterInterview = {
+  id: string;
+  application_id: string;
+  scheduled_at?: string | null;
+  interview_type?: string | null;
+  location_or_link?: string | null;
+  panel_notes?: string | null;
+  status?: string | null;
+  duration_minutes?: number | null;
+  timezone?: string | null;
+  instructions?: string | null;
+  panel_members?: string[] | null;
+  candidate_response?: string | null;
+  candidate_response_note?: string | null;
+  candidate_proposed_times?: string | null;
+};
+type RecruiterAssessment = {
+  id: string;
+  application_id: string;
+  title?: string | null;
+  assessment_type?: string | null;
+  instructions?: string | null;
+  deadline_date?: string | null;
+  status?: string | null;
+  submission_data?: Record<string, unknown> | null;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+};
+type RecruitmentData = {
+  applications?: CandidateApplication[] | null;
+  interviews?: RecruiterInterview[] | null;
+  assessments?: RecruiterAssessment[] | null;
+};
 type Access = 'checking' | 'denied' | 'view' | 'manage';
+type InterviewDraft = {
+  scheduledAt: string;
+  interviewType: string;
+  locationOrLink: string;
+  panelNotes: string;
+  durationMinutes: string;
+  instructions: string;
+  panelMembers: string;
+};
+type AssessmentDraft = {
+  title: string;
+  assessmentType: string;
+  instructions: string;
+  deadlineDate: string;
+};
+
+const emptyInterviewDraft: InterviewDraft = {
+  scheduledAt: '', interviewType: 'Technical interview', locationOrLink: '', panelNotes: '',
+  durationMinutes: '60', instructions: '', panelMembers: ''
+};
+
+function localDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function todayDate(): string {
+  return localDate(new Date());
+}
+
+function tomorrowDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return localDate(date);
+}
+
+function emptyAssessmentDraft(): AssessmentDraft {
+  return { title: '', assessmentType: 'Technical assessment', instructions: '', deadlineDate: tomorrowDate() };
+}
 
 const reviewStages: { value: ReviewStage; label: string }[] = [
   { value: 'screening', label: 'Screening' },
@@ -70,6 +141,8 @@ function privateCvPath(application: CandidateApplication): string | null {
 export function RecruitmentPipeline({ revision, tenantId }: { revision: number; tenantId: string }) {
   const [access, setAccess] = useState<Access>('checking');
   const [applications, setApplications] = useState<CandidateApplication[]>([]);
+  const [interviews, setInterviews] = useState<RecruiterInterview[]>([]);
+  const [assessments, setAssessments] = useState<RecruiterAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -79,14 +152,25 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
   const [savingId, setSavingId] = useState('');
   const [cvLoadingId, setCvLoadingId] = useState('');
   const [cvLinks, setCvLinks] = useState<Record<string, string>>({});
+  const [interviewDrafts, setInterviewDrafts] = useState<Record<string, InterviewDraft>>({});
+  const [assessmentDrafts, setAssessmentDrafts] = useState<Record<string, AssessmentDraft>>({});
+  const [assessmentReviewNotes, setAssessmentReviewNotes] = useState<Record<string, string>>({});
+  const [savingInterviewId, setSavingInterviewId] = useState('');
+  const [savingAssessmentId, setSavingAssessmentId] = useState('');
+  const [reviewingAssessmentId, setReviewingAssessmentId] = useState('');
 
   useEffect(() => {
     let active = true;
     setAccess('checking');
     setApplications([]);
+    setInterviews([]);
+    setAssessments([]);
     setSelectedStages({});
     setNotes({});
     setCvLinks({});
+    setInterviewDrafts({});
+    setAssessmentDrafts({});
+    setAssessmentReviewNotes({});
     setError('');
     setLoading(true);
 
@@ -115,6 +199,8 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
       const records = (data as RecruitmentData).applications;
       if (active) {
         setApplications(Array.isArray(records) ? records.filter(row => typeof row?.id === 'string') : []);
+        setInterviews(Array.isArray((data as RecruitmentData).interviews) ? (data as RecruitmentData).interviews!.filter(row => typeof row?.id === 'string') : []);
+        setAssessments(Array.isArray((data as RecruitmentData).assessments) ? (data as RecruitmentData).assessments!.filter(row => typeof row?.id === 'string') : []);
         setAccess(canManage ? 'manage' : 'view');
       }
     })().catch(() => {
@@ -178,6 +264,112 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
     }
   }
 
+  function updateInterviewDraft(applicationId: string, key: keyof InterviewDraft, value: string) {
+    setInterviewDrafts(current => ({
+      ...current,
+      [applicationId]: { ...emptyInterviewDraft, ...current[applicationId], [key]: value }
+    }));
+  }
+
+  function updateAssessmentDraft(applicationId: string, key: keyof AssessmentDraft, value: string) {
+    setAssessmentDrafts(current => ({
+      ...current,
+      [applicationId]: { ...current[applicationId] || emptyAssessmentDraft(), [key]: value }
+    }));
+  }
+
+  async function scheduleInterview(application: CandidateApplication) {
+    const draft = interviewDrafts[application.id] || emptyInterviewDraft;
+    const scheduledAt = new Date(draft.scheduledAt);
+    const durationMinutes = Number(draft.durationMinutes);
+    if (!draft.scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+      setError('Choose a future interview date and time.');
+      return;
+    }
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 600) {
+      setError('Interview duration must be between 1 and 600 minutes.');
+      return;
+    }
+    setSavingInterviewId(application.id);
+    setError('');
+    setNotice('');
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Dhaka';
+      const { error: scheduleError } = await supabase.rpc('admin_schedule_interview', {
+        p_application_id: application.id,
+        p_payload: {
+          scheduled_at: scheduledAt.toISOString(),
+          interview_type: draft.interviewType.trim() || 'Interview',
+          location_or_link: draft.locationOrLink.trim() || null,
+          panel_notes: draft.panelNotes.trim() || null,
+          duration_minutes: durationMinutes,
+          timezone,
+          instructions: draft.instructions.trim() || null,
+          panel_members: draft.panelMembers.split(/[\n,]/).map(member => member.trim()).filter(Boolean)
+        }
+      });
+      if (scheduleError) throw scheduleError;
+      setNotice('Interview scheduled in HRIS and the candidate has been notified.');
+      setInterviewDrafts(current => ({ ...current, [application.id]: emptyInterviewDraft }));
+      setReloadKey(value => value + 1);
+    } catch {
+      setError('The interview was not scheduled. Check recruitment management permission and choose a future time.');
+    } finally {
+      setSavingInterviewId('');
+    }
+  }
+
+  async function assignAssessment(application: CandidateApplication) {
+    const draft = assessmentDrafts[application.id] || emptyAssessmentDraft();
+    if (!draft.title.trim() || !draft.assessmentType.trim() || !draft.instructions.trim() || !draft.deadlineDate) {
+      setError('Assessment title, type, instructions and deadline are required.');
+      return;
+    }
+    setSavingAssessmentId(application.id);
+    setError('');
+    setNotice('');
+    try {
+      const { error: assignmentError } = await supabase.rpc('admin_assign_assessment', {
+        p_application_id: application.id,
+        p_payload: {
+          title: draft.title.trim(),
+          assessment_type: draft.assessmentType.trim(),
+          instructions: draft.instructions.trim(),
+          deadline_date: draft.deadlineDate
+        }
+      });
+      if (assignmentError) throw assignmentError;
+      setNotice('Assessment assigned in HRIS and the candidate has been notified.');
+      setAssessmentDrafts(current => ({ ...current, [application.id]: emptyAssessmentDraft() }));
+      setReloadKey(value => value + 1);
+    } catch {
+      setError('The assessment was not assigned. Check recruitment management permission and use a current deadline.');
+    } finally {
+      setSavingAssessmentId('');
+    }
+  }
+
+  async function reviewAssessment(assessment: RecruiterAssessment) {
+    if (access !== 'manage' || assessment.status !== 'submitted') return;
+    setReviewingAssessmentId(assessment.id);
+    setError('');
+    setNotice('');
+    try {
+      const { error: reviewError } = await supabase.rpc('admin_review_assessment', {
+        p_assessment_id: assessment.id,
+        p_note: assessmentReviewNotes[assessment.id]?.trim() || null
+      });
+      if (reviewError) throw reviewError;
+      setNotice('Assessment evaluation saved in HRIS.');
+      setAssessmentReviewNotes(current => ({ ...current, [assessment.id]: '' }));
+      setReloadKey(value => value + 1);
+    } catch {
+      setError('The assessment review was not saved. Confirm the candidate submission and recruitment management permission.');
+    } finally {
+      setReviewingAssessmentId('');
+    }
+  }
+
   if (access === 'checking' && loading) return <section className="bg-white border border-slate-200 rounded-xl p-5" role="status">Checking recruitment permissions…</section>;
 
   return <section aria-label="Recruiter candidate pipeline" className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -198,6 +390,9 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
           const answers = applicationAnswers(application);
           const isClosed = ['hired', 'withdrawn', 'offer_declined'].includes(application.stage || '');
           const path = privateCvPath(application);
+          const applicationInterviews = interviews.filter(interview => interview.application_id === application.id);
+          const applicationAssessments = assessments.filter(assessment => assessment.application_id === application.id);
+          const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Dhaka';
           return <li key={application.id} className="p-4 sm:p-5 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -260,6 +455,73 @@ export function RecruitmentPipeline({ revision, tenantId }: { revision: number; 
               {isClosed && <p className="mt-2 text-xs text-slate-600">This application is closed and cannot be changed from the pipeline.</p>}
               <p className="mt-2 text-xs text-slate-500">Stage changes are checked and audited by HRIS. Candidate accounts do not receive internal notes.</p>
             </fieldset>}
+
+            {(applicationInterviews.length > 0 || access === 'manage') && <section className="rounded-md border border-slate-200 p-3 space-y-3" aria-label={`Interview coordination for ${readable(application.full_name)}`}>
+              <h5 className="text-sm font-semibold text-slate-900">Interview coordination</h5>
+              {applicationInterviews.length ? <ul className="space-y-2">{applicationInterviews.map(interview => <li key={interview.id} className="rounded-md bg-slate-50 p-3 text-sm">
+                <p className="font-medium">{readable(interview.interview_type)} · {dateLabel(interview.scheduled_at)} ({readable(interview.timezone)})</p>
+                <p className="text-xs text-slate-600 mt-1">{readable(interview.status)} · {interview.duration_minutes ?? 60} minutes · {readable(interview.location_or_link)}</p>
+                {interview.panel_members?.length ? <p className="text-xs text-slate-600 mt-1">Panel: {interview.panel_members.join(', ')}</p> : null}
+                {interview.instructions && <p className="mt-2 whitespace-pre-wrap text-slate-700">Candidate instructions: {interview.instructions}</p>}
+                {interview.candidate_response && <p className="mt-2 text-xs text-slate-700">Candidate response: {interview.candidate_response}{interview.candidate_response_note ? ` · ${interview.candidate_response_note}` : ''}{interview.candidate_proposed_times ? ` · Availability: ${interview.candidate_proposed_times}` : ''}</p>}
+                {interview.panel_notes && <p className="mt-2 text-xs text-amber-900">Private panel note: {interview.panel_notes}</p>}
+              </li>)}</ul> : <p className="text-xs text-slate-600">No interview is scheduled for this application.</p>}
+              {access === 'manage' && !isClosed && <details className="rounded-md border border-slate-200 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-800">Schedule interview</summary>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <div><label htmlFor={`interview-time-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Date and time ({localTimeZone})</label>
+                    <input id={`interview-time-${application.id}`} type="datetime-local" value={interviewDrafts[application.id]?.scheduledAt || ''} onChange={event => updateInterviewDraft(application.id, 'scheduledAt', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-2 text-sm" /></div>
+                  <div><label htmlFor={`interview-type-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Interview type</label>
+                    <input id={`interview-type-${application.id}`} value={interviewDrafts[application.id]?.interviewType ?? emptyInterviewDraft.interviewType} onChange={event => updateInterviewDraft(application.id, 'interviewType', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
+                  <div><label htmlFor={`interview-location-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Meeting location or link</label>
+                    <input id={`interview-location-${application.id}`} value={interviewDrafts[application.id]?.locationOrLink || ''} onChange={event => updateInterviewDraft(application.id, 'locationOrLink', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
+                  <div><label htmlFor={`interview-duration-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Duration in minutes</label>
+                    <input id={`interview-duration-${application.id}`} type="number" min="1" max="600" value={interviewDrafts[application.id]?.durationMinutes ?? '60'} onChange={event => updateInterviewDraft(application.id, 'durationMinutes', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
+                  <div className="sm:col-span-2"><label htmlFor={`interview-panel-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Panel members</label>
+                    <input id={`interview-panel-${application.id}`} value={interviewDrafts[application.id]?.panelMembers || ''} onChange={event => updateInterviewDraft(application.id, 'panelMembers', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" placeholder="Names separated by commas" /></div>
+                  <div className="sm:col-span-2"><label htmlFor={`interview-instructions-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Candidate instructions</label>
+                    <textarea id={`interview-instructions-${application.id}`} value={interviewDrafts[application.id]?.instructions || ''} onChange={event => updateInterviewDraft(application.id, 'instructions', event.target.value)} rows={2} className="w-full rounded-md border border-slate-300 p-3 text-sm" /></div>
+                  <div className="sm:col-span-2"><label htmlFor={`interview-notes-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Private panel notes</label>
+                    <textarea id={`interview-notes-${application.id}`} value={interviewDrafts[application.id]?.panelNotes || ''} onChange={event => updateInterviewDraft(application.id, 'panelNotes', event.target.value)} rows={2} className="w-full rounded-md border border-slate-300 p-3 text-sm" /></div>
+                </div>
+                <button type="button" disabled={savingInterviewId === application.id} onClick={() => void scheduleInterview(application)} className="min-h-10 mt-3 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{savingInterviewId === application.id ? 'Scheduling…' : 'Schedule interview'}</button>
+                <p className="mt-2 text-xs text-slate-500">Saved through HRIS. The listed time is converted from {localTimeZone} and the candidate is notified by the existing recruitment workflow.</p>
+              </details>}
+            </section>}
+
+            {(applicationAssessments.length > 0 || access === 'manage') && <section className="rounded-md border border-slate-200 p-3 space-y-3" aria-label={`Assessment review for ${readable(application.full_name)}`}>
+              <h5 className="text-sm font-semibold text-slate-900">Assessment and panel review</h5>
+              {applicationAssessments.length ? <ul className="space-y-2">{applicationAssessments.map(assessment => {
+                const submissionText = assessment.submission_data?.submission_text;
+                return <li key={assessment.id} className="rounded-md bg-slate-50 p-3 text-sm">
+                  <p className="font-medium">{readable(assessment.title)} · {readable(assessment.status)}</p>
+                  <p className="text-xs text-slate-600 mt-1">{readable(assessment.assessment_type)} · Due {readable(assessment.deadline_date)}{assessment.submitted_at ? ` · Submitted ${dateLabel(assessment.submitted_at)}` : ''}</p>
+                  {assessment.instructions && <p className="mt-2 whitespace-pre-wrap text-slate-700">Candidate instructions: {assessment.instructions}</p>}
+                  {submissionText !== undefined && <p className="mt-2 whitespace-pre-wrap text-slate-700"><span className="font-medium">Candidate submission:</span> {readable(submissionText)}</p>}
+                  {assessment.review_note && <p className="mt-2 whitespace-pre-wrap text-amber-900"><span className="font-medium">Private panel evaluation:</span> {assessment.review_note}</p>}
+                  {access === 'manage' && assessment.status === 'submitted' && <div className="mt-3 space-y-2">
+                    <label htmlFor={`assessment-review-${assessment.id}`} className="block text-xs font-medium text-slate-600">Panel evaluation note</label>
+                    <textarea id={`assessment-review-${assessment.id}`} value={assessmentReviewNotes[assessment.id] || ''} onChange={event => setAssessmentReviewNotes(current => ({ ...current, [assessment.id]: event.target.value }))} rows={2} className="w-full rounded-md border border-slate-300 p-3 text-sm" />
+                    <button type="button" disabled={reviewingAssessmentId === assessment.id} onClick={() => void reviewAssessment(assessment)} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{reviewingAssessmentId === assessment.id ? 'Saving evaluation…' : 'Save panel evaluation'}</button>
+                  </div>}
+                </li>;
+              })}</ul> : <p className="text-xs text-slate-600">No assessments are assigned to this application.</p>}
+              {access === 'manage' && !isClosed && <details className="rounded-md border border-slate-200 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-800">Assign assessment</summary>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <div><label htmlFor={`assessment-title-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Assessment title</label>
+                    <input id={`assessment-title-${application.id}`} value={assessmentDrafts[application.id]?.title || ''} onChange={event => updateAssessmentDraft(application.id, 'title', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
+                  <div><label htmlFor={`assessment-type-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Assessment type</label>
+                    <input id={`assessment-type-${application.id}`} value={assessmentDrafts[application.id]?.assessmentType || ''} onChange={event => updateAssessmentDraft(application.id, 'assessmentType', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
+                  <div><label htmlFor={`assessment-deadline-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Deadline</label>
+                    <input id={`assessment-deadline-${application.id}`} type="date" min={todayDate()} value={assessmentDrafts[application.id]?.deadlineDate ?? tomorrowDate()} onChange={event => updateAssessmentDraft(application.id, 'deadlineDate', event.target.value)} className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm" /></div>
+                  <div className="sm:col-span-2"><label htmlFor={`assessment-instructions-${application.id}`} className="block text-xs font-medium text-slate-600 mb-1">Candidate assessment instructions</label>
+                    <textarea id={`assessment-instructions-${application.id}`} value={assessmentDrafts[application.id]?.instructions || ''} onChange={event => updateAssessmentDraft(application.id, 'instructions', event.target.value)} rows={3} className="w-full rounded-md border border-slate-300 p-3 text-sm" /></div>
+                </div>
+                <button type="button" disabled={savingAssessmentId === application.id} onClick={() => void assignAssessment(application)} className="min-h-10 mt-3 rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{savingAssessmentId === application.id ? 'Assigning…' : 'Assign assessment'}</button>
+                <p className="mt-2 text-xs text-slate-500">Saved through HRIS, which updates the application stage and notifies the candidate.</p>
+              </details>}
+            </section>}
           </li>;
         })}
       </ul>}
