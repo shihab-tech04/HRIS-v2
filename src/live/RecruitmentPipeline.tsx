@@ -237,6 +237,7 @@ type InterviewResponse = {
   candidate_proposed_times: string | null;
   timezone: string | null;
   panel_notes: string | null;
+  interview_status: 'scheduled' | 'completed';
 };
 
 function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled }: {
@@ -259,6 +260,8 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
   const [notesError, setNotesError] = useState('');
   const [savedNotesFor, setSavedNotesFor] = useState('');
   const [rescheduledApplicationId, setRescheduledApplicationId] = useState('');
+  const [completingInterviewId, setCompletingInterviewId] = useState('');
+  const [completionErrorFor, setCompletionErrorFor] = useState('');
 
   function startEditingNotes(row: InterviewResponse) {
     setNotesError('');
@@ -299,6 +302,29 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
     }
   }
 
+  async function completeInterview(row: InterviewResponse) {
+    if (completingInterviewId || row.interview_status !== 'scheduled' || row.candidate_response !== 'confirmed') return;
+    setCompletingInterviewId(row.id);
+    setCompletionErrorFor('');
+    try {
+      const result = await supabase.rpc('hris_complete_candidate_interview', {
+        p_tenant_id: tenantId,
+        p_interview_id: row.id,
+      });
+      if (result.error) throw result.error;
+      if (result.data?.success !== true || result.data?.interview_id !== row.id
+        || result.data?.status !== 'completed') throw new Error('Interview completion response was invalid.');
+      setRows(current => current.map(item => item.id === row.id
+        ? { ...item, interview_status: 'completed' }
+        : item));
+      setRetry(value => value + 1);
+    } catch {
+      setCompletionErrorFor(row.id);
+    } finally {
+      setCompletingInterviewId('');
+    }
+  }
+
   useEffect(() => {
     let current = true;
     setRows([]); setLoading(true); setError('');
@@ -330,7 +356,9 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
       : rows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('No interview invitations have been scheduled.')}</p>
       : <ul className="space-y-3">{rows.map(row => <li key={row.id} data-interview-id={row.id} data-interview-application-id={row.application_id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words font-semibold text-slate-900">{row.candidate_name}</h4><p className="break-all text-sm text-slate-600">{row.candidate_email}</p><p className="mt-1 text-sm text-slate-700">{row.job_title} · {row.round_name.split(' — ')[0]}</p><p className="mt-1 text-xs text-slate-500">{dateTime(row.scheduled_at, row.timezone || undefined)} · {row.duration_minutes} minutes{row.timezone ? ` · ${row.timezone}` : ''}</p></div>
-          <span className="w-fit rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{responseLabel[row.candidate_response] || tx('Response recorded')}</span></div>
+          <span className="w-fit rounded-full bg-[#EFF7F8] px-3 py-1 text-xs font-medium text-[#085587]">{row.interview_status === 'completed' ? tx('Interview completed') : responseLabel[row.candidate_response] || tx('Response recorded')}</span></div>
+        {completionErrorFor === row.id && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{tx('Interview completion could not be saved. Check recruitment access and retry.')}</p>}
+        {row.interview_status === 'completed' && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx('Interview completed. The application is under evaluation.')}</p>}
         {row.candidate_response_note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><strong>{tx('Candidate note:')}</strong> {row.candidate_response_note}</p>}
         {row.candidate_proposed_times && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>{tx('Proposed availability:')}</strong> {row.candidate_proposed_times}</p>}
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -356,6 +384,11 @@ function CandidateInterviewResponses({ tenantId, revision, locale, onRescheduled
             onRescheduled(row.application_id);
           }} />
         </details>}
+        {row.interview_status === 'scheduled' && row.candidate_response === 'confirmed' && <div className="mt-3 flex justify-end">
+          <button type="button" disabled={completingInterviewId === row.id} onClick={() => void completeInterview(row)} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+            {completingInterviewId === row.id ? tx('Saving interview completion…') : tx('Mark interview complete')}
+          </button>
+        </div>}
       </li>)}</ul>}
   </section>;
 }

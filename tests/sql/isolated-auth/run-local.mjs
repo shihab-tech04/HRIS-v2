@@ -368,6 +368,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221500_hris_candidate_interview_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014153343_hris_candidate_interview_panel_debrief.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012173106_hris_employee_timesheets_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013203000_hris_travel_request_workflow.sql'),
@@ -2088,6 +2089,103 @@ record('Manager replacement interview persists, cancels the prior request, and l
     && replacementAfterBrowser?.status === 'scheduled'
     && replacementAfterBrowser.candidate_response === 'confirmed'
     && replacementAfterBrowser.panel_notes === null);
+
+const completionInterviewSchedule = await recruitmentManagerA.client.rpc('hris_schedule_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_application_id: recruitmentIds.applicationA1,
+  p_round_name: 'Technical Interview', p_format: 'Phone Call', p_scheduled_at: interviewTime,
+  p_duration_minutes: 30, p_panel_members: ['Engineering Lead'],
+});
+const completionInterviewId = completionInterviewSchedule.data?.interview_id;
+const candidateCompletionConfirmation = completionInterviewId
+  ? await assessmentCandidateA.client.rpc('candidate_respond_interview', { p_interview_id: completionInterviewId, p_response: 'confirmed' })
+  : { error: { code: 'P0002' } };
+const completionViewOnly = await recruiterOnly.client.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
+});
+const completionCrossTenantPermission = await managerA.client.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantB, p_interview_id: completionInterviewId,
+});
+const completionOtherTenantManager = await managerB.client.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
+});
+const completionCandidateDenied = await assessmentCandidateA.client.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
+});
+const completionWrongState = await recruitmentManagerA.client.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_interview_id: interviewId,
+});
+const completionAnonymous = createClient(services.API_URL, services.ANON_KEY, authOptions);
+const completionAnonDenied = await completionAnonymous.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
+});
+const completionDirectWriteDenied = await recruitmentManagerA.client.from('interviews')
+  .update({ status: 'completed' }).eq('id', completionInterviewId);
+record('Interview completion setup uses a confirmed synthetic invitation and denies unprivileged, cross-tenant, anonymous, invalid-state, and direct-table writes',
+  !completionInterviewSchedule.error && Boolean(completionInterviewId)
+    && !candidateCompletionConfirmation.error && candidateCompletionConfirmation.data?.response === 'confirmed'
+    && Boolean(completionViewOnly.error?.code === '42501')
+    && Boolean(completionCrossTenantPermission.error?.code === '42501')
+    && Boolean(completionOtherTenantManager.error?.code === '42501')
+    && Boolean(completionCandidateDenied.error?.code === '42501')
+    && Boolean(completionWrongState.error?.code === '22023')
+    && Boolean(completionAnonDenied.error)
+    && Boolean(completionDirectWriteDenied.error));
+
+let completionBrowserOutput = '';
+let completionBrowserError = '';
+try {
+  completionBrowserOutput = execFileSync('node', [path.join(here, 'run-interview-completion-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_RECRUITMENT_EMAIL: emails[16],
+      HRIS_LOCAL_COMPLETION_INTERVIEW_ID: completionInterviewId,
+      HRIS_LOCAL_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  completionBrowserError = String(error.stderr || error.message || 'local interview completion browser run failed').slice(-1400);
+}
+record('Recruiter completes a confirmed interview with failed-request retry, database refresh, EN/BN and mobile/desktop browser checks',
+  completionBrowserOutput.includes('CANDIDATE_INTERVIEW_COMPLETION_BROWSER PASS=12 FAIL=0 locales=EN+BN viewports=375px+1280px retry=persisted refresh=verified'),
+  completionBrowserError);
+
+const completionAfterBrowser = queryAdmin(`SELECT jsonb_build_object(
+    'interview_status',i.status,'candidate_response',i.candidate_response,
+    'application_stage',a.stage,'event_count',(SELECT count(*) FROM public.candidate_application_stage_history h
+      WHERE h.application_id=a.id AND h.stage='interview_completed'),
+    'event_actor',(SELECT actor_user_id FROM public.candidate_application_stage_history h
+      WHERE h.application_id=a.id AND h.stage='interview_completed' ORDER BY h.created_at DESC LIMIT 1)
+  ) FROM public.interviews i JOIN public.job_applications a ON a.id=i.application_id
+  WHERE i.id=${sqlLiteral(completionInterviewId)}::uuid`);
+const completedManagerRows = await recruitmentManagerA.client.rpc('hris_get_candidate_interview_responses', { p_tenant_id: ids.tenantA });
+const completedManagerRow = completedManagerRows.data?.find(row => row.id === completionInterviewId);
+const candidateContextAfterInterview = await assessmentCandidateA.client.rpc('candidate_get_recruitment_context');
+const completedCandidateApplication = candidateContextAfterInterview.data?.applications?.find(row => row.id === recruitmentIds.applicationA1);
+const completedCandidateInterviewEvent = completedCandidateApplication?.stage_history?.find(row => row.stage === 'interview_completed');
+const duplicateInterviewCompletion = await recruitmentManagerA.client.rpc('hris_complete_candidate_interview', {
+  p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
+});
+record('Interview completion persists one recruiter-attributed history event, remains idempotent, and exposes only the candidate-safe stage',
+  completionAfterBrowser.interview_status === 'completed'
+    && completionAfterBrowser.candidate_response === 'confirmed'
+    && completionAfterBrowser.application_stage === 'interview_completed'
+    && completionAfterBrowser.event_count === 1
+    && completionAfterBrowser.event_actor === recruitmentManagerA.userId
+    && !completedManagerRows.error && completedManagerRow?.interview_status === 'completed'
+    && completedCandidateApplication?.stage === 'interview_completed'
+    && completedCandidateInterviewEvent?.stage === 'interview_completed'
+    && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'actor_user_id')
+    && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'note')
+    && !JSON.stringify(candidateContextAfterInterview.data || {}).includes('Panel debrief: clear examples')
+    && !duplicateInterviewCompletion.error && duplicateInterviewCompletion.data?.changed === false
+    && queryAdmin(`SELECT count(*) FROM public.candidate_application_stage_history h
+        WHERE h.application_id=${sqlLiteral(recruitmentIds.applicationA1)}::uuid AND h.stage='interview_completed'`) === 1);
 const assessmentAfterBrowser = queryAdmin(`SELECT jsonb_build_object('status',status,'note',review_note,'reviewer',reviewed_by,'reviewed_at',reviewed_at)
   FROM public.candidate_assessments WHERE id=${sqlLiteral(assessmentId)}::uuid`);
 const assessmentManagerReadAfterBrowser = await recruitmentManagerA.client.rpc('hris_get_candidate_assessments', { p_tenant_id: ids.tenantA });
