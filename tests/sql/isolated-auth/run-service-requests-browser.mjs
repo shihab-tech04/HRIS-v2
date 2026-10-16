@@ -221,6 +221,8 @@ try {
   const focusedRequestId = await employee.evaluate(() => document.activeElement?.getAttribute('data-service-request'));
   if (focusedRequestId !== saved.id) throw new Error(`Notification did not focus its matching service request history row: ${focusedRequestId}.`);
   await finalEmployeeCard.getByText(outcome, { exact: true }).first().waitFor({ state: 'visible' });
+  await employee.setViewportSize({ width: 375, height: 812 });
+  await assertNoOverflow(employee, 'Bengali service request history mobile after notification');
   await employee.getByRole('button', { name: 'Open navigation menu' }).click();
   await employee.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'বিজ্ঞপ্তি', exact: true }).click();
   await rejectedNotification.getByRole('button', { name: 'পরিষেবা অনুরোধ খুলুন', exact: true }).click();
