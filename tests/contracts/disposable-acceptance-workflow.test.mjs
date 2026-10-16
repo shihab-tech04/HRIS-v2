@@ -7,10 +7,10 @@ const checks = readFileSync(new URL('../../.github/workflows/check.yml', import.
 const localRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 
 test('disposable Auth/Postgres/browser acceptance uses trusted standard runners and no deploy or production credentials', () => {
-  assert.match(workflow, /branches: \[development\/hris-checkpoints\]/);
+  assert.match(workflow, /branches: \[development\/hris-checkpoints, release\/hris-stable-20261017\]/);
   assert.match(workflow, /candidate_ref:[\s\S]*?default: development\/hris-checkpoints/);
-  assert.match(workflow, /if: github\.ref == 'refs\/heads\/development\/hris-checkpoints' \|\| \(github\.event_name == 'workflow_dispatch' && startsWith\(github\.ref, 'refs\/heads\/release\/'\)\)/);
-  assert.match(workflow, /HRIS_CANDIDATE_REF: \$\{\{ inputs\.candidate_ref \|\| 'development\/hris-checkpoints' \}\}/);
+  assert.match(workflow, /github\.event_name == 'push' && github\.ref == 'refs\/heads\/release\/hris-stable-20261017'/);
+  assert.match(workflow, /HRIS_CANDIDATE_REF: \$\{\{ github\.ref == 'refs\/heads\/release\/hris-stable-20261017' && 'release\/candidate-stable-20261017' \|\| inputs\.candidate_ref \|\| 'development\/hris-checkpoints' \}\}/);
   assert.match(workflow, /git clone --depth 1 --branch "\$HRIS_CANDIDATE_REF"/);
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /timeout-minutes: 60/);
@@ -28,6 +28,6 @@ test('disposable Auth/Postgres/browser acceptance uses trusted standard runners 
   assert.match(workflow, /supabase stop --workdir .*--no-backup/);
   assert.doesNotMatch(workflow, /pull_request_target|deploy-pages|supabase\.co|secrets\./i);
   assert.doesNotMatch(checks, /resetPasswordForEmail|supabase\.co|production Supabase/i);
-  assert.match(checks, /if: github\.ref == 'refs\/heads\/development\/hris-checkpoints' \|\| \(github\.event_name == 'workflow_dispatch' && startsWith\(github\.ref, 'refs\/heads\/release\/'\)\)/);
+  assert.match(checks, /branches: \[release\/hris-stable-20261017\]/);
   assert.match(checks, /runs-on: ubuntu-24\.04/);
 });

@@ -1,13 +1,16 @@
 name: Disposable Auth, Postgres and browser acceptance (no deployment)
 on:
   push:
-    branches: [development/hris-checkpoints]
+    branches: [development/hris-checkpoints, release/hris-stable-20261017]
   workflow_dispatch:
     inputs:
       candidate_ref:
         description: Candidate branch to use for the cross-system acceptance run
         required: true
-        type: string
+        type: choice
+        options:
+          - development/hris-checkpoints
+          - release/candidate-stable-20261017
         default: development/hris-checkpoints
 
 permissions:
@@ -19,13 +22,13 @@ concurrency:
 
 jobs:
   isolated-hris:
-    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/'))
+    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       CI: '1'
       HRIS_DOCKER_CONTEXT: default
-      HRIS_CANDIDATE_REF: ${{ inputs.candidate_ref || 'development/hris-checkpoints' }}
+      HRIS_CANDIDATE_REF: ${{ github.ref == 'refs/heads/release/hris-stable-20261017' && 'release/candidate-stable-20261017' || inputs.candidate_ref || 'development/hris-checkpoints' }}
       HRIS_SUPABASE_TEST_WORKDIR: /tmp/synesis-local-hris-test
       HRIS_SUPABASE_API_PORT: '55421'
       HRIS_SUPABASE_DB_PORT: '55422'

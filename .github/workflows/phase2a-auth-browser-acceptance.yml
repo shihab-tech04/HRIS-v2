@@ -1,7 +1,7 @@
 name: Phase 2A tenant provisioning Auth, RLS and browser acceptance
 on:
   push:
-    branches: [development/hris-checkpoints]
+    branches: [development/hris-checkpoints, release/hris-stable-20261017]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   tenant-provisioning:
-    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/'))
+    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
