@@ -1,6 +1,7 @@
 type ModalFocusOptions = {
   initialFocus?: HTMLElement | null;
-  returnFocus?: HTMLElement | null;
+  returnFocus?: HTMLElement | null | (() => HTMLElement | null | undefined);
+  fallbackFocus?: HTMLElement | null;
   onEscape?: () => void;
 };
 
@@ -23,12 +24,14 @@ function getFocusableElements(dialog: HTMLElement): HTMLElement[] {
 /** Keep keyboard focus inside a custom modal and restore it to its opener on close. */
 export function activateModalFocusTrap(
   dialog: HTMLElement | null,
-  { initialFocus, returnFocus, onEscape }: ModalFocusOptions = {},
+  { initialFocus, returnFocus, fallbackFocus, onEscape }: ModalFocusOptions = {},
 ): () => void {
   if (!dialog) return () => {};
 
-  const focusToRestore = returnFocus
-    ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const activeFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const resolveReturnFocus = () => typeof returnFocus === 'function'
+    ? returnFocus() ?? activeFocus
+    : returnFocus ?? activeFocus;
   const firstFocusable = getFocusableElements(dialog)[0];
   (initialFocus && dialog.contains(initialFocus) && !initialFocus.matches(':disabled')
     ? initialFocus
@@ -67,6 +70,8 @@ export function activateModalFocusTrap(
   document.addEventListener('keydown', onKeyDown);
   return () => {
     document.removeEventListener('keydown', onKeyDown);
-    if (focusToRestore?.isConnected) focusToRestore.focus();
+    const requestedFocus = resolveReturnFocus();
+    const target = requestedFocus?.isConnected ? requestedFocus : fallbackFocus;
+    if (target?.isConnected) target.focus();
   };
 }

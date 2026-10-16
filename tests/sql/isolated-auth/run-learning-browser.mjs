@@ -387,12 +387,21 @@ try {
   await managerRequestCard.getByText('Approval via the learning manager queue.', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Learning manager queue mobile');
   await managerRequestCard.getByRole('button', { name: 'Approve' }).click();
+  const requestDecisionDialog = managerPage.getByRole('alertdialog');
+  const employeeUpdate = requestDecisionDialog.getByLabel('Update for the employee');
+  const confirmLearningApproval = requestDecisionDialog.getByRole('button', { name: 'Confirm approval' });
+  if (!(await employeeUpdate.evaluate(element => element === document.activeElement))) throw new Error('Learning approval dialog did not move keyboard focus into its note field.');
+  await managerPage.keyboard.press('Shift+Tab');
+  if (!(await confirmLearningApproval.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the learning approval dialog.');
+  await managerPage.keyboard.press('Tab');
+  if (!(await employeeUpdate.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the learning approval dialog.');
   const resolutionResponse = managerPage.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_resolve_learning_request'));
-  await managerPage.getByRole('alertdialog').getByLabel('Update for the employee').fill('Approved from the manager queue.');
-  await managerPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm approval' }).click();
+  await employeeUpdate.fill('Approved from the manager queue.');
+  await confirmLearningApproval.click();
   const decision = await rpcBody(await resolutionResponse);
   if (decision.status !== 'enrolled' || decision.id !== finalRequest.id) throw new Error(`Manager approval returned an unexpected result: ${JSON.stringify(decision)}.`);
   await managerRequestCard.waitFor({ state: 'detached' });
+  if (!(await managerPage.getByRole('heading', { name: 'Learning requests', exact: true }).evaluate(element => element === document.activeElement))) throw new Error('Learning decision did not restore focus after its request row was removed.');
   await managerPage.getByText('Synthetic Employee A is enrolled in QA A Approval Learning.', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Learning manager queue after approval mobile');
   await managerPage.setViewportSize({ width: 1280, height: 900 });
@@ -555,15 +564,23 @@ try {
   await assertNoOverflow(managerPage, 'Learning completion queue mobile');
   await completionQueueCard.getByRole('button', { name: 'সংশোধনের জন্য ফেরত দিন', exact: true }).click();
   const returnDialog = managerPage.getByRole('alertdialog');
+  const returnReason = returnDialog.getByLabel('সংশোধনের কারণ');
   if (await returnDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true }).isEnabled()) {
     throw new Error('A return-for-correction decision must require a reason.');
   }
-  await returnDialog.getByLabel('সংশোধনের কারণ').fill('Please attach supporting evidence for this assignment.');
+  if (!(await returnReason.evaluate(element => element === document.activeElement))) throw new Error('Learning return dialog did not move keyboard focus to its reason field.');
+  await returnReason.fill('Please attach supporting evidence for this assignment.');
+  const confirmLearningReturn = returnDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true });
+  await managerPage.keyboard.press('Shift+Tab');
+  if (!(await confirmLearningReturn.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the learning correction dialog.');
+  await managerPage.keyboard.press('Tab');
+  if (!(await returnReason.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the learning correction dialog.');
   const returnResponse = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_resolve_learning_completion') && response.status() === 200);
-  await returnDialog.getByRole('button', { name: 'ফেরত নিশ্চিত করুন', exact: true }).click();
+  await confirmLearningReturn.click();
   const returnedCompletion = await rpcBody(await returnResponse);
   if (returnedCompletion.status !== 'returned_for_correction') throw new Error('Manager correction decision did not persist.');
   await completionQueueCard.waitFor({ state: 'detached' });
+  if (!(await managerPage.getByRole('heading', { name: 'শেখার সমাপ্তি পর্যালোচনা', exact: true }).evaluate(element => element === document.activeElement))) throw new Error('Learning return did not restore focus after its submission row was removed.');
   await assertNoOverflow(managerPage, 'Learning completion returned mobile');
 
   const returnedContextRefresh = page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_completion_data') && response.status() === 200);
@@ -598,9 +615,16 @@ try {
   await assertNoOverflow(managerPage, 'Learning completion queue desktop');
   await completionQueueCard.getByRole('button', { name: 'যাচাই করুন', exact: true }).click();
   const verifyDialog = managerPage.getByRole('alertdialog');
-  await verifyDialog.getByLabel('যাচাইয়ের নোট').fill('Evidence reviewed.');
+  const verificationNote = verifyDialog.getByLabel('যাচাইয়ের নোট');
+  const confirmLearningVerification = verifyDialog.getByRole('button', { name: 'যাচাই নিশ্চিত করুন', exact: true });
+  if (!(await verificationNote.evaluate(element => element === document.activeElement))) throw new Error('Learning verification dialog did not move keyboard focus to its note field.');
+  await managerPage.keyboard.press('Shift+Tab');
+  if (!(await confirmLearningVerification.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the learning verification dialog.');
+  await managerPage.keyboard.press('Tab');
+  if (!(await verificationNote.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the learning verification dialog.');
+  await verificationNote.fill('Evidence reviewed.');
   const verifyResponse = managerPage.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_resolve_learning_completion') && response.status() === 200);
-  await verifyDialog.getByRole('button', { name: 'যাচাই নিশ্চিত করুন', exact: true }).click();
+  await confirmLearningVerification.click();
   const verifiedCompletion = await rpcBody(await verifyResponse);
   if (verifiedCompletion.status !== 'completed' || !verifiedCompletion.verified_by) throw new Error('Verified completion did not persist its reviewer.');
   await completionQueueCard.waitFor({ state: 'detached' });

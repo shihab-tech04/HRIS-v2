@@ -3,6 +3,7 @@ import { BookOpenCheck, Check, Clock3, RefreshCw, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
 import { learningText } from './learning-locale';
+import { activateModalFocusTrap } from './modal-focus';
 
 type LearningRequest = {
   id: string;
@@ -42,7 +43,25 @@ export function LearningRequests({ tenantId, locale }: { tenantId: string; local
   const requestSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
   const previousTenantId = useRef(tenantId);
+  const decisionDialogRef = useRef<HTMLDivElement>(null);
+  const queueHeadingRef = useRef<HTMLHeadingElement>(null);
+  const savingRef = useRef(saving);
+  const completedDecisionRef = useRef(false);
   activeTenantId.current = tenantId;
+  savingRef.current = saving;
+
+  useEffect(() => {
+    if (!target) return;
+    return activateModalFocusTrap(decisionDialogRef.current, {
+      returnFocus: () => completedDecisionRef.current ? queueHeadingRef.current : undefined,
+      fallbackFocus: queueHeadingRef.current,
+      onEscape: () => {
+        if (savingRef.current) return;
+        setTarget(null);
+        setActionError('');
+      },
+    });
+  }, [Boolean(target)]);
 
   async function load(isCurrent: () => boolean = () => true) {
     const requestId = ++requestSequence.current;
@@ -84,6 +103,7 @@ export function LearningRequests({ tenantId, locale }: { tenantId: string; local
     setActionError('');
     setMessage('');
     setNote('');
+    completedDecisionRef.current = false;
     setTarget({ request, decision });
   }
 
@@ -107,6 +127,7 @@ export function LearningRequests({ tenantId, locale }: { tenantId: string; local
       setMessage(target.decision === 'enrolled'
         ? tx('{employee} is enrolled in {program}.', { employee: target.request.employee_name, program: target.request.program_title })
         : tx('The request from {employee} was declined.', { employee: target.request.employee_name }));
+      completedDecisionRef.current = true;
       setTarget(null);
       setNote('');
       setRevision(value => value + 1);
@@ -127,7 +148,7 @@ export function LearningRequests({ tenantId, locale }: { tenantId: string; local
 
   return <section aria-labelledby="learning-requests-heading" className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0"><h2 id="learning-requests-heading" className="text-2xl font-medium text-[#49454F]">{tx("Learning requests")}</h2>
+      <div className="min-w-0"><h2 ref={queueHeadingRef} tabIndex={-1} id="learning-requests-heading" className="text-2xl font-medium text-[#49454F]">{tx("Learning requests")}</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">{tx("Review employee requests for learning programs in this organization.")}</p></div>
       <button type="button" aria-label={tx("Refresh learning requests")} onClick={() => { setMessage(''); setRevision(value => value + 1); }} disabled={loading}
         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true" />{tx("Refresh")}</button>
@@ -151,7 +172,7 @@ export function LearningRequests({ tenantId, locale }: { tenantId: string; local
           <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={saving} onClick={() => openDecision(request, 'rejected')} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 disabled:opacity-50"><X className="h-4 w-4" aria-hidden="true" />{tx("Decline")}</button><button type="button" disabled={saving} onClick={() => openDecision(request, 'enrolled')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white hover:bg-[#06466F] disabled:opacity-50"><Check className="h-4 w-4" aria-hidden="true" />{tx("Approve")}</button></div>
         </article>)}</div>}
 
-    {target && <div role="alertdialog" aria-modal="true" aria-labelledby="learning-decision-title" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) setTarget(null); }}>
+    {target && <div ref={decisionDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="learning-decision-title" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onMouseDown={event => { if (!saving && event.target === event.currentTarget) setTarget(null); }}>
       <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl"><h3 id="learning-decision-title" className="text-lg font-semibold text-slate-900">{tx(target.decision === 'enrolled' ? 'Approve learning request?' : 'Decline learning request?')}</h3><p className="mt-2 break-words text-sm text-slate-600">{target.request.employee_name} · {target.request.program_title} {tx(target.decision === 'enrolled' ? 'will be enrolled in this program.' : 'will be notified that this request was declined.')}</p>
         <label htmlFor="learning-resolution-note" className="mt-4 block text-sm font-medium text-slate-700">{tx('Update for the employee')} <span className="font-normal text-slate-500">{tx("(optional)")}</span><textarea id="learning-resolution-note" value={note} onChange={event => setNote(event.target.value)} maxLength={1000} rows={3} disabled={saving} className="mt-1 min-h-24 w-full resize-y rounded-lg border border-slate-300 bg-white p-3 text-sm" placeholder={tx("Add a short note about this decision.")} /></label>
         {actionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{actionError}</p>}
