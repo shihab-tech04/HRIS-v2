@@ -278,3 +278,5 @@ grant execute on function public.employee_submit_profile_change_request(text, te
 grant execute on function public.employee_get_my_profile_change_requests() to authenticated;
 grant execute on function public.admin_list_profile_change_requests() to authenticated;
 grant execute on function public.admin_review_profile_change_request(uuid, text, text) to authenticated;
+
+notify pgrst, 'reload schema';
