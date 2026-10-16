@@ -64,6 +64,8 @@ jobs:
         run: npm run test:e2e
       - name: Run real local Auth/RLS and workflow acceptance (travel, reporting, learning, timesheets)
         run: node tests/sql/isolated-auth/run-local.mjs
+      - name: Inspect security advisories on the disposable local database
+        run: supabase db advisors --local --type security --level error --fail-on none --workdir "$HRIS_SUPABASE_TEST_WORKDIR"
       - name: Stop only the disposable Supabase project
         if: always()
         run: supabase stop --workdir "$HRIS_SUPABASE_TEST_WORKDIR" --no-backup >/dev/null 2>&1 || true

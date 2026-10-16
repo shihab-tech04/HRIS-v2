@@ -366,6 +366,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221500_hris_candidate_interview_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014153343_hris_candidate_interview_panel_debrief.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013011651_hris_performance_goal_self_progress_tenant_scope.sql'),
@@ -408,6 +409,7 @@ for (const file of [
   // Apply the newest Candidate stage-history contract after older notification
   // migrations that recreate its check constraint.
   path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016092922_candidate_context_authenticated_execute.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -2185,6 +2187,12 @@ const completedManagerRow = completedManagerRows.data?.find(row => row.id === co
 const candidateContextAfterInterview = await assessmentCandidateA.client.rpc('candidate_get_recruitment_context');
 const completedCandidateApplication = candidateContextAfterInterview.data?.applications?.find(row => row.id === recruitmentIds.applicationA1);
 const completedCandidateInterviewEvent = completedCandidateApplication?.stage_history?.find(row => row.stage === 'interview_completed');
+const anonymousCandidateContext = await completionAnonymous.rpc('candidate_get_recruitment_context');
+const candidateContextAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon_execute',has_function_privilege('anon','public.candidate_get_recruitment_context()','EXECUTE'),
+  'authenticated_execute',has_function_privilege('authenticated','public.candidate_get_recruitment_context()','EXECUTE'),
+  'service_role_execute',has_function_privilege('service_role','public.candidate_get_recruitment_context()','EXECUTE')
+)`);
 const duplicateInterviewCompletion = await recruitmentManagerA.client.rpc('hris_complete_candidate_interview', {
   p_tenant_id: ids.tenantA, p_interview_id: completionInterviewId,
 });
@@ -2197,6 +2205,11 @@ const completionAcceptance = {
   managerProjectionShowsCompleted: !completedManagerRows.error && completedManagerRow?.interview_status === 'completed',
   candidateProjectionApplicationStageMatches: completedCandidateApplication?.stage === 'interview_completed',
   candidateProjectionEventStageMatches: completedCandidateInterviewEvent?.stage === 'interview_completed',
+  candidateProjectionOmitsOtherTenantApplication: !candidateContextAfterInterview.data?.applications?.some(row => row.id === recruitmentIds.applicationB),
+  candidateContextAclLeastPrivilege: candidateContextAcl.anon_execute === false
+    && candidateContextAcl.authenticated_execute === true
+    && candidateContextAcl.service_role_execute === true,
+  anonymousCandidateContextDenied: anonymousCandidateContext.error?.code === '42501',
   candidateProjectionOmitsPrivateHistoryFields: !Object.hasOwn(completedCandidateInterviewEvent || {}, 'actor_user_id')
     && !Object.hasOwn(completedCandidateInterviewEvent || {}, 'note'),
   candidateProjectionOmitsPanelDebrief: !JSON.stringify(candidateContextAfterInterview.data || {}).includes('Panel debrief: clear examples'),
@@ -2208,6 +2221,8 @@ record('Interview completion persists one recruiter-attributed history event, re
   Object.values(completionAcceptance).every(Boolean), JSON.stringify({
     ...completionAcceptance,
     candidateContextError: candidateContextAfterInterview.error?.code || null,
+    candidateContextAcl,
+    anonymousCandidateContextError: anonymousCandidateContext.error?.code || null,
     candidateApplicationFound: Boolean(completedCandidateApplication),
     candidateApplicationStage: completedCandidateApplication?.stage || null,
     candidateHistoryStages: completedCandidateApplication?.stage_history?.map(row => row.stage) || [],

@@ -7,6 +7,9 @@ CREATE TABLE public.jobs (
   title text NOT NULL,
   department_name text,
   department_id uuid,
+  location_name text,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
   status text NOT NULL DEFAULT 'draft',
   is_published boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
@@ -67,6 +70,40 @@ CREATE TABLE public.candidate_profiles (
   profile_status text NOT NULL DEFAULT 'active'
 );
 
+-- Minimal candidate-context projection tables used by the isolated interview
+-- completion acceptance. They contain synthetic rows only and expose no
+-- direct client access.
+CREATE TABLE public.candidate_published_jobs (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  title text,
+  reference_number text,
+  location_name text,
+  department_name text,
+  is_published boolean NOT NULL DEFAULT false,
+  status text NOT NULL DEFAULT 'draft',
+  is_active boolean NOT NULL DEFAULT true,
+  application_deadline date,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.candidate_document_requests (
+  id uuid PRIMARY KEY,
+  application_id uuid NOT NULL,
+  verification_note text,
+  verified_by uuid,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.job_offers (
+  id uuid PRIMARY KEY,
+  application_id uuid NOT NULL,
+  issued_by uuid,
+  issued_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.interviews (
   id uuid PRIMARY KEY,
   application_id uuid NOT NULL,
@@ -116,11 +153,16 @@ ALTER TABLE public.candidate_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidate_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.candidate_published_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.candidate_document_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_offers ENABLE ROW LEVEL SECURITY;
 REVOKE ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history,
   public.interviews,
-  public.candidate_profiles,public.candidate_assessments,public.candidate_notifications
+  public.candidate_profiles,public.candidate_assessments,public.candidate_notifications,
+  public.candidate_published_jobs,public.candidate_document_requests,public.job_offers
   FROM PUBLIC,anon,authenticated;
 GRANT ALL PRIVILEGES ON TABLE public.jobs,public.job_applications,public.candidate_application_stage_history
   TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public.interviews,public.candidate_profiles,public.candidate_assessments,
-  public.candidate_notifications TO service_role;
+  public.candidate_notifications,public.candidate_published_jobs,public.candidate_document_requests,
+  public.job_offers TO service_role;
