@@ -1271,7 +1271,8 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   </section>;
 }
 
-function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boolean }) {
+function ShiftRoster({ tenantId, canManage, locale }: { tenantId: string; canManage: boolean; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
   const [assignments, setAssignments] = useState<Record<string, unknown>[]>([]);
   const [employeeOptions, setEmployeeOptions] = useState<Record<string, unknown>[]>([]);
   const [shiftOptions, setShiftOptions] = useState<Record<string, unknown>[]>([]);
@@ -1281,6 +1282,11 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
   const [optionsError, setOptionsError] = useState('');
   const [assignmentError, setAssignmentError] = useState('');
   const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [changeError, setChangeError] = useState('');
+  const [changeMessage, setChangeMessage] = useState('');
+  const [editingAssignmentId, setEditingAssignmentId] = useState('');
+  const [replacementShiftId, setReplacementShiftId] = useState('');
+  const [savingShiftChange, setSavingShiftChange] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [assignmentDate, setAssignmentDate] = useState(() => localIsoDate(new Date()));
@@ -1396,6 +1402,42 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
     } finally { setSavingAssignment(false); }
   }
 
+  function beginShiftChange(row: Record<string, unknown>) {
+    setChangeError('');
+    setChangeMessage('');
+    setEditingAssignmentId(String(row.assignment_id || ''));
+    setReplacementShiftId(String(row.shift_id || ''));
+  }
+
+  async function saveShiftChange(row: Record<string, unknown>) {
+    if (savingShiftChange || !editingAssignmentId || editingAssignmentId !== String(row.assignment_id || '')) return;
+    setChangeError('');
+    setChangeMessage('');
+    if (!replacementShiftId || replacementShiftId === String(row.shift_id || '')) {
+      setChangeError(tx('Choose a different shift.'));
+      return;
+    }
+    setSavingShiftChange(true);
+    try {
+      const result = await supabase.rpc('hris_change_tenant_employee_shift', {
+        p_tenant_id: tenantId,
+        p_assignment_id: String(row.assignment_id),
+        p_new_shift_id: replacementShiftId,
+        p_expected_shift_id: String(row.shift_id),
+      });
+      if (result.error) {
+        if (result.error.code === '40001') throw new Error(tx('This roster assignment changed since it was loaded. Refresh and try again.'));
+        throw result.error;
+      }
+      setEditingAssignmentId('');
+      setReplacementShiftId('');
+      setChangeMessage(tx('Shift change saved.'));
+      await load();
+    } catch (cause) {
+      setChangeError(cause instanceof Error ? cause.message : tx('Unable to save this shift change.'));
+    } finally { setSavingShiftChange(false); }
+  }
+
   function downloadRoster() {
     downloadCsv(`shift-roster-${from}-to-${to}.csv`,
       ['Date', 'Employee number', 'Employee', 'Department', 'Shift', 'Code', 'Start', 'End', 'Break minutes', 'Grace minutes', 'Status'],
@@ -1449,6 +1491,9 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
         <p className="mt-3 text-sm text-slate-600">Active employees and shifts are required before an assignment can be made.</p>}
     </section>}
 
+    {canManage && changeError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{changeError}</p>}
+    {canManage && changeMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{changeMessage}</p>}
+
     <form className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4"
       onSubmit={event => { event.preventDefault(); applyRosterFilters(); }}>
       <div><label htmlFor="roster-start" className="mb-1 block text-xs font-medium text-slate-600">From</label>
@@ -1475,9 +1520,9 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
           <p className="mt-2 font-medium text-slate-800">No shift assignments found</p>
           <p className="mt-1 text-sm text-slate-600">Try another date range or search term. No schedule data is substituted.</p>
         </div> : <div className="overflow-x-auto" role="region" aria-label="Shift roster assignments" tabIndex={0}>
-          <table className="w-full min-w-[920px] text-left text-sm" aria-label="Shift roster assignments">
+          <table className={`w-full ${canManage ? 'min-w-[1080px]' : 'min-w-[920px]'} text-left text-sm`} aria-label="Shift roster assignments">
             <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-              {['Date', 'Employee', 'Department', 'Shift', 'Hours', 'Break', 'Grace', 'Status'].map(label =>
+              {[...['Date', 'Employee', 'Department', 'Shift', 'Hours', 'Break', 'Grace', 'Status'], ...(canManage ? ['Actions'] : [])].map(label =>
                 <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">{assignments.map((row, index) => <tr key={String(row.assignment_id || index)}>
@@ -1488,6 +1533,24 @@ function ShiftRoster({ tenantId, canManage }: { tenantId: string; canManage: boo
               <td className="whitespace-nowrap px-3 py-3">{String(row.start_time || '—').slice(0, 5)} – {String(row.end_time || '—').slice(0, 5)}</td>
               <td className="px-3 py-3">{display(row.break_minutes)} min</td><td className="px-3 py-3">{display(row.grace_minutes)} min</td>
               <td className="px-3 py-3"><span className="inline-flex rounded-full bg-[#EFF7F8] px-2.5 py-1 text-xs font-medium capitalize text-[#085587]">{display(row.assignment_status)}</span></td>
+              {canManage && <td className="px-3 py-2">
+                {editingAssignmentId === String(row.assignment_id || '') ? <div className="flex min-w-64 flex-wrap items-end gap-2">
+                  <div className="min-w-36 flex-1">
+                    <label htmlFor={`roster-change-shift-${String(row.assignment_id)}`} className="mb-1 block text-xs font-medium text-slate-600">{tx('Replacement shift')}</label>
+                    <select id={`roster-change-shift-${String(row.assignment_id)}`} value={replacementShiftId}
+                      onChange={event => setReplacementShiftId(event.target.value)} disabled={savingShiftChange || optionsLoading}
+                      className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm">
+                      {shiftOptions.map(option => <option key={String(option.id)} value={String(option.id)}>{display(option.name)}</option>)}
+                    </select>
+                  </div>
+                  <button type="button" onClick={() => void saveShiftChange(row)} disabled={savingShiftChange || !replacementShiftId || replacementShiftId === String(row.shift_id || '')}
+                    className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50">{savingShiftChange ? tx('Saving…') : tx('Save change')}</button>
+                  <button type="button" onClick={() => { setEditingAssignmentId(''); setReplacementShiftId(''); setChangeError(''); }} disabled={savingShiftChange}
+                    className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium">{tx('Cancel')}</button>
+                </div> : <button type="button" disabled={optionsLoading || shiftOptions.length < 2}
+                  onClick={() => beginShiftChange(row)} aria-label={`${tx('Change shift for')} ${display(row.full_name)}`}
+                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 disabled:opacity-50">{tx('Change shift')}</button>}
+              </td>}
             </tr>)}</tbody>
           </table>
         </div>}
@@ -3729,7 +3792,7 @@ export function LiveHrisWorkspace({
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale}
           />}
-          {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} />}
+          {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} locale={locale} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} />}
           {page === 'projects' && (permissions.organization || isSuperAdmin || isEmployee) && <>
             <OrganizationProjects tenantId={tenantId} locale={locale} />

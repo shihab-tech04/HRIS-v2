@@ -24,6 +24,15 @@ type RosterResponse = {
   assignments: ShiftAssignment[];
 };
 
+type ShiftChange = {
+  change_id: string;
+  assignment_id: string;
+  assignment_date: string;
+  previous_shift_name: string;
+  new_shift_name: string;
+  changed_at: string;
+};
+
 type RangeMode = 'week' | 'month' | 'custom';
 const weekDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -102,6 +111,7 @@ export function MyEmployeeRoster({ tenantId, locale, focusDate }: {
   const [draftEnd, setDraftEnd] = useState(validDate(focusDate) ? initialDate : addDays(initialDate, 6));
   const [rangeMode, setRangeMode] = useState<RangeMode>(validDate(focusDate) ? 'custom' : 'week');
   const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
+  const [changes, setChanges] = useState<ShiftChange[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -123,6 +133,7 @@ export function MyEmployeeRoster({ tenantId, locale, focusDate }: {
     const requestedTenant = tenantId;
     const current = () => requestId === requestSequence.current && activeTenantId.current === requestedTenant;
     setAssignments([]);
+    setChanges([]);
     setLoading(true);
     setError('');
     const invalidRange = rangeError(rangeStart, rangeEnd, locale);
@@ -133,23 +144,41 @@ export function MyEmployeeRoster({ tenantId, locale, focusDate }: {
     }
     void (async () => {
       try {
-        const result = await supabase.rpc('hris_get_my_shift_roster', {
-          p_tenant_id: requestedTenant,
-          p_start: rangeStart,
-          p_end: rangeEnd,
-        });
+        const [result, changeResult] = await Promise.all([
+          supabase.rpc('hris_get_my_shift_roster', {
+            p_tenant_id: requestedTenant,
+            p_start: rangeStart,
+            p_end: rangeEnd,
+          }),
+          supabase.rpc('hris_get_my_shift_changes', {
+            p_tenant_id: requestedTenant,
+            p_start: rangeStart,
+            p_end: rangeEnd,
+          }),
+        ]);
         if (!current()) return;
         if (result.error) throw result.error;
+        if (changeResult.error) throw changeResult.error;
         const data = result.data as RosterResponse | null;
+        const changeRows = changeResult.data as ShiftChange[] | null;
         if (!data || data.tenant_id !== requestedTenant || data.start_date !== rangeStart
             || data.end_date !== rangeEnd || !Array.isArray(data.assignments)
             || data.assignments.some(row => !row || typeof row.assignment_id !== 'string'
-              || !validDate(row.assignment_date) || typeof row.shift_name !== 'string')) {
+              || !validDate(row.assignment_date) || typeof row.shift_name !== 'string')
+            || !Array.isArray(changeRows) || changeRows.some(row => !row
+              || typeof row.change_id !== 'string' || typeof row.assignment_id !== 'string'
+              || !validDate(row.assignment_date) || typeof row.previous_shift_name !== 'string'
+              || typeof row.new_shift_name !== 'string' || Number.isNaN(Date.parse(row.changed_at)))) {
           throw new Error('Roster returned an invalid response.');
         }
         setAssignments(data.assignments);
+        setChanges(changeRows);
       } catch {
-        if (current()) setError(tx(locale, 'Unable to load your roster. Try again.'));
+        if (current()) {
+          setAssignments([]);
+          setChanges([]);
+          setError(tx(locale, 'Unable to load your roster. Try again.'));
+        }
       } finally {
         if (current()) setLoading(false);
       }
@@ -274,5 +303,24 @@ export function MyEmployeeRoster({ tenantId, locale, focusDate }: {
           </article>;
         })}
       </div>}
+    {!loading && !error && <section aria-labelledby="my-roster-changes-heading" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <h3 id="my-roster-changes-heading" className="font-semibold text-slate-900">{tx(locale, 'Shift change history')}</h3>
+      {changes.length === 0 ? <p role="status" className="mt-3 text-sm text-slate-600">{tx(locale, 'No shift changes for these dates')}</p>
+        : <ol className="mt-3 divide-y divide-slate-100">
+          {changes.map(change => <li key={change.change_id} className="flex min-w-0 flex-wrap items-start justify-between gap-2 py-3 first:pt-0 last:pb-0">
+            <div className="min-w-0">
+              <p className="break-words font-medium text-slate-900">
+                <span>{change.previous_shift_name}</span><span aria-hidden="true" className="px-2 text-slate-400">→</span><span>{change.new_shift_name}</span>
+              </p>
+              <p className="mt-1 text-sm text-slate-600">{formatDate(change.assignment_date, locale)}</p>
+            </div>
+            <time className="shrink-0 text-xs text-slate-500" dateTime={change.changed_at}>
+              {new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-US', {
+                dateStyle: 'medium', timeStyle: 'short',
+              }).format(new Date(change.changed_at))}
+            </time>
+          </li>)}
+        </ol>}
+    </section>}
   </section>;
 }

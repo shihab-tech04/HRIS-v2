@@ -56,7 +56,7 @@ type ServiceRequestNotification = {
 type RosterNotification = {
   id: string;
   source: 'roster_change';
-  kind: 'assigned';
+  kind: 'assigned' | 'changed';
   roster_assignment_id: string;
   roster_assignment_date: string;
   roster_shift_name: string;
@@ -233,8 +233,9 @@ export function ProjectNotifications({ tenantId, locale, onOpenProjects, onOpenL
                   <p className="mt-1 text-sm text-slate-600">{tx(item.kind === 'completed' ? 'Your service request was completed.' : 'Your service request was rejected.')}</p>
                 </> : isRosterChange ? <>
                   <p className="text-xs font-medium text-slate-500">{tx('Roster update')}</p>
-                  <h3 className="mt-1 break-words font-semibold text-slate-900">{tx('Your roster was updated')}</h3>
+                  <h3 className="mt-1 break-words font-semibold text-slate-900">{tx(item.kind === 'changed' ? 'Your roster was changed' : 'Your roster was updated')}</h3>
                   <p className="mt-1 break-words text-sm font-medium text-slate-700">{item.roster_shift_name}</p>
+                  <p className="mt-1 text-sm text-slate-600">{tx(item.kind === 'changed' ? 'Your assigned shift has changed.' : 'A shift was assigned to you.')}</p>
                   <p className="mt-1 text-sm text-slate-600">{new Date(`${item.roster_assignment_date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US')}</p>
                   {item.roster_start_time && item.roster_end_time && <p className="mt-1 text-sm text-slate-600">{item.roster_start_time.slice(0, 5)} – {item.roster_end_time.slice(0, 5)}</p>}
                 </> : <>

@@ -451,6 +451,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016230201_hris_employee_roster_notifications.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017095321_roster_shift_change_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016233237_employee_dashboard_official_phone.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017010000_hris_employee_document_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
@@ -3381,6 +3382,8 @@ FROM (VALUES
   ('public.hris_get_my_projects(uuid)'),
   ('public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'),
   ('public.hris_get_my_shift_roster(uuid,date,date)'),
+  ('public.hris_change_tenant_employee_shift(uuid,uuid,uuid,uuid)'),
+  ('public.hris_get_my_shift_changes(uuid,date,date)'),
   ('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)'),
   ('public.hris_assign_tenant_project_allocation(uuid,uuid,uuid,text,numeric,date,date)'),
   ('public.hris_release_tenant_project_allocation(uuid,uuid)'),
@@ -3393,7 +3396,9 @@ FROM (VALUES
 record('Tenant and employee RPC grants exclude anon and preserve each function’s least-privilege service grant',
   Object.entries(functionGrantMatrix).every(([fn, grants]) => grants.anon === false
     && grants.authenticated === true
-    && grants.service_role === (fn === 'public.hris_get_my_shift_roster(uuid,date,date)' ? false : true)),
+    && grants.service_role === (['public.hris_get_my_shift_roster(uuid,date,date)',
+      'public.hris_change_tenant_employee_shift(uuid,uuid,uuid,uuid)',
+      'public.hris_get_my_shift_changes(uuid,date,date)'].includes(fn) ? false : true)),
   JSON.stringify(functionGrantMatrix));
 
 const rosterA = queryAs(managerA, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.assignment_date,r.full_name),'[]'::jsonb)
@@ -3565,6 +3570,122 @@ record('Employees read only their own date-filtered shift roster and assignment-
     tenantBNotificationCount: employeeRosterTenantBDirectRows.data?.length,
     duplicateAssignment: employeeRosterDuplicateAssignment.error?.code,
     directInsert: employeeRosterDirectInsert.error?.code }));
+
+const rosterChangeShiftId = queryAdmin(`INSERT INTO public.shifts(
+  id,tenant_id,name,code,start_time,end_time,grace_minutes,break_minutes,weekly_off_days,active
+) VALUES ('99999999-9999-4999-8999-999999999991'::uuid,'${ids.tenantA}'::uuid,
+  'Synthetic Late Shift','QA-LATE','13:00'::time,'21:00'::time,5,45,ARRAY[0,6]::integer[],true)
+RETURNING to_jsonb(id);`);
+const rosterChangeBefore = tableRow('employee_shift_assignments', employeeRosterAssignmentId);
+const rosterChangeResult = await managerA.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA,
+  p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: rosterChangeShiftId,
+  p_expected_shift_id: '33333333-3333-4333-8333-333333333333',
+});
+const rosterChangeCurrent = tableRow('employee_shift_assignments', employeeRosterAssignmentId);
+const rosterChangeHistory = queryAdmin(`SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.changed_at,c.id),'[]'::jsonb)
+  FROM public.employee_shift_assignment_changes c
+  WHERE c.tenant_id='${ids.tenantA}'::uuid AND c.employee_shift_assignment_id='${employeeRosterAssignmentId}'::uuid`);
+const employeeRosterChanges = await employeeA.client.rpc('hris_get_my_shift_changes', {
+  p_tenant_id: ids.tenantA, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const employeeRosterChangedRoster = await employeeA.client.rpc('hris_get_my_shift_roster', {
+  p_tenant_id: ids.tenantA, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const employeeRosterChangedNotification = await employeeA.client.from('roster_change_notifications')
+  .select('id,tenant_id,recipient_employee_id,employee_shift_assignment_id,kind')
+  .eq('tenant_id', ids.tenantA).eq('employee_shift_assignment_id', employeeRosterAssignmentId);
+const employeeRosterChangeFeed = await employeeA.client.rpc('hris_get_my_notifications', {
+  p_tenant_id: ids.tenantA, p_limit: 50,
+  p_before_created_at: null, p_before_source: null, p_before_id: null,
+});
+const employeeRosterChangeNotification = employeeRosterChangeFeed.data?.notifications?.find(row =>
+  row.source === 'roster_change' && row.roster_assignment_id === employeeRosterAssignmentId);
+const managerRosterChangeHistoryDenied = await managerA.client.rpc('hris_get_my_shift_changes', {
+  p_tenant_id: ids.tenantA, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const foreignTenantRosterChangeHistoryDenied = await employeeA.client.rpc('hris_get_my_shift_changes', {
+  p_tenant_id: ids.tenantB, p_start: employeeRosterAssignmentDate, p_end: employeeRosterAssignmentDate,
+});
+const employeeRosterChangeHistoryDirect = await employeeA.client.from('employee_shift_assignment_changes')
+  .select('id,tenant_id,employee_id,changed_by').eq('tenant_id', ids.tenantA);
+const employeeRosterChangeDenied = await employeeA.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA, p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: '33333333-3333-4333-8333-333333333333', p_expected_shift_id: rosterChangeShiftId,
+});
+const unpermissionedRosterChangeDenied = await noPermission.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA, p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: '33333333-3333-4333-8333-333333333333', p_expected_shift_id: rosterChangeShiftId,
+});
+const crossTenantRosterChangeDenied = await managerB.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA, p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: '33333333-3333-4333-8333-333333333333', p_expected_shift_id: rosterChangeShiftId,
+});
+const foreignShiftRosterChangeDenied = await managerA.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA, p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: '44444444-4444-4444-8444-444444444444', p_expected_shift_id: rosterChangeShiftId,
+});
+const staleRosterChangeDenied = await managerA.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA, p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: '33333333-3333-4333-8333-333333333333',
+  p_expected_shift_id: '33333333-3333-4333-8333-333333333333',
+});
+const duplicateRosterChangeDenied = await managerA.client.rpc('hris_change_tenant_employee_shift', {
+  p_tenant_id: ids.tenantA, p_assignment_id: employeeRosterAssignmentId,
+  p_new_shift_id: rosterChangeShiftId, p_expected_shift_id: rosterChangeShiftId,
+});
+const directRosterUpdateDenied = await employeeA.client.from('employee_shift_assignments')
+  .update({ shift_id: '33333333-3333-4333-8333-333333333333' }).eq('id', employeeRosterAssignmentId);
+const rosterChangeAuditCount = Number(queryAdmin(`SELECT count(*)::integer FROM public.admin_audit_logs
+  WHERE actor_id='${managerA.userId}'::uuid AND target_type='employee_shift_assignment'
+    AND target_id='${employeeRosterAssignmentId}' AND action='shift.assignment.changed'`));
+const rosterChangeHistoryAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_shift_changes(uuid,date,date)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_shift_changes(uuid,date,date)','EXECUTE'),
+  'service_role',has_function_privilege('service_role','public.hris_get_my_shift_changes(uuid,date,date)','EXECUTE'))`);
+record('E13-04/05 attendance managers change only the shift with concurrency checks, durable employee history and a private notification',
+  Boolean(rosterChangeShiftId) && !rosterChangeResult.error
+    && rosterChangeCurrent?.shift_id === rosterChangeShiftId
+    && rosterChangeCurrent?.assignment_date === rosterChangeBefore?.assignment_date
+    && rosterChangeCurrent?.status === rosterChangeBefore?.status
+    && rosterChangeHistory.length === 1
+    && rosterChangeHistory[0].previous_shift_id === '33333333-3333-4333-8333-333333333333'
+    && rosterChangeHistory[0].new_shift_id === rosterChangeShiftId
+    && rosterChangeHistory[0].changed_by === managerA.userId
+    && !employeeRosterChanges.error && employeeRosterChanges.data?.length === 1
+    && employeeRosterChanges.data[0].previous_shift_name === 'Synthetic Day Shift'
+    && employeeRosterChanges.data[0].new_shift_name === 'Synthetic Late Shift'
+    && !employeeRosterChangedRoster.error
+    && employeeRosterChangedRoster.data?.assignments?.[0]?.shift_name === 'Synthetic Late Shift'
+    && !employeeRosterChangedNotification.error && employeeRosterChangedNotification.data?.length === 1
+    && employeeRosterChangedNotification.data[0].kind === 'changed'
+    && employeeRosterChangeNotification?.kind === 'changed'
+    && employeeRosterChangeNotification?.roster_shift_name === 'Synthetic Late Shift'
+    && !employeeRosterChangeHistoryDirect.data?.length
+    && Boolean(employeeRosterChangeHistoryDirect.error?.code === '42501')
+    && Boolean(managerRosterChangeHistoryDenied.error?.code === '42501')
+    && Boolean(foreignTenantRosterChangeHistoryDenied.error?.code === '42501')
+    && Boolean(employeeRosterChangeDenied.error?.code === '42501')
+    && Boolean(unpermissionedRosterChangeDenied.error?.code === '42501')
+    && Boolean(crossTenantRosterChangeDenied.error?.code === '42501')
+    && Boolean(foreignShiftRosterChangeDenied.error?.code === 'P0002')
+    && Boolean(staleRosterChangeDenied.error?.code === '40001')
+    && Boolean(duplicateRosterChangeDenied.error?.code === '22023')
+    && Boolean(directRosterUpdateDenied.error)
+    && rosterChangeAuditCount === 1
+    && rosterChangeHistoryAcl.anon === false && rosterChangeHistoryAcl.authenticated === true
+    && rosterChangeHistoryAcl.service_role === false,
+  JSON.stringify({ change: rosterChangeResult.error?.code || 'saved',
+    statusPreserved: rosterChangeCurrent?.status === rosterChangeBefore?.status,
+    history: rosterChangeHistory.length, employeeHistory: employeeRosterChanges.data?.length,
+    currentShift: employeeRosterChangedRoster.data?.assignments?.[0]?.shift_name,
+    notificationKind: employeeRosterChangedNotification.data?.[0]?.kind,
+    failedAuthorizationChecks: [employeeRosterChangeDenied.error?.code,unpermissionedRosterChangeDenied.error?.code,
+      crossTenantRosterChangeDenied.error?.code,foreignShiftRosterChangeDenied.error?.code,
+      staleRosterChangeDenied.error?.code,duplicateRosterChangeDenied.error?.code,
+      directRosterUpdateDenied.error?.code].filter(Boolean),
+    auditCount: rosterChangeAuditCount, historyAcl: rosterChangeHistoryAcl }));
 const rosterReadAcl = queryAdmin(`SELECT jsonb_build_object(
   'anon',has_function_privilege('anon','public.hris_get_my_shift_roster(uuid,date,date)','EXECUTE'),
   'authenticated',has_function_privilege('authenticated','public.hris_get_my_shift_roster(uuid,date,date)','EXECUTE'),
@@ -6418,9 +6539,9 @@ const unifiedNotificationFeedChecks = {
   serviceRequestDecisions: serviceRequestCompletedNotificationA?.service_request_type === 'other'
     && serviceRequestRejectedNotificationA?.service_request_type === 'shift_change'
     && serviceRequestRejectedNotificationB?.service_request_type === 'other',
-  employeeRosterNotification: employeeRosterNotification?.kind === 'assigned'
+  employeeRosterNotification: employeeRosterNotification?.kind === 'changed'
     && employeeRosterNotification?.roster_assignment_date === employeeRosterAssignmentDate
-    && employeeRosterNotification?.roster_shift_name === 'Synthetic Day Shift'
+    && employeeRosterNotification?.roster_shift_name === 'Synthetic Late Shift'
     && employeeRosterNotification?.roster_start_time === '09:00:00'
     && employeeRosterNotification?.roster_end_time === '17:00:00'
     && employeeRosterNotificationB?.roster_shift_name === 'Synthetic Tenant B Shift',
@@ -6978,7 +7099,11 @@ try {
       HRIS_LOCAL_ATTENDANCE_TENANT_ID: ids.tenantA,
       HRIS_LOCAL_ROSTER_ASSIGNMENT_ID: employeeRosterAssignmentId,
       HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE: employeeRosterAssignmentDate,
-      HRIS_LOCAL_ROSTER_SHIFT_NAME: 'Synthetic Day Shift',
+      HRIS_LOCAL_ROSTER_SHIFT_NAME: 'Synthetic Late Shift',
+      HRIS_LOCAL_ROSTER_START_TIME: '13:00',
+      HRIS_LOCAL_ROSTER_END_TIME: '21:00',
+      HRIS_LOCAL_ROSTER_BREAK_MINUTES: '45',
+      HRIS_LOCAL_ROSTER_GRACE_MINUTES: '5',
       HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH: currentAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE: previousAttendanceMonthDate,

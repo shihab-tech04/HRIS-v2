@@ -87,6 +87,7 @@ try {
   const identityCardRequests = [];
   const periodRequests = [];
   const rosterRequests = [];
+  const shiftChangeRequests = [];
   const upcomingTrainingRequests = [];
   const dashboardTaskRequests = [];
   const dashboardGoalRequests = [];
@@ -104,6 +105,10 @@ try {
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_shift_roster') && request.method() === 'POST') {
       const body = request.postDataJSON();
       rosterRequests.push({ tenantId: body?.p_tenant_id, start: body?.p_start, end: body?.p_end });
+    }
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_shift_changes') && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      shiftChangeRequests.push({ tenantId: body?.p_tenant_id, start: body?.p_start, end: body?.p_end });
     }
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context') && request.method() === 'POST') {
       const body = request.postDataJSON();
@@ -125,7 +130,7 @@ try {
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_appraisal_work') && request.method() === 'POST') {
       dashboardReviewRequests.push(request.postDataJSON()?.p_tenant_id);
     }
-    if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
+    if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications|employee_shift_assignment_changes)(?:\?|$)/.test(url.pathname + url.search)) {
       directRosterTableRequests.push(url.pathname);
     }
     if (/\/rest\/v1\/attendance_records(?:\?|$)/.test(url.pathname + url.search)) {
@@ -486,7 +491,7 @@ try {
   await page.getByRole('heading', { name: 'Notifications', exact: true }).waitFor({ state: 'visible' });
   const rosterNotification = page.locator(`[data-notification-source="roster_change"][data-roster-assignment-id="${process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_ID}"]`);
   await rosterNotification.waitFor({ state: 'visible' });
-  await rosterNotification.getByRole('heading', { name: 'Your roster was updated', exact: true }).waitFor({ state: 'visible' });
+  await rosterNotification.getByRole('heading', { name: 'Your roster was changed', exact: true }).waitFor({ state: 'visible' });
   await rosterNotification.getByText(process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, { exact: true }).waitFor({ state: 'visible' });
   await rosterNotification.getByRole('button', { name: 'Open roster', exact: true }).click();
   await page.getByRole('heading', { name: 'My Roster', exact: true }).waitFor({ state: 'visible' });
@@ -495,9 +500,15 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   const employeeRosterCard = page.locator(`[data-roster-assignment-id="${process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_ID}"]`);
   await employeeRosterCard.waitFor({ state: 'visible' });
-  for (const value of [process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, '09:00 – 17:00', '60 minutes', '10 minutes', 'Sunday, Saturday']) {
+  for (const value of [process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME,
+    `${process.env.HRIS_LOCAL_ROSTER_START_TIME} – ${process.env.HRIS_LOCAL_ROSTER_END_TIME}`,
+    `${process.env.HRIS_LOCAL_ROSTER_BREAK_MINUTES} minutes`, `${process.env.HRIS_LOCAL_ROSTER_GRACE_MINUTES} minutes`, 'Sunday, Saturday']) {
     await employeeRosterCard.getByText(value, { exact: true }).waitFor({ state: 'visible' });
   }
+  const employeeRosterChangeHistory = page.locator('[aria-labelledby="my-roster-changes-heading"]');
+  await employeeRosterChangeHistory.getByRole('heading', { name: 'Shift change history', exact: true }).waitFor({ state: 'visible' });
+  await employeeRosterChangeHistory.getByText('Synthetic Day Shift', { exact: true }).waitFor({ state: 'visible' });
+  await employeeRosterChangeHistory.getByText('Synthetic Late Shift', { exact: true }).waitFor({ state: 'visible' });
   if (await page.locator('#my-roster-start').inputValue() !== process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE
       || await page.locator('#my-roster-end').inputValue() !== process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE) {
     throw new Error('The roster notification did not focus its exact assigned date.');
@@ -515,6 +526,7 @@ try {
   await assertNoOverflow(page, 'Employee roster mobile');
   await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
   await page.getByRole('heading', { name: 'আমার রোস্টার', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'শিফট পরিবর্তনের ইতিহাস', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'তারিখ প্রয়োগ করুন', exact: true }).waitFor({ state: 'visible' });
   await employeeRosterCard.getByText(process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Employee roster Bengali mobile');
@@ -537,12 +549,17 @@ try {
   await assertNoOverflow(page, 'Employee roster Bengali mobile after refresh');
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'Employee roster Bengali desktop');
-  if (rosterRequests.length < 5 || rosterRequests.some(request => request.tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
+  if (rosterRequests.length < 5 || rosterRequests.some(request => request.tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)
+      || shiftChangeRequests.length < 5 || shiftChangeRequests.some(request => request.tenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
     throw new Error(`Roster reads were missing or not tenant-bound: ${JSON.stringify(rosterRequests)}.`);
   }
   if (!rosterRequests.some(request => request.start === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE
       && request.end === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE)) {
     throw new Error(`Focused assignment dates were not requested: ${JSON.stringify(rosterRequests)}.`);
+  }
+  if (!shiftChangeRequests.some(request => request.start === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE
+      && request.end === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE)) {
+    throw new Error(`Focused shift-change history dates were not requested: ${JSON.stringify(shiftChangeRequests)}.`);
   }
   if (directRosterTableRequests.length) {
     throw new Error(`Employee roster bypassed the secured RPC: ${JSON.stringify(directRosterTableRequests)}.`);

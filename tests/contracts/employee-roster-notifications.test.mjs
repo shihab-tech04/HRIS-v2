@@ -7,6 +7,7 @@ const sourcePath = new URL('../../docs/programme/recovered-source/CANONICAL_USER
 const sourceBytes = readFileSync(sourcePath);
 const source = JSON.parse(sourceBytes.toString('utf8'));
 const migration = readFileSync(new URL('../../supabase/migrations/20261016230201_hris_employee_roster_notifications.sql', import.meta.url), 'utf8');
+const changeMigration = readFileSync(new URL('../../supabase/migrations/20261017095321_roster_shift_change_history.sql', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const roster = readFileSync(new URL('../../src/live/MyEmployeeRoster.tsx', import.meta.url), 'utf8');
 const notifications = readFileSync(new URL('../../src/live/ProjectNotifications.tsx', import.meta.url), 'utf8');
@@ -49,7 +50,8 @@ test('employee shift roster evidence maps the exact E12-01 through E12-05 source
   assert.match(authRunner, /employeeOwnRosterRows\[0\]\.break_minutes === 60/);
   assert.match(authRunner, /employeeOwnRosterRows\[0\]\.grace_minutes === 10/);
   assert.match(authRunner, /JSON\.stringify\(employeeOwnRosterRows\[0\]\.weekly_off_days\) === '\[0,6\]'/);
-  assert.match(browser, /'60 minutes', '10 minutes'/);
+  assert.match(browser, /HRIS_LOCAL_ROSTER_BREAK_MINUTES/);
+  assert.match(browser, /HRIS_LOCAL_ROSTER_GRACE_MINUTES/);
   assert.match(browser, /EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS/);
 });
 
@@ -85,4 +87,34 @@ test('assignment notifications flow through the employee-owned inbox without cha
   assert.match(browser, /directRosterTableRequests\.length/);
   assert.match(authRunner, /Employees read only their own date-filtered shift roster and assignment-created notification/);
   assert.match(authRunner, /Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership/);
+});
+
+test('E13-04/05 roster changes are audited, concurrency-checked, tenant-scoped, and visible only through employee-owned reads', () => {
+  const stories = source.stories.filter(story => /^E13-0[1-5]$/.test(story.story_id));
+  assert.equal(stories.find(story => story.story_id === 'E13-04')?.verbatim_requirement,
+    'As an employee, I want to see shift changes.');
+  assert.equal(stories.find(story => story.story_id === 'E13-05')?.verbatim_requirement,
+    'As an employee, I want to receive notification when my roster changes.');
+  assert.match(changeMigration, /attendance\.manage/);
+  assert.match(changeMigration, /p_expected_shift_id/);
+  assert.match(changeMigration, /NEW\.shift_id IS NOT DISTINCT FROM OLD\.shift_id/);
+  assert.match(changeMigration, /AFTER UPDATE OF shift_id ON public\.employee_shift_assignments/);
+  assert.match(changeMigration, /employee_shift_assignment_changes/);
+  assert.match(changeMigration, /shift\.assignment\.changed/);
+  assert.match(changeMigration, /roster_change_notifications[\s\S]*kind='changed'/);
+  assert.match(changeMigration, /public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(changeMigration, /REVOKE ALL ON TABLE public\.employee_shift_assignment_changes FROM PUBLIC,anon,authenticated,service_role/);
+  assert.match(changeMigration, /REVOKE ALL ON FUNCTION public\.hris_get_my_shift_changes\(uuid,date,date\) FROM PUBLIC,anon,service_role/);
+  assert.match(changeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_get_my_shift_changes\(uuid,date,date\) TO authenticated/);
+  assert.match(workspace, /rpc\('hris_change_tenant_employee_shift'/);
+  assert.match(roster, /rpc\('hris_get_my_shift_changes'/);
+  assert.doesNotMatch(roster, /from\('employee_shift_assignment_changes'\)/);
+  assert.match(roster, /Shift change history/);
+  assert.match(notifications, /item\.kind === 'changed' \? 'Your roster was changed'/);
+  for (const label of ['Shift change history', 'No shift changes for these dates', 'Change shift', 'Save change', 'Your roster was changed']) {
+    assert.ok(locale.includes(`'${label}':`), `Bengali translation should include ${label}.`);
+  }
+  assert.match(authRunner, /E13-04\/05 attendance managers change only the shift with concurrency checks/);
+  assert.match(browser, /Shift change history/);
+  assert.match(authRunner, /employee_shift_assignment_changes/);
 });

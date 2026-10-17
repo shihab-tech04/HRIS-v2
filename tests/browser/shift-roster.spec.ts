@@ -17,6 +17,8 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
   const externalRequests: string[] = [];
   const rosterCalls: Record<string, unknown>[] = [];
   const assignmentCalls: Record<string, unknown>[] = [];
+  const changeCalls: Record<string, unknown>[] = [];
+  let simulateConcurrentChange = true;
   const today = new Date();
   const assignmentDate = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
   const rows = [
@@ -106,6 +108,34 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
           start_time: shift?.start_time || '', end_time: shift?.end_time || '', grace_minutes: 0,
           break_minutes: 60, weekly_off_days: [0, 6] });
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('a8888888-8888-4888-8888-888888888888') });
+      } else if (endpoint === 'hris_change_tenant_employee_shift') {
+        const body = request.postDataJSON() as Record<string, unknown>;
+        changeCalls.push(body);
+        const target = rows.find(row => row.assignment_id === body.p_assignment_id);
+        if (!target || target.shift_id !== body.p_expected_shift_id) {
+          await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({
+            code: '40001', message: 'This roster assignment changed since it was loaded. Refresh and try again.',
+          }) });
+          return;
+        }
+        if (simulateConcurrentChange) {
+          simulateConcurrentChange = false;
+          const concurrentShift = shiftOptions.find(row => row.id === 'a6666666-6666-4666-8666-666666666666');
+          Object.assign(target, { shift_id: concurrentShift?.id, shift_name: concurrentShift?.name,
+            shift_code: concurrentShift?.code, start_time: concurrentShift?.start_time, end_time: concurrentShift?.end_time });
+          await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({
+            code: '40001', message: 'This roster assignment changed since it was loaded. Refresh and try again.',
+          }) });
+          return;
+        }
+        const replacement = shiftOptions.find(row => row.id === body.p_new_shift_id);
+        if (!replacement) {
+          await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'P0002', message: 'Shift not found' }) });
+          return;
+        }
+        Object.assign(target, { shift_id: replacement.id, shift_name: replacement.name,
+          shift_code: replacement.code, start_time: replacement.start_time, end_time: replacement.end_time });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body.p_assignment_id) });
       } else {
         await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       }
@@ -152,6 +182,27 @@ test('tenant shift roster uses the scoped RPC, filters, exports, and remains usa
   await expect.poll(() => rosterCalls.at(-1)?.p_end).toBe(assignmentDate);
   expect(rosterCalls.at(-1)).toMatchObject({ p_tenant_id: tenantId,
     p_start: assignmentDate, p_end: assignmentDate, p_search: null });
+
+  const primaryRosterRow = rosterTable.getByRole('row', { name: /Synthetic Roster Employee/ });
+  await primaryRosterRow.getByRole('button', { name: 'Change shift for Synthetic Roster Employee' }).click();
+  await primaryRosterRow.getByLabel('Replacement shift').selectOption('a6666666-6666-4666-8666-666666666666');
+  await primaryRosterRow.getByRole('button', { name: 'Save change', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('This roster assignment changed since it was loaded.');
+  expect(primaryRosterRow).toContainText('Day Shift');
+  expect(changeCalls.at(-1)).toMatchObject({ p_tenant_id: tenantId,
+    p_assignment_id: 'a1111111-1111-4111-8111-111111111111',
+    p_new_shift_id: 'a6666666-6666-4666-8666-666666666666',
+    p_expected_shift_id: 'a3333333-3333-4333-8333-333333333333' });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(primaryRosterRow).toContainText('Late Shift');
+  await primaryRosterRow.getByRole('button', { name: 'Change shift for Synthetic Roster Employee' }).click();
+  await primaryRosterRow.getByLabel('Replacement shift').selectOption('a3333333-3333-4333-8333-333333333333');
+  await primaryRosterRow.getByRole('button', { name: 'Save change', exact: true }).click();
+  await expect(primaryRosterRow).toContainText('Day Shift');
+  expect(changeCalls.at(-1)).toMatchObject({ p_tenant_id: tenantId,
+    p_assignment_id: 'a1111111-1111-4111-8111-111111111111',
+    p_new_shift_id: 'a3333333-3333-4333-8333-333333333333',
+    p_expected_shift_id: 'a6666666-6666-4666-8666-666666666666' });
 
   await page.getByLabel('Employee', { exact: true }).selectOption('a7777777-7777-4777-8777-777777777777');
   await page.getByLabel('Shift', { exact: true }).selectOption('a6666666-6666-4666-8666-666666666666');
