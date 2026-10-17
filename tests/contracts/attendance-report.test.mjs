@@ -84,6 +84,13 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
   assert.match(browser, /controlBounds/);
 });
 
+test('Figma attendance aggregate column headings use the approved regular 14px gray type', () => {
+  assert.match(workspace, /aggregateOnly \? 'text-\[14px\] text-\[#9E9E9E\]' : 'text-xs text-slate-500'/);
+  assert.match(workspace, /aggregateOnly \? 'font-normal' : 'font-medium'/);
+  assert.match(browser, /fontSize: style\.fontSize, fontWeight: style\.fontWeight, color: style\.color/);
+  assert.match(browser, /fontSize: '14px', fontWeight: '400', color: 'rgb\(158, 158, 158\)'/);
+});
+
 test('attendance report filter disclosure keeps its controlled panel target mounted', () => {
   assert.match(workspace, /id="attendance-filters" hidden=\{!filtersOpen\}/);
   assert.match(workspace, /aria-controls="attendance-filters" onClick/);

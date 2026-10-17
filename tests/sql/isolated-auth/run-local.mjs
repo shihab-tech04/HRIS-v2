@@ -3411,6 +3411,8 @@ const employeeSummaryA = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
 const employeeSummaryB = queryAs(employeeB,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
+const dashboardLeaveBalance = employeeSummaryA.balances.find(row => row.leave_type_id === ids.leaveTypeA)?.available_days;
+if (Number(dashboardLeaveBalance) !== 15) throw new Error('The isolated employee dashboard leave balance fixture is not the verified 15-day record.');
 const employeeEvidenceRequest = employeeSummaryA.requests.find(row => row.id === evidenceRequestId);
 record('Employee leave history returns its own private evidence path and excludes it from another tenant',
   employeeEvidenceRequest?.attachment_url === evidencePathA
@@ -6481,6 +6483,7 @@ try {
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE: 'QA A all notice',
       HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: '88888888-8888-4888-8888-888888888801',
       HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID: dashboardPendingServiceIds[0],
+      HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS: String(dashboardLeaveBalance),
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

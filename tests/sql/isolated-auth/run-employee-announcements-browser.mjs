@@ -106,9 +106,16 @@ try {
   await pinnedNotice.waitFor({ state: 'visible' });
   await departmentNotice.waitFor({ state: 'visible' });
   armInitialReadFailure = true;
+  const failedReadResponse = page.waitForResponse(response => isFullNoticeRead(response.request()) && response.status() === 503);
   await page.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
+  await failedReadResponse;
   if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
-  await page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ }).waitFor({ state: 'visible' });
+  const outageAlert = page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ });
+  try {
+    await outageAlert.waitFor({ state: 'visible' });
+  } catch {
+    throw new Error(`The 503 notice response completed, but the employee UI did not show its retry alert. Current announcements page text: ${(await page.locator('main').innerText()).slice(0, 1200)}`);
+  }
   if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
   armInitialReadFailure = false;
   await page.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();

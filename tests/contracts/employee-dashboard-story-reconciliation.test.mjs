@@ -57,6 +57,14 @@ test('today status and work-mode browser acceptance expectations come from the f
   assert.doesNotMatch(browser, /todayAttendanceText\.includes\('Home'\)/);
 });
 
+test('E01-03 browser acceptance uses the persisted balance contract and matches the page’s separate value and unit nodes', () => {
+  assert.match(runtime, /const dashboardLeaveBalance = employeeSummaryA\.balances\.find\(row => row\.leave_type_id === ids\.leaveTypeA\)\?\.available_days/);
+  assert.match(runtime, /HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS: String\(dashboardLeaveBalance\)/);
+  assert.match(browser, /getByText\(process\.env\.HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS, \{ exact: true \}\)/);
+  assert.match(browser, /getByText\('days available', \{ exact: true \}\)/);
+  assert.doesNotMatch(browser, /getByText\('15 days', \{ exact: true \}\)/);
+});
+
 test('Employee HRIS primary cards use the 16px corners in the approved Figma frame', () => {
   for (const id of [
     'employee-profile-heading',

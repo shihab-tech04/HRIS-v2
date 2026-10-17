@@ -283,6 +283,11 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await reportTable.getByRole('columnheader').allTextContents()).toEqual([
     'Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation',
   ]);
+  const reportHeaderStyle = await reportTable.getByRole('columnheader', { name: 'Name', exact: true }).evaluate(element => {
+    const style = getComputedStyle(element);
+    return { fontSize: style.fontSize, fontWeight: style.fontWeight, color: style.color };
+  });
+  expect(reportHeaderStyle).toEqual({ fontSize: '14px', fontWeight: '400', color: 'rgb(158, 158, 158)' });
   await expect(positiveRow).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261016.png'), fullPage: true });

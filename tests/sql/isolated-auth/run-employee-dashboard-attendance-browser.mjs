@@ -17,6 +17,7 @@ const required = [
   'HRIS_LOCAL_DASHBOARD_TEAM_NAME',
   'HRIS_LOCAL_DASHBOARD_APPRAISAL_ID',
   'HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID', 'HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID',
+  'HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -232,7 +233,8 @@ try {
   }
   console.log('EMPLOYEE_DASHBOARD_TODAY_TIMES_BROWSER_ACCEPTANCE=PASS');
   const dashboardLeaveBalances = page.locator('section[aria-labelledby="employee-leave-balances-heading"]');
-  await dashboardLeaveBalances.getByText('15 days', { exact: true }).waitFor({ state: 'visible' });
+  await dashboardLeaveBalances.getByText(process.env.HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS, { exact: true }).waitFor({ state: 'visible' });
+  await dashboardLeaveBalances.getByText('days available', { exact: true }).first().waitFor({ state: 'visible' });
   console.log('EMPLOYEE_DASHBOARD_LEAVE_BALANCE_BROWSER_ACCEPTANCE=PASS');
   const quickAccess = page.getByRole('navigation', { name: 'Quick access', exact: true });
   await quickAccess.waitFor({ state: 'visible' });
