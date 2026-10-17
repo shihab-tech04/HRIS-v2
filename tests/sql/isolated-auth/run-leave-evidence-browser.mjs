@@ -574,7 +574,10 @@ try {
   await overlapDialog.getByRole('button', { name: 'Send request', exact: true }).click();
   const overlapRejected = await overlapSubmitResponse;
   const overlapError = await overlapRejected.json();
-  if (overlapRejected.status() !== 400 || overlapError?.code !== '23505') {
+  // PostgREST maps a PostgreSQL unique_violation to HTTP 409 Conflict.
+  // Keep the assertion aligned with the server's conflict response instead
+  // of masking a correct overlap denial as a browser failure.
+  if (overlapRejected.status() !== 409 || overlapError?.code !== '23505') {
     throw new Error(`The server did not enforce the existing leave overlap: ${JSON.stringify({ status: overlapRejected.status(), code: overlapError?.code })}.`);
   }
   const overlapAlerts = await overlapDialog.getByRole('alert').allTextContents();

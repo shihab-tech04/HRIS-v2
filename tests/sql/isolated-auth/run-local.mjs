@@ -432,6 +432,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017050000_hris_employee_dashboard_team_identity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017060000_hris_employee_dashboard_pending_requests.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017060001_hris_employee_unavailable_leave_type_reason.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -607,6 +608,58 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const profileChangeValue = `Verified profile request ${randomUUID()}`;
+const profileChangeSubmit = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_field_key: 'birthplace', p_requested_value: profileChangeValue,
+  p_reason: 'Synthetic employee profile correction acceptance.',
+});
+const profileChangeId = profileChangeSubmit.data;
+const profileEmployeeHistory = await employeeA.client.rpc('employee_get_my_profile_change_requests');
+const profileDirectValueRead = await employeeA.client.from('employee_profile_change_requests').select('requested_value').limit(1);
+const profileDirectOwnRows = await employeeA.client.from('employee_profile_change_requests').select('id,field_key,status');
+const profileOtherTenantHistory = await employeeB.client.rpc('employee_get_my_profile_change_requests');
+const profileDuplicate = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_field_key: 'birthplace', p_requested_value: 'A second concurrent birthplace', p_reason: 'Duplicate should be denied.',
+});
+const profileEmployeeReview = await employeeA.client.rpc('admin_list_profile_change_requests');
+const profileNoPermissionReview = await noPermission.client.rpc('admin_list_profile_change_requests');
+const profileManagerAQueue = await managerA.client.rpc('admin_list_profile_change_requests');
+const profileManagerBQueue = await managerB.client.rpc('admin_list_profile_change_requests');
+record('E02-03 employee requests a protected field correction and sees tenant-scoped status without reading proposed values',
+  !profileChangeSubmit.error && typeof profileChangeId === 'string'
+    && !profileEmployeeHistory.error && profileEmployeeHistory.data?.some(row => row.id === profileChangeId && row.status === 'pending')
+    && !profileDirectOwnRows.error && profileDirectOwnRows.data?.length === 1
+    && Boolean(profileDirectValueRead.error)
+    && profileOtherTenantHistory.data?.length === 0
+    && profileDuplicate.error?.code === '23505',
+  JSON.stringify({ submit: profileChangeSubmit.error?.code || 'ok', ownHistory: profileEmployeeHistory.data?.length, rawValueDenied: Boolean(profileDirectValueRead.error), otherTenant: profileOtherTenantHistory.data?.length, duplicate: profileDuplicate.error?.code }));
+record('E02 profile review is denied to employees and users without permission and scoped to the reviewer active tenant',
+  profileEmployeeReview.error?.code === '42501'
+    && profileNoPermissionReview.error?.code === '42501'
+    && profileManagerAQueue.data?.some(row => row.id === profileChangeId)
+    && !profileManagerAQueue.error
+    && !profileManagerBQueue.error
+    && !profileManagerBQueue.data?.some(row => row.id === profileChangeId));
+const profileApproval = await managerA.client.rpc('admin_review_profile_change_request', {
+  p_id: profileChangeId, p_decision: 'approved', p_note: 'Verified synthetic employee correction.',
+});
+const profileDuplicateDecision = await managerA.client.rpc('admin_review_profile_change_request', {
+  p_id: profileChangeId, p_decision: 'approved', p_note: null,
+});
+const profileHistoryAfterReview = await employeeA.client.rpc('employee_get_my_profile_change_requests');
+const profileEmployeeAfterReview = await adminAuth.from('employees').select('birthplace,full_name')
+  .eq('id', '55555555-5555-4555-8555-555555555555').single();
+const profileAudit = queryAdmin(`SELECT jsonb_build_object('count',count(*),'redacted',bool_and(details ? 'field_key' AND NOT (details ? 'requested_value')))
+  FROM public.admin_audit_logs WHERE target_id=${sqlLiteral(profileChangeId)} AND action='self_service.profile_change.approved'`);
+record('E02-17 approved profile changes update only the requested field, persist employee history, redact audit values, and reject duplicate decisions',
+  !profileApproval.error && profileApproval.data?.status === 'approved'
+    && profileDuplicateDecision.error?.code === 'P0002'
+    && profileHistoryAfterReview.data?.some(row => row.id === profileChangeId && row.status === 'approved' && row.review_note === 'Verified synthetic employee correction.')
+    && profileEmployeeAfterReview.data?.birthplace === profileChangeValue
+    && profileEmployeeAfterReview.data?.full_name === 'Synthetic Employee A'
+    && profileAudit.count === 1 && profileAudit.redacted === true,
+  JSON.stringify({ approval: profileApproval.data?.status || profileApproval.error?.code, duplicateDecision: profileDuplicateDecision.error?.code, history: profileHistoryAfterReview.data?.find(row => row.id === profileChangeId)?.status, fieldPersisted: profileEmployeeAfterReview.data?.birthplace === profileChangeValue, audit: profileAudit }));
 
 const familyPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
@@ -2036,6 +2089,27 @@ try {
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
   employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
+let profileChangeBrowserOutput = '';
+let profileChangeBrowserError = '';
+try {
+  profileChangeBrowserOutput = execFileSync('node', [path.join(here, 'run-profile-change-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_PROFILE_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_PROFILE_MANAGER_EMAIL: emails[0],
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  profileChangeBrowserError = String(error.stderr || error.message || 'local profile-change browser run failed').slice(-1200);
+}
+record('E02-03/E02-17 profile request journey passes Auth, reviewer retry, refresh, EN/BN, and 375px/1280px browser acceptance',
+  profileChangeBrowserOutput.includes('E02_PROFILE_CHANGE_BROWSER_ACCEPTANCE=PASS'), profileChangeBrowserError);
 psqlSync("UPDATE public.employees SET official_email='employee-a@hris.test',personal_email='personal-a@hris.test',phone='+880 1700 000001',official_phone='+880 2 5550001',address='QA A home address',mailing_address='QA A mailing address',emergency_contact_name='QA A emergency contact',emergency_contact_phone='+880 1700 000101',emergency_contact_relation='Parent' WHERE id='55555555-5555-4555-8555-555555555555'::uuid;");
 
 const recruitmentIds = {

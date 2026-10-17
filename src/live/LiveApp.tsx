@@ -25,6 +25,7 @@ type WorkspacePermissions = {
   travel: boolean; travelView: boolean; travelManage: boolean;
   expenses: boolean; expensesView: boolean; expensesManage: boolean;
   payroll: boolean; payrollManage: boolean;
+  selfServiceManage: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
@@ -35,7 +36,7 @@ const noWorkspacePermissions: WorkspacePermissions = {
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
-  payroll: false, payrollManage: false,
+  payroll: false, payrollManage: false, selfServiceManage: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -292,7 +293,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           'learning.manage',
           'travel.view', 'travel.manage',
           'expenses.view', 'expenses.manage',
-          'payroll.view', 'payroll.manage',
+          'payroll.view', 'payroll.manage', 'self_service.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -330,6 +331,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             expensesManage: grants.get('expenses.manage') === true,
             payroll: grants.get('payroll.view') === true || grants.get('payroll.manage') === true,
             payrollManage: grants.get('payroll.manage') === true,
+            selfServiceManage: grants.get('self_service.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
