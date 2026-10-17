@@ -3647,7 +3647,7 @@ record('Ordinary employees can read their own attendance and leave summary witho
     bRequests: employeeSummaryB.requests.length,
   }));
 
-record('Employee dashboard profile and date belong to the linked tenant-local employee',
+record('E01-10 employee dashboard profile and date belong to the linked tenant-local employee',
   employeeSummaryA.dashboard_date === localCurrentDate
   && employeeSummaryA.employee.full_name === 'Synthetic Employee A'
   && employeeSummaryA.employee.employee_number === 'QA-A-001'
@@ -3710,6 +3710,15 @@ record('Employee identity card excludes terminated employment and grants executi
     && identityCardGrantState.anon === false && identityCardGrantState.authenticated === true
     && identityCardGrantState.service_role === false,
   JSON.stringify({ terminatedDenied: Boolean(terminatedEmployeeIdentityCard.error), grants: identityCardGrantState }));
+record('E01-10 partially verified: employee dashboard identity is tenant-bound and the employee card reflects inactive and terminated state',
+  Boolean(employeeIdentityCardWrongTenant.error) && Boolean(employeeIdentityCardOtherEmployee.error)
+    && Boolean(employeeIdentityCardManager.error) && !employeeIdentityCardAnon.ok
+    && !inactiveEmployeeIdentityCard.error && inactiveEmployeeIdentityCard.data?.employment_status === 'inactive'
+    && Boolean(terminatedEmployeeIdentityCard.error),
+  JSON.stringify({ wrongTenant: employeeIdentityCardWrongTenant.error?.code,
+    crossEmployee: employeeIdentityCardOtherEmployee.error?.code, manager: employeeIdentityCardManager.error?.code,
+    anonymousDenied: !employeeIdentityCardAnon.ok, inactiveReturned: inactiveEmployeeIdentityCard.data?.employment_status,
+    terminatedDenied: Boolean(terminatedEmployeeIdentityCard.error) }));
 
 const employeeAttendanceMonthA = await employeeA.client.rpc('hris_get_my_attendance_period', {
   p_tenant_id: ids.tenantA, p_month_start: currentAttendanceMonth,
@@ -6420,7 +6429,7 @@ psqlSync(`INSERT INTO public.service_requests(id,tenant_id,employee_id,request_t
   VALUES ('${dashboardPendingServiceId}'::uuid,'${ids.tenantA}'::uuid,
     '55555555-5555-4555-8555-555555555555'::uuid,'other',
     'Synthetic pending service request for dashboard acceptance.','pending',clock_timestamp())`);
-const dashboardPendingServiceIds = queryAdmin(`SELECT coalesce(jsonb_agg(id ORDER BY submitted_at,id),'[]'::jsonb) AS ids
+const dashboardPendingServiceIds = queryAdmin(`SELECT jsonb_build_object('ids',coalesce(jsonb_agg(id ORDER BY submitted_at,id),'[]'::jsonb))
   FROM public.service_requests WHERE tenant_id='${ids.tenantA}'::uuid
     AND employee_id='55555555-5555-4555-8555-555555555555' AND status IN ('pending','in_progress')`).ids || [];
 if (dashboardPendingServiceIds.length === 0) throw new Error('The synthetic employee has no pending service request for the dashboard journey.');
@@ -6493,6 +6502,12 @@ record('Employee dashboard acceptance restores its overdue-goal fixture and remo
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
   employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
   employeeAttendanceBrowserError);
+record('E01-01 partially verified: dashboard renders the employee’s persisted current attendance status and work mode',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_TODAY_STATUS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
+record('E01-02 dashboard reports persisted check-in and check-out times for today',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_TODAY_TIMES_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
+record('E01-03 dashboard reports the employee’s persisted available leave balance from the existing balance contract',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_LEAVE_BALANCE_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 record('E01-06 training visibility is partially implemented: only confirmed upcoming sessions link to My Learning in the active tenant',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 record('E01-07 assigned tasks, own goals, and overdue work open their existing project and performance journeys',
@@ -6744,7 +6759,7 @@ record('Holiday manager can persist tenant calendar entries with audit history; 
 
 const employeeHolidaySummary = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
 const employeeForeignHolidaySummary = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantB });
-record('Employee upcoming holidays include the managed active entry and remain tenant-bound',
+record('E01-05 employee upcoming holidays include the managed active entry and remain tenant-bound',
   !employeeHolidaySummary.error
     && employeeHolidaySummary.data?.holidays?.some(holiday => holiday.name === 'Isolated Calendar Acceptance Day')
     && !employeeHolidaySummary.data?.holidays?.some(holiday => holiday.name === 'Synthetic QA holiday B')

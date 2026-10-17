@@ -218,6 +218,21 @@ try {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  const todayAttendance = page.locator('section[aria-labelledby="employee-today-heading"]');
+  const todayAttendanceText = await todayAttendance.innerText();
+  if (!todayAttendanceText.includes('Present') || !todayAttendanceText.includes('Home')) {
+    throw new Error(`The linked employee's persisted today status or work mode was not rendered: ${todayAttendanceText}.`);
+  }
+  console.log('EMPLOYEE_DASHBOARD_TODAY_STATUS_BROWSER_ACCEPTANCE=PASS');
+  const visibleAttendanceTimes = todayAttendanceText.match(/\b\d{1,2}:\d{2}(?:\s?[AP]M)?\b/g) || [];
+  if (!todayAttendanceText.includes('Check in') || !todayAttendanceText.includes('Check out')
+      || visibleAttendanceTimes.length < 2) {
+    throw new Error(`The linked employee's persisted check-in and check-out fields were not rendered: ${todayAttendanceText}.`);
+  }
+  console.log('EMPLOYEE_DASHBOARD_TODAY_TIMES_BROWSER_ACCEPTANCE=PASS');
+  const dashboardLeaveBalances = page.locator('section[aria-labelledby="employee-leave-balances-heading"]');
+  await dashboardLeaveBalances.getByText('15 days', { exact: true }).waitFor({ state: 'visible' });
+  console.log('EMPLOYEE_DASHBOARD_LEAVE_BALANCE_BROWSER_ACCEPTANCE=PASS');
   const quickAccess = page.getByRole('navigation', { name: 'Quick access', exact: true });
   await quickAccess.waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 375, height: 812 });

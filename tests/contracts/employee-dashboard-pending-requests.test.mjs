@@ -49,3 +49,8 @@ test('E01-04 disposable Auth/Postgres and browser suites assert isolation, retry
   assert.match(browser, /Employee pending requests desktop/);
   assert.match(browser, /অপেক্ষমাণ অনুরোধসমূহ/);
 });
+
+test('dashboard acceptance fixture parses its synthetic pending-request ID from an object-shaped JSON result', () => {
+  assert.match(runner, /SELECT jsonb_build_object\('ids',coalesce\(jsonb_agg\(id ORDER BY submitted_at,id\),'\[\]'::jsonb\)\)/);
+  assert.match(runner, /\)\.ids \|\| \[\];\s*if \(dashboardPendingServiceIds\.length === 0\)/);
+});
