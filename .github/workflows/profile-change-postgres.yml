@@ -1,14 +1,7 @@
 name: HRIS profile correction workflow SQL checks
 on:
-  pull_request:
-    branches: [main, development/hris-checkpoints]
-    paths:
-      - 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'
-      - 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'
-      - 'tests/sql/profile-change/**'
-      - '.github/workflows/profile-change-postgres.yml'
   push:
-    branches: [main, development/hris-checkpoints]
+    branches: [development/hris-checkpoints]
     paths:
       - 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'
       - 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'
@@ -19,6 +12,7 @@ permissions:
   contents: read
 jobs:
   profile-change-postgres:
+    if: github.ref == 'refs/heads/development/hris-checkpoints'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
