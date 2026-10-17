@@ -66,7 +66,9 @@ test('profile request fields match columns in the existing employee schema', () 
   assert.ok(requestedFields.length > 0, 'the UI must expose a schema-backed list of protected profile fields');
   for (const field of requestedFields) assert.ok(employeeColumns.has(field), `${field} is not an employees column`);
   for (const field of requestedFields) assert.match(schemaCorrection, new RegExp(`'${field}'`));
-  assert.match(schemaCorrection, /ADD CONSTRAINT employee_profile_change_requests_field_key_check CHECK/);
+  assert.match(schemaCorrection, /p_decision = 'approved' AND r\.field_key NOT IN/);
+  assert.doesNotMatch(schemaCorrection, /ALTER TABLE public\.employee_profile_change_requests/,
+    'the corrective migration must preserve historical request rows and constraints');
   assert.doesNotMatch(schemaCorrection, /father_name|mother_name|birthplace|blood_group|nid_number|passport_number|etin_number/);
 });
 

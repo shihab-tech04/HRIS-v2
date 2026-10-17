@@ -11,7 +11,8 @@ const required = [
   'HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH', 'HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH',
   'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
-  'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
+  'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID',
+  'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
   'HRIS_LOCAL_UPCOMING_TRAINING_EXPECTED',
   'HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID', 'HRIS_LOCAL_DASHBOARD_TASK_TITLE', 'HRIS_LOCAL_DASHBOARD_GOAL_TITLE',
   'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID', 'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE',
@@ -439,7 +440,8 @@ try {
   }
   await upcomingTraining.getByRole('button', { name: 'Open My Learning', exact: true }).click();
   await page.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
-  await page.getByRole('heading', { name: process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, exact: true }).waitFor({ state: 'visible' });
+  const directLearningProgram = page.locator(`article[data-learning-program="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID}"]`);
+  await directLearningProgram.getByRole('heading', { name: process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });

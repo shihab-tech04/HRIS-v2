@@ -72,7 +72,7 @@ try {
   if ((await employee.locator('body').innerText()).includes(proposed)) throw new Error('Employee history exposed a proposed profile value.');
   await noOverflow(employee, 'Employee profile requests at 375px');
   await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await employee.getByRole('heading', { name: 'প্রোফাইল পরিবর্তনের অনুরোধ' }).waitFor({ state: 'visible' });
+  await employee.locator('main h2').filter({ hasText: /^প্রোফাইল পরিবর্তনের অনুরোধ$/ }).first().waitFor({ state: 'visible' });
   await employee.getByRole('button', { name: 'Switch language to English' }).click();
   await employee.getByRole('heading', { name: 'Profile change requests' }).waitFor({ state: 'visible' });
   await employee.setViewportSize({ width: 1280, height: 900 });

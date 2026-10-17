@@ -6792,6 +6792,7 @@ try {
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
+      HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID: learningIds.directProgram,
       HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE: 'QA A Direct Learning',
       HRIS_LOCAL_UPCOMING_TRAINING_EXPECTED: JSON.stringify(dashboardExpectedUpcomingTraining),
       HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID: '55555555-5555-4555-8555-555555555555',

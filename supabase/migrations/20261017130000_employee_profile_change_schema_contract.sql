@@ -2,15 +2,6 @@
 -- allowlist referenced profile columns absent from public.employees.
 BEGIN;
 
-ALTER TABLE public.employee_profile_change_requests
-  DROP CONSTRAINT IF EXISTS employee_profile_change_requests_field_key_check;
-ALTER TABLE public.employee_profile_change_requests
-  ADD CONSTRAINT employee_profile_change_requests_field_key_check CHECK (field_key IN (
-    'full_name', 'official_email', 'personal_email', 'official_phone',
-    'address', 'mailing_address', 'emergency_contact_name',
-    'emergency_contact_phone', 'emergency_contact_relation'
-  ));
-
 CREATE OR REPLACE FUNCTION public.hris_profile_change_active_member(p_tenant_id uuid)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -184,6 +175,14 @@ BEGIN
   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Pending profile change request not found.' USING errcode = 'P0002';
+  END IF;
+
+  IF p_decision = 'approved' AND r.field_key NOT IN (
+    'full_name', 'official_email', 'personal_email', 'official_phone',
+    'address', 'mailing_address', 'emergency_contact_name',
+    'emergency_contact_phone', 'emergency_contact_relation'
+  ) THEN
+    RAISE EXCEPTION 'This request targets a profile field no longer supported by the employee schema.' USING errcode = '22023';
   END IF;
 
   IF p_decision = 'approved' THEN
