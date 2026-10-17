@@ -294,13 +294,13 @@ function Metric({ label, value, icon, onOpen, compact = false, emphasized = fals
   label: string; value: unknown; icon: ReactNode; onOpen?: () => void; compact?: boolean; emphasized?: boolean;
 }) {
   const content = <>
-    <span className={`flex items-center justify-between gap-2 ${compact ? 'text-xs font-semibold text-[#49454F]' : 'text-sm text-slate-600'}`}>
+    <span className={`flex items-center justify-between gap-2 ${compact ? 'text-sm font-bold text-[#49454F]' : 'text-sm text-slate-600'}`}>
       <span>{label}</span><span className="shrink-0 text-[#08558B]">{icon}</span>
     </span>
-    <span className={`${compact ? 'mt-1 text-base' : 'mt-3 text-2xl'} block font-semibold tabular-nums text-slate-900`}>{display(value)}</span>
+    <span className={`${compact ? 'mt-1 text-base font-normal' : 'mt-3 text-2xl font-semibold'} block tabular-nums text-slate-900`}>{display(value)}</span>
   </>;
   const className = compact
-    ? `min-h-[68px] rounded-md border border-[#E6EEF3] ${emphasized ? 'bg-[#E6EEF3]' : 'bg-white'} p-2 text-left ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`
+    ? `min-h-[68px] rounded-[4px] border border-[#E6EEF3] ${emphasized ? 'bg-[#E6EEF3]' : 'bg-white'} p-2 text-left ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`
     : `min-h-[108px] rounded-lg border border-[#DEE0E3] bg-white p-4 text-left shadow-sm ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`;
   return onOpen
     ? <button type="button" onClick={onOpen} className={className}>{content}</button>
@@ -676,27 +676,26 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   }
 
   return <section aria-labelledby="live-dashboard-heading" className="space-y-5">
-    <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-      <div><h2 id="live-dashboard-heading" className="text-2xl font-semibold text-[#1E1B39]">{tx('Managerial Dashboard')}</h2>
-        <p className="mt-1 text-sm text-[#86929E]">{tx('Today’s workforce attendance for this organization')}</p></div>
-      <div role="group" aria-label={tx('Managerial dashboard actions')} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[540px]">
+    <header id="manager-dashboard-header" className="flex min-h-[67px] flex-col gap-3 bg-[#EFF7F8] px-4 py-[9px] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <h2 id="live-dashboard-heading" className="text-lg font-bold text-[#353535]">{tx('Managerial Dashboard')}</h2>
+      <div role="group" aria-label={tx('Managerial dashboard actions')} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[603px] xl:grid-cols-[334px_184px_64px]">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86929E]" />
           <input type="search" value={search} onChange={event => setSearch(event.target.value)}
             placeholder={tx('Search metrics')} aria-label={tx('Search dashboard metrics')}
-            className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
+            className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
         </label>
         <button type="button" disabled={loading || !summary} onClick={downloadReport}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
           <Download className="h-4 w-4" /> {tx('Download Report')}
         </button>
         <button type="button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen}
           aria-controls="dashboard-filters" aria-label={tx('Filter attendance chart')}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-[#49454F] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">
+          className="inline-flex min-h-12 min-w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-[#49454F] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">
           <SlidersHorizontal className="h-4 w-4" />
         </button>
       </div>
-    </div>
+    </header>
     {filtersOpen && <div id="dashboard-filters" className="flex flex-wrap items-end gap-3 rounded-lg border border-[#DEE0E3] bg-white p-4">
       <div><label htmlFor="dashboard-chart-range" className="mb-1 block text-xs font-medium text-slate-600">{tx('Attendance chart range')}</label>
         <select id="dashboard-chart-range" value={chartRange} onChange={event => setChartRange(event.target.value as '7' | '30')}
@@ -713,15 +712,14 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     </div>
     {error && <StatusMessage error={error} retryLabel={tx('Retry')} onRetry={() => void load()} />}
     {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized dashboard data…')}</p> : currentSummary && <>
-      <section className="rounded-2xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
-        <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-lg font-normal text-[#49454F]">{tx('Today’s Attendance Summary')}</h3>
-          <p className="mt-1 text-xs text-[#86929E]">{tx('Live counts from this organization’s authorized records')}</p></div>
+      <section className="rounded-xl border border-[#DEE0E3] bg-white px-[21px] py-[18px] shadow-sm" aria-labelledby="today-attendance-heading">
+        <div className="mb-[15px]"><h3 id="today-attendance-heading" className="text-lg font-normal text-[#49454F]">{tx('Today’s Attendance Summary')}</h3></div>
         {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
           {visibleMetrics.map(metric => <Metric key={metric.label} label={tx(metric.label)} value={metric.value} icon={metric.icon}
             onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
         </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No dashboard metrics match')} “{search}”.</p>}
       </section>
-      <section className="rounded-2xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
+      <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
         <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-normal text-[#49454F]">{tx('Daily Attendance Chart')}</h3>
           <p className="mt-1 text-xs text-[#86929E]">{locale === 'bn' ? `${tx('Recorded attendance by day')} · গত ${activeChartRange} ${tx('days')}` : `${tx('Recorded attendance by day')} · last ${activeChartRange} days`}</p></div>
           <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {tx('records')}</span></div>

@@ -218,6 +218,30 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   await expect(page.getByRole('button', { name: 'Client Meeting 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'On Leave 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Late 0' })).toBeVisible();
+  const dashboardTitle = page.getByRole('heading', { name: 'Managerial Dashboard', exact: true });
+  await expect(dashboardTitle).toHaveCSS('font-size', '18px');
+  await expect(dashboardTitle).toHaveCSS('font-weight', '700');
+  await expect(dashboardTitle).toHaveCSS('color', 'rgb(53, 53, 53)');
+  await expect(page.locator('#manager-dashboard-header')).toHaveCSS('background-color', 'rgb(239, 247, 248)');
+  const dashboardToolbar = page.getByRole('group', { name: 'Managerial dashboard actions' });
+  const searchBox = dashboardToolbar.getByRole('searchbox', { name: 'Search dashboard metrics' });
+  const reportDownload = dashboardToolbar.getByRole('button', { name: 'Download Report' });
+  const filterButton = dashboardToolbar.getByRole('button', { name: 'Filter attendance chart' });
+  for (const control of [searchBox, reportDownload, filterButton]) {
+    await expect(control).toHaveCSS('height', '48px');
+  }
+  expect((await searchBox.boundingBox())?.width).toBe(334);
+  expect((await reportDownload.boundingBox())?.width).toBe(184);
+  expect((await filterButton.boundingBox())?.width).toBe(64);
+  const attendanceSummary = page.locator('section[aria-labelledby="today-attendance-heading"]');
+  await expect(attendanceSummary).toHaveCSS('border-radius', '12px');
+  const presentMetric = page.getByRole('button', { name: 'Present 3' });
+  await expect(presentMetric).toHaveCSS('border-radius', '4px');
+  await expect(presentMetric).toHaveCSS('background-color', 'rgb(230, 238, 243)');
+  await expect(presentMetric.getByText('Present', { exact: true })).toHaveCSS('font-size', '14px');
+  await expect(presentMetric.getByText('Present', { exact: true })).toHaveCSS('font-weight', '700');
+  await expect(presentMetric.getByText('3', { exact: true })).toHaveCSS('font-size', '16px');
+  await expect(presentMetric.getByText('3', { exact: true })).toHaveCSS('font-weight', '400');
   const metricColumns = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
   expect(metricColumns).toBe(8);

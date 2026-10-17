@@ -136,6 +136,12 @@ test('manager dashboard follows the Figma attendance summary and keeps its contr
   assert.match(workspace, /attendance-trend-area/);
   assert.match(workspace, /Pending attendance corrections/);
   assert.match(workspace, /Pending leave requests/);
+  assert.match(workspace, /<header id="manager-dashboard-header" className="[^\"]*min-h-\[67px\][^\"]*bg-\[#EFF7F8\]/);
+  assert.match(workspace, /<h2 id="live-dashboard-heading" className="text-lg font-bold text-\[#353535\]"/);
+  assert.match(workspace, /xl:grid-cols-\[334px_184px_64px\]/);
+  assert.match(workspace, /rounded-xl border border-\[#DEE0E3\] bg-white px-\[21px\] py-\[18px\]/);
+  assert.match(workspace, /text-sm font-bold text-\[#49454F\]/);
+  assert.match(workspace, /min-h-\[68px\] rounded-\[4px\] border border-\[#E6EEF3\]/);
 });
 
 test('manager dashboard team report is permission-gated, tenant-scoped, searchable and exportable', () => {
