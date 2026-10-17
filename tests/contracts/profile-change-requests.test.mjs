@@ -11,6 +11,7 @@ const tenantMigration = readFileSync(new URL('../../supabase/migrations/20261017
 const schemaCorrection = readFileSync(new URL('../../supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-profile-change-browser.mjs', import.meta.url), 'utf8');
+const appraisalBrowser = readFileSync(new URL('../sql/isolated-auth/run-appraisal-browser.mjs', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 const matrix = JSON.parse(readFileSync(new URL('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json', import.meta.url), 'utf8'));
 
@@ -61,6 +62,12 @@ test('profile request migration and synthetic Auth/RLS plus browser journeys run
   assert.match(browser, /const isMobileViewport = await page\.evaluate\(\(\) => window\.innerWidth < 1024\)/);
   assert.match(browser, /await nav\.waitFor\(\{ state: 'visible' \}\)/,
     'desktop navigation must wait for session restoration before selecting a module');
+  for (const harness of [browser, appraisalBrowser]) {
+    assert.match(harness, /createServer as createNetServer/);
+    assert.match(harness, /node_modules\/vite\/bin\/vite\.js/);
+    assert.match(harness, /stopChildProcess\(server\)/,
+      'browser harnesses must reserve a free port and reliably stop their direct Vite child');
+  }
 });
 
 test('profile request fields match columns in the existing employee schema', () => {

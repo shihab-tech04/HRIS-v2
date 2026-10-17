@@ -1,6 +1,9 @@
 // Exercises the existing employee profile-change RPCs through the mounted HRIS UI.
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
+import { resolve } from 'node:path';
+import { stopChildProcess } from './stop-child-process.mjs';
 
 const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
@@ -8,8 +11,21 @@ const required = [
 ];
 for (const key of required) if (!process.env[key]) throw new Error('Missing integration setting ' + key + '.');
 
-const origin = 'http://127.0.0.1:48375';
-const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', '48375', '--strictPort'], {
+const repo = process.cwd();
+const port = await new Promise((resolvePort, reject) => {
+  const probe = createNetServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    if (!address || typeof address === 'string') {
+      probe.close(() => reject(new Error('Unable to select an available loopback port for the profile browser journey.')));
+      return;
+    }
+    probe.close(error => error ? reject(error) : resolvePort(String(address.port)));
+  });
+});
+const origin = `http://127.0.0.1:${port}`;
+const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', port, '--strictPort'], {
   cwd: process.cwd(),
   env: {
     ...process.env,
@@ -121,6 +137,9 @@ try {
   if ((await approved.innerText()).includes(proposed)) throw new Error('Employee history exposed the proposed value after review.');
   console.log('E02_PROFILE_CHANGE_BROWSER_ACCEPTANCE=PASS');
 } finally {
-  await browser?.close();
-  server.kill('SIGTERM');
+  try {
+    await browser?.close();
+  } finally {
+    await stopChildProcess(server);
+  }
 }

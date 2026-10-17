@@ -592,8 +592,6 @@ try {
   await page.getByRole('button', { name: 'Switch language to English', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
 
-  await page.getByRole('button', { name: 'Retry attendance month', exact: true }).click();
-  await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'detached' });
   if (await monthInput.getAttribute('value') !== process.env.HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH) {
     throw new Error(`Current organization month was not selected: ${await monthInput.getAttribute('value')}.`);
   }
