@@ -4064,6 +4064,73 @@ record('Attendance period RPC is executable by authenticated users and not anony
   attendancePeriodAcl.anon_execute === false && attendancePeriodAcl.authenticated_execute === true,
   JSON.stringify(attendancePeriodAcl));
 
+const clockBrowserInitialState = queryAdmin(`SELECT jsonb_build_object('count',count(*))
+  FROM public.attendance_records WHERE tenant_id='${ids.tenantA}'::uuid
+    AND employee_id='${ids.clockEmployee}'::uuid AND attendance_date='${localCurrentDate}'::date`);
+if (clockBrowserInitialState.count !== 0) {
+  throw new Error('The employee clock browser fixture must start without a current-day attendance row.');
+}
+let employeeClockBrowserOutput = '';
+let employeeClockBrowserError = '';
+try {
+  employeeClockBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-clock-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_CLOCK_EMPLOYEE_EMAIL: emails[8],
+      HRIS_LOCAL_CLOCK_TENANT_ID: ids.tenantA,
+    },
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  employeeClockBrowserError = String(error.stderr || error.message || 'isolated employee clock browser failed')
+    .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/g, '[redacted token]')
+    .slice(-1400);
+}
+const employeeClockBrowserRow = queryAdmin(`SELECT to_jsonb(a) FROM public.attendance_records a
+  WHERE a.tenant_id='${ids.tenantA}'::uuid AND a.employee_id='${ids.clockEmployee}'::uuid
+    AND a.attendance_date='${localCurrentDate}'::date`);
+record('E05-01 employee check-in persists through the authenticated desktop/mobile dashboard retry journey',
+  employeeClockBrowserOutput.includes('E05-01_AUTH_POSTGRES_BROWSER_PASS')
+    && employeeClockBrowserRow?.check_in && employeeClockBrowserRow.tenant_id === ids.tenantA
+    && employeeClockBrowserRow.employee_id === ids.clockEmployee
+    && auditCount(employeeClockBrowserRow.id, 'attendance.web_check_in') === 1,
+  employeeClockBrowserError);
+record('E05-02 employee check-out persists after successful check-in and is restored after refresh',
+  employeeClockBrowserOutput.includes('E05-02_AUTH_POSTGRES_BROWSER_PASS')
+    && employeeClockBrowserRow?.check_in && employeeClockBrowserRow?.check_out
+    && Date.parse(employeeClockBrowserRow.check_out) >= Date.parse(employeeClockBrowserRow.check_in)
+    && auditCount(employeeClockBrowserRow.id, 'attendance.web_check_out') === 1,
+  employeeClockBrowserError);
+record('E05-03 current attendance state recovers in Bengali after browser refresh without reopening clock actions',
+  employeeClockBrowserOutput.includes('E05-03_AUTH_POSTGRES_BROWSER_PASS')
+    && employeeClockBrowserOutput.includes('EMPLOYEE_CLOCK_BROWSER_ACCEPTANCE=PASS')
+    && Boolean(employeeClockBrowserRow?.check_in && employeeClockBrowserRow?.check_out),
+  employeeClockBrowserError);
+if (employeeClockBrowserRow?.id) {
+  psqlSync(`DELETE FROM public.admin_audit_logs
+    WHERE actor_id='${employeeClock.userId}'::uuid AND target_type='attendance_record'
+      AND target_id=${sqlLiteral(employeeClockBrowserRow.id)}
+      AND action IN ('attendance.web_check_in','attendance.web_check_out');
+    DELETE FROM public.attendance_records
+    WHERE id='${employeeClockBrowserRow.id}'::uuid
+      AND tenant_id='${ids.tenantA}'::uuid AND employee_id='${ids.clockEmployee}'::uuid
+      AND attendance_date='${localCurrentDate}'::date;`);
+}
+const employeeClockBrowserCleanup = queryAdmin(`SELECT jsonb_build_object(
+  'attendance_rows',(SELECT count(*)::integer FROM public.attendance_records
+    WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='${ids.clockEmployee}'::uuid
+      AND attendance_date='${localCurrentDate}'::date),
+  'clock_audit_rows',(SELECT count(*)::integer FROM public.admin_audit_logs
+    WHERE actor_id='${employeeClock.userId}'::uuid AND target_type='attendance_record'
+      AND action IN ('attendance.web_check_in','attendance.web_check_out')))`);
+record('E05 browser clock acceptance removes only its synthetic attendance and audit rows before SQL denial tests',
+  employeeClockBrowserCleanup.attendance_rows === 0 && employeeClockBrowserCleanup.clock_audit_rows === 0,
+  JSON.stringify(employeeClockBrowserCleanup));
+
 const clockOutBeforeCheckIn = await employeeClock.client.rpc('hris_employee_record_attendance_event', {
   p_tenant_id: ids.tenantA, p_event: 'check_out',
 });
