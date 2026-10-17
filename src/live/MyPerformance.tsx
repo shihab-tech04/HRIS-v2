@@ -264,12 +264,7 @@ export function MyPerformance({ tenantId, userId, locale }: { tenantId: string; 
     setAppraisalActionError('');
     setAppraisalMessage('');
     try {
-      const [goalResult, appraisalResult, employeeResult] = await Promise.all([
-        supabase.from('performance_goals')
-          .select('id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
-          .eq('tenant_id', requestTenantId)
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .limit(100),
+      const [appraisalResult, employeeResult] = await Promise.all([
         supabase.rpc('hris_get_my_appraisal_work', { p_tenant_id: requestTenantId }),
         supabase.from('employees')
           .select('id')
@@ -277,6 +272,16 @@ export function MyPerformance({ tenantId, userId, locale }: { tenantId: string; 
           .eq('user_id', userId)
           .maybeSingle(),
       ]);
+      if (employeeResult.error) throw employeeResult.error;
+      if (!current()) return;
+      const linkedEmployeeId = employeeResult.data?.id || '';
+      if (!linkedEmployeeId) throw new Error('No linked employee record is available for this organization.');
+      const goalResult = await supabase.from('performance_goals')
+        .select('id,title,description,category,target_metric,current_progress,due_date,status,weight,origin')
+        .eq('tenant_id', requestTenantId)
+        .eq('employee_id', linkedEmployeeId)
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .limit(100);
       if (goalResult.error) throw goalResult.error;
       if (!current()) return;
       const safeGoals = (Array.isArray(goalResult.data) ? goalResult.data : []) as Goal[];
@@ -287,7 +292,7 @@ export function MyPerformance({ tenantId, userId, locale }: { tenantId: string; 
         : (Array.isArray(appraisalPayload?.appraisals) ? appraisalPayload.appraisals : []) as Appraisal[];
       setAppraisals(safeAppraisals);
       setAppraisalLoadError(Boolean(appraisalResult.error));
-      setOwnEmployeeId(employeeResult.error ? '' : employeeResult.data?.id || '');
+      setOwnEmployeeId(linkedEmployeeId);
     } catch (cause) {
       if (!current()) return;
       setGoals([]);

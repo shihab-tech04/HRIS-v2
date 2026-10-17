@@ -67,7 +67,7 @@ function readable(value: unknown) {
   return '—';
 }
 
-function ProfileChangeReview({ revision }: { revision: number }) {
+function ProfileChangeReview({ tenantId, revision }: { tenantId: string; revision: number }) {
   const [requests, setRequests] = useState<ProfileChangeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
@@ -78,7 +78,9 @@ function ProfileChangeReview({ revision }: { revision: number }) {
   async function load() {
     setLoading(true);
     try {
-      const { data, error: requestError } = await supabase.rpc('admin_list_profile_change_requests');
+      const { data, error: requestError } = await supabase.rpc('admin_list_profile_change_requests', {
+        p_tenant_id: tenantId,
+      });
       if (requestError) throw requestError;
       setError('');
       setRequests(Array.isArray(data) ? data as ProfileChangeRow[] : []);
@@ -92,7 +94,7 @@ function ProfileChangeReview({ revision }: { revision: number }) {
     }
   }
 
-  useEffect(() => { void load(); }, [revision]);
+  useEffect(() => { void load(); }, [tenantId, revision]);
 
   async function review(request: ProfileChangeRow, decision: 'approved' | 'rejected') {
     setBusyId(request.id);
@@ -100,6 +102,7 @@ function ProfileChangeReview({ revision }: { revision: number }) {
     setMessage('');
     try {
       const { error: reviewError } = await supabase.rpc('admin_review_profile_change_request', {
+        p_tenant_id: tenantId,
         p_id: request.id,
         p_decision: decision,
         p_note: notes[request.id]?.trim() || null,
@@ -217,7 +220,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
             <p className="text-sm text-slate-600 mt-2">All HRIS areas are listed in the navigation. A filled marker indicates an RLS-filtered live record view. An empty marker indicates a workflow that is not yet integrated. No sample data or simulated saves are displayed.</p>
             <p className="text-sm text-slate-600 mt-2">Employee, Manager, HOD, HR, Admin, Super Admin and CEO workflows require their own verified role-based journeys. Viewing this system index does not impersonate those roles.</p>
           </section>
-        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} /> : selected.id === 'profileChanges' ? <ProfileChangeReview revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} /> : selected.id === 'profileChanges' ? <ProfileChangeReview tenantId={tenantId} revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
             <h3 className="font-semibold">Authorized records</h3>
             <p className="text-xs text-slate-500">RLS protected · up to 50 records · read only</p>

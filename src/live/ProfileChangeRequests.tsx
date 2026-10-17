@@ -42,7 +42,9 @@ export function EmployeeProfileChangeRequests({ tenantId, locale }: { tenantId: 
     setLoading(true);
     setError('');
     try {
-      const { data, error: loadError } = await supabase.rpc('employee_get_my_profile_change_requests');
+      const { data, error: loadError } = await supabase.rpc('employee_get_my_profile_change_requests', {
+        p_tenant_id: tenantId,
+      });
       if (sequence !== requestSequence.current) return;
       if (loadError) throw loadError;
       setRows(Array.isArray(data) ? data as HistoryRow[] : []);
@@ -72,6 +74,7 @@ export function EmployeeProfileChangeRequests({ tenantId, locale }: { tenantId: 
     setSaving(true);
     try {
       const { error: submitError } = await supabase.rpc('employee_submit_profile_change_request', {
+        p_tenant_id: tenantId,
         p_field_key: fieldKey, p_requested_value: proposed.trim(), p_reason: reason.trim(),
       });
       if (submitError) {
@@ -141,7 +144,9 @@ export function ProfileChangeReview({ tenantId, locale }: { tenantId: string; lo
     const sequence = ++requestSequence.current;
     setLoading(true); setError('');
     try {
-      const { data, error: loadError } = await supabase.rpc('admin_list_profile_change_requests');
+      const { data, error: loadError } = await supabase.rpc('admin_list_profile_change_requests', {
+        p_tenant_id: tenantId,
+      });
       if (sequence !== requestSequence.current) return;
       if (loadError) throw loadError;
       setRows(Array.isArray(data) ? data as ReviewRow[] : []);
@@ -159,6 +164,7 @@ export function ProfileChangeReview({ tenantId, locale }: { tenantId: string; lo
     setBusyId(row.id); setError(''); setMessage('');
     try {
       const { error: reviewError } = await supabase.rpc('admin_review_profile_change_request', {
+        p_tenant_id: tenantId,
         p_id: row.id, p_decision: decision, p_note: notes[row.id]?.trim() || null,
       });
       if (reviewError) throw reviewError;

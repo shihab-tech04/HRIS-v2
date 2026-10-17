@@ -433,6 +433,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017060000_hris_employee_dashboard_pending_requests.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017060001_hris_employee_unavailable_leave_type_reason.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -611,43 +612,65 @@ function record(label, ok, note = '') {
 
 const profileChangeValue = `Verified profile request ${randomUUID()}`;
 const profileChangeSubmit = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_tenant_id: ids.tenantA,
   p_field_key: 'birthplace', p_requested_value: profileChangeValue,
   p_reason: 'Synthetic employee profile correction acceptance.',
 });
 const profileChangeId = profileChangeSubmit.data;
-const profileEmployeeHistory = await employeeA.client.rpc('employee_get_my_profile_change_requests');
+const profileEmployeeHistory = await employeeA.client.rpc('employee_get_my_profile_change_requests', { p_tenant_id: ids.tenantA });
 const profileDirectValueRead = await employeeA.client.from('employee_profile_change_requests').select('requested_value').limit(1);
 const profileDirectOwnRows = await employeeA.client.from('employee_profile_change_requests').select('id,field_key,status');
-const profileOtherTenantHistory = await employeeB.client.rpc('employee_get_my_profile_change_requests');
+const profileOtherTenantHistory = await employeeB.client.rpc('employee_get_my_profile_change_requests', { p_tenant_id: ids.tenantB });
 const profileDuplicate = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_tenant_id: ids.tenantA,
   p_field_key: 'birthplace', p_requested_value: 'A second concurrent birthplace', p_reason: 'Duplicate should be denied.',
 });
-const profileEmployeeReview = await employeeA.client.rpc('admin_list_profile_change_requests');
-const profileNoPermissionReview = await noPermission.client.rpc('admin_list_profile_change_requests');
-const profileManagerAQueue = await managerA.client.rpc('admin_list_profile_change_requests');
-const profileManagerBQueue = await managerB.client.rpc('admin_list_profile_change_requests');
+let profileInactiveMembership;
+psqlSync(`UPDATE public.tenant_memberships SET status='inactive'
+  WHERE user_id=${sqlLiteral(employeeA.userId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+try {
+  profileInactiveMembership = await employeeA.client.rpc('employee_get_my_profile_change_requests', { p_tenant_id: ids.tenantA });
+} finally {
+  psqlSync(`UPDATE public.tenant_memberships SET status='active'
+    WHERE user_id=${sqlLiteral(employeeA.userId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+const profileCrossTenantSubmit = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_tenant_id: ids.tenantB, p_field_key: 'birthplace', p_requested_value: 'Cross-tenant attempt',
+  p_reason: 'This must be rejected.',
+});
+const profileEmployeeReview = await employeeA.client.rpc('admin_list_profile_change_requests', { p_tenant_id: ids.tenantA });
+const profileNoPermissionReview = await noPermission.client.rpc('admin_list_profile_change_requests', { p_tenant_id: ids.tenantA });
+const profileManagerAQueue = await managerA.client.rpc('admin_list_profile_change_requests', { p_tenant_id: ids.tenantA });
+const profileManagerBQueue = await managerB.client.rpc('admin_list_profile_change_requests', { p_tenant_id: ids.tenantA });
 record('E02-03 employee requests a protected field correction and sees tenant-scoped status without reading proposed values',
   !profileChangeSubmit.error && typeof profileChangeId === 'string'
     && !profileEmployeeHistory.error && profileEmployeeHistory.data?.some(row => row.id === profileChangeId && row.status === 'pending')
     && !profileDirectOwnRows.error && profileDirectOwnRows.data?.length === 1
     && Boolean(profileDirectValueRead.error)
     && profileOtherTenantHistory.data?.length === 0
-    && profileDuplicate.error?.code === '23505',
-  JSON.stringify({ submit: profileChangeSubmit.error?.code || 'ok', ownHistory: profileEmployeeHistory.data?.length, rawValueDenied: Boolean(profileDirectValueRead.error), otherTenant: profileOtherTenantHistory.data?.length, duplicate: profileDuplicate.error?.code }));
+    && profileDuplicate.error?.code === '23505'
+    && profileInactiveMembership.error?.code === '42501'
+    && profileCrossTenantSubmit.error?.code === '42501',
+  JSON.stringify({ submit: profileChangeSubmit.error?.code || 'ok', ownHistory: profileEmployeeHistory.data?.length,
+    rawValueDenied: Boolean(profileDirectValueRead.error), otherTenant: profileOtherTenantHistory.data?.length,
+    duplicate: profileDuplicate.error?.code, inactiveMembership: profileInactiveMembership.error?.code,
+    crossTenant: profileCrossTenantSubmit.error?.code }));
 record('E02 profile review is denied to employees and users without permission and scoped to the reviewer active tenant',
   profileEmployeeReview.error?.code === '42501'
     && profileNoPermissionReview.error?.code === '42501'
     && profileManagerAQueue.data?.some(row => row.id === profileChangeId)
     && !profileManagerAQueue.error
-    && !profileManagerBQueue.error
-    && !profileManagerBQueue.data?.some(row => row.id === profileChangeId));
+    && profileManagerBQueue.error?.code === '42501'
+    && profileCrossTenantSubmit.error?.code === '42501');
 const profileApproval = await managerA.client.rpc('admin_review_profile_change_request', {
+  p_tenant_id: ids.tenantA,
   p_id: profileChangeId, p_decision: 'approved', p_note: 'Verified synthetic employee correction.',
 });
 const profileDuplicateDecision = await managerA.client.rpc('admin_review_profile_change_request', {
+  p_tenant_id: ids.tenantA,
   p_id: profileChangeId, p_decision: 'approved', p_note: null,
 });
-const profileHistoryAfterReview = await employeeA.client.rpc('employee_get_my_profile_change_requests');
+const profileHistoryAfterReview = await employeeA.client.rpc('employee_get_my_profile_change_requests', { p_tenant_id: ids.tenantA });
 const profileEmployeeAfterReview = await adminAuth.from('employees').select('birthplace,full_name')
   .eq('id', '55555555-5555-4555-8555-555555555555').single();
 const profileAudit = queryAdmin(`SELECT jsonb_build_object('count',count(*),'redacted',bool_and(details ? 'field_key' AND NOT (details ? 'requested_value')))
@@ -5079,9 +5102,9 @@ const approvedRow = tableRow('leave_requests', ids.leaveApprove);
 const leaveBalance = balance(ids.leaveTypeA, 2026);
 record('Tenant A leave approval applies holiday-aware balance and audit atomically',
   leaveApproved.success === true && approvedRow.status === 'approved'
-  // The browser rejection fixture is submitted earlier in this run, so one additional
-  // annual-leave day is pending at this checkpoint.
-  && Number(leaveBalance.pending_days) === 5 && Number(leaveBalance.used_days) === 1
+  // The browser rejection fixture is already resolved before this persisted
+  // balance snapshot, so it contributes no pending annual-leave day here.
+  && Number(leaveBalance.pending_days) === 4 && Number(leaveBalance.used_days) === 1
   && auditCount(ids.leaveApprove, 'leave.request.approved') === 1,
   JSON.stringify({ decision: leaveApproved, status: approvedRow.status,
     pendingDays: leaveBalance.pending_days, usedDays: leaveBalance.used_days,
@@ -5129,7 +5152,7 @@ const yearApproval = resolveLeave(managerA, ids.leaveYearBoundary, 'approved');
 const year2026 = balance(ids.leaveTypeA, 2026);
 const year2027 = balance(ids.leaveTypeA, 2027);
 record('Cross-year leave updates only the matching yearly ledgers', yearApproval.success === true
-  && Number(year2026.pending_days) === 4 && Number(year2026.used_days) === 2
+  && Number(year2026.pending_days) === 3 && Number(year2026.used_days) === 2
   && Number(year2027.pending_days) === 0 && Number(year2027.used_days) === 1,
   JSON.stringify({ decision: yearApproval, year2026: {
     pendingDays: year2026.pending_days, usedDays: year2026.used_days,
@@ -5139,7 +5162,7 @@ const halfReject = resolveLeave(managerA, ids.leaveHalfDay, 'rejected', 'isolate
 const halfRow = tableRow('leave_requests', ids.leaveHalfDay);
 const afterHalf = balance(ids.leaveTypeA, 2026);
 record('Half-day rejection releases pending days without increasing used days', halfReject.success === true
-  && halfRow.status === 'rejected' && Number(afterHalf.pending_days) === 3.5
+  && halfRow.status === 'rejected' && Number(afterHalf.pending_days) === 2.5
   && Number(afterHalf.used_days) === 2,
   JSON.stringify({ decision: halfReject, status: halfRow.status,
     pendingDays: afterHalf.pending_days, usedDays: afterHalf.used_days }));

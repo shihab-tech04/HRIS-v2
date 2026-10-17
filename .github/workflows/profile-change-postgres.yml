@@ -1,15 +1,17 @@
 name: HRIS profile correction workflow SQL checks
 on:
   pull_request:
-    branches: [main]
+    branches: [main, development/hris-checkpoints]
     paths:
       - 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'
+      - 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'
       - 'tests/sql/profile-change/**'
       - '.github/workflows/profile-change-postgres.yml'
   push:
-    branches: [main]
+    branches: [main, development/hris-checkpoints]
     paths:
       - 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'
+      - 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'
       - 'tests/sql/profile-change/**'
       - '.github/workflows/profile-change-postgres.yml'
   workflow_dispatch:
@@ -17,7 +19,7 @@ permissions:
   contents: read
 jobs:
   profile-change-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
       database:
@@ -48,5 +50,6 @@ jobs:
           set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/profile-change/fixture.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016141000_employee_profile_change_requests.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/profile-change/verify.sql
           echo "Passed against synthetic PostgreSQL 17; this is not production Auth/RLS certification."
