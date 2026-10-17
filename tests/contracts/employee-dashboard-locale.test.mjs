@@ -11,6 +11,7 @@ const componentSections = [
   workspace.slice(workspace.indexOf('function PersonalLeaveRequests('), workspace.indexOf('function EmployeePersonalLeave(')),
   workspace.slice(workspace.indexOf('function PersonalAttendanceCorrections('), workspace.indexOf('function EmployeeOverview(')),
   workspace.slice(workspace.indexOf('function EmployeeOverview('), workspace.indexOf('export function LiveHrisWorkspace(')),
+  read('../../src/live/EmployeeUpcomingReviews.tsx'),
 ];
 
 test('employee dashboard and inline request journeys have unique Bengali translations for literal keys', () => {

@@ -6401,6 +6401,13 @@ record('Peer-review submission rechecks assignment overlap in the backend',
 
 const browserTaskTitle = `Local browser integration ${Date.now()}`;
 const employeeDashboardTaskTitle = `QA Dashboard assignment ${Date.now()}`;
+const dashboardAppraisalBaseline = queryAdmin(`SELECT jsonb_build_object(
+  'status',status,'self_overall_comment',self_overall_comment,
+  'manager_overall_comment',manager_overall_comment,'updated_at',updated_at::text)
+  FROM public.performance_appraisals WHERE id='${appraisalAEmployeeId}'::uuid`);
+if (!dashboardAppraisalBaseline?.status) throw new Error('The dashboard appraisal fixture could not be snapshotted.');
+psqlSync(`UPDATE public.performance_appraisals SET status='draft',self_overall_comment=NULL,
+  manager_overall_comment=NULL WHERE id='${appraisalAEmployeeId}'::uuid`);
 const employeeDashboardTask = await employeeA.client.rpc('hris_create_project_task', {
   p_tenant_id: ids.tenantA, p_project_id: projectA.id,
   p_title: employeeDashboardTaskTitle, p_description: 'Synthetic dashboard acceptance task.',
@@ -6408,6 +6415,11 @@ const employeeDashboardTask = await employeeA.client.rpc('hris_create_project_ta
 });
 const employeeDashboardGoalDueDate = queryAdmin(`SELECT jsonb_build_object('due_date',due_date::text)
   FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`).due_date;
+const dashboardPendingServiceId = 'c2222222-2222-4222-8222-222222222221';
+psqlSync(`INSERT INTO public.service_requests(id,tenant_id,employee_id,request_type,reason,status,submitted_at)
+  VALUES ('${dashboardPendingServiceId}'::uuid,'${ids.tenantA}'::uuid,
+    '55555555-5555-4555-8555-555555555555'::uuid,'other',
+    'Synthetic pending service request for dashboard acceptance.','pending',clock_timestamp())`);
 const dashboardPendingServiceIds = queryAdmin(`SELECT coalesce(jsonb_agg(id ORDER BY submitted_at,id),'[]'::jsonb) AS ids
   FROM public.service_requests WHERE tenant_id='${ids.tenantA}'::uuid
     AND employee_id='55555555-5555-4555-8555-555555555555' AND status IN ('pending','in_progress')`).ids || [];
@@ -6438,6 +6450,7 @@ try {
       HRIS_LOCAL_DASHBOARD_TASK_TITLE: employeeDashboardTaskTitle,
       HRIS_LOCAL_DASHBOARD_GOAL_TITLE: 'QA A goal',
       HRIS_LOCAL_DASHBOARD_TEAM_NAME: 'QA A Team',
+      HRIS_LOCAL_DASHBOARD_APPRAISAL_ID: appraisalAEmployeeId,
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID: 'b1111111-1111-4111-8111-111111111111',
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE: 'QA A all notice',
       HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: '88888888-8888-4888-8888-888888888801',
@@ -6450,6 +6463,14 @@ try {
   employeeAttendanceBrowserError = String(error.stderr || error.message || 'local employee attendance browser run failed').slice(-1800);
   employeeAttendanceBrowserOutput = String(error.stdout || '');
 }
+psqlSync(`UPDATE public.performance_appraisals SET
+  status=${sqlLiteral(dashboardAppraisalBaseline.status)},
+  self_overall_comment=${dashboardAppraisalBaseline.self_overall_comment === null ? 'NULL' : sqlLiteral(dashboardAppraisalBaseline.self_overall_comment)},
+  manager_overall_comment=${dashboardAppraisalBaseline.manager_overall_comment === null ? 'NULL' : sqlLiteral(dashboardAppraisalBaseline.manager_overall_comment)},
+  updated_at=${sqlLiteral(dashboardAppraisalBaseline.updated_at)}::timestamptz
+  WHERE id='${appraisalAEmployeeId}'::uuid`);
+psqlSync(`DELETE FROM public.service_requests WHERE id='${dashboardPendingServiceId}'::uuid
+  AND tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid`);
 psqlSync(`UPDATE public.performance_goals SET due_date=${employeeDashboardGoalDueDate ? `'${employeeDashboardGoalDueDate}'::date` : 'NULL'}
   WHERE id='${employeeAGoalId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 if (employeeDashboardTask.data?.id) psqlSync(`DELETE FROM public.project_task_peer_reviews
@@ -6461,9 +6482,12 @@ if (employeeDashboardTask.data?.id) psqlSync(`DELETE FROM public.project_task_pe
 const employeeDashboardFixtureCleanup = queryAdmin(`SELECT jsonb_build_object(
   'synthetic_task_count',(SELECT count(*)::integer FROM public.project_tasks
     WHERE tenant_id='${ids.tenantA}'::uuid AND title=${sqlLiteral(employeeDashboardTaskTitle)}),
+  'synthetic_pending_service_count',(SELECT count(*)::integer FROM public.service_requests
+    WHERE id='${dashboardPendingServiceId}'::uuid),
   'goal_due_date',(SELECT due_date::text FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid))`);
 record('Employee dashboard acceptance restores its overdue-goal fixture and removes its synthetic task',
   employeeDashboardFixtureCleanup.synthetic_task_count === 0
+    && employeeDashboardFixtureCleanup.synthetic_pending_service_count === 0
     && employeeDashboardFixtureCleanup.goal_due_date === employeeDashboardGoalDueDate,
   JSON.stringify(employeeDashboardFixtureCleanup));
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
@@ -6480,6 +6504,8 @@ record('E01-08 recent HR announcements appear on the employee dashboard and open
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 record('E01-04 pending leave, attendance, expense, travel, service and learning requests link from the dashboard with retry, owner-scoped persistence, EN/BN, and mobile/desktop checks',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
+record('E01-06 upcoming appraisal deadlines use the authenticated employee appraisal RPC and recover on retry at 375px/1280px in EN/BN',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_UPCOMING_REVIEWS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';

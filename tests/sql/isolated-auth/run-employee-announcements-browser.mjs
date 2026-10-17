@@ -74,7 +74,6 @@ try {
       if (isFullNoticeRead(route.request())) {
         if (failInitialRead && armInitialReadFailure) {
           failInitialRead = false;
-          armInitialReadFailure = false;
           injectedInitialReadFailure = true;
           await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
             code: 'XX000', message: 'Synthetic temporary notice read outage.',
@@ -111,6 +110,7 @@ try {
   if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
   await page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ }).waitFor({ state: 'visible' });
   if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
+  armInitialReadFailure = false;
   await page.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
 
   await pinnedNotice.waitFor({ state: 'visible' });

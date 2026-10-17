@@ -15,6 +15,7 @@ const required = [
   'HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID', 'HRIS_LOCAL_DASHBOARD_TASK_TITLE', 'HRIS_LOCAL_DASHBOARD_GOAL_TITLE',
   'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID', 'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE',
   'HRIS_LOCAL_DASHBOARD_TEAM_NAME',
+  'HRIS_LOCAL_DASHBOARD_APPRAISAL_ID',
   'HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID', 'HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
@@ -71,6 +72,7 @@ try {
   let failInitialUpcomingTrainingRead = true;
   let failInitialDashboardTaskRead = true;
   let failInitialDashboardPendingRead = true;
+  let failInitialDashboardReviewRead = true;
   let failDashboardNoticeRead = false;
   const identityCardRequests = [];
   const periodRequests = [];
@@ -80,6 +82,7 @@ try {
   const dashboardGoalRequests = [];
   const dashboardNoticeRequests = [];
   const dashboardPendingRequests = [];
+  const dashboardReviewRequests = [];
   const directRosterTableRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
@@ -108,6 +111,9 @@ try {
     }
     if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_pending_requests') && request.method() === 'POST') {
       dashboardPendingRequests.push(request.postDataJSON()?.p_tenant_id);
+    }
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_appraisal_work') && request.method() === 'POST') {
+      dashboardReviewRequests.push(request.postDataJSON()?.p_tenant_id);
     }
     if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
       directRosterTableRequests.push(url.pathname);
@@ -158,6 +164,15 @@ try {
         }) });
         return;
       }
+      if (failInitialDashboardReviewRead
+          && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_appraisal_work')
+          && route.request().method() === 'POST') {
+        failInitialDashboardReviewRead = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+          code: 'XX000', message: 'Synthetic temporary dashboard review outage.',
+        }) });
+        return;
+      }
       if (failDashboardNoticeRead && url.pathname.endsWith('/rest/v1/notices')
           && route.request().method() === 'GET'
           && url.searchParams.get('select') === 'id,title,category,pinned,published_at') {
@@ -200,6 +215,26 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-profile="team"]').getByText(process.env.HRIS_LOCAL_DASHBOARD_TEAM_NAME, { exact: true }).waitFor({ state: 'visible' });
+  const upcomingReviews = page.locator('section[aria-labelledby="employee-upcoming-reviews-heading"]');
+  await upcomingReviews.getByRole('alert').filter({ hasText: 'Unable to load your upcoming reviews.' }).waitFor({ state: 'visible' });
+  if (failInitialDashboardReviewRead) throw new Error('The injected appraisal deadline dashboard outage was not observed.');
+  await upcomingReviews.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
+  await upcomingReviews.locator(`[data-upcoming-review="${process.env.HRIS_LOCAL_DASHBOARD_APPRAISAL_ID}"]`).waitFor({ state: 'visible' });
+  await upcomingReviews.getByText('QA A Annual Review', { exact: true }).waitFor({ state: 'visible' });
+  await upcomingReviews.getByText(/Self-review due/).waitFor({ state: 'visible' });
+  if (dashboardReviewRequests.length < 2 || dashboardReviewRequests.some(value => value !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
+    throw new Error(`Dashboard appraisal deadline reads were missing or not tenant-bound: ${JSON.stringify(dashboardReviewRequests)}.`);
+  }
+  await assertNoOverflow(page, 'Employee upcoming reviews mobile');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Employee upcoming reviews desktop');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await upcomingReviews.getByRole('button', { name: 'Open My Performance', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Performance', exact: true }).waitFor({ state: 'visible' });
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  await upcomingReviews.locator(`[data-upcoming-review="${process.env.HRIS_LOCAL_DASHBOARD_APPRAISAL_ID}"]`).waitFor({ state: 'visible' });
   const pendingRequests = page.locator('section[aria-labelledby="employee-pending-requests-heading"]');
   await pendingRequests.getByRole('alert').filter({ hasText: 'Unable to load your pending requests.' }).waitFor({ state: 'visible' });
   if (failInitialDashboardPendingRead) throw new Error('The injected pending-request dashboard outage was not observed.');
@@ -363,6 +398,9 @@ try {
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('heading', { name: 'সাম্প্রতিক এইচআর ঘোষণা', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('heading', { name: 'আমার কাজ ও লক্ষ্যসমূহ', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'আসন্ন পর্যালোচনা', exact: true }).waitFor({ state: 'visible' });
+  await page.getByText(/নিজের পর্যালোচনার শেষ তারিখ/).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'আমার কর্মদক্ষতা খুলুন', exact: true }).waitFor({ state: 'visible' });
   await page.getByText('মেয়াদোত্তীর্ণ', { exact: true }).first().waitFor({ state: 'visible' });
   await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
   if (await page.locator('html').getAttribute('lang') !== 'bn') throw new Error('Roster navigation lost Bengali locale on refresh.');
@@ -531,7 +569,8 @@ try {
   console.log('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
-  console.log('Local Auth/Postgres employee dashboard journeys passed: audience-filtered recent announcements and full-list navigation, task/goal recovery, upcoming confirmed training, My Learning navigation, English/Bengali, refresh and route recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
+  console.log('Local Auth/Postgres employee dashboard journeys passed: audience-filtered recent announcements and full-list navigation, task/goal recovery, upcoming confirmed training and appraisal deadlines, pending request retry and history routes, My Learning/My Performance navigation, English/Bengali, refresh and route recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
+  console.log('EMPLOYEE_DASHBOARD_UPCOMING_REVIEWS_BROWSER_ACCEPTANCE=PASS');
 } finally {
   await browser?.close();
   await stopChildProcess(server);

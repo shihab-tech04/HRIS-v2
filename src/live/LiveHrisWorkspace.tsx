@@ -16,6 +16,7 @@ import { MyPayslips } from './MyPayslips';
 import { EmployeeDocumentVault } from './EmployeeDocumentVault';
 import { EmployeeIdentityCard } from './EmployeeIdentityCard';
 import { EmployeeUpcomingTraining } from './EmployeeUpcomingTraining';
+import { EmployeeUpcomingReviews } from './EmployeeUpcomingReviews';
 import { EmployeeDashboardWork } from './EmployeeDashboardWork';
 import { EmployeeDashboardPendingRequests, type PendingRequestKind } from './EmployeeDashboardPendingRequests';
 import { EmployeeLeaveCalendar } from './EmployeeLeaveCalendar';
@@ -3312,6 +3313,8 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           <EmployeeDashboardWork tenantId={tenantId} employeeId={employeeId} dashboardDate={today} locale={locale}
             onOpenProjects={onOpenProjects} onOpenPerformance={onOpenPerformance} />
           <EmployeeUpcomingTraining tenantId={tenantId} locale={locale} onOpen={onOpenLearning} />
+          {employeeId && today && <EmployeeUpcomingReviews tenantId={tenantId} employeeId={employeeId}
+            dashboardDate={today} locale={locale} onOpen={onOpenPerformance} />}
           <EmployeeDashboardPendingRequests tenantId={tenantId} employeeId={employeeId} locale={locale}
             onOpen={kind => {
               if (kind === 'attendance') {
