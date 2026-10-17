@@ -9,6 +9,7 @@ const workspace = read('../../src/live/LiveHrisWorkspace.tsx');
 const locale = read('../../src/live/project-locale.ts');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs');
+const fixture = read('../sql/isolated-auth/fixture.sql');
 
 test('E01-04 pending request summary is owner-bound, tenant-bound and limited to existing open statuses', () => {
   assert.match(migration, /IF NOT public\.is_live_session\(\)/);
@@ -54,4 +55,8 @@ test('E01-04 disposable Auth/Postgres and browser suites assert isolation, retry
 test('dashboard acceptance fixture parses its synthetic pending-request ID from an object-shaped JSON result', () => {
   assert.match(runner, /SELECT jsonb_build_object\('ids',coalesce\(jsonb_agg\(id ORDER BY submitted_at,id\),'\[\]'::jsonb\)\)/);
   assert.match(runner, /\)\.ids \|\| \[\];\s*if \(dashboardPendingServiceIds\.length === 0\)/);
+  assert.match(fixture, /'88888888-8888-4888-8888-888888888803'[^\n]*'pending'/,
+    'the browser fixture should rely on a request that remains pending through earlier resolution tests');
+  assert.match(runner, /E01-04 browser uses a request that remains pending after earlier leave-decision checks/);
+  assert.match(runner, /HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: ids\.leaveMissingLedger/);
 });

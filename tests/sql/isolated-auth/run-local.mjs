@@ -3632,6 +3632,27 @@ record('Real employee UI submission persists its own proof-backed leave row, bal
   && Number(approvedEvidenceBalance.used_days) === 2
   && auditCount(uiLeaveAcceptance?.id, 'leave.request.approved') === 1,
   JSON.stringify({ requestId: uiLeaveAcceptance?.id, persisted: Boolean(browserUiLeave), ownerHistory: Boolean(employeeUiLeaveHistoryRow), foreignPathExposed: JSON.stringify(foreignHistoryAfterUiLeave.requests).includes(uiLeaveAcceptance?.path || 'missing-ui-evidence-path') }));
+record('E08-01 employee applies for leave through the authenticated UI and sees the persisted history row',
+  leaveEvidenceBrowserPassed && Boolean(browserUiLeave?.id) && Boolean(employeeUiLeaveHistoryRow),
+  JSON.stringify({ requestId: browserUiLeave?.id, ownerHistory: Boolean(employeeUiLeaveHistoryRow) }));
+record('E08-02 employee leave type options match the active employee-scoped database contract',
+  leaveEvidenceBrowserOutput.includes('LEAVE_TYPES_VISIBLE_BROWSER_ACCEPTANCE=PASS'));
+record('E08-03 employee-selected leave dates match the persisted tenant request',
+  leaveEvidenceBrowserPassed && browserUiLeave?.from_date === '2026-10-20'
+    && browserUiLeave?.to_date === '2026-10-20');
+record('E08-05 employee reason is preserved by submission and appears in personal history',
+  leaveEvidenceBrowserPassed && browserUiLeave?.reason === 'Real employee UI leave evidence request'
+    && employeeUiLeaveHistoryRow?.reason === browserUiLeave?.reason);
+record('E08-06 required private supporting evidence is attached to the persisted employee request',
+  leaveEvidenceBrowserPassed && Boolean(uiLeaveAcceptance?.path)
+    && browserUiLeave?.attachment_url === uiLeaveAcceptance?.path
+    && !JSON.stringify(foreignHistoryAfterUiLeave.requests).includes(uiLeaveAcceptance?.path || 'missing-evidence-path'));
+record('E08-12 submission persists the request using the employee session and active tenant',
+  leaveEvidenceBrowserPassed && browserUiLeave?.tenant_id === ids.tenantA
+    && browserUiLeave?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserUiLeave?.submitted_by === employeeA.userId);
+record('E08-13 employee sees the existing leave.manage review route in both supported locales',
+  leaveEvidenceBrowserPassed && leaveEvidenceBrowserOutput.includes('E08_APPROVAL_ROUTE_BROWSER_ACCEPTANCE=PASS'));
 const browserRejectedLeave = leaveRejectionRequestId ? tableRow('leave_requests', leaveRejectionRequestId) : null;
 const postBrowserAnnualBalance = balance(ids.leaveTypeA, 2026);
 const postBrowserEmployeeHistory = queryAs(employeeA,
@@ -3647,6 +3668,12 @@ record('Real manager UI rejection persists its note, releases pending balance, a
   && employeeRejectedLeave?.resolution_note === leaveRejectionNote,
   JSON.stringify({ managerRow: browserRejectedLeave, balance: postBrowserAnnualBalance,
     employeeRow: employeeRejectedLeave }));
+record('E08-14 employee request history displays persisted approved and rejected statuses after refresh',
+  leaveEvidenceBrowserPassed && employeeUiLeaveHistoryRow?.status === 'approved'
+    && employeeRejectedLeave?.status === 'rejected');
+record('E08-17 employee history and reviewer queue retain the manager rejection reason',
+  leaveEvidenceBrowserPassed && browserRejectedLeave?.resolution_note === leaveRejectionNote
+    && employeeRejectedLeave?.resolution_note === leaveRejectionNote);
 
 const employeeCalendarA = await employeeA.client.rpc('hris_get_my_leave_calendar', {
   p_tenant_id: ids.tenantA, p_start_date: '2026-10-01', p_end_date: '2026-10-31',
@@ -3699,6 +3726,22 @@ record('Personal leave calendar returns only the linked employee’s approved da
     anonymousDenied: Boolean(anonymousCalendar.error),
     malformedRangeDenied: malformedCalendarRange.error?.code,
     privileges: employeeCalendarPrivileges }));
+record('E09-01 employee sees only their approved leave dates in the personal calendar',
+  leaveEvidenceBrowserPassed && Boolean(employeeCalendarOwnApprovedLeave)
+    && employeeCalendarA.data?.approved_leave?.every(row => row.employee_id === undefined),
+  JSON.stringify({ ownerLeave: employeeCalendarOwnApprovedLeave?.from_date,
+    visibleRows: employeeCalendarA.data?.approved_leave?.length }));
+record('E09-02 employee sees active tenant-wide holidays in the personal calendar',
+  leaveEvidenceBrowserPassed && employeeCalendarHoliday?.name === 'Synthetic personal calendar holiday'
+    && employeeCalendarB.data?.holidays?.every(row => row.name !== 'Synthetic personal calendar holiday'),
+  JSON.stringify({ tenantAHoliday: employeeCalendarHoliday?.name,
+    foreignTenantHolidayVisible: employeeCalendarB.data?.holidays?.some(row => row.name === 'Synthetic personal calendar holiday') }));
+record('E09-04 personal calendar hides leave reasons and reviewer identity',
+  leaveEvidenceBrowserPassed && Boolean(employeeCalendarOwnApprovedLeave)
+    && !('reason' in employeeCalendarOwnApprovedLeave)
+    && !('resolution_note' in employeeCalendarOwnApprovedLeave)
+    && !('resolved_by' in employeeCalendarOwnApprovedLeave),
+  JSON.stringify({ keys: Object.keys(employeeCalendarOwnApprovedLeave || {}) }));
 
 record('Ordinary employees can read their own attendance and leave summary without admin or membership roles',
   employeeSummaryA.attendance.records.length === 1
@@ -4938,7 +4981,9 @@ const approvedRow = tableRow('leave_requests', ids.leaveApprove);
 const leaveBalance = balance(ids.leaveTypeA, 2026);
 record('Tenant A leave approval applies holiday-aware balance and audit atomically',
   leaveApproved.success === true && approvedRow.status === 'approved'
-  && Number(leaveBalance.pending_days) === 4 && Number(leaveBalance.used_days) === 1
+  // The browser rejection fixture is submitted earlier in this run, so one additional
+  // annual-leave day is pending at this checkpoint.
+  && Number(leaveBalance.pending_days) === 5 && Number(leaveBalance.used_days) === 1
   && auditCount(ids.leaveApprove, 'leave.request.approved') === 1,
   JSON.stringify({ decision: leaveApproved, status: approvedRow.status,
     pendingDays: leaveBalance.pending_days, usedDays: leaveBalance.used_days,
@@ -4986,7 +5031,7 @@ const yearApproval = resolveLeave(managerA, ids.leaveYearBoundary, 'approved');
 const year2026 = balance(ids.leaveTypeA, 2026);
 const year2027 = balance(ids.leaveTypeA, 2027);
 record('Cross-year leave updates only the matching yearly ledgers', yearApproval.success === true
-  && Number(year2026.pending_days) === 3 && Number(year2026.used_days) === 2
+  && Number(year2026.pending_days) === 4 && Number(year2026.used_days) === 2
   && Number(year2027.pending_days) === 0 && Number(year2027.used_days) === 1,
   JSON.stringify({ decision: yearApproval, year2026: {
     pendingDays: year2026.pending_days, usedDays: year2026.used_days,
@@ -4996,10 +5041,15 @@ const halfReject = resolveLeave(managerA, ids.leaveHalfDay, 'rejected', 'isolate
 const halfRow = tableRow('leave_requests', ids.leaveHalfDay);
 const afterHalf = balance(ids.leaveTypeA, 2026);
 record('Half-day rejection releases pending days without increasing used days', halfReject.success === true
-  && halfRow.status === 'rejected' && Number(afterHalf.pending_days) === 2.5
+  && halfRow.status === 'rejected' && Number(afterHalf.pending_days) === 3.5
   && Number(afterHalf.used_days) === 2,
   JSON.stringify({ decision: halfReject, status: halfRow.status,
     pendingDays: afterHalf.pending_days, usedDays: afterHalf.used_days }));
+record('E08-04 employee half-day selection previews one-half day and the persisted leave record retains its approved portion',
+  leaveEvidenceBrowserPassed && Number(uiLeaveAcceptance?.previewedHalfDayDays) === 0.5
+    && halfRow.day_portion === 'first_half' && Number(halfRow.requested_days) === 0.5,
+  JSON.stringify({ uiPreview: uiLeaveAcceptance?.previewedHalfDayDays,
+    storedPortion: halfRow.day_portion, storedDays: halfRow.requested_days }));
 
 const missingLedger = attemptAs(managerA, `SELECT public.admin_resolve_leave_request(
   '${ids.leaveMissingLedger}'::uuid,'approved',NULL)::jsonb`);
@@ -5304,6 +5354,12 @@ const dashboardAValid = Number(dashboardA.team_members) === 6
   && dashboardA.attendance_last_30_days.length === 30;
 record('Tenant A dashboard counts explicit attendance modes/statuses and approved leave only',
   dashboardAValid, dashboardAValid ? '' : JSON.stringify(dashboardA));
+record('E08-18 approved leave updates the employee balance and the tenant dashboard leave attendance summary',
+  leaveEvidenceBrowserPassed && browserApprovedEvidence?.status === 'approved'
+    && Number(approvedEvidenceBalance.pending_days) === 0 && Number(approvedEvidenceBalance.used_days) === 2
+    && dashboardAValid && Number(dashboardA.on_leave_today) === 1,
+  JSON.stringify({ leaveStatus: browserApprovedEvidence?.status, balance: approvedEvidenceBalance,
+    onLeaveToday: dashboardA.on_leave_today }));
 
 const crossDashboard = attemptAs(managerB, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantA}'::uuid)`);
 const crossAttendanceData = attemptAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
@@ -6052,6 +6108,19 @@ record('Unified notification feed merges leave decisions with project, learning,
     learningError: unifiedLearningNotifications.error?.code,
     pageTwoError: unifiedLearningNotificationsPageTwo.error?.code,
     pageTwoHasMore: unifiedLearningNotificationsPageTwo.data?.has_more,
+    serviceRequestTypes: {
+      completed: serviceRequestCompletedNotificationA?.service_request_type,
+      rejectedA: serviceRequestRejectedNotificationA?.service_request_type,
+      rejectedB: serviceRequestRejectedNotificationB?.service_request_type,
+    },
+    tenantBSources: unifiedTenantBNotifications.data?.notifications?.map(row => row.source),
+    privacyKeysPresent: {
+      serviceRequest: Object.keys(serviceRequestCompletedNotificationA || {}).some(key => /note|reason|employee|recipient|actor|resolved_by/i.test(key)),
+      leave: Object.keys(leaveApprovalNotificationA || {}).some(key => /note|reason|employee|recipient/i.test(key)),
+      travel: Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key)),
+    },
+    foreignTravelPresent: unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB),
+    grantAnonExecute: functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon,
     functionAcl: functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'],
     projectUnread: unifiedProjectNotifications.data?.unread_project_reviews,
     tenantB: unifiedTenantBNotifications.data?.notifications?.length,
@@ -6534,6 +6603,10 @@ const dashboardLeaveBalanceForBrowser = employeeDashboardAtBrowserStart.balances
 if (dashboardLeaveBalanceForBrowser === null || dashboardLeaveBalanceForBrowser === undefined) {
   throw new Error('The isolated employee dashboard has no persisted leave balance for browser acceptance.');
 }
+const dashboardPendingLeaveFixture = tableRow('leave_requests', ids.leaveMissingLedger);
+record('E01-04 browser uses a request that remains pending after earlier leave-decision checks',
+  dashboardPendingLeaveFixture?.status === 'pending',
+  JSON.stringify({ requestId: ids.leaveMissingLedger, status: dashboardPendingLeaveFixture?.status }));
 let employeeAttendanceBrowserOutput = '';
 let employeeAttendanceBrowserError = '';
 try {
@@ -6563,7 +6636,7 @@ try {
       HRIS_LOCAL_DASHBOARD_APPRAISAL_ID: appraisalAEmployeeId,
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID: 'b1111111-1111-4111-8111-111111111111',
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE: 'QA A all notice',
-      HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: '88888888-8888-4888-8888-888888888801',
+      HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: ids.leaveMissingLedger,
       HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID: dashboardPendingServiceIds[0],
       HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS: String(dashboardLeaveBalanceForBrowser),
     },

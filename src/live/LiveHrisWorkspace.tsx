@@ -2238,6 +2238,9 @@ function PersonalLeaveRequests({
                 onChange={event => setEvidence(event.target.files?.[0] || null)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               <p className="mt-1 text-xs text-slate-600">{tx('PDF, Word, JPG, or PNG up to 10 MB. Evidence is private to you and authorized leave managers in this organization.')}</p>
             </div>
+            <p className="rounded-lg bg-[#EFF7F8] p-3 text-sm text-slate-700">
+              {tx('After submission, an authorized leave manager in this organization reviews your request.')}
+            </p>
             {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{formError}</p>}
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">

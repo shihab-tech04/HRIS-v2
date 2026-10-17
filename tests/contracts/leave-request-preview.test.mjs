@@ -11,6 +11,7 @@ const locale = read('../../src/live/project-locale.ts');
 const sql = read('../../supabase/migrations/20261016183000_hris_leave_balance_allocation_snapshot.sql');
 const runtime = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-leave-evidence-browser.mjs');
+const leaveForm = workspace.slice(workspace.indexOf('function PersonalLeaveRequests('), workspace.indexOf('function EmployeePersonalLeave('));
 
 test('E08-07 through E08-09 map to the exact catalogue and mirror the existing isolated leave contract', () => {
   assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
@@ -82,4 +83,65 @@ test('E08-11 maps configured leave restrictions to persisted server validation a
     'These dates do not meet the configured advance notice for this leave type.',
   ]) assert.match(locale, new RegExp(`'${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}':`));
   assert.match(runtime, /E08-11 configured leave-type restrictions are explained in the UI and enforced without writes/);
+});
+
+test('E08-01 through E08-06 map the real employee leave form to persisted request fields and private evidence', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  const requirements = [
+    ['E08-01', 119, 'As an employee, I want to apply for leave.'],
+    ['E08-02', 120, 'As an employee, I want to select leave type.'],
+    ['E08-03', 121, 'As an employee, I want to select start and end dates.'],
+    ['E08-04', 122, 'As an employee, I want to apply for half-day leave where permitted.'],
+    ['E08-05', 123, 'As an employee, I want to enter the reason for leave.'],
+    ['E08-06', 124, 'As an employee, I want to attach supporting documents where required.'],
+  ];
+  for (const [id, line, requirement] of requirements) {
+    assert.equal(stories.get(id)?.module_id, 'E08');
+    assert.equal(stories.get(id)?.source_locator.line, line);
+    assert.equal(stories.get(id)?.verbatim_requirement, requirement);
+  }
+  for (const field of ['personal-leave-type', 'personal-leave-from', 'personal-leave-to',
+    'personal-leave-portion', 'personal-leave-reason', 'personal-leave-evidence']) {
+    assert.ok(leaveForm.includes(`id="${field}"`), `missing leave form field ${field}`);
+  }
+  assert.match(leaveForm, /requires_document_proof === true/);
+  assert.match(leaveForm, /hris_employee_submit_leave_request/);
+  assert.match(sql, /INSERT INTO public\.leave_requests/);
+  assert.match(sql, /INSERT INTO private\.hris_leave_balance_allocations/);
+  assert.match(browser, /LEAVE_UI_REQUEST_ACCEPTANCE=/);
+  assert.match(browser, /LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS/);
+});
+
+test('E08-12 through E08-14, E08-17 and E08-18 map to the existing reviewer route, status, rejection note and ledger', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  const requirements = [
+    ['E08-12', 130, 'As an employee, I want to submit the leave request.'],
+    ['E08-13', 131, 'As an employee, I want to see the approval route.'],
+    ['E08-14', 132, 'As an employee, I want to see request status.'],
+    ['E08-17', 135, 'As an employee, I want to see rejection reasons.'],
+    ['E08-18', 136, 'As an employee, I want approved leave to update my leave balance and attendance correctly.'],
+  ];
+  for (const [id, line, requirement] of requirements) {
+    assert.equal(stories.get(id)?.module_id, 'E08');
+    assert.equal(stories.get(id)?.source_locator.line, line);
+    assert.equal(stories.get(id)?.verbatim_requirement, requirement);
+  }
+  assert.match(leaveForm, /After submission, an authorized leave manager in this organization reviews your request\./);
+  assert.match(sql, /has_tenant_permission\(r\.tenant_id, 'leave\.manage'\)/);
+  assert.match(sql, /status=p_decision,resolved_by=auth\.uid\(\),resolved_at=now\(\)/);
+  assert.match(sql, /resolution_note=nullif\(btrim\(coalesce\(p_note,''\)\),''\)/);
+  assert.match(sql, /used_days=b\.used_days\+CASE WHEN p_decision='approved'/);
+  assert.match(runtime, /Real manager leave UI approves the persisted employee request and updates its ledger once/);
+  assert.match(runtime, /Real manager UI rejection persists its note, releases pending balance, and refreshes employee history/);
+  assert.match(browser, /E08_APPROVAL_ROUTE_BROWSER_ACCEPTANCE=PASS/);
+});
+
+test('E08-15 and E08-16 remain explicitly gated without invented employee edit or withdrawal contracts', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  assert.equal(stories.get('E08-15')?.verbatim_requirement, 'As an employee, I want to edit a pending request where allowed.');
+  assert.equal(stories.get('E08-16')?.verbatim_requirement, 'As an employee, I want to cancel or withdraw a request where allowed.');
+  assert.doesNotMatch(sql, /CREATE OR REPLACE FUNCTION public\.hris_employee_(?:edit|withdraw|cancel)_leave_request/);
 });

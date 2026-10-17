@@ -214,6 +214,8 @@ try {
   await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
   const requestDialog = employee.getByRole('dialog', { name: 'Request for leave' });
   await requestDialog.waitFor({ state: 'visible' });
+  await requestDialog.getByText('After submission, an authorized leave manager in this organization reviews your request.', { exact: true })
+    .waitFor({ state: 'visible' });
   const expectedLeaveTypeIds = JSON.parse(process.env.HRIS_LOCAL_LEAVE_TYPES_JSON).map(row => String(row.id)).sort();
   const actualLeaveTypeIds = (await requestDialog.locator('#personal-leave-type option').evaluateAll(options =>
     options.map(option => option.value).filter(Boolean))).sort();
@@ -261,6 +263,9 @@ try {
   await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await employee.getByRole('button', { name: 'ছুটির আবেদন', exact: true }).click();
   const bengaliRequestDialog = employee.getByRole('dialog');
+  await bengaliRequestDialog.getByText('জমা দেওয়ার পর এই প্রতিষ্ঠানের অনুমোদিত ছুটি ব্যবস্থাপক আপনার আবেদন পর্যালোচনা করবেন।', { exact: true })
+    .waitFor({ state: 'visible' });
+  console.log('E08_APPROVAL_ROUTE_BROWSER_ACCEPTANCE=PASS');
   const bengaliPreview = bengaliRequestDialog.getByTestId('leave-request-days-preview');
   await bengaliPreview.getByText('হিসাব করা ছুটির দিন:', { exact: true }).waitFor({ state: 'visible' });
   if (!(await bengaliPreview.innerText()).includes('১ দিন')) {
@@ -494,7 +499,9 @@ try {
   const overlapHistory = overlapEmployee.getByRole('table', {
     name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,
   });
-  await overlapHistory.getByRole('row', { name: /Synthetic evidence-required leave.*2026-10-20/ })
+  // The application intentionally renders localized short dates (for example, "Oct 20")
+  // rather than ISO strings. Anchor this journey to the request created above instead.
+  await overlapHistory.locator(`[data-leave-request-id="${uiLeaveRequestId}"]`)
     .waitFor({ state: 'visible' });
   await overlapEmployee.getByRole('button', { name: 'Request for leave', exact: true }).click();
   const overlapDialog = overlapEmployee.getByRole('dialog', { name: 'Request for leave' });

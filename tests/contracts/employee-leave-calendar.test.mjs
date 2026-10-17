@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -9,6 +10,8 @@ const workspace = read('../../src/live/LiveHrisWorkspace.tsx');
 const locale = read('../../src/live/project-locale.ts');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-leave-evidence-browser.mjs');
+const catalogueBytes = readFileSync(new URL('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json', import.meta.url));
+const catalogue = JSON.parse(catalogueBytes.toString('utf8'));
 
 test('leave calendar backend is an active-session, linked-employee, one-month tenant-scoped projection', () => {
   assert.match(migration, /CREATE OR REPLACE FUNCTION private\.hris_get_my_leave_calendar\(\s*p_tenant_id uuid,\s*p_start_date date,\s*p_end_date date/);
@@ -77,4 +80,35 @@ test('isolated Auth/Postgres/browser acceptance proves persisted owner dates, te
   assert.match(browser, /Employee personal leave calendar desktop/);
   assert.match(browser, /Employee personal leave calendar Bengali mobile/);
   assert.match(browser, /LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS/);
+});
+
+test('E09-01, E09-02 and E09-04 map only the approved personal calendar and private leave projection stories', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  const expected = [
+    ['E09-01', 142, 'As an employee, I want to see my approved leave on a calendar.'],
+    ['E09-02', 143, 'As an employee, I want to see company holidays.'],
+    ['E09-04', 145, 'As an employee, I want sensitive leave reasons to remain private.'],
+  ];
+  for (const [id, line, requirement] of expected) {
+    assert.equal(stories.get(id)?.module_id, 'E09');
+    assert.equal(stories.get(id)?.source_locator.line, line);
+    assert.equal(stories.get(id)?.verbatim_requirement, requirement);
+  }
+  assert.match(migration, /r\.employee_id = v_employee_id[\s\S]+?r\.status = 'approved'/);
+  assert.match(migration, /h\.tenant_id = p_tenant_id[\s\S]+?h\.active IS TRUE/);
+  assert.doesNotMatch(migration, /'reason'\s*,\s*r\.|'resolution_note'\s*,\s*r\.|'resolved_by'\s*,\s*r\./);
+  assert.match(runner, /E09-01 employee sees only their approved leave dates in the personal calendar/);
+  assert.match(runner, /E09-02 employee sees active tenant-wide holidays in the personal calendar/);
+  assert.match(runner, /E09-04 personal calendar hides leave reasons and reviewer identity/);
+  assert.match(browser, /LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS/);
+});
+
+test('E09-03 and E09-05 stay partial until permitted team absence visibility rules are approved', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  assert.equal(stories.get('E09-03')?.verbatim_requirement, 'As an employee, I want to see permitted team absence information.');
+  assert.equal(stories.get('E09-05')?.verbatim_requirement, 'As an employee, I want overlapping team absences to be visible only according to permissions.');
+  assert.doesNotMatch(migration, /team_id|department_id|other_employee|team_absence/);
+  assert.match(migration, /r\.employee_id = v_employee_id/);
 });

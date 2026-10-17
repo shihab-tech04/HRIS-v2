@@ -633,6 +633,7 @@ const bengali: Record<string, string> = {
   'This leave type is not available to your employee profile.': 'আপনার কর্মী প্রোফাইলের জন্য এই ছুটির ধরনটি প্রযোজ্য নয়।',
   'This leave type is no longer available. Refresh and choose another type.': 'এই ছুটির ধরনটি আর উপলভ্য নেই। রিফ্রেশ করে অন্য ধরন নির্বাচন করুন।',
   'These dates do not meet the configured advance notice for this leave type.': 'এই ছুটির ধরনের নির্ধারিত অগ্রিম নোটিশের শর্ত তারিখগুলো পূরণ করে না।',
+  'After submission, an authorized leave manager in this organization reviews your request.': 'জমা দেওয়ার পর এই প্রতিষ্ঠানের অনুমোদিত ছুটি ব্যবস্থাপক আপনার আবেদন পর্যালোচনা করবেন।',
   'Current available balance': 'বর্তমান অবশিষ্ট ছুটি',
   'The current balance covers this request; the server will check again.': 'বর্তমান অবশিষ্ট ছুটি এই আবেদনের জন্য যথেষ্ট; সার্ভার জমা দেওয়ার সময় আবার যাচাই করবে।',
   'This request exceeds the current balance; the server will check again.': 'এই আবেদন বর্তমান অবশিষ্ট ছুটির চেয়ে বেশি; সার্ভার জমা দেওয়ার সময় আবার যাচাই করবে।',
