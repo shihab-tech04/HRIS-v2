@@ -6542,8 +6542,8 @@ const unifiedNotificationFeedChecks = {
   employeeRosterNotification: employeeRosterNotification?.kind === 'changed'
     && employeeRosterNotification?.roster_assignment_date === employeeRosterAssignmentDate
     && employeeRosterNotification?.roster_shift_name === 'Synthetic Late Shift'
-    && employeeRosterNotification?.roster_start_time === '09:00:00'
-    && employeeRosterNotification?.roster_end_time === '17:00:00'
+    && employeeRosterNotification?.roster_start_time === '13:00:00'
+    && employeeRosterNotification?.roster_end_time === '21:00:00'
     && employeeRosterNotificationB?.roster_shift_name === 'Synthetic Tenant B Shift',
   notificationPrivacy: !Object.keys(serviceRequestCompletedNotificationA || {}).some(key => /note|reason|employee|recipient|actor|resolved_by/i.test(key))
     && !Object.keys(leaveApprovalNotificationA || {}).some(key => /note|reason|employee|recipient/i.test(key))
