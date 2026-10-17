@@ -49,8 +49,11 @@ test('Employee Dashboard work supports recovery, existing route access, responsi
   assert.match(browser, /Synthetic temporary project task outage\./);
   assert.match(browser, /failNextDashboardTaskRead = true;[\s\S]*?const dashboardTaskOutage = page\.waitForResponse[\s\S]*?await dashboardWork\.getByRole\('button', \{ name: 'Refresh assigned work', exact: true \}\)\.click\(\);\s+await dashboardTaskOutage;/,
     'the assigned-work outage must be injected by the explicit refresh action under test');
-  assert.match(browser, /failNextUpcomingTrainingRead = true;\s+await upcomingTraining\.getByRole\('button', \{ name: 'Refresh upcoming training', exact: true \}\)\.click\(\)/,
-    'the training outage must be injected by the explicit refresh action under test');
+  assert.match(browser, /expectedTrainingSession\.waitFor\(\{ state: 'visible' \}\)[\s\S]*?failNextUpcomingTrainingRead = true;[\s\S]*?const failedTrainingRefresh = page\.waitForResponse[\s\S]*?await upcomingTraining\.getByRole\('button', \{ name: 'Refresh upcoming training', exact: true \}\)\.click\(\);\s+await failedTrainingRefresh;[\s\S]*?const retriedTrainingRead = page\.waitForResponse[\s\S]*?await upcomingTraining\.getByRole\('button', \{ name: 'Retry', exact: true \}\)\.click\(\);\s+await retriedTrainingRead/,
+    'the training recovery journey must settle initial data, observe the explicit simulated outage, and verify the successful retry');
+  assert.match(runner, /Employee dashboard fixture restores its upcoming training enrollment after the learning cancellation journey/);
+  assert.match(runner, /employeeA\.client\.rpc\('hris_employee_enroll_learning',[\s\S]*?p_session_id: learningIds\.directSession/,
+    'the dashboard fixture must restore its own enrollment after the preceding learning journey cancels it');
   assert.match(browser, /Open My Projects/);
   assert.match(browser, /View my goals/);
   assert.match(browser, /375px|setViewportSize/);

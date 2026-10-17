@@ -1751,6 +1751,32 @@ try {
 record('Real local Auth-to-Postgres learning and timesheet workflows persist with tenant scope, EN/BN state, and responsive recovery',
   learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed; employee timesheet draft creation, full reload persistence, tenant-scoped save/submit RPCs, Bengali validation, and 375px/1280px layouts also passed.'),
   learningBrowserError);
+const dashboardTrainingEnrollmentBefore = queryAdmin(`SELECT jsonb_build_object(
+  'enrolled_count',count(*) FILTER (WHERE status='enrolled')::integer,
+  'cancelled_count',count(*) FILTER (WHERE status='cancelled')::integer)
+  FROM public.learning_enrollments
+  WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+    AND program_id='${learningIds.directProgram}'::uuid AND session_id='${learningIds.directSession}'::uuid`);
+let dashboardTrainingEnrollmentRestore = null;
+if (dashboardTrainingEnrollmentBefore.enrolled_count === 0) {
+  dashboardTrainingEnrollmentRestore = await employeeA.client.rpc('hris_employee_enroll_learning', {
+    p_tenant_id: ids.tenantA,
+    p_program_id: learningIds.directProgram,
+    p_session_id: learningIds.directSession,
+  });
+}
+const dashboardTrainingEnrollmentAfter = queryAdmin(`SELECT jsonb_build_object(
+  'enrolled_count',count(*) FILTER (WHERE status='enrolled')::integer,
+  'cancelled_count',count(*) FILTER (WHERE status='cancelled')::integer)
+  FROM public.learning_enrollments
+  WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+    AND program_id='${learningIds.directProgram}'::uuid AND session_id='${learningIds.directSession}'::uuid`);
+record('Employee dashboard fixture restores its upcoming training enrollment after the learning cancellation journey',
+  dashboardTrainingEnrollmentAfter.enrolled_count === 1
+    && (dashboardTrainingEnrollmentBefore.enrolled_count === 1
+      || (!dashboardTrainingEnrollmentRestore?.error && dashboardTrainingEnrollmentRestore?.data?.status === 'enrolled')),
+  JSON.stringify({ before: dashboardTrainingEnrollmentBefore, restored: dashboardTrainingEnrollmentRestore?.error?.code || dashboardTrainingEnrollmentRestore?.data?.status || null,
+    after: dashboardTrainingEnrollmentAfter }));
 const browserTimesheetRows = queryAdmin(`SELECT COALESCE(jsonb_agg(DISTINCT t.id::text),'[]'::jsonb) FROM public.timesheets t
   JOIN public.timesheet_entries e ON e.timesheet_id=t.id
   WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.employee_id='55555555-5555-4555-8555-555555555555'::uuid

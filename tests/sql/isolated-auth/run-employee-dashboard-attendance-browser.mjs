@@ -392,12 +392,21 @@ try {
   await dashboardWork.locator('[data-employee-dashboard-work="goal"][data-overdue="true"]')
     .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_GOAL_TITLE }).waitFor({ state: 'visible' });
   const upcomingTraining = page.locator('section[aria-labelledby="employee-upcoming-training-heading"]');
+  const expectedTrainingSession = page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`);
+  await expectedTrainingSession.waitFor({ state: 'visible' });
+  await expectedTrainingSession.getByText(process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, { exact: true }).waitFor({ state: 'visible' });
   failNextUpcomingTrainingRead = true;
+  const failedTrainingRefresh = page.waitForResponse(response =>
+    response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 503);
   await upcomingTraining.getByRole('button', { name: 'Refresh upcoming training', exact: true }).click();
+  await failedTrainingRefresh;
   await upcomingTraining.getByRole('alert').filter({ hasText: 'Unable to load upcoming training.' }).waitFor({ state: 'visible' });
   if (failNextUpcomingTrainingRead) throw new Error('The injected learning-context outage was not observed.');
+  const retriedTrainingRead = page.waitForResponse(response =>
+    response.url().endsWith('/rest/v1/rpc/hris_get_my_learning_context') && response.status() === 200);
   await upcomingTraining.getByRole('button', { name: 'Retry', exact: true }).click();
-  const confirmedTrainingSession = page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`);
+  await retriedTrainingRead;
+  const confirmedTrainingSession = expectedTrainingSession;
   await confirmedTrainingSession.waitFor({ state: 'visible' });
   await confirmedTrainingSession.getByText(process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, { exact: true }).waitFor({ state: 'visible' });
   if (await upcomingTraining.locator('[data-upcoming-training-session]').count() !== 1
