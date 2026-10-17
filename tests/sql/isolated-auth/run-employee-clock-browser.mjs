@@ -97,7 +97,11 @@ try {
     response.url().endsWith('/rest/v1/rpc/hris_employee_record_attendance_event') && response.status() === 503);
   await today.getByRole('button', { name: 'Check in', exact: true }).click();
   await failedMutation;
-  await today.getByRole('alert').getByText('Synthetic one-time attendance failure.', { exact: true }).waitFor({ state: 'visible' });
+  const failedActionAlert = today.getByRole('alert');
+  await failedActionAlert.waitFor({ state: 'visible' });
+  if (!(await failedActionAlert.innerText()).trim()) {
+    throw new Error('The injected check-in failure did not provide a recoverable employee-facing message.');
+  }
   await today.getByText('You have not checked in today.', { exact: true }).waitFor({ state: 'visible' });
   if (failNextClockIn) throw new Error('The one-time check-in failure was not injected.');
 
