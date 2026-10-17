@@ -47,7 +47,7 @@ test('Employee Dashboard work supports recovery, existing route access, responsi
   assert.match(component, /Refresh assigned work/);
   assert.match(component, /Retry/);
   assert.match(browser, /Synthetic temporary project task outage\./);
-  assert.match(browser, /failNextDashboardTaskRead = true;\s+await dashboardWork\.getByRole\('button', \{ name: 'Refresh assigned work', exact: true \}\)\.click\(\)/,
+  assert.match(browser, /failNextDashboardTaskRead = true;[\s\S]*?const dashboardTaskOutage = page\.waitForResponse[\s\S]*?await dashboardWork\.getByRole\('button', \{ name: 'Refresh assigned work', exact: true \}\)\.click\(\);\s+await dashboardTaskOutage;/,
     'the assigned-work outage must be injected by the explicit refresh action under test');
   assert.match(browser, /failNextUpcomingTrainingRead = true;\s+await upcomingTraining\.getByRole\('button', \{ name: 'Refresh upcoming training', exact: true \}\)\.click\(\)/,
     'the training outage must be injected by the explicit refresh action under test');

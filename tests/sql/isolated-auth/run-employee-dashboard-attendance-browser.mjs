@@ -343,11 +343,27 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('heading', { name: 'Recent HR announcements', exact: true }).waitFor({ state: 'visible' });
   const dashboardWork = page.locator('section[aria-labelledby="employee-dashboard-work-heading"]');
+  // Let the initial mount query settle before injecting the next refresh failure.
+  // Otherwise the first mount request may consume the flag while Playwright is
+  // still waiting for the refresh button, and the successful refresh can clear
+  // the transient alert before the retry action is located.
+  await dashboardWork.locator('[data-employee-dashboard-work="task"]')
+    .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_TASK_TITLE }).waitFor({ state: 'visible' });
+  await dashboardWork.locator('[data-employee-dashboard-work="goal"][data-overdue="true"]')
+    .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_GOAL_TITLE }).waitFor({ state: 'visible' });
   failNextDashboardTaskRead = true;
+  const dashboardTaskOutage = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_tasks')
+      && response.request().method() === 'POST' && response.status() === 503;
+  }, { timeout: 10000 });
   await dashboardWork.getByRole('button', { name: 'Refresh assigned work', exact: true }).click();
+  await dashboardTaskOutage;
   await dashboardWork.getByRole('alert').filter({ hasText: 'Unable to load your assigned work.' }).waitFor({ state: 'visible' });
   if (failNextDashboardTaskRead) throw new Error('The injected dashboard project-task outage was not observed.');
-  await dashboardWork.getByRole('button', { name: 'Retry', exact: true }).click();
+  const dashboardWorkRetry = dashboardWork.getByRole('alert').getByRole('button', { name: 'Retry', exact: true });
+  await dashboardWorkRetry.waitFor({ state: 'visible' });
+  await dashboardWorkRetry.click();
   await dashboardWork.locator('[data-employee-dashboard-work="task"]')
     .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_TASK_TITLE }).waitFor({ state: 'visible' });
   const overdueGoal = dashboardWork.locator('[data-employee-dashboard-work="goal"][data-overdue="true"]')

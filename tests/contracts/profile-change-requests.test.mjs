@@ -10,6 +10,7 @@ const migration = readFileSync(new URL('../../supabase/migrations/20261016141000
 const tenantMigration = readFileSync(new URL('../../supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-profile-change-browser.mjs', import.meta.url), 'utf8');
+const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 const matrix = JSON.parse(readFileSync(new URL('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json', import.meta.url), 'utf8'));
 
 test('E02-03 and E02-17 retain their exact recovered employee requirements', () => {
@@ -53,4 +54,12 @@ test('profile request migration and synthetic Auth/RLS plus browser journeys run
   assert.match(browser, /1280/);
   assert.match(browser, /Switch language to Bengali/);
   assert.match(browser, /Synthetic transient reviewer queue outage/);
+});
+
+test('synthetic employee identities are active tenant members without management permissions', () => {
+  assert.match(fixture, /\('qa_tenant_employee','Synthetic tenant employee without management permissions'\)/);
+  assert.match(fixture, /'11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee','active'[\s\S]*?email='employee-a@hris\.test'/);
+  assert.match(fixture, /'22222222-2222-4222-8222-222222222222',id,'qa_tenant_employee','active'[\s\S]*?email='employee-b@hris\.test'/);
+  const permissionAssignments = fixture.slice(fixture.indexOf('INSERT INTO public.role_permissions'), fixture.indexOf('INSERT INTO public.admin_users'));
+  assert.doesNotMatch(permissionAssignments, /['"]qa_tenant_employee['"]/);
 });

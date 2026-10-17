@@ -1090,6 +1090,7 @@ INSERT INTO public.roles(id,name) VALUES
   ('qa_tenant_recruitment_a','Synthetic tenant A recruiter-only viewer'),
   ('qa_tenant_recruitment_manager_a','Synthetic tenant A recruitment manager'),
   ('qa_tenant_employee_viewer_a','Synthetic tenant A employee-directory viewer'),
+  ('qa_tenant_employee','Synthetic tenant employee without management permissions'),
   ('qa_tenant_learning_manager_a','Synthetic tenant A learning manager'),
   ('qa_tenant_payroll_viewer_a','Synthetic tenant A payroll viewer');
 INSERT INTO public.permissions(id,module,action) VALUES
@@ -1187,6 +1188,12 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_payroll_viewer_a','active'
   FROM auth.users WHERE email='payroll-viewer-a@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee','active'
+  FROM auth.users WHERE email='employee-a@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '22222222-2222-4222-8222-222222222222',id,'qa_tenant_employee','active'
+  FROM auth.users WHERE email='employee-b@hris.test';
 
 INSERT INTO public.shifts(id,tenant_id,name,code,start_time,end_time,grace_minutes,break_minutes,weekly_off_days,full_day_hours,active) VALUES
   ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','Synthetic Day Shift','QA-DAY','09:00','17:00',10,60,ARRAY[0,6],8,true),
