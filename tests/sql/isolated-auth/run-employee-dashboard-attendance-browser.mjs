@@ -9,7 +9,7 @@ const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
   'HRIS_LOCAL_ATTENDANCE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_ATTENDANCE_TENANT_ID',
   'HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH', 'HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH',
-  'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
+  'HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE', 'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
   'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID',
   'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
@@ -616,13 +616,22 @@ try {
     .format(new Date(Date.UTC(year, month - 1, 1)));
   await page.getByRole('button', { name: 'Check-in times', exact: true }).click();
   await page.getByRole('heading', { name: `Check-in history · ${label}`, exact: true }).waitFor({ state: 'visible' });
-  const history = page.locator('ul.divide-y').filter({ hasText: 'present' });
+  const history = page.getByRole('heading', { name: `Check-in history · ${label}`, exact: true })
+    .locator('xpath=..').locator('ul');
   await history.waitFor({ state: 'visible' });
-  if (!(await history.innerText()).includes('10')) throw new Error('Persisted prior-month attendance date was not rendered in history.');
+  const expectedHistoryDate = new Date(`${process.env.HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE}T12:00:00`)
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const visibleHistory = await history.innerText();
+  if (await history.locator('li').count() !== 1 || !visibleHistory.includes(expectedHistoryDate)
+      || !visibleHistory.includes('Present')) {
+    throw new Error(`Daily employee attendance history did not match its persisted prior-month row: ${JSON.stringify({ expectedHistoryDate, visibleHistory })}.`);
+  }
+  console.log('E05-04_DAILY_HISTORY_BROWSER_PASS');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Working hours', exact: true }).click();
   await page.locator('[title="8.0 recorded hours"]').waitFor({ state: 'visible' });
+  console.log('E05-05_MONTHLY_HISTORY_BROWSER_PASS');
   const weekCount = Math.ceil(new Date(Date.UTC(Number(previousMonth.slice(0, 4)), Number(previousMonth.slice(5, 7)), 0)).getUTCDate() / 7);
   const weeklyTable = page.getByRole('table', { name: 'Weekly work-hours data', exact: true });
   await weeklyTable.waitFor({ state: 'visible' });

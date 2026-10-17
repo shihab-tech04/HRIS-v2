@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-employee-clock-browser.mjs', import.meta.url), 'utf8');
+const dashboardBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const catalogue = JSON.parse(readFileSync(new URL('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json', import.meta.url), 'utf8'));
 
@@ -54,4 +55,16 @@ test('E05-01 through E05-03 are linked to real Auth/Postgres browser evidence wi
     assert.ok(runtime.includes(`record('${id} `), `${id} must have an isolated runtime acceptance record`);
   }
   assert.match(runtime, /E05 browser clock acceptance removes only its synthetic attendance and audit rows/);
+});
+
+test('E05-04 and E05-05 link daily and monthly history to exact persisted employee attendance rows', () => {
+  const stories = new Map(catalogue.stories.filter(story => ['E05-04', 'E05-05'].includes(story.story_id))
+    .map(story => [story.story_id, story.verbatim_requirement]));
+  assert.equal(stories.get('E05-04'), 'As an employee, I want to see daily attendance history.');
+  assert.equal(stories.get('E05-05'), 'As an employee, I want to see monthly attendance history.');
+  assert.match(dashboardBrowser, /E05-04_DAILY_HISTORY_BROWSER_PASS/);
+  assert.match(dashboardBrowser, /E05-05_MONTHLY_HISTORY_BROWSER_PASS/);
+  assert.match(dashboardBrowser, /HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE/);
+  assert.match(runtime, /record\('E05-04 employee sees the exact tenant-owned daily attendance history row/);
+  assert.match(runtime, /record\('E05-05 employee selects a prior month and sees the persisted monthly attendance history and hours/);
 });

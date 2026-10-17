@@ -6859,6 +6859,7 @@ try {
       HRIS_LOCAL_ROSTER_SHIFT_NAME: 'Synthetic Day Shift',
       HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH: currentAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
+      HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE: previousAttendanceMonthDate,
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
       HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID: learningIds.directProgram,
@@ -6954,6 +6955,19 @@ record('E04-05 partially verified: inactive and terminated employment states are
     && Boolean(terminatedEmployeeIdentityCard.error),
   JSON.stringify({ inactive: inactiveEmployeeIdentityCard.data?.employment_status,
     terminatedDenied: Boolean(terminatedEmployeeIdentityCard.error), expiryRule: 'not present in the approved identity-card contract' }));
+record('E05-04 employee sees the exact tenant-owned daily attendance history row',
+  employeeAttendanceBrowserOutput.includes('E05-04_DAILY_HISTORY_BROWSER_PASS')
+    && !employeeAttendancePreviousMonth.error && employeeAttendancePreviousMonth.data.records.length === 1
+    && employeeAttendancePreviousMonth.data.records[0].attendance_date === previousAttendanceMonthDate,
+  JSON.stringify({ expectedDate: previousAttendanceMonthDate,
+    records: employeeAttendancePreviousMonth.data?.records?.map(row => row.attendance_date), browserError: employeeAttendanceBrowserError }));
+record('E05-05 employee selects a prior month and sees the persisted monthly attendance history and hours',
+  employeeAttendanceBrowserOutput.includes('E05-05_MONTHLY_HISTORY_BROWSER_PASS')
+    && !employeeAttendancePreviousMonth.error && employeeAttendancePreviousMonth.data.records.length === 1
+    && Number(employeeAttendancePreviousMonth.data.records[0].work_hours) === 8,
+  JSON.stringify({ records: employeeAttendancePreviousMonth.data?.records?.length,
+    completePairHours: employeeAttendancePreviousMonth.data?.records?.[0]?.work_hours,
+    browserError: employeeAttendanceBrowserError }));
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';
