@@ -260,6 +260,7 @@ try {
   await assertNoHorizontalOverflow(employee, 'Employee leave request preview desktop');
   await employee.setViewportSize({ width: 375, height: 812 });
   await requestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await requestDialog.waitFor({ state: 'hidden' });
   await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await employee.getByRole('button', { name: 'ছুটির আবেদন', exact: true }).click();
   const bengaliRequestDialog = employee.getByRole('dialog');
@@ -275,6 +276,7 @@ try {
     ? 'বর্তমান অবশিষ্ট ছুটি এই আবেদনের জন্য যথেষ্ট; সার্ভার জমা দেওয়ার সময় আবার যাচাই করবে।'
     : 'এই আবেদন বর্তমান অবশিষ্ট ছুটির চেয়ে বেশি; সার্ভার জমা দেওয়ার সময় আবার যাচাই করবে।', { exact: true }).waitFor({ state: 'visible' });
   await bengaliRequestDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
+  await bengaliRequestDialog.waitFor({ state: 'hidden' });
   await employee.getByRole('button', { name: 'Switch language to English' }).click();
   await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
   await requestDialog.waitFor({ state: 'visible' });
