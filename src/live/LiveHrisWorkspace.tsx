@@ -3313,7 +3313,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
             <div className="flex items-center justify-between gap-2"><div><h3 id="employee-leave-balances-heading" className="font-semibold text-[#08263D]">{tx('Leave balances')}</h3>
               <p className="mt-1 text-xs text-slate-500">{txf('Current year · {year}', { year: employeeNumber(leave.balance_year) })}</p></div><CalendarDays className="h-5 w-5 text-[#08558B]" /></div>
             {balances.length ? <ul className="mt-3 divide-y divide-slate-100">{balances.map((row, index) => <li key={String(row.leave_type_id || index)} className="flex items-center justify-between gap-2 py-2 text-sm">
-              <span className="min-w-0 truncate">{display(row.leave_type_name)}</span><strong className="shrink-0 tabular-nums">{employeeNumber(row.available_days)} {tx('days')}</strong>
+              <span className="min-w-0 truncate">{display(row.leave_type_name)}</span><strong className="shrink-0 tabular-nums">{displayLocalizedNumber(row.available_days, locale)} {tx('days')}</strong>
             </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
           </section>
           <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} locale={locale} />

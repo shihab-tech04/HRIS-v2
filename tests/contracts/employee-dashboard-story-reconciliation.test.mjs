@@ -61,6 +61,7 @@ test('E01-03 browser acceptance uses the persisted balance contract and matches 
   assert.match(runtime, /const dashboardLeaveBalance = employeeSummaryA\.balances\.find\(row => row\.leave_type_id === ids\.leaveTypeA\)\?\.available_days/);
   assert.match(runtime, /const employeeDashboardAtBrowserStart = queryAs\(employeeA,[\s\S]*?hris_get_my_dashboard_data/);
   assert.match(runtime, /HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS: String\(dashboardLeaveBalanceForBrowser\)/);
+  assert.match(workspace, /displayLocalizedNumber\(row\.available_days, locale\)/);
   assert.match(browser, /const expectedAvailableBalance = `\$\{process\.env\.HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS\} days`/);
   assert.match(browser, /getByText\(expectedAvailableBalance, \{ exact: true \}\)/);
   assert.doesNotMatch(browser, /getByText\('days available', \{ exact: true \}\)/);
