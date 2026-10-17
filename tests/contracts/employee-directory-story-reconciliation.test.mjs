@@ -11,17 +11,23 @@ const directorySql = read('../../supabase/migrations/20261013073243_hris_tenant_
 const teamSql = read('../../supabase/migrations/20261017092147_employee_directory_team_filter.sql');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-employee-directory-browser.mjs');
-const stories = catalogue.stories.filter(story => ['E37-01', 'E37-02'].includes(story.story_id));
+const stories = catalogue.stories.filter(story => /^E37-0[1-5]$/.test(story.story_id));
 
 test('E37 source rows are hash-verified and their original requirement text and tracking fields remain unchanged', () => {
   assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
   assert.equal(catalogue.story_total, 1047);
   assert.equal(catalogue.module_total, 153);
-  assert.deepEqual(stories.map(story => story.story_id), ['E37-01', 'E37-02']);
+  assert.deepEqual(stories.map(story => story.story_id), ['E37-01', 'E37-02', 'E37-03', 'E37-04', 'E37-05']);
   assert.equal(stories[0].verbatim_requirement, 'As an employee, I want to search employees.');
   assert.equal(stories[0].source_locator.line, 495);
   assert.equal(stories[1].verbatim_requirement, 'As an employee, I want to filter by department/team/location where allowed.');
   assert.equal(stories[1].source_locator.line, 496);
+  assert.equal(stories[2].verbatim_requirement, 'As an employee, I want to see permitted contact information.');
+  assert.equal(stories[2].source_locator.line, 497);
+  assert.equal(stories[3].verbatim_requirement, 'As an employee, I want to see designation and reporting relationships.');
+  assert.equal(stories[3].source_locator.line, 498);
+  assert.equal(stories[4].verbatim_requirement, 'As an employee, I want sensitive data hidden.');
+  assert.equal(stories[4].source_locator.line, 499);
   for (const story of stories) {
     assert.equal(story.module_id, 'E37');
     assert.equal(story.status, 'NOT TESTED', `${story.story_id} canonical state must not be rewritten`);
@@ -48,4 +54,30 @@ test('E37-02 maps department/team filtering to active-tenant SQL and browser/exp
   assert.match(browser, /Refresh employee directory/);
   assert.match(runner, /E37-02 department and team filters stay within the authorized tenant/);
   assert.doesNotMatch(teamSql, /'location'\s*,|'address'\s*,/);
+});
+
+test('E37-03 contact visibility stays partial until employee-view contact permissions are approved', () => {
+  const contactSql = read('../../supabase/migrations/20261014171952_employee_contact_details_editing.sql');
+  assert.match(contactSql, /CREATE OR REPLACE FUNCTION public\.hris_get_tenant_employee_contact_details/);
+  assert.match(contactSql, /has_tenant_permission\(p_tenant_id, 'employees\.manage'\)/);
+  assert.match(teamSql, /'employment_status',p\.employment_status/);
+  assert.doesNotMatch(teamSql, /'official_email'\s*,|'phone'\s*,|'official_phone'\s*,/);
+  assert.match(browser, /employee-a@hris\.test/);
+  assert.match(browser, /private contact field/);
+});
+
+test('E37-04 designation and team are visible while reporting-line data remains unavailable in the employee contract', () => {
+  assert.match(teamSql, /des\.title AS designation_title/);
+  assert.match(teamSql, /tm\.name AS team_name/);
+  assert.doesNotMatch(teamSql, /manager|reports_to|reporting_line/i);
+  assert.match(browser, /QA A designation/);
+  assert.match(browser, /QA A Team/);
+});
+
+test('E37-05 sensitive fields are omitted from the directory projection and checked in browser acceptance', () => {
+  assert.match(teamSql, /'employee_number',p\.employee_number[\s\S]*?'designation_title',p\.designation_title[\s\S]*?'employment_status',p\.employment_status/);
+  assert.doesNotMatch(teamSql, /'official_email'\s*,|'personal_email'\s*,|'gender'\s*,|'joining_date'\s*,|'address'\s*,/);
+  assert.match(runner, /privacy-limited fields/);
+  assert.match(browser, /employee-a@hris\.test/);
+  assert.match(browser, /'joining_date', 'gender'/);
 });
