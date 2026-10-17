@@ -17,6 +17,7 @@ import { EmployeeDocumentVault } from './EmployeeDocumentVault';
 import { EmployeeIdentityCard } from './EmployeeIdentityCard';
 import { EmployeeUpcomingTraining } from './EmployeeUpcomingTraining';
 import { EmployeeDashboardWork } from './EmployeeDashboardWork';
+import { EmployeeDashboardPendingRequests, type PendingRequestKind } from './EmployeeDashboardPendingRequests';
 import { EmployeeLeaveCalendar } from './EmployeeLeaveCalendar';
 import { PayrollRegister } from './PayrollRegister';
 import { LearningRequests } from './LearningRequests';
@@ -2930,7 +2931,7 @@ function PersonalAttendanceCorrections({
   return <>
     <section aria-labelledby="employee-attendance-corrections-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div><h3 id="employee-attendance-corrections-heading" className="font-semibold text-[#08263D]">{tx('My attendance correction requests')}</h3>
+        <div><h3 id="employee-attendance-corrections-heading" tabIndex={-1} className="font-semibold text-[#08263D]">{tx('My attendance correction requests')}</h3>
           <p className="mt-1 text-xs text-slate-500">{tx('Requests are reviewed by an authorized attendance manager before records change.')}</p></div>
         <button ref={requestButtonRef} type="button" onClick={() => { setFormError(''); setRequestOpen(true); }}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white">
@@ -2991,7 +2992,7 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void }) {
+function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
@@ -3120,6 +3121,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
   const employeeId = typeof employee?.id === 'string' ? employee.id : '';
   const fullName = typeof employee?.full_name === 'string' ? employee.full_name : '';
   const officialPhone = typeof employee?.official_phone === 'string' ? employee.official_phone.trim() : '';
+  const teamName = typeof employee?.team_name === 'string' ? employee.team_name.trim() : '';
   const initials = fullName.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map(part => part.slice(0, 1).toLocaleUpperCase()).join('') || '—';
   const today = typeof leave?.dashboard_date === 'string' ? leave.dashboard_date : '';
@@ -3186,6 +3188,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           <p className="mt-1 text-xs text-slate-500">{display(employee?.employee_number)}</p>
           <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 text-left text-sm">
             <p className="flex items-start gap-2"><BriefcaseBusiness className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.designation_title)}</span></p>
+            {teamName && <p data-employee-profile="team" className="flex items-start gap-2 break-words"><Users className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" aria-hidden="true" /><span>{teamName}</span></p>}
             <p className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.department_name)}</span></p>
             <p className="flex items-start gap-2 break-all text-xs text-slate-600"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{display(employee?.official_email)}</span></p>
             {officialPhone && <p aria-label={tx('Official phone')} data-employee-contact="official-phone" className="flex items-start gap-2 break-words text-xs text-slate-600"><Phone className="mt-0.5 h-4 w-4 shrink-0 text-[#08558B]" /><span>{officialPhone}</span></p>}
@@ -3309,6 +3312,16 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           <EmployeeDashboardWork tenantId={tenantId} employeeId={employeeId} dashboardDate={today} locale={locale}
             onOpenProjects={onOpenProjects} onOpenPerformance={onOpenPerformance} />
           <EmployeeUpcomingTraining tenantId={tenantId} locale={locale} onOpen={onOpenLearning} />
+          <EmployeeDashboardPendingRequests tenantId={tenantId} employeeId={employeeId} locale={locale}
+            onOpen={kind => {
+              if (kind === 'attendance') {
+                const heading = document.getElementById('employee-attendance-corrections-heading');
+                heading?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                heading?.focus({ preventScroll: true });
+                return;
+              }
+              onOpenPendingRequest(kind);
+            }} />
           <MyEmployeeAnnouncements tenantId={tenantId} locale={locale} compact onOpen={onOpenAnnouncements} />
         </aside>
       </div>
@@ -3511,7 +3524,8 @@ export function LiveHrisWorkspace({
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale}
             onOpenLearning={() => navigate('my-learning')} onOpenProjects={() => navigate('my-projects')}
-            onOpenPerformance={() => navigate('my-performance')} onOpenAnnouncements={() => navigate('my-announcements')} />}
+            onOpenPerformance={() => navigate('my-performance')} onOpenAnnouncements={() => navigate('my-announcements')}
+            onOpenPendingRequest={kind => navigate(({ leave: 'my-leave', attendance: 'my-dashboard', expense: 'my-expenses', travel: 'my-travel', service: 'my-service-requests', learning: 'my-learning' } as const)[kind])} />}
           {page === 'my-projects' && isEmployee && <>
             <MyProjects tenantId={tenantId} locale={locale} />
             <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />

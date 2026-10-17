@@ -42,6 +42,8 @@ let showEmptyOnNextRead = false;
 const noticeRequests = [];
 const isNoticeRead = request => request.method() === 'GET'
   && new URL(request.url()).pathname.replace(/\/+$/, '').endsWith('/rest/v1/notices');
+const isFullNoticeRead = request => isNoticeRead(request)
+  && (new URL(request.url()).searchParams.get('select') || '').includes('body,attachment_url');
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
@@ -69,7 +71,7 @@ try {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
-      if (isNoticeRead(route.request())) {
+      if (isFullNoticeRead(route.request())) {
         if (failInitialRead && armInitialReadFailure) {
           failInitialRead = false;
           armInitialReadFailure = false;

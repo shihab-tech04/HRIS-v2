@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../../supabase/migrations/20261016233237_employee_dashboard_official_phone.sql');
+const teamMigration = read('../../supabase/migrations/20261017050000_hris_employee_dashboard_team_identity.sql');
 const component = read('../../src/live/LiveHrisWorkspace.tsx');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs');
@@ -26,6 +27,15 @@ test('employee profile phone uses the existing authenticated linked-employee das
   assert.match(runner, /employeeSummaryB\.employee\.official_phone === null/);
   assert.match(browser, /data-employee-contact="official-phone"/);
   assert.match(browser, /1280px|setViewportSize/);
+});
+
+test('employee profile includes the existing team assignment through a same-tenant Figma-aligned projection', () => {
+  assert.match(teamMigration, /'team_name',t\.name/);
+  assert.match(teamMigration, /LEFT JOIN public\.teams t ON t\.id=e\.team_id AND t\.tenant_id=e\.tenant_id/);
+  assert.match(teamMigration, /v_employee := public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(component, /data-employee-profile="team"/);
+  assert.match(runner, /Employee dashboard profile resolves team names only through a same-tenant team join/);
+  assert.match(browser, /HRIS_LOCAL_DASHBOARD_TEAM_NAME/);
 });
 
 test('employee dashboard upcoming training uses only future sessions confirmed by the employee enrollment RPC', () => {

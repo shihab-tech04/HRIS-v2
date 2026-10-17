@@ -429,6 +429,8 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017020000_hris_employee_identity_card.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017030000_hris_employee_announcement_audience.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017040000_hris_employee_dashboard_work_identity.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017050000_hris_employee_dashboard_team_identity.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017060000_hris_employee_dashboard_pending_requests.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -3109,6 +3111,7 @@ FROM (VALUES
   ('public.hris_assign_tenant_employee_shift(uuid,uuid,uuid,date)'),
   ('public.hris_get_tenant_leave_data(uuid,date,date)'),
   ('public.hris_get_my_dashboard_data(uuid)'),
+  ('public.hris_get_my_pending_requests(uuid)'),
   ('public.hris_employee_submit_attendance_correction(uuid,jsonb)'),
   ('public.hris_employee_record_attendance_event(uuid,text)'),
   ('public.hris_employee_submit_leave_request(uuid,jsonb)'),
@@ -3411,6 +3414,46 @@ record('Employee leave history returns its own private evidence path and exclude
   && !JSON.stringify(employeeSummaryB.requests).includes(evidencePathA),
   JSON.stringify({ ownerPathReturned: employeeEvidenceRequest?.attachment_url === evidencePathA,
     foreignTenantContainsPath: JSON.stringify(employeeSummaryB.requests).includes(evidencePathA) }));
+record('Employee dashboard profile resolves team names only through a same-tenant team join',
+  employeeSummaryA.employee.team_name === 'QA A Team'
+    && employeeSummaryB.employee.team_name === 'QA B Team',
+  JSON.stringify({ tenantA: employeeSummaryA.employee.team_name, tenantB: employeeSummaryB.employee.team_name }));
+
+const pendingRequestSummaryA = await employeeA.client.rpc('hris_get_my_pending_requests', { p_tenant_id: ids.tenantA });
+const pendingRequestSummaryB = await employeeB.client.rpc('hris_get_my_pending_requests', { p_tenant_id: ids.tenantB });
+const pendingRequestCrossTenant = await employeeA.client.rpc('hris_get_my_pending_requests', { p_tenant_id: ids.tenantB });
+const pendingRequestGlobalOnly = await globalOnly.client.rpc('hris_get_my_pending_requests', { p_tenant_id: ids.tenantA });
+const pendingRequestAnonymousClient = createClient(services.API_URL, services.ANON_KEY, authOptions);
+const pendingRequestAnonymous = await pendingRequestAnonymousClient.rpc('hris_get_my_pending_requests', { p_tenant_id: ids.tenantA });
+const pendingRequestKindsA = new Set((pendingRequestSummaryA.data?.requests || []).map(row => row.kind));
+const pendingRequestIdsA = new Set((pendingRequestSummaryA.data?.requests || []).map(row => row.id));
+const pendingRequestIdsB = new Set((pendingRequestSummaryB.data?.requests || []).map(row => row.id));
+const pendingRequestAcl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_my_pending_requests(uuid)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_my_pending_requests(uuid)','EXECUTE'))`);
+record('Employee pending dashboard summary contains only existing open request kinds and status values for the linked tenant employee',
+  !pendingRequestSummaryA.error && !pendingRequestSummaryB.error
+    && pendingRequestSummaryA.data?.tenant_id === ids.tenantA
+    && pendingRequestSummaryA.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && pendingRequestSummaryB.data?.tenant_id === ids.tenantB
+    && pendingRequestSummaryB.data?.employee_id === '66666666-6666-4666-8666-666666666666'
+    && ['leave','attendance','expense','travel','service'].every(kind => pendingRequestKindsA.has(kind))
+    && pendingRequestIdsA.has('89898989-8989-4898-8898-989898989821')
+    && pendingRequestIdsA.has('89898989-8989-4898-8898-989898989801')
+    && !pendingRequestIdsA.has('89898989-8989-4898-8898-989898989822')
+    && !pendingRequestIdsA.has('89898989-8989-4898-8898-989898989802')
+    && pendingRequestIdsB.has('89898989-8989-4898-8898-989898989822')
+    && pendingRequestSummaryA.data.requests.every(row => ['pending','submitted','in_progress','requested'].includes(row.status)
+      && Object.keys(row).sort().join(',') === 'id,kind,requested_at,status'),
+  JSON.stringify({ error: pendingRequestSummaryA.error?.message, kinds: [...pendingRequestKindsA], countA: pendingRequestIdsA.size, countB: pendingRequestIdsB.size }));
+record('Employee pending dashboard summary denies cross-tenant, unlinked global-only and anonymous callers',
+  Boolean(pendingRequestCrossTenant.error)
+    && Boolean(pendingRequestGlobalOnly.error)
+    && Boolean(pendingRequestAnonymous.error)
+    && pendingRequestAcl.anon === false && pendingRequestAcl.authenticated === true,
+  JSON.stringify({ crossTenant: pendingRequestCrossTenant.error?.code || 'unexpectedly allowed',
+    globalOnly: pendingRequestGlobalOnly.error?.code || 'unexpectedly allowed',
+    anonymous: pendingRequestAnonymous.error?.code || 'unexpectedly allowed', acl: pendingRequestAcl }));
 
 const leaveRejectionNote = 'Please correct the requested dates before resubmitting.';
 const leaveRejectionSubmit = await employeeA.client.rpc('hris_employee_submit_leave_request', {
@@ -6365,6 +6408,10 @@ const employeeDashboardTask = await employeeA.client.rpc('hris_create_project_ta
 });
 const employeeDashboardGoalDueDate = queryAdmin(`SELECT jsonb_build_object('due_date',due_date::text)
   FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`).due_date;
+const dashboardPendingServiceIds = queryAdmin(`SELECT coalesce(jsonb_agg(id ORDER BY submitted_at,id),'[]'::jsonb) AS ids
+  FROM public.service_requests WHERE tenant_id='${ids.tenantA}'::uuid
+    AND employee_id='55555555-5555-4555-8555-555555555555' AND status IN ('pending','in_progress')`).ids || [];
+if (dashboardPendingServiceIds.length === 0) throw new Error('The synthetic employee has no pending service request for the dashboard journey.');
 psqlSync(`UPDATE public.performance_goals SET due_date='${addCalendarDays(localCurrentDate, -1)}'::date
   WHERE id='${employeeAGoalId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 let employeeAttendanceBrowserOutput = '';
@@ -6390,8 +6437,11 @@ try {
       HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID: '55555555-5555-4555-8555-555555555555',
       HRIS_LOCAL_DASHBOARD_TASK_TITLE: employeeDashboardTaskTitle,
       HRIS_LOCAL_DASHBOARD_GOAL_TITLE: 'QA A goal',
+      HRIS_LOCAL_DASHBOARD_TEAM_NAME: 'QA A Team',
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID: 'b1111111-1111-4111-8111-111111111111',
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE: 'QA A all notice',
+      HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: '88888888-8888-4888-8888-888888888801',
+      HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID: dashboardPendingServiceIds[0],
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -6428,6 +6478,8 @@ record('E01-07 assigned tasks, own goals, and overdue work open their existing p
     browserError: employeeAttendanceBrowserError }));
 record('E01-08 recent HR announcements appear on the employee dashboard and open the RLS-filtered history',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
+record('E01-04 pending leave, attendance, expense, travel, service and learning requests link from the dashboard with retry, owner-scoped persistence, EN/BN, and mobile/desktop checks',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';

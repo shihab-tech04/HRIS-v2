@@ -14,6 +14,8 @@ const required = [
   'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
   'HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID', 'HRIS_LOCAL_DASHBOARD_TASK_TITLE', 'HRIS_LOCAL_DASHBOARD_GOAL_TITLE',
   'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID', 'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE',
+  'HRIS_LOCAL_DASHBOARD_TEAM_NAME',
+  'HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID', 'HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -68,6 +70,7 @@ try {
   let failInitialRosterRead = true;
   let failInitialUpcomingTrainingRead = true;
   let failInitialDashboardTaskRead = true;
+  let failInitialDashboardPendingRead = true;
   let failDashboardNoticeRead = false;
   const identityCardRequests = [];
   const periodRequests = [];
@@ -76,6 +79,7 @@ try {
   const dashboardTaskRequests = [];
   const dashboardGoalRequests = [];
   const dashboardNoticeRequests = [];
+  const dashboardPendingRequests = [];
   const directRosterTableRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
@@ -101,6 +105,9 @@ try {
     if (url.pathname.endsWith('/rest/v1/notices') && request.method() === 'GET') {
       dashboardNoticeRequests.push({ tenantId: url.searchParams.get('tenant_id'), active: url.searchParams.get('active'),
         select: url.searchParams.get('select'), limit: url.searchParams.get('limit') });
+    }
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_my_pending_requests') && request.method() === 'POST') {
+      dashboardPendingRequests.push(request.postDataJSON()?.p_tenant_id);
     }
     if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
       directRosterTableRequests.push(url.pathname);
@@ -142,8 +149,18 @@ try {
         }) });
         return;
       }
+      if (failInitialDashboardPendingRead
+          && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_pending_requests')
+          && route.request().method() === 'POST') {
+        failInitialDashboardPendingRead = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+          code: 'XX000', message: 'Synthetic temporary dashboard pending-request outage.',
+        }) });
+        return;
+      }
       if (failDashboardNoticeRead && url.pathname.endsWith('/rest/v1/notices')
-          && route.request().method() === 'GET') {
+          && route.request().method() === 'GET'
+          && url.searchParams.get('select') === 'id,title,category,pinned,published_at') {
         failDashboardNoticeRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary dashboard announcement outage.',
@@ -182,6 +199,23 @@ try {
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
+  await page.locator('[data-employee-profile="team"]').getByText(process.env.HRIS_LOCAL_DASHBOARD_TEAM_NAME, { exact: true }).waitFor({ state: 'visible' });
+  const pendingRequests = page.locator('section[aria-labelledby="employee-pending-requests-heading"]');
+  await pendingRequests.getByRole('alert').filter({ hasText: 'Unable to load your pending requests.' }).waitFor({ state: 'visible' });
+  if (failInitialDashboardPendingRead) throw new Error('The injected pending-request dashboard outage was not observed.');
+  await pendingRequests.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
+  await pendingRequests.locator(`[data-pending-request-id="${process.env.HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID}"]`).waitFor({ state: 'visible' });
+  for (const kind of ['leave','attendance','expense','travel','service']) {
+    await pendingRequests.locator(`[data-pending-request-kind="${kind}"]`).first().waitFor({ state: 'visible' });
+  }
+  if (dashboardPendingRequests.length < 2
+      || dashboardPendingRequests.some(requestedTenantId => requestedTenantId !== process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID)) {
+    throw new Error(`Pending request reads were missing or not bound to the employee tenant: ${JSON.stringify(dashboardPendingRequests)}.`);
+  }
+  await assertNoOverflow(page, 'Employee pending requests mobile');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Employee pending requests desktop');
+  await page.setViewportSize({ width: 375, height: 812 });
   const announcementPreview = page.locator('section[aria-labelledby="my-announcements-heading"]');
   await announcementPreview.getByRole('heading', { name: 'Recent HR announcements', exact: true }).waitFor({ state: 'visible' });
   const dashboardNotice = announcementPreview.locator(`[data-announcement-id="${process.env.HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID}"]`);
@@ -261,6 +295,13 @@ try {
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
+  const pendingServiceRequest = page.locator(`section[aria-labelledby="employee-pending-requests-heading"] [data-pending-request-id="${process.env.HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID}"]`);
+  await pendingServiceRequest.waitFor({ state: 'visible' });
+  await pendingServiceRequest.getByRole('button', { name: 'View history', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Service Requests', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   const monthInput = page.locator('input[type="month"][aria-label="Attendance month"]');
   await monthInput.waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'visible' });
@@ -345,6 +386,8 @@ try {
 
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'অপেক্ষমাণ অনুরোধসমূহ', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'অপেক্ষমাণ অনুরোধ রিফ্রেশ করুন', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('heading', { name: 'আসন্ন প্রশিক্ষণ', exact: true }).waitFor({ state: 'visible' });
   await page.getByText('আপনার জন্য নির্ধারিত নিশ্চিত সেশন।', { exact: true }).waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 375, height: 812 });
@@ -486,6 +529,7 @@ try {
   console.log('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_DASHBOARD_WORK_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS');
+  console.log('EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
   console.log('Local Auth/Postgres employee dashboard journeys passed: audience-filtered recent announcements and full-list navigation, task/goal recovery, upcoming confirmed training, My Learning navigation, English/Bengali, refresh and route recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
 } finally {
