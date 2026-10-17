@@ -3195,7 +3195,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           heading?.focus({ preventScroll: true });
         }}
         onOpenRequests={onOpenRequests} />
-      <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(0,2fr)] xl:grid-cols-[180px_minmax(0,1fr)_288px]">
+      <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(0,2fr)] xl:grid-cols-[278px_minmax(0,1fr)_360px] xl:gap-6">
         <section aria-labelledby="employee-profile-heading" className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
           <div className="mx-auto grid h-24 w-24 place-items-center rounded-xl bg-[#E7F1F3] text-2xl font-semibold text-[#08558B]" aria-hidden="true">{initials}</div>
           <h3 id="employee-profile-heading" tabIndex={-1} className="mt-3 break-words text-base font-semibold text-[#08263D]">{fullName || tx('Employee profile')}</h3>

@@ -187,6 +187,18 @@ test('linked employee can complete the private evidence leave request on mobile'
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: 'Personal Dashboard' })).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  const profileCard = page.locator('section[aria-labelledby="employee-profile-heading"]');
+  const employeeDashboardGrid = profileCard.locator('xpath=..');
+  const profileBounds = await profileCard.boundingBox();
+  const leaveRailBounds = await employeeDashboardGrid.locator(':scope > aside').boundingBox();
+  expect(Math.abs((profileBounds?.width ?? 0) - 278)).toBeLessThan(1);
+  expect(Math.abs((leaveRailBounds?.width ?? 0) - 360)).toBeLessThan(1);
+  expect(Math.abs((leaveRailBounds?.x ?? 0) - ((profileBounds?.x ?? 0) + (profileBounds?.width ?? 0)) - 24)).toBeLessThan(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1920);
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  await expect(page.getByRole('heading', { name: 'Personal Dashboard' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Synthetic Employee' })).toBeVisible();
   await expect(page.getByText('Product Designer')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Today’s attendance' })).toBeVisible();

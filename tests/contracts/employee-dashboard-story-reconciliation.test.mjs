@@ -77,4 +77,5 @@ test('Employee HRIS primary cards use the 16px corners in the approved Figma fra
     assert.match(workspace, new RegExp(`<section[^>]*aria-labelledby="${escaped}"[^>]*className="[^"]*rounded-2xl`), `${id} should match Figma's 16px card radius.`);
   }
   assert.match(workspace, /grid h-24 w-24 place-items-center rounded-xl/);
+  assert.match(workspace, /xl:grid-cols-\[278px_minmax\(0,1fr\)_360px\] xl:gap-6/);
 });
