@@ -1231,6 +1231,9 @@ INSERT INTO public.employees(id,tenant_id,team_id,employee_number,full_name,offi
   ('55555555-5555-4555-8555-555555555557','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-003','Synthetic Late Employee A','employee-a-late@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555558','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-004','Synthetic Leave Employee A','employee-a-leave@hris.test','2026-01-01'),
   ('55555555-5555-4555-8555-555555555559','11111111-1111-4111-8111-111111111111','dddddddd-0000-4000-8000-000000000001','QA-A-005','Synthetic WFH Employee A','employee-a-wfh@hris.test','2026-01-01');
+-- Keep the WFH directory fixture internally consistent for department/team filters.
+UPDATE public.employees SET department_id='eeeeeeee-0000-4000-8000-000000000001'::uuid
+WHERE id='55555555-5555-4555-8555-555555555559'::uuid AND tenant_id='11111111-1111-4111-8111-111111111111'::uuid;
 INSERT INTO public.learning_programs(id,tenant_id,title,description,category,provider,delivery_mode,duration_hours,self_enrollment,target_skills,active) VALUES
   ('90000000-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111','QA A Direct Learning','Synthetic self-enrollment course','Professional Development','QA Provider','online',4,true,ARRAY['Communication','Planning'],true),
   ('90000000-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','QA A Approval Learning','Synthetic manager approval course','Professional Development','QA Provider','hybrid',8,false,ARRAY['Leadership'],true),

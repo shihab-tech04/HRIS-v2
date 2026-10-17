@@ -1962,6 +1962,12 @@ try {
 const employeeDirectoryV2NoPermission = await noPermission.client.rpc('hris_get_tenant_employee_directory_v2', {
   p_tenant_id: ids.tenantA, p_team_id: 'dddddddd-0000-4000-8000-000000000003',
 });
+const employeeDirectoryV2TenantB = await managerB.client.rpc('hris_get_tenant_employee_directory_v2', {
+  p_tenant_id: ids.tenantB,
+});
+const employeeDirectoryV2CrossTenant = await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
+  p_tenant_id: ids.tenantB,
+});
 const employeeDirectoryV2Acl = queryAdmin(`SELECT jsonb_build_object(
   'anon',has_function_privilege('anon','public.hris_get_tenant_employee_directory_v2(uuid,text,uuid,uuid,text,integer,integer)','EXECUTE'),
   'authenticated',has_function_privilege('authenticated','public.hris_get_tenant_employee_directory_v2(uuid,text,uuid,uuid,text,integer,integer)','EXECUTE'))`);
@@ -2019,11 +2025,17 @@ record('Employee directory team options and filtering are tenant-scoped and inte
     && employeeDirectoryForeignTeamFilter.data.total_count === 0
     && employeeDirectoryForeignTeamFilter.data.employees.length === 0
     && Boolean(employeeDirectoryV2NoPermission.error?.code === '42501')
+    && !employeeDirectoryV2TenantB.error && employeeDirectoryV2TenantB.data.total_count === 1
+    && employeeDirectoryV2TenantB.data.employees[0]?.full_name === 'Synthetic Employee B'
+    && !JSON.stringify(employeeDirectoryV2TenantB.data).includes('Synthetic Employee A')
+    && Boolean(employeeDirectoryV2CrossTenant.error?.code === '42501')
     && employeeDirectoryV2Acl.anon === false && employeeDirectoryV2Acl.authenticated === true,
   JSON.stringify({ optionIds: employeeDirectoryTeamOptions.data?.teams?.map(row => row.id),
     filtered: employeeDirectoryTeamFiltered.data?.employees?.map(row => row.full_name),
     foreignTeamCount: employeeDirectoryForeignTeamFilter.data?.total_count,
-    noPermission: employeeDirectoryV2NoPermission.error?.code || null, acl: employeeDirectoryV2Acl }));
+    noPermission: employeeDirectoryV2NoPermission.error?.code || null,
+    tenantB: employeeDirectoryV2TenantB.data?.employees?.map(row => row.full_name),
+    crossTenant: employeeDirectoryV2CrossTenant.error?.code || null, acl: employeeDirectoryV2Acl }));
 record('E37-02 department and team filters stay within the authorized tenant; location is not exposed without an approved directory contract',
   !employeeDirectoryTeamFiltered.error && employeeDirectoryTeamFiltered.data.total_count === 1
     && employeeDirectoryTeamFiltered.data.employees[0]?.team_name === 'QA A Other Team'
@@ -2199,16 +2211,23 @@ record('Employee contact read and save both deny an inactive organization',
 psqlSync(`UPDATE public.tenant_memberships SET status='inactive'
   WHERE user_id='${employeesViewer.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 let employeeDirectoryInactiveMembership;
+let employeeDirectoryV2InactiveMembership;
 try {
   employeeDirectoryInactiveMembership = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
     p_tenant_id: ids.tenantA,
+  });
+  employeeDirectoryV2InactiveMembership = await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
+    p_tenant_id: ids.tenantA, p_team_id: 'dddddddd-0000-4000-8000-000000000001',
   });
 } finally {
   psqlSync(`UPDATE public.tenant_memberships SET status='active'
     WHERE user_id='${employeesViewer.userId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 }
 record('Employee directory immediately denies inactive tenant membership',
-  Boolean(employeeDirectoryInactiveMembership.error?.code === '42501'));
+  Boolean(employeeDirectoryInactiveMembership.error?.code === '42501')
+    && Boolean(employeeDirectoryV2InactiveMembership.error?.code === '42501'),
+  JSON.stringify({ legacy: employeeDirectoryInactiveMembership.error?.code || null,
+    teamFilter: employeeDirectoryV2InactiveMembership.error?.code || null }));
 
 let employeeDirectoryBrowserOutput = '';
 let employeeDirectoryBrowserError = '';
