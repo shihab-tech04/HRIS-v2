@@ -139,7 +139,7 @@ try {
   await currentMonthRead;
   const correctionDate = dialog.getByLabel('Attendance date');
   await correctionDate.selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
-  await dialog.getByLabel('Reason', { exact: true }).fill(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT);
+  await dialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT);
   await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
   await dialog.getByRole('alert').filter({ hasText: 'Enter at least one attendance field to correct.' }).waitFor({ state: 'visible' });
   if (submitted.length) throw new Error('An empty attendance correction reached the backend.');
@@ -148,7 +148,7 @@ try {
   await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
   await dialog.waitFor({ state: 'visible' });
   await dialog.getByLabel('Attendance date').selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
-  if (await dialog.getByLabel('Reason', { exact: true }).inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
+  if (await dialog.getByLabel('Reason').inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
     throw new Error('Cancel and reopen discarded the employee correction draft.');
   }
   await dialog.getByLabel('Requested check-in', { exact: true }).fill('09:35');
@@ -159,9 +159,9 @@ try {
   const outageAlert = dialog.getByRole('alert');
   await outageAlert.waitFor({ state: 'visible' });
   if (!(await outageAlert.innerText()).trim()
-      || await dialog.getByLabel('Attendance date', { exact: true }).inputValue() !== process.env.HRIS_LOCAL_CORRECTION_DATE
+      || await dialog.getByLabel('Attendance date').inputValue() !== process.env.HRIS_LOCAL_CORRECTION_DATE
       || await dialog.getByLabel('Requested check-in', { exact: true }).inputValue() !== '09:35'
-      || await dialog.getByLabel('Reason', { exact: true }).inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
+      || await dialog.getByLabel('Reason').inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
     throw new Error('Correction outage did not keep a recoverable alert and the entered request.');
   }
   const rejectedSubmit = correctionResponse(employee, 200);
@@ -181,9 +181,9 @@ try {
 
   await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
   const approvalDialog = employee.getByRole('dialog', { name: 'Request attendance correction', exact: true });
-  await approvalDialog.getByLabel('Attendance date', { exact: true }).selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
+  await approvalDialog.getByLabel('Attendance date').selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
   await approvalDialog.getByLabel('Requested check-in', { exact: true }).fill('09:45');
-  await approvalDialog.getByLabel('Reason', { exact: true }).fill(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE);
+  await approvalDialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE);
   const approvalSubmit = correctionResponse(employee, 200);
   await approvalDialog.getByRole('button', { name: 'Send request', exact: true }).click();
   const approvalSubmitResponse = await approvalSubmit;
