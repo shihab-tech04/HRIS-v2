@@ -151,6 +151,23 @@ try {
   await signIn(employee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
   await navigateTo(employee, 'My Leave');
   await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const personalLeaveSummary = employee.getByTestId('personal-leave-summary');
+  await personalLeaveSummary.getByRole('heading', { name: 'Request time off', exact: true }).waitFor({ state: 'visible' });
+  await personalLeaveSummary.getByRole('heading', { name: 'Available leave breakdown', exact: true }).waitFor({ state: 'visible' });
+  const mobileSummaryColumns = await personalLeaveSummary.evaluate(element => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length);
+  if (mobileSummaryColumns !== 1) throw new Error(`Personal leave summary mobile layout has ${mobileSummaryColumns} columns instead of one.`);
+  const primaryHistoryBeforeCalendar = await employee.evaluate(() => {
+    const historySection = document.querySelector('[data-testid="personal-leave-history"]');
+    const calendarHeading = document.querySelector('#personal-leave-calendar-heading');
+    return Boolean(historySection && calendarHeading
+      && (historySection.compareDocumentPosition(calendarHeading) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  if (!primaryHistoryBeforeCalendar) throw new Error('Personal leave history should precede the calendar on the Figma-aligned page.');
+  await employee.setViewportSize({ width: 1280, height: 900 });
+  const personalLeaveSummaryColumns = await personalLeaveSummary.evaluate(element => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length);
+  if (personalLeaveSummaryColumns !== 2) throw new Error(`Personal leave summary desktop layout has ${personalLeaveSummaryColumns} columns instead of two.`);
+  await employee.setViewportSize({ width: 375, height: 812 });
+  console.log('Personal leave summary mobile and desktop layouts passed.');
   await assertNoHorizontalOverflow(employee, 'Employee personal leave mobile');
   const history = employee.getByRole('table', {
     name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,

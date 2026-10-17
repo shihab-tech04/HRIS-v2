@@ -1900,13 +1900,14 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 }
 
 function PersonalLeaveRequests({
-  tenantId, userId, leave, onRefresh, compact = false, showBalances = true, showHistory = true, locale = 'en',
+  tenantId, userId, leave, onRefresh, compact = false, summaryLayout = false, showBalances = true, showHistory = true, locale = 'en',
 }: {
   tenantId: string;
   userId: string;
   leave: Record<string, unknown>;
   onRefresh: () => Promise<void>;
   compact?: boolean;
+  summaryLayout?: boolean;
   showBalances?: boolean;
   showHistory?: boolean;
   locale?: Locale;
@@ -2051,12 +2052,17 @@ function PersonalLeaveRequests({
   }
 
   return <>
-    <section className={`space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${compact ? 'xl:p-4' : 'sm:p-5'}`} aria-labelledby="personal-leave-heading">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 id="personal-leave-heading" className="text-lg font-semibold text-[#49454F]">{tx(compact ? 'Request time off' : 'My leave')}</h3>
-          <p className="mt-1 text-sm text-slate-600">{tx(compact ? 'Submit a request for an authorized leave type' : 'Current-year balances and your request history')}</p></div>
+    <section className={summaryLayout
+      ? 'h-full rounded-none border-0 bg-transparent p-3 shadow-none sm:p-4'
+      : `space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${compact ? 'xl:p-4' : 'sm:p-5'}`}
+    aria-labelledby="personal-leave-heading">
+      <div className={summaryLayout ? 'flex h-full flex-col items-stretch justify-center gap-2' : 'flex flex-wrap items-center justify-between gap-3'}>
+        <div>{summaryLayout
+          ? <h3 id="personal-leave-heading" className="text-sm font-semibold text-[#49454F]">{tx('Request time off')}</h3>
+          : <><h3 id="personal-leave-heading" className="text-lg font-semibold text-[#49454F]">{tx(compact ? 'Request time off' : 'My leave')}</h3>
+            <p className="mt-1 text-sm text-slate-600">{tx(compact ? 'Submit a request for an authorized leave type' : 'Current-year balances and your request history')}</p></>}</div>
         <button ref={requestButtonRef} type="button" disabled={!leaveTypes.length} onClick={() => { setFormError(''); setRequestOpen(true); }}
-          className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:cursor-not-allowed disabled:opacity-50">
+          className={`min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:cursor-not-allowed disabled:opacity-50 ${summaryLayout ? 'min-h-[50px] w-full' : ''}`}>
           {tx('Request for leave')}
         </button>
       </div>
@@ -2300,32 +2306,24 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
     {evidenceMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{evidenceMessage}</p>}
     {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading your leave information…')}</p>}
     {currentTenantDataReady && leave && <>
-      <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(210px,0.7fr)_minmax(0,2fr)]">
-        <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} locale={locale} />
-        <section aria-labelledby="personal-leave-balance-heading" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><h3 id="personal-leave-balance-heading" className="font-semibold text-[#08263D]">{tx('Available leave breakdown')}</h3>
-              <p className="mt-1 text-xs text-slate-500">{txf('Current year · {year}', { year: String(leave.balance_year || defaultYear) })}</p></div>
-            <CalendarDays className="h-5 w-5 text-[#08558B]" aria-hidden="true" />
-          </div>
-          {balances.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-            {balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="min-w-0 rounded-md border border-slate-200 p-3">
-              <p className="truncate text-sm font-semibold text-[#49454F]" title={String(row.leave_type_name || '')}>{display(row.leave_type_name)}</p>
-              <p className="mt-1 text-sm tabular-nums text-slate-700">{display(row.available_days)} days available</p>
+      <div data-testid="personal-leave-summary" className="grid min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:grid-cols-[minmax(190px,0.62fr)_minmax(0,2fr)]">
+        <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact summaryLayout showBalances={false} showHistory={false} locale={locale} />
+        <section aria-labelledby="personal-leave-balance-heading" className="min-w-0 border-t border-slate-200 p-3 sm:p-4 md:border-l md:border-t-0">
+          <h3 id="personal-leave-balance-heading" className="font-semibold text-[#49454F]">{tx('Available leave breakdown')}</h3>
+          {balances.length ? <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+            {balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="min-w-0 rounded-sm border border-slate-200 p-2">
+              <p className="truncate text-xs font-semibold text-[#49454F]" title={String(row.leave_type_name || '')}>{display(row.leave_type_name)}</p>
+              <p className="mt-1 text-sm tabular-nums text-slate-700">{display(row.available_days)}</p>
             </div>)}
           </div> : <p className="mt-3 rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
         </section>
       </div>
 
-      <EmployeeLeaveCalendar key={tenantId} tenantId={tenantId}
-        initialDate={String(leave.dashboard_date || `${defaultYear}-01-01`)} locale={locale} />
-
-      <section aria-labelledby="personal-leave-history-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div><h3 id="personal-leave-history-heading" className="font-semibold text-[#08263D]">{tx('Leave history')}</h3>
-            <p className="mt-1 text-xs text-slate-500">{tx('Requests overlapping the selected calendar year')}</p></div>
+      <section data-testid="personal-leave-history" aria-labelledby="personal-leave-history-heading" className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div><h3 id="personal-leave-history-heading" className="font-semibold text-[#08263D]">{tx('Leave history')}</h3></div>
           <div className="flex flex-wrap items-end gap-2">
-            <div><label htmlFor="personal-leave-history-year" className="mb-1 block text-xs font-medium text-slate-600">{tx('Leave history of')}</label>
+            <div className="flex items-center gap-2"><label htmlFor="personal-leave-history-year" className="text-xs font-medium text-slate-600">{tx('Leave history of')}</label>
               <select id="personal-leave-history-year" value={selectedYear} onChange={event => setHistoryYear(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">
                 {years.map(year => <option key={year} value={year}>{year}</option>)}
               </select></div>
@@ -2334,25 +2332,25 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
             </button>
           </div>
         </div>
-        {history.length ? <div role="region" aria-label="Personal leave history" tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#085587]">
-          <table aria-label={`Personal leave history for ${selectedYear}`} className={`w-full ${historyHasEvidence ? 'min-w-[860px]' : 'min-w-[720px]'} text-left text-sm`}>
-            <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
-              {['Applicable from', 'Applicable to', 'No. of days', 'Leave type', 'Remarks', 'Status', ...(historyHasEvidence ? ['Evidence'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}
+        {history.length ? <div role="region" aria-label="Personal leave history" tabIndex={0} className="overflow-x-auto rounded-lg focus-visible:outline-2 focus-visible:outline-[#085587]">
+          <table aria-label={`Personal leave history for ${selectedYear}`} className={`w-full border-separate border-spacing-y-1 ${historyHasEvidence ? 'min-w-[860px]' : 'min-w-[720px]'} text-left text-sm`}>
+            <thead className="text-xs text-slate-500"><tr>
+              {['Applicable from', 'Applicable to', 'No. of days', 'Leave type', 'Remarks', 'Status', ...(historyHasEvidence ? ['Evidence'] : [])].map(label => <th key={label} scope="col" className="bg-white px-3 py-3 font-medium first:rounded-l-lg last:rounded-r-lg">{tx(label)}</th>)}
             </tr></thead>
-            <tbody className="divide-y divide-slate-100">{history.map((row, index) => {
+            <tbody>{history.map((row, index) => {
               const status = String(row.status || '').toLowerCase();
               const statusClass = status === 'approved' ? 'text-emerald-700'
                 : status === 'rejected' ? 'text-rose-700' : 'text-slate-600';
               return <tr key={String(row.id || index)} data-leave-request-id={String(row.id || '')} tabIndex={-1}
-                className="focus:outline focus:outline-2 focus:outline-[#085587]">
-                <td className="whitespace-nowrap px-3 py-3">{displayShortDate(row.from_date)}</td>
-                <td className="whitespace-nowrap px-3 py-3">{displayShortDate(row.to_date)}</td>
-                <td className="px-3 py-3 tabular-nums">{display(row.requested_days)}</td>
-                <td className="px-3 py-3">{display(row.leave_type_name)}</td>
-                <td className="max-w-56 px-3 py-3"><span className="block truncate" title={String(row.reason || '')}>{display(row.reason)}</span>
+                className="bg-white shadow-sm focus:outline focus:outline-2 focus:outline-[#085587]">
+                <td className="whitespace-nowrap border-y border-slate-100 px-3 py-3 first:rounded-l-lg first:border-l">{displayShortDate(row.from_date)}</td>
+                <td className="whitespace-nowrap border-y border-slate-100 px-3 py-3">{displayShortDate(row.to_date)}</td>
+                <td className="border-y border-slate-100 px-3 py-3 tabular-nums">{display(row.requested_days)}</td>
+                <td className="border-y border-slate-100 px-3 py-3">{display(row.leave_type_name)}</td>
+                <td className="max-w-56 border-y border-slate-100 px-3 py-3"><span className="block truncate" title={String(row.reason || '')}>{display(row.reason)}</span>
                   {Boolean(row.resolution_note) && <span className="block truncate text-xs text-slate-500">{display(row.resolution_note)}</span>}</td>
-                <td className={`whitespace-nowrap px-3 py-3 font-semibold capitalize ${statusClass}`}>{display(row.status)}</td>
-                {historyHasEvidence && <td className="px-3 py-3">{String(row.attachment_url || '').trim()
+                <td className={`whitespace-nowrap border-y border-slate-100 px-3 py-3 font-semibold capitalize last:rounded-r-lg last:border-r ${statusClass}`}>{display(row.status)}</td>
+                {historyHasEvidence && <td className="border-y border-slate-100 px-3 py-3 last:rounded-r-lg last:border-r">{String(row.attachment_url || '').trim()
                   ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
                       aria-label={txf('Download evidence for {leaveType} leave request', { leaveType: display(row.leave_type_name) })}
                       onClick={() => void downloadHistoryEvidence(row)}
@@ -2364,6 +2362,8 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
           </table>
         </div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{txf('No leave requests overlap {year}.', { year: selectedYear })}</p>}
       </section>
+      <EmployeeLeaveCalendar key={tenantId} tenantId={tenantId}
+        initialDate={String(leave.dashboard_date || `${defaultYear}-01-01`)} locale={locale} />
     </>}
   </section>;
 }
