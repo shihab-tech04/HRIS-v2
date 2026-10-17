@@ -29,6 +29,30 @@ test('recovered canonical catalogue integrity and E13 source requirements remain
   ]);
 });
 
+test('employee shift roster evidence maps the exact E12-01 through E12-05 source stories', () => {
+  const stories = source.stories.filter(story => /^E12-0[1-5]$/.test(story.story_id));
+  assert.deepEqual(stories.map(story => story.story_id), ['E12-01', 'E12-02', 'E12-03', 'E12-04', 'E12-05']);
+  assert.deepEqual(stories.map(story => story.verbatim_requirement), [
+    'As an employee, I want to see my assigned shift.',
+    'As an employee, I want to see future shift assignments.',
+    'As an employee, I want to see shift start/end time.',
+    'As an employee, I want to see shift breaks.',
+    'As an employee, I want to see shift-specific attendance rules.',
+  ]);
+  for (const field of ['assignment_date', 'start_time', 'end_time', 'break_minutes', 'grace_minutes', 'weekly_off_days']) {
+    assert.match(migration, new RegExp(`'${field}'`));
+  }
+  for (const label of ['Shift time', 'Break', 'Grace period', 'Weekly off days']) {
+    assert.ok(roster.includes(`'${label}'`), `Roster should expose ${label}.`);
+  }
+  assert.match(authRunner, /employeeOwnRosterRows\[0\]\.assignment_date === employeeRosterAssignmentDate/);
+  assert.match(authRunner, /employeeOwnRosterRows\[0\]\.break_minutes === 60/);
+  assert.match(authRunner, /employeeOwnRosterRows\[0\]\.grace_minutes === 10/);
+  assert.match(authRunner, /JSON\.stringify\(employeeOwnRosterRows\[0\]\.weekly_off_days\) === '\[0,6\]'/);
+  assert.match(browser, /'60 minutes', '10 minutes'/);
+  assert.match(browser, /EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS/);
+});
+
 test('employee roster reads enforce active own-tenant identity, bounded dates, and private assignment data', () => {
   assert.match(migration, /private\.hris_get_my_shift_roster\([\s\S]*?SECURITY DEFINER/);
   assert.match(migration, /public\.hris_own_employee_for_tenant\(p_tenant_id\)/);

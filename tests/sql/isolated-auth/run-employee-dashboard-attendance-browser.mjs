@@ -417,7 +417,7 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   const employeeRosterCard = page.locator(`[data-roster-assignment-id="${process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_ID}"]`);
   await employeeRosterCard.waitFor({ state: 'visible' });
-  for (const value of [process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, '09:00 – 17:00', 'Sunday, Saturday']) {
+  for (const value of [process.env.HRIS_LOCAL_ROSTER_SHIFT_NAME, '09:00 – 17:00', '60 minutes', '10 minutes', 'Sunday, Saturday']) {
     await employeeRosterCard.getByText(value, { exact: true }).waitFor({ state: 'visible' });
   }
   if (await page.locator('#my-roster-start').inputValue() !== process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE

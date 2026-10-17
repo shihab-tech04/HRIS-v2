@@ -3298,6 +3298,9 @@ record('Employees read only their own date-filtered shift roster and assignment-
     && employeeOwnRosterRows[0].assignment_id === employeeRosterAssignmentId
     && employeeOwnRosterRows[0].assignment_date === employeeRosterAssignmentDate
     && employeeOwnRosterRows[0].shift_name === 'Synthetic Day Shift'
+    && employeeOwnRosterRows[0].break_minutes === 60
+    && employeeOwnRosterRows[0].grace_minutes === 10
+    && JSON.stringify(employeeOwnRosterRows[0].weekly_off_days) === '[0,6]'
     && Boolean(employeeForeignRoster.error?.code === '42501')
     && Boolean(managerOwnRosterDenied.error?.code === '42501')
     && Boolean(employeeRosterBadRange.error?.code === '22023')
