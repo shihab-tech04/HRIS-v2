@@ -200,7 +200,7 @@ try {
   await employee.getByRole('button', { name: 'সংশোধনের আবেদন করুন', exact: true }).click();
   const bengaliDialog = employee.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
   await bengaliDialog.getByLabel('উপস্থিতির মাস', { exact: true }).waitFor({ state: 'visible' });
-  await bengaliDialog.getByLabel('উপস্থিতির তারিখ', { exact: true }).waitFor({ state: 'visible' });
+  await bengaliDialog.getByLabel('উপস্থিতির তারিখ').waitFor({ state: 'visible' });
   await bengaliDialog.getByLabel('অনুরোধকৃত চেক-ইন', { exact: true }).waitFor({ state: 'visible' });
   await employee.keyboard.press('Escape');
   await bengaliDialog.waitFor({ state: 'detached' });
