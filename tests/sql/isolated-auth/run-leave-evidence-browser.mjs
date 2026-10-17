@@ -324,6 +324,7 @@ try {
   const evidenceInputReset = await reopenedRequestDialog.locator('#personal-leave-evidence')
     .evaluate(input => input.value === '' && input.files?.length === 0);
   await reopenedRequestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await reopenedRequestDialog.waitFor({ state: 'hidden' });
   if (!evidenceInputReset) throw new Error('The employee evidence input was not reset after the real UI submission.');
 
   const employeeUiStorageResponse = employee.waitForResponse(response =>
@@ -506,16 +507,31 @@ try {
   await overlapHistory.locator(`[data-leave-request-id="${uiLeaveRequestId}"]`)
     .waitFor({ state: 'visible' });
   await overlapEmployee.getByRole('button', { name: 'Request for leave', exact: true }).click();
-  const overlapDialog = overlapEmployee.getByRole('dialog', { name: 'Request for leave' });
+  let overlapDialog = overlapEmployee.getByRole('dialog', { name: 'Request for leave' });
   await overlapDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic annual leave' });
   await overlapDialog.locator('#personal-leave-from').fill('2026-10-20');
   await overlapDialog.locator('#personal-leave-to').fill('2026-10-20');
   const overlapMessage = 'These dates overlap with an existing pending or approved leave request.';
   await overlapDialog.getByRole('alert').filter({ hasText: overlapMessage }).waitFor({ state: 'visible' });
+  await overlapDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await overlapDialog.waitFor({ state: 'hidden' });
   await overlapEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await overlapEmployee.getByRole('button', { name: 'ছুটির আবেদন', exact: true }).click();
+  overlapDialog = overlapEmployee.getByRole('dialog');
+  await overlapDialog.locator('#personal-leave-type').selectOption({ label: 'Synthetic annual leave' });
+  await overlapDialog.locator('#personal-leave-from').fill('2026-10-20');
+  await overlapDialog.locator('#personal-leave-to').fill('2026-10-20');
   const bengaliOverlapMessage = 'নির্বাচিত তারিখের সঙ্গে আগের অপেক্ষমাণ বা অনুমোদিত ছুটির আবেদন মিলে যাচ্ছে।';
   await overlapDialog.getByRole('alert').filter({ hasText: bengaliOverlapMessage }).waitFor({ state: 'visible' });
+  await overlapDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
+  await overlapDialog.waitFor({ state: 'hidden' });
   await overlapEmployee.getByRole('button', { name: 'Switch language to English' }).click();
+  await overlapEmployee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  overlapDialog = overlapEmployee.getByRole('dialog', { name: 'Request for leave' });
+  await overlapDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic annual leave' });
+  await overlapDialog.locator('#personal-leave-from').fill('2026-10-20');
+  await overlapDialog.locator('#personal-leave-to').fill('2026-10-20');
+  await overlapDialog.getByRole('alert').filter({ hasText: overlapMessage }).waitFor({ state: 'visible' });
   await overlapDialog.getByLabel('Reason').fill('Synthetic duplicate overlap attempt');
   await overlapEmployee.setViewportSize({ width: 1280, height: 900 });
   await assertNoHorizontalOverflow(overlapEmployee, 'Existing leave overlap desktop');
@@ -706,6 +722,7 @@ try {
   const refreshedRequestDialog = refreshedEmployee.getByRole('dialog', { name: 'Request for leave' });
   await refreshedRequestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic browser leave policy' });
   await refreshedRequestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await refreshedRequestDialog.waitFor({ state: 'hidden' });
 
   await navigateTo(refreshedEmployee, 'Notifications');
   const leaveApprovalCard = refreshedEmployee.locator(`[data-notification-source="leave_decision"][data-notification-kind="approved"][data-notification-request-id="${uiLeaveRequestId}"]`);
