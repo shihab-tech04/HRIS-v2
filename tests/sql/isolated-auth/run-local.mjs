@@ -6427,6 +6427,18 @@ const employeeDashboardTask = await employeeA.client.rpc('hris_create_project_ta
 });
 const employeeDashboardGoalDueDate = queryAdmin(`SELECT jsonb_build_object('due_date',due_date::text)
   FROM public.performance_goals WHERE id='${employeeAGoalId}'::uuid`).due_date;
+const dashboardTodayAttendance = queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id::text,'employee_id',employee_id::text,'attendance_date',attendance_date::text,
+  'status',status,'work_mode',work_mode,'check_in',check_in::text,'check_out',check_out::text)
+  FROM public.attendance_records WHERE id='${ids.attendanceRecord}'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+    AND attendance_date='${localCurrentDate}'::date`);
+if (!dashboardTodayAttendance?.status || !dashboardTodayAttendance?.work_mode
+    || !dashboardTodayAttendance?.check_in || !dashboardTodayAttendance?.check_out) {
+  throw new Error('The isolated employee dashboard is missing its persisted today attendance fixture.');
+}
+const displayAttendanceValue = value => String(value).replaceAll('_', ' ')
+  .replace(/\b\w/g, letter => letter.toLocaleUpperCase());
 const dashboardPendingServiceId = 'c2222222-2222-4222-8222-222222222221';
 psqlSync(`INSERT INTO public.service_requests(id,tenant_id,employee_id,request_type,reason,status,submitted_at)
   VALUES ('${dashboardPendingServiceId}'::uuid,'${ids.tenantA}'::uuid,
@@ -6459,6 +6471,8 @@ try {
       HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
       HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE: 'QA A Direct Learning',
       HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID: '55555555-5555-4555-8555-555555555555',
+      HRIS_LOCAL_DASHBOARD_TODAY_STATUS: displayAttendanceValue(dashboardTodayAttendance.status),
+      HRIS_LOCAL_DASHBOARD_TODAY_WORK_MODE: displayAttendanceValue(dashboardTodayAttendance.work_mode),
       HRIS_LOCAL_DASHBOARD_TASK_TITLE: employeeDashboardTaskTitle,
       HRIS_LOCAL_DASHBOARD_GOAL_TITLE: 'QA A goal',
       HRIS_LOCAL_DASHBOARD_TEAM_NAME: 'QA A Team',

@@ -220,7 +220,8 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   const todayAttendance = page.locator('section[aria-labelledby="employee-today-heading"]');
   const todayAttendanceText = await todayAttendance.innerText();
-  if (!todayAttendanceText.includes('Present') || !todayAttendanceText.includes('Home')) {
+  if (!todayAttendanceText.includes(process.env.HRIS_LOCAL_DASHBOARD_TODAY_STATUS)
+      || !todayAttendanceText.includes(process.env.HRIS_LOCAL_DASHBOARD_TODAY_WORK_MODE)) {
     throw new Error(`The linked employee's persisted today status or work mode was not rendered: ${todayAttendanceText}.`);
   }
   console.log('EMPLOYEE_DASHBOARD_TODAY_STATUS_BROWSER_ACCEPTANCE=PASS');

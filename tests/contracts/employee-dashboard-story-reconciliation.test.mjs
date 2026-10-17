@@ -46,3 +46,12 @@ test('E01 partial findings stay explicit instead of being counted as accepted', 
   assert.match(runtime, /E01-10 partially verified/);
   assert.match(runtime, /E01-06 upcoming appraisal deadlines use the authenticated employee appraisal RPC/);
 });
+
+test('today status and work-mode browser acceptance expectations come from the final isolated database row', () => {
+  assert.match(runtime, /const dashboardTodayAttendance = queryAdmin\([\s\S]*?attendance_date='\$\{localCurrentDate\}'::date/);
+  assert.match(runtime, /HRIS_LOCAL_DASHBOARD_TODAY_STATUS: displayAttendanceValue\(dashboardTodayAttendance\.status\)/);
+  assert.match(runtime, /HRIS_LOCAL_DASHBOARD_TODAY_WORK_MODE: displayAttendanceValue\(dashboardTodayAttendance\.work_mode\)/);
+  assert.match(browser, /todayAttendanceText\.includes\(process\.env\.HRIS_LOCAL_DASHBOARD_TODAY_STATUS\)/);
+  assert.match(browser, /todayAttendanceText\.includes\(process\.env\.HRIS_LOCAL_DASHBOARD_TODAY_WORK_MODE\)/);
+  assert.doesNotMatch(browser, /todayAttendanceText\.includes\('Home'\)/);
+});
