@@ -2971,6 +2971,11 @@ function PersonalAttendanceCorrections({
   const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
   const [requestOpen, setRequestOpen] = useState(false);
   const [attendanceDate, setAttendanceDate] = useState('');
+  const [correctionMonth, setCorrectionMonth] = useState(today.slice(0, 7));
+  const [correctionAttendance, setCorrectionAttendance] = useState<Record<string, unknown>[]>([]);
+  const [correctionAttendanceLoading, setCorrectionAttendanceLoading] = useState(false);
+  const [correctionAttendanceError, setCorrectionAttendanceError] = useState('');
+  const [correctionAttendanceRevision, setCorrectionAttendanceRevision] = useState(0);
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [workMode, setWorkMode] = useState('');
@@ -2981,6 +2986,67 @@ function PersonalAttendanceCorrections({
   const dialogRef = useRef<HTMLDivElement>(null);
   const requestButtonRef = useRef<HTMLButtonElement>(null);
   const submittingRef = useRef(false);
+  const attendanceReadSequence = useRef(0);
+  const activeTenant = useRef(tenantId);
+  activeTenant.current = tenantId;
+
+  useEffect(() => {
+    setRequestOpen(false);
+    setCorrectionMonth(today.slice(0, 7));
+    setAttendanceDate('');
+    setCorrectionAttendance([]);
+    setCorrectionAttendanceError('');
+    setCheckIn('');
+    setCheckOut('');
+    setWorkMode('');
+    setReason('');
+    setFormError('');
+  }, [tenantId, today]);
+
+  useEffect(() => {
+    const requestId = ++attendanceReadSequence.current;
+    const requestedTenant = tenantId;
+    const requestedMonth = correctionMonth;
+    const isCurrent = () => requestId === attendanceReadSequence.current
+      && activeTenant.current === requestedTenant;
+    if (!requestOpen || !requestedMonth) {
+      setCorrectionAttendance([]);
+      setCorrectionAttendanceLoading(false);
+      setCorrectionAttendanceError('');
+      return () => { attendanceReadSequence.current += 1; };
+    }
+    setCorrectionAttendance([]);
+    setCorrectionAttendanceLoading(true);
+    setCorrectionAttendanceError('');
+    void (async () => {
+      try {
+        const result = await supabase.rpc('hris_get_my_attendance_period', {
+          p_tenant_id: requestedTenant,
+          p_month_start: `${requestedMonth}-01`,
+        });
+        if (result.error) throw result.error;
+        const data = asObject(result.data);
+        const rows = asRows(data?.records);
+        if (!data || data.tenant_id !== requestedTenant || data.month_start !== `${requestedMonth}-01`
+            || !Array.isArray(data.records) || rows.some(row => typeof row.attendance_date !== 'string')) {
+          throw new Error('Monthly attendance returned an invalid response.');
+        }
+        if (!isCurrent()) return;
+        setCorrectionAttendance(rows);
+        setAttendanceDate(current => rows.some(row => row.attendance_date === current)
+          ? current : '');
+      } catch {
+        if (isCurrent()) {
+          setCorrectionAttendance([]);
+          setAttendanceDate('');
+          setCorrectionAttendanceError(projectText(locale, 'Unable to load attendance records for correction. Retry.'));
+        }
+      } finally {
+        if (isCurrent()) setCorrectionAttendanceLoading(false);
+      }
+    })();
+    return () => { attendanceReadSequence.current += 1; };
+  }, [tenantId, correctionMonth, correctionAttendanceRevision, requestOpen, locale]);
 
   useEffect(() => {
     if (!requestOpen) return;
@@ -3012,6 +3078,9 @@ function PersonalAttendanceCorrections({
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submittingRef.current) return;
+    if (!attendanceDate || !correctionAttendance.some(record => record.attendance_date === attendanceDate)) {
+      setFormError(tx('Select an attendance record.')); return;
+    }
     if (!checkIn && !checkOut && !workMode) {
       setFormError(tx('Enter at least one attendance field to correct.')); return;
     }
@@ -3082,8 +3151,33 @@ function PersonalAttendanceCorrections({
         </div>
         <form onSubmit={event => void submitRequest(event)} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
-            <div><label htmlFor="attendance-correction-date" className="mb-1 block text-sm font-medium text-slate-700">{tx('Attendance date')} <span aria-hidden="true">*</span></label>
-              <input id="attendance-correction-date" autoFocus type="date" required value={attendanceDate || today} onChange={event => setAttendanceDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label htmlFor="attendance-correction-month" className="mb-1 block text-sm font-medium text-slate-700">{tx('Attendance month')}</label>
+                <input id="attendance-correction-month" type="month" required max={today.slice(0, 7)} value={correctionMonth}
+                  onChange={event => { setCorrectionMonth(event.target.value); setAttendanceDate(''); }}
+                  className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+              <div><label htmlFor="attendance-correction-date" className="mb-1 block text-sm font-medium text-slate-700">{tx('Attendance date')} <span aria-hidden="true">*</span></label>
+                <select id="attendance-correction-date" autoFocus required value={attendanceDate}
+                  onChange={event => setAttendanceDate(event.target.value)} disabled={correctionAttendanceLoading || Boolean(correctionAttendanceError)}
+                  className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-50">
+                  <option value="">{tx('Select an attendance record')}</option>
+                  {correctionAttendance.map((record, index) => {
+                    const date = String(record.attendance_date || '');
+                    const punches = [record.check_in ? `In ${employeeTime(record.check_in)}` : '',
+                      record.check_out ? `Out ${employeeTime(record.check_out)}` : ''].filter(Boolean).join(' · ');
+                    return <option key={String(record.id || date || index)} value={date}>
+                      {employeeDate(date)}{punches ? ` · ${punches}` : ''} · {tx(display(record.status || 'Not recorded'))}
+                    </option>;
+                  })}
+                </select></div>
+            </div>
+            {correctionAttendanceLoading && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx('Loading attendance records…')}</p>}
+            {correctionAttendanceError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+              <span>{correctionAttendanceError}</span><button type="button" onClick={() => setCorrectionAttendanceRevision(value => value + 1)}
+                className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">{tx('Retry')}</button>
+            </div>}
+            {!correctionAttendanceLoading && !correctionAttendanceError && correctionAttendance.length === 0
+              && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx('No attendance records are available for this month.')}</p>}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><label htmlFor="attendance-correction-check-in" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-in')}</label>
                 <input id="attendance-correction-check-in" type="time" value={checkIn} onChange={event => setCheckIn(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>

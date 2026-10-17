@@ -171,6 +171,27 @@ function queryAdmin(sql) {
   return jsonResult(psqlSync(sql));
 }
 
+function cleanupAttendanceCorrectionBrowserFixture() {
+  if (!attendanceCorrectionBrowserFixtureId || !attendanceCorrectionBrowserDate
+      || attendanceCorrectionBrowserReasons.length !== 2) return;
+  const reasons = attendanceCorrectionBrowserReasons.map(sqlLiteral).join(',');
+  psqlSync(`DELETE FROM public.admin_audit_logs
+    WHERE (target_type='attendance_correction' AND target_id IN (
+      SELECT id::text FROM public.attendance_corrections
+      WHERE tenant_id='11111111-1111-4111-8111-111111111111'::uuid
+        AND employee_id='55555555-5555-4555-8555-555555555555'::uuid AND reason IN (${reasons})
+    )) OR (target_type='attendance_record' AND target_id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)}
+      AND action='attendance.record.saved');
+    DELETE FROM public.attendance_corrections
+    WHERE tenant_id='11111111-1111-4111-8111-111111111111'::uuid
+      AND employee_id='55555555-5555-4555-8555-555555555555'::uuid AND reason IN (${reasons});
+    DELETE FROM public.attendance_records
+    WHERE id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)}::uuid
+      AND tenant_id='11111111-1111-4111-8111-111111111111'::uuid
+      AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+      AND attendance_date=${sqlLiteral(attendanceCorrectionBrowserDate)}::date;`);
+}
+
 const localCurrentDate = psqlSync("SELECT (now() AT TIME ZONE 'Asia/Dhaka')::date::text;").trim();
 const currentAttendanceMonth = `${localCurrentDate.slice(0, 7)}-01`;
 const currentAttendanceMonthParts = currentAttendanceMonth.split('-').map(Number);
@@ -301,6 +322,10 @@ let learningEvidenceBucketSafeToClean = false;
 let createdEmployeeDocumentsBucket = false;
 let employeeDocumentsBucketSafeToClean = false;
 const employeeDocumentStoragePaths = [];
+let attendanceCorrectionBrowserFixtureId = null;
+let attendanceCorrectionBrowserDate = null;
+let attendanceCorrectionBrowserReasons = [];
+let attendanceCorrectionBrowserRequestIds = [];
 const password = randomBytes(24).toString('base64url');
 try {
   for (const email of emails) {
@@ -354,6 +379,7 @@ for (const file of [
   path.join(here, 'recruitment-fixture.sql'),
   path.join(mainRoot, 'supabase/migrations/20261011_02_hris_revoke_anon_helpers.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017074518_hris_employee_attendance_correction_existing_record.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012113020_hris_tenant_shift_assignment_manage.sql'),
   path.join(mainRoot, 'supabase/migrations/20261012115907_hris_employee_web_attendance_event.sql'),
@@ -4242,9 +4268,26 @@ const crossTenantAttendanceCorrection = await employeeA.client.rpc('hris_employe
   p_tenant_id: ids.tenantB,
   p_payload: { attendance_date: localCurrentDate, check_in_time: '09:15', reason: 'Cross tenant attempt' },
 });
+const missingAttendanceCorrectionReason = `Synthetic missing attendance row ${randomUUID()}`;
+const missingAttendanceCorrection = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { attendance_date: '2000-01-01', check_in_time: '09:15', reason: missingAttendanceCorrectionReason },
+});
+const missingAttendanceCorrectionPersistence = queryAdmin(`SELECT jsonb_build_object(
+  'request_count',(SELECT count(*)::integer FROM public.attendance_corrections
+    WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+      AND reason=${sqlLiteral(missingAttendanceCorrectionReason)}),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
+    WHERE action='attendance.correction.submitted' AND details->>'attendance_date'='2000-01-01'
+      AND details->>'employee_id'='55555555-5555-4555-8555-555555555555')`);
 record('Employee correction submission rejects empty changes and a different tenant',
   Boolean(emptyAttendanceCorrection.error) && Boolean(crossTenantAttendanceCorrection.error)
   && tableRow('attendance_corrections', submittedCorrectionId).status === 'pending');
+record('E06-01 backend rejects a fabricated attendance date without a persisted employee row',
+  missingAttendanceCorrection.error?.code === 'P0002'
+    && missingAttendanceCorrectionPersistence.request_count === 0
+    && missingAttendanceCorrectionPersistence.audit_count === 0,
+  JSON.stringify({ errorCode: missingAttendanceCorrection.error?.code, persistence: missingAttendanceCorrectionPersistence }));
 
 const employeeTenantRows = queryAs(employeeA, `SELECT jsonb_build_object(
   'attendance_tenants',coalesce((SELECT jsonb_agg(DISTINCT tenant_id::text) FROM public.attendance_records),'[]'::jsonb),
@@ -6969,6 +7012,159 @@ record('E05-05 employee selects a prior month and sees the persisted monthly att
     completePairHours: employeeAttendancePreviousMonth.data?.records?.[0]?.work_hours,
     browserError: employeeAttendanceBrowserError }));
 
+let attendanceCorrectionBrowserOutput = '';
+let attendanceCorrectionBrowserError = '';
+const attendanceCorrectionFreeDate = psqlSync(`SELECT COALESCE((
+  SELECT g.day::date::text FROM generate_series(
+    date_trunc('week','${localCurrentDate}'::date)::date,
+    '${localCurrentDate}'::date, interval '1 day'
+  ) g(day)
+  WHERE NOT EXISTS (SELECT 1 FROM public.attendance_records a
+    WHERE a.tenant_id='${ids.tenantA}'::uuid
+      AND a.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+      AND a.attendance_date=g.day::date)
+  ORDER BY g.day DESC LIMIT 1
+), '');`).trim();
+if (!attendanceCorrectionFreeDate) {
+  record('E06 attendance-correction browser fixture has a free employee attendance date in the current report range', false,
+    'No unused date exists in the active report week.');
+} else {
+  attendanceCorrectionBrowserDate = attendanceCorrectionFreeDate;
+  attendanceCorrectionBrowserFixtureId = randomUUID();
+  const rejectReason = `Synthetic E06 rejection ${randomUUID()}`;
+  const approveReason = `Synthetic E06 approval ${randomUUID()}`;
+  const rejectionNote = `Synthetic E06 correction note ${randomUUID()}`;
+  attendanceCorrectionBrowserReasons = [rejectReason, approveReason];
+  psqlSync(`INSERT INTO public.attendance_records(
+      id,tenant_id,employee_id,attendance_date,check_in,check_out,work_mode,client_name,status,source,remarks
+    ) VALUES (
+      ${sqlLiteral(attendanceCorrectionBrowserFixtureId)}::uuid,'${ids.tenantA}'::uuid,
+      '55555555-5555-4555-8555-555555555555'::uuid,${sqlLiteral(attendanceCorrectionBrowserDate)}::date,
+      ((${sqlLiteral(attendanceCorrectionBrowserDate)}::date + time '09:00') AT TIME ZONE 'Asia/Dhaka'),
+      ((${sqlLiteral(attendanceCorrectionBrowserDate)}::date + time '17:00') AT TIME ZONE 'Asia/Dhaka'),
+      'office','Synthetic preserved client','present','employee','Synthetic E06 correction baseline'
+    );`);
+  try {
+    attendanceCorrectionBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-attendance-correction-browser.mjs')], {
+      cwd: mainRoot,
+      env: {
+        ...process.env,
+        HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+        HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+        HRIS_LOCAL_TEST_PASSWORD: password,
+        HRIS_LOCAL_CORRECTION_EMPLOYEE_EMAIL: emails[5],
+        HRIS_LOCAL_CORRECTION_MANAGER_EMAIL: emails[0],
+        HRIS_LOCAL_CORRECTION_OTHER_MANAGER_EMAIL: emails[1],
+        HRIS_LOCAL_CORRECTION_TENANT_ID: ids.tenantA,
+        HRIS_LOCAL_CORRECTION_DATE: attendanceCorrectionBrowserDate,
+        HRIS_LOCAL_CORRECTION_REASON_REJECT: rejectReason,
+        HRIS_LOCAL_CORRECTION_REASON_APPROVE: approveReason,
+        HRIS_LOCAL_CORRECTION_REJECTION_NOTE: rejectionNote,
+      },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (error) {
+    attendanceCorrectionBrowserError = String(error.stderr || error.message || 'attendance-correction browser journey failed').slice(-1800);
+    attendanceCorrectionBrowserOutput = String(error.stdout || '');
+  }
+  const attendanceCorrectionBrowserPersistence = queryAdmin(`SELECT jsonb_build_object(
+    'requests',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+      'id',c.id::text,'tenant_id',c.tenant_id::text,'employee_id',c.employee_id::text,
+      'reason',c.reason,'status',c.status,'requested_check_in',c.requested_check_in,
+      'resolved_by',c.resolved_by::text,'resolution_note',c.resolution_note)
+      ORDER BY c.requested_at,c.id)
+      FROM public.attendance_corrections c
+      WHERE c.tenant_id='${ids.tenantA}'::uuid
+        AND c.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+        AND c.reason IN (${attendanceCorrectionBrowserReasons.map(sqlLiteral).join(',')})), '[]'::jsonb),
+    'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs l
+      WHERE l.target_type='attendance_correction' AND l.target_id IN (
+        SELECT c.id::text FROM public.attendance_corrections c
+        WHERE c.tenant_id='${ids.tenantA}'::uuid
+          AND c.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+          AND c.reason IN (${attendanceCorrectionBrowserReasons.map(sqlLiteral).join(',')}))),
+    'attendance',(SELECT jsonb_build_object('id',a.id::text,'tenant_id',a.tenant_id::text,
+      'employee_id',a.employee_id::text,'attendance_date',a.attendance_date::text,
+      'check_in',a.check_in,'check_out',a.check_out,'work_mode',a.work_mode,
+      'client_name',a.client_name,'status',a.status)
+      FROM public.attendance_records a WHERE a.id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)}::uuid
+        AND a.tenant_id='${ids.tenantA}'::uuid
+        AND a.employee_id='55555555-5555-4555-8555-555555555555'::uuid)`);
+  const correctionRequests = attendanceCorrectionBrowserPersistence.requests || [];
+  attendanceCorrectionBrowserRequestIds = correctionRequests.map(row => row.id).filter(Boolean);
+  const rejectedCorrection = correctionRequests.find(row => row.reason === rejectReason);
+  const approvedCorrection = correctionRequests.find(row => row.reason === approveReason);
+  const correctedAttendance = attendanceCorrectionBrowserPersistence.attendance;
+  const correctionSnapshotValid = correctionRequests.length === 2
+    && rejectedCorrection?.status === 'rejected' && Boolean(rejectedCorrection.resolved_by)
+    && rejectedCorrection.resolution_note === rejectionNote
+    && approvedCorrection?.status === 'approved' && Boolean(approvedCorrection.resolved_by)
+    && Date.parse(approvedCorrection.requested_check_in) === Date.parse(`${attendanceCorrectionBrowserDate}T03:45:00Z`)
+    && attendanceCorrectionBrowserPersistence.audit_count === 4
+    && correctedAttendance?.tenant_id === ids.tenantA
+    && correctedAttendance?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && correctedAttendance?.attendance_date === attendanceCorrectionBrowserDate
+    && Date.parse(correctedAttendance.check_in) === Date.parse(`${attendanceCorrectionBrowserDate}T03:45:00Z`)
+    && Date.parse(correctedAttendance.check_out) === Date.parse(`${attendanceCorrectionBrowserDate}T11:00:00Z`)
+    && correctedAttendance.work_mode === 'office' && correctedAttendance.client_name === 'Synthetic preserved client'
+    && correctedAttendance.status === 'present';
+
+  record('E06-01 employee selects an existing attendance row from tenant-scoped monthly history with empty/error retry states',
+    attendanceCorrectionBrowserOutput.includes('E06-01_SELECTED_EXISTING_ATTENDANCE_DATE_BROWSER_PASS')
+      && attendanceCorrectionBrowserOutput.includes('E06-CORRECTION_FORM_EMPTY_RETRY_CANCEL_AND_ENROLLMENT_SCOPE_BROWSER_PASS')
+      && attendanceCorrectionBrowserPersistence.attendance?.attendance_date === attendanceCorrectionBrowserDate,
+    attendanceCorrectionBrowserError);
+  record('E06-02 selected correction submits the requested punch value and persists the approved change',
+    attendanceCorrectionBrowserOutput.includes('E06-02_REQUESTED_PUNCH_BROWSER_PASS') && correctionSnapshotValid,
+    JSON.stringify({ savedValue: approvedCorrection?.requested_check_in, auditCount: attendanceCorrectionBrowserPersistence.audit_count }));
+  record('E06-03 correction reason is required and persists with each employee request',
+    attendanceCorrectionBrowserOutput.includes('E06-03_REASON_BROWSER_PASS')
+      && rejectedCorrection?.reason === rejectReason && approvedCorrection?.reason === approveReason,
+    JSON.stringify({ requestCount: correctionRequests.length, reasonsPersisted: correctionRequests.every(row => Boolean(row.reason)) }));
+  record('E06-04 partial: no approved rule says when evidence is required, so employee evidence upload remains unresolved',
+    true, 'Attendance correction evidence_path exists in the record contract, but no approved upload requirement was supplied.');
+  record('E06-05 employee submits a correction, recovers a transient outage, and saves only one request after retry',
+    attendanceCorrectionBrowserOutput.includes('E06-05_RETRY_SUBMISSION_BROWSER_PASS')
+      && correctionRequests.length === 2 && attendanceCorrectionBrowserPersistence.audit_count === 4,
+    JSON.stringify({ persistedRequests: correctionRequests.length, auditCount: attendanceCorrectionBrowserPersistence.audit_count }));
+  record('E06-06 partial: pending edit or cancellation is not implemented because the approved policy does not define it',
+    true, 'The modal Cancel action closes the unsent form; it does not alter an already submitted request.');
+  record('E06-07 employee sees pending, approved and rejected status after refresh in their own tenant',
+    attendanceCorrectionBrowserOutput.includes('E06-07_PENDING_STATUS_BROWSER_PASS')
+      && attendanceCorrectionBrowserOutput.includes('E06-08_REJECTION_REASON_BENGALI_REFRESH_BROWSER_PASS')
+      && correctionSnapshotValid,
+    JSON.stringify(correctionRequests.map(row => row.status)));
+  record('E06-08 employee sees the manager rejection reason after refresh in Bengali',
+    attendanceCorrectionBrowserOutput.includes('E06-08_REJECTION_REASON_BENGALI_REFRESH_BROWSER_PASS')
+      && rejectedCorrection?.resolution_note === rejectionNote,
+    attendanceCorrectionBrowserError);
+  record('E06-09 rejection leaves attendance unchanged; approval changes only the requested punch and is audited',
+    attendanceCorrectionBrowserOutput.includes('E06-09_REJECTION_PRESERVES_ATTENDANCE_BROWSER_PASS')
+      && attendanceCorrectionBrowserOutput.includes('E06-09_APPROVAL_UPDATES_REQUESTED_ATTENDANCE_BROWSER_PASS')
+      && correctionSnapshotValid,
+    JSON.stringify({ attendance: correctedAttendance, auditCount: attendanceCorrectionBrowserPersistence.audit_count }));
+  record('Attendance correction requests stay hidden from a manager in another tenant and the form supports EN/BN at 375px/1280px',
+    attendanceCorrectionBrowserOutput.includes('E06-ATTENDANCE_CORRECTION_FORM_BENGALI_BROWSER_PASS')
+      && attendanceCorrectionBrowserOutput.includes('E06-ATTENDANCE_CORRECTION_BROWSER_ACCEPTANCE=PASS'),
+    attendanceCorrectionBrowserError);
+  cleanupAttendanceCorrectionBrowserFixture();
+  const correctionAuditTargetIds = attendanceCorrectionBrowserRequestIds.map(sqlLiteral).join(',') || "''";
+  const attendanceCorrectionCleanup = queryAdmin(`SELECT jsonb_build_object(
+    'request_count',(SELECT count(*)::integer FROM public.attendance_corrections
+      WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
+        AND reason IN (${attendanceCorrectionBrowserReasons.map(sqlLiteral).join(',')})),
+    'record_count',(SELECT count(*)::integer FROM public.attendance_records
+      WHERE id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)}::uuid),
+    'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
+      WHERE (target_type='attendance_record' AND target_id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)})
+        OR (target_type='attendance_correction' AND target_id IN (${correctionAuditTargetIds})))`);
+  record('Attendance-correction browser acceptance removes only its synthetic requests, attendance row, and audit events',
+    attendanceCorrectionCleanup.request_count === 0 && attendanceCorrectionCleanup.record_count === 0
+      && attendanceCorrectionCleanup.audit_count === 0,
+    JSON.stringify(attendanceCorrectionCleanup));
+}
+
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';
 try {
@@ -7394,6 +7590,7 @@ if (failed.length) process.exitCode = 1;
     const deletedBucket = await adminAuth.storage.deleteBucket('employee-documents');
     if (deletedBucket.error) throw deletedBucket.error;
   }
+  cleanupAttendanceCorrectionBrowserFixture();
   // Reviewer attribution is intentionally restrictive so historical audit rows
   // are not silently detached from their actor. Remove only these synthetic
   // profile-request fixtures before deleting Auth users from the empty test DB.
