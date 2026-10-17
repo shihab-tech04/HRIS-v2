@@ -10,6 +10,7 @@ const runtime = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs');
 const holidayBrowser = read('../sql/isolated-auth/run-holiday-calendar-browser.mjs');
 const quickAccessContract = read('./employee-dashboard-quick-access.test.mjs');
+const workspace = read('../../src/live/LiveHrisWorkspace.tsx');
 
 const stories = [
   { id: 'E01-01', line: 11, marker: 'EMPLOYEE_DASHBOARD_TODAY_STATUS_BROWSER_ACCEPTANCE=PASS', runtime: 'E01-01 partially verified' },
@@ -54,4 +55,23 @@ test('today status and work-mode browser acceptance expectations come from the f
   assert.match(browser, /todayAttendanceText\.includes\(process\.env\.HRIS_LOCAL_DASHBOARD_TODAY_STATUS\)/);
   assert.match(browser, /todayAttendanceText\.includes\(process\.env\.HRIS_LOCAL_DASHBOARD_TODAY_WORK_MODE\)/);
   assert.doesNotMatch(browser, /todayAttendanceText\.includes\('Home'\)/);
+});
+
+test('Employee HRIS primary cards use the 16px corners in the approved Figma frame', () => {
+  for (const id of [
+    'employee-profile-heading',
+    'employee-today-heading',
+    'employee-insights-heading',
+    'employee-leave-balances-heading',
+    'employee-holidays-heading',
+  ]) {
+    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(workspace, new RegExp(`<section[^>]*aria-labelledby="${escaped}"[^>]*className="[^"]*rounded-2xl`), `${id} should match Figma's 16px card radius.`);
+  }
+  assert.match(workspace, /grid h-24 w-24 place-items-center rounded-xl/);
+  for (const id of ['today-attendance-heading', 'attendance-trend-heading']) {
+    const section = workspace.match(new RegExp(`<section[^>]*aria-labelledby="${id}"[^>]*className="[^"]*rounded-2xl`));
+    const reversed = workspace.match(new RegExp(`<section className="[^"]*rounded-2xl[^"]*"[^>]*aria-labelledby="${id}"`));
+    assert.ok(section || reversed, `${id} should match Figma's 16px card radius.`);
+  }
 });

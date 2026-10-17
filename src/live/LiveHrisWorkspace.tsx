@@ -713,7 +713,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     </div>
     {error && <StatusMessage error={error} retryLabel={tx('Retry')} onRetry={() => void load()} />}
     {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized dashboard data…')}</p> : currentSummary && <>
-      <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
+      <section className="rounded-2xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="today-attendance-heading">
         <div className="mb-4 border-b border-[#E5E5EF] pb-3"><h3 id="today-attendance-heading" className="text-lg font-normal text-[#49454F]">{tx('Today’s Attendance Summary')}</h3>
           <p className="mt-1 text-xs text-[#86929E]">{tx('Live counts from this organization’s authorized records')}</p></div>
         {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
@@ -721,7 +721,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
             onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
         </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No dashboard metrics match')} “{search}”.</p>}
       </section>
-      <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
+      <section className="rounded-2xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
         <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-normal text-[#49454F]">{tx('Daily Attendance Chart')}</h3>
           <p className="mt-1 text-xs text-[#86929E]">{locale === 'bn' ? `${tx('Recorded attendance by day')} · গত ${activeChartRange} ${tx('days')}` : `${tx('Recorded attendance by day')} · last ${activeChartRange} days`}</p></div>
           <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {tx('records')}</span></div>
@@ -3198,7 +3198,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
         }}
         onOpenRequests={onOpenRequests} />
       <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(0,2fr)] xl:grid-cols-[180px_minmax(0,1fr)_288px]">
-        <section aria-labelledby="employee-profile-heading" className="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+        <section aria-labelledby="employee-profile-heading" className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
           <div className="mx-auto grid h-24 w-24 place-items-center rounded-xl bg-[#E7F1F3] text-2xl font-semibold text-[#08558B]" aria-hidden="true">{initials}</div>
           <h3 id="employee-profile-heading" tabIndex={-1} className="mt-3 break-words text-base font-semibold text-[#08263D]">{fullName || tx('Employee profile')}</h3>
           <p className="mt-1 text-xs text-slate-500">{display(employee?.employee_number)}</p>
@@ -3213,7 +3213,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
         </section>
 
         <div className="min-w-0 space-y-4">
-          <section aria-labelledby="employee-today-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <section aria-labelledby="employee-today-heading" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><h3 id="employee-today-heading" tabIndex={-1} className="font-semibold text-[#08263D]">{tx('Today’s attendance')}</h3>
                 <p className="mt-1 text-xs text-slate-500">{employeeDate(today)} · {tx('organization local date')}</p></div>
@@ -3239,7 +3239,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
             {attendanceActionSuccess && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{attendanceActionSuccess}</p>}
           </section>
 
-          <section aria-labelledby="employee-insights-heading" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <section aria-labelledby="employee-insights-heading" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 pt-3 sm:px-5">
               <h3 id="employee-insights-heading" className="mb-2 font-semibold text-[#08263D]">{tx('Attendance and leave')}</h3>
               <div role="group" aria-label={tx('Personal dashboard views')} className="-mb-px grid grid-cols-2 gap-x-2 sm:flex sm:min-w-0 sm:overflow-x-auto">
@@ -3311,7 +3311,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
         </div>
 
         <aside className="min-w-0 space-y-4 md:col-span-2 xl:col-span-1">
-          <section aria-labelledby="employee-leave-balances-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section aria-labelledby="employee-leave-balances-heading" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2"><div><h3 id="employee-leave-balances-heading" className="font-semibold text-[#08263D]">{tx('Leave balances')}</h3>
               <p className="mt-1 text-xs text-slate-500">{txf('Current year · {year}', { year: employeeNumber(leave.balance_year) })}</p></div><CalendarDays className="h-5 w-5 text-[#08558B]" /></div>
             {balances.length ? <ul className="mt-3 divide-y divide-slate-100">{balances.map((row, index) => <li key={String(row.leave_type_id || index)} className="flex items-center justify-between gap-2 py-2 text-sm">
@@ -3319,7 +3319,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
             </li>)}</ul> : <p className="mt-3 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
           </section>
           <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact showBalances={false} showHistory={false} locale={locale} />
-          <section aria-labelledby="employee-holidays-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section aria-labelledby="employee-holidays-heading" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 id="employee-holidays-heading" className="font-semibold text-[#08263D]">{tx('Upcoming holidays')}</h3>
             {holidays.length ? <ul className="mt-3 max-h-56 divide-y divide-slate-100 overflow-y-auto">{holidays.slice(0, 8).map((holiday, index) => <li key={String(holiday.id || index)} className="flex items-start justify-between gap-3 py-3 text-sm">
               <span className="min-w-0 break-words">{display(holiday.name)}</span><span className="shrink-0 text-xs text-slate-500">{employeeDate(holiday.start_date)}{holiday.end_date && holiday.end_date !== holiday.start_date ? ` – ${employeeDate(holiday.end_date)}` : ''}</span>
