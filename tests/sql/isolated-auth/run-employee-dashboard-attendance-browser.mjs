@@ -210,9 +210,42 @@ try {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible' });
   const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  const returnToOverview = async () => {
+    if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+    await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+    await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  };
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  const quickAccess = page.getByRole('navigation', { name: 'Quick access', exact: true });
+  await quickAccess.waitFor({ state: 'visible' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await assertNoOverflow(page, 'Employee dashboard quick access mobile');
+  await quickAccess.getByRole('button', { name: 'Attendance', exact: true }).click();
+  if (await page.evaluate(() => document.activeElement?.id) !== 'employee-today-heading') {
+    throw new Error('The attendance quick action did not focus today’s attendance section.');
+  }
+  await quickAccess.getByRole('button', { name: 'My profile', exact: true }).click();
+  if (await page.evaluate(() => document.activeElement?.id) !== 'employee-profile-heading') {
+    throw new Error('The profile quick action did not focus the employee profile section.');
+  }
+  await quickAccess.getByRole('button', { name: 'Leave', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal leave', exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee dashboard leave shortcut mobile');
+  await returnToOverview();
+  await page.getByRole('navigation', { name: 'Quick access', exact: true }).getByRole('button', { name: 'My Payslips', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Payslips', exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee dashboard payslip shortcut mobile');
+  await returnToOverview();
+  await page.getByRole('navigation', { name: 'Quick access', exact: true }).getByRole('button', { name: 'My Requests', exact: true }).click();
+  await page.getByRole('heading', { name: 'My Service Requests', exact: true }).waitFor({ state: 'visible' });
+  await assertNoOverflow(page, 'Employee dashboard request shortcut mobile');
+  await returnToOverview();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await assertNoOverflow(page, 'Employee dashboard quick access desktop');
+  await page.setViewportSize({ width: 375, height: 812 });
+  console.log('EMPLOYEE_DASHBOARD_QUICK_ACCESS_BROWSER_ACCEPTANCE=PASS');
   await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-profile="team"]').getByText(process.env.HRIS_LOCAL_DASHBOARD_TEAM_NAME, { exact: true }).waitFor({ state: 'visible' });
   const upcomingReviews = page.locator('section[aria-labelledby="employee-upcoming-reviews-heading"]');
@@ -440,6 +473,10 @@ try {
       || await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
     throw new Error('The employee dashboard did not persist Bengali locale state.');
   }
+  const bengaliQuickAccess = page.getByRole('navigation', { name: 'দ্রুত প্রবেশ', exact: true });
+  await bengaliQuickAccess.getByRole('button', { name: 'উপস্থিতি', exact: true }).waitFor({ state: 'visible' });
+  await bengaliQuickAccess.getByRole('button', { name: 'আমার বেতন স্লিপ', exact: true }).waitFor({ state: 'visible' });
+  await bengaliQuickAccess.getByRole('button', { name: 'আমার প্রোফাইল', exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Employee attendance month Bengali mobile');
 
   const correctionButton = page.getByRole('button', { name: 'সংশোধনের আবেদন করুন', exact: true });
@@ -569,7 +606,7 @@ try {
   console.log('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
-  console.log('Local Auth/Postgres employee dashboard journeys passed: audience-filtered recent announcements and full-list navigation, task/goal recovery, upcoming confirmed training and appraisal deadlines, pending request retry and history routes, My Learning/My Performance navigation, English/Bengali, refresh and route recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
+  console.log('Local Auth/Postgres employee dashboard journeys passed: quick access to attendance, leave, released payslips, employee profile and service-request history; audience-filtered recent announcements; task/goal recovery; upcoming confirmed training and appraisal deadlines; pending request retry and history routes; My Learning/My Performance navigation; English/Bengali; refresh and route recovery; own contact fields; tenant-bound reads; and 375px/1280px layouts.');
   console.log('EMPLOYEE_DASHBOARD_UPCOMING_REVIEWS_BROWSER_ACCEPTANCE=PASS');
 } finally {
   await browser?.close();
