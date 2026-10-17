@@ -6843,7 +6843,7 @@ record('Employee dashboard acceptance restores its overdue-goal fixture and remo
     && employeeDashboardFixtureCleanup.goal_due_date === employeeDashboardGoalDueDate,
   JSON.stringify(employeeDashboardFixtureCleanup));
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
-  employeeAttendanceBrowserOutput.includes('Local Auth/Postgres employee attendance journey passed: Bengali and English locale toggle/persistence, translated leave and correction form states, injected outage retry, month selection, persisted prior-month hours and history, refresh recovery, empty state, tenant-bound RPCs, and mobile/desktop layouts.'),
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_ATTENDANCE_BROWSER_ACCEPTANCE=PASS'),
   employeeAttendanceBrowserError);
 record('E01-01 partially verified: dashboard renders the employee’s persisted current attendance status and work mode',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_TODAY_STATUS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);

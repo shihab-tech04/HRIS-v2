@@ -694,6 +694,7 @@ try {
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
   console.log('Local Auth/Postgres employee dashboard journeys passed: quick access to attendance, leave, released payslips, employee profile and service-request history; audience-filtered recent announcements; task/goal recovery; upcoming confirmed training and appraisal deadlines; pending request retry and history routes; My Learning/My Performance navigation; English/Bengali; refresh and route recovery; own contact fields; tenant-bound reads; and 375px/1280px layouts.');
   console.log('EMPLOYEE_DASHBOARD_UPCOMING_REVIEWS_BROWSER_ACCEPTANCE=PASS');
+  console.log('EMPLOYEE_DASHBOARD_ATTENDANCE_BROWSER_ACCEPTANCE=PASS');
 } finally {
   await browser?.close();
   await stopChildProcess(server);

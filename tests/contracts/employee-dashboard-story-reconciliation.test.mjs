@@ -60,6 +60,8 @@ test('today status and work-mode browser acceptance expectations come from the f
 test('attendance retry is verified before later route navigation can refresh away the transient error', () => {
   assert.match(browser, /const initialMonthRetry = page\.getByRole\('button', \{ name: 'Retry attendance month', exact: true \}\);[\s\S]*?await initialMonthRetry\.click\(\);[\s\S]*?await recoveredInitialMonth;/);
   assert.doesNotMatch(browser, /await page\.getByRole\('button', \{ name: 'Retry attendance month', exact: true \}\)\.click\(\)/);
+  assert.match(browser, /await page\.locator\(`\[data-upcoming-training-session=\"\$\{process\.env\.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID\}\"\]`\)\.waitFor\(\{ state: 'visible' \}\);[\s\S]*?EMPLOYEE_DASHBOARD_ATTENDANCE_BROWSER_ACCEPTANCE=PASS/);
+  assert.match(runtime, /employeeAttendanceBrowserOutput\.includes\('EMPLOYEE_DASHBOARD_ATTENDANCE_BROWSER_ACCEPTANCE=PASS'\)/);
 });
 
 test('E01-03 browser acceptance uses the persisted balance contract and matches the page’s rendered value and unit', () => {
