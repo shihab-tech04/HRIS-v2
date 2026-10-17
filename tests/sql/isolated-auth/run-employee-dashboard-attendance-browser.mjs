@@ -73,7 +73,7 @@ try {
   let failInitialUpcomingTrainingRead = true;
   let failInitialDashboardTaskRead = true;
   let failInitialDashboardPendingRead = true;
-  let failInitialDashboardReviewRead = true;
+  let failNextDashboardReviewRead = false;
   let failDashboardNoticeRead = false;
   const identityCardRequests = [];
   const periodRequests = [];
@@ -165,10 +165,10 @@ try {
         }) });
         return;
       }
-      if (failInitialDashboardReviewRead
+      if (failNextDashboardReviewRead
           && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_appraisal_work')
           && route.request().method() === 'POST') {
-        failInitialDashboardReviewRead = false;
+        failNextDashboardReviewRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary dashboard review outage.',
         }) });
@@ -267,8 +267,10 @@ try {
   await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-profile="team"]').getByText(process.env.HRIS_LOCAL_DASHBOARD_TEAM_NAME, { exact: true }).waitFor({ state: 'visible' });
   const upcomingReviews = page.locator('section[aria-labelledby="employee-upcoming-reviews-heading"]');
+  failNextDashboardReviewRead = true;
+  await upcomingReviews.getByRole('button', { name: 'Refresh upcoming reviews', exact: true }).click();
   await upcomingReviews.getByRole('alert').filter({ hasText: 'Unable to load your upcoming reviews.' }).waitFor({ state: 'visible' });
-  if (failInitialDashboardReviewRead) throw new Error('The injected appraisal deadline dashboard outage was not observed.');
+  if (failNextDashboardReviewRead) throw new Error('The injected appraisal deadline dashboard outage was not observed.');
   await upcomingReviews.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
   await upcomingReviews.locator(`[data-upcoming-review="${process.env.HRIS_LOCAL_DASHBOARD_APPRAISAL_ID}"]`).waitFor({ state: 'visible' });
   await upcomingReviews.getByText('QA A Annual Review', { exact: true }).waitFor({ state: 'visible' });

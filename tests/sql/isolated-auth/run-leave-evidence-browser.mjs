@@ -12,6 +12,10 @@ const required = [
   'HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_LEAVE_MANAGER_EMAIL',
   'HRIS_LOCAL_LEAVE_TENANT_ID', 'HRIS_LOCAL_LEAVE_EMPLOYEE_ID',
   'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
+  'HRIS_LOCAL_LEAVE_TYPES_JSON',
+  'HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID', 'HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS',
+  'HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS',
+  'HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS',
   'HRIS_LOCAL_LEAVE_REQUEST_REASON', 'HRIS_LOCAL_LEAVE_HISTORY_YEAR',
   'HRIS_LOCAL_LEAVE_REJECTION_NOTE', 'HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID',
   'HRIS_LOCAL_DOCUMENT_TENANT_ID', 'HRIS_LOCAL_DOCUMENT_ID', 'HRIS_LOCAL_DOCUMENT_NAME',
@@ -174,6 +178,28 @@ try {
     throw new Error(`Personal leave summary does not match Figma's 358px request panel at 1920px: ${JSON.stringify({ requestSummaryPane, balanceSummaryPane })}.`);
   }
   await employee.setViewportSize({ width: 375, height: 812 });
+  const balanceDetail = personalLeaveSummary.getByTestId(`personal-leave-balance-${process.env.HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID}`);
+  const localizedBalance = (raw, locale) => Number(raw).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US');
+  const availableBalance = balanceDetail.getByTestId('personal-leave-available-balance');
+  await availableBalance.waitFor({ state: 'visible' });
+  if (await availableBalance.innerText() !== localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS, 'en')) {
+    throw new Error('The personal leave page did not render the persisted available balance in English.');
+  }
+  await balanceDetail.getByText('Used', { exact: true }).waitFor({ state: 'visible' });
+  await balanceDetail.getByText(`${localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS, 'en')} days`, { exact: true }).waitFor({ state: 'visible' });
+  await balanceDetail.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await balanceDetail.getByText(`${localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS, 'en')} days`, { exact: true }).waitFor({ state: 'visible' });
+  await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await balanceDetail.getByText('ব্যবহৃত', { exact: true }).waitFor({ state: 'visible' });
+  await balanceDetail.getByText(`${localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS, 'bn')} দিন`, { exact: true }).waitFor({ state: 'visible' });
+  await balanceDetail.getByText('অপেক্ষমাণ', { exact: true }).waitFor({ state: 'visible' });
+  await balanceDetail.getByText(`${localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS, 'bn')} দিন`, { exact: true }).waitFor({ state: 'visible' });
+  if (await availableBalance.innerText() !== localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS, 'bn')) {
+    throw new Error('The personal leave page did not render the persisted available balance in Bengali.');
+  }
+  await employee.getByRole('button', { name: 'Switch language to English' }).click();
+  await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  console.log('LEAVE_BALANCE_DETAIL_BROWSER_ACCEPTANCE=PASS');
   console.log('Personal leave summary mobile and desktop layouts passed.');
   await assertNoHorizontalOverflow(employee, 'Employee personal leave mobile');
   const history = employee.getByRole('table', {
@@ -187,6 +213,13 @@ try {
   await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
   const requestDialog = employee.getByRole('dialog', { name: 'Request for leave' });
   await requestDialog.waitFor({ state: 'visible' });
+  const expectedLeaveTypeIds = JSON.parse(process.env.HRIS_LOCAL_LEAVE_TYPES_JSON).map(row => String(row.id)).sort();
+  const actualLeaveTypeIds = (await requestDialog.locator('#personal-leave-type option').evaluateAll(options =>
+    options.map(option => option.value).filter(Boolean))).sort();
+  if (JSON.stringify(actualLeaveTypeIds) !== JSON.stringify(expectedLeaveTypeIds)) {
+    throw new Error(`Employee leave-type options did not match the active employee-scoped contract: ${JSON.stringify({ actualLeaveTypeIds, expectedLeaveTypeIds })}.`);
+  }
+  console.log('LEAVE_TYPES_VISIBLE_BROWSER_ACCEPTANCE=PASS');
   await requestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic evidence-required leave' });
   await requestDialog.locator('#personal-leave-from').fill('2026-10-20');
   await requestDialog.locator('#personal-leave-to').fill('2026-10-20');

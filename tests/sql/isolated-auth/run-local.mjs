@@ -3477,6 +3477,17 @@ record('Employee creates a distinct tenant-bound leave request for the manager r
 psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
   VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true);`);
 
+const personalLeaveBalanceResponse = queryAs(employeeA,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
+const personalLeaveBalance = personalLeaveBalanceResponse?.balances
+  ?.find(row => row.leave_type_id === ids.leaveTypeA);
+const personalLeaveTypes = Array.isArray(personalLeaveBalanceResponse?.leave_types)
+  ? personalLeaveBalanceResponse.leave_types : [];
+if (!personalLeaveBalance || personalLeaveBalance.used_days === undefined || personalLeaveBalance.pending_days === undefined
+    || personalLeaveTypes.length === 0 || personalLeaveTypes.some(row => !row?.id || !row?.name)) {
+  throw new Error('The isolated employee leave balance contract is missing persisted used or pending days.');
+}
+
 let leaveEvidenceBrowserOutput = '';
 let leaveEvidenceBrowserError = '';
 try {
@@ -3496,6 +3507,11 @@ try {
       HRIS_LOCAL_LEAVE_REQUEST_REASON: 'Synthetic evidence-backed leave request',
       HRIS_LOCAL_LEAVE_HISTORY_YEAR: String(evidenceRequest?.from_date).slice(0, 4),
       HRIS_LOCAL_LEAVE_REQUEST_DATE: String(evidenceRequest?.from_date),
+      HRIS_LOCAL_LEAVE_TYPES_JSON: JSON.stringify(personalLeaveTypes.map(row => ({ id: row.id, name: row.name }))),
+      HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID: ids.leaveTypeA,
+      HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS: String(personalLeaveBalance.available_days),
+      HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS: String(personalLeaveBalance.used_days),
+      HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS: String(personalLeaveBalance.pending_days),
       HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
@@ -3530,6 +3546,18 @@ const leaveEvidenceBrowserPassed = leaveEvidenceBrowserOutput.includes('LEAVE_EV
 record('Real Auth/Postgres/Storage employee and same-tenant manager browsers retrieve persisted private leave evidence',
   leaveEvidenceBrowserPassed,
   leaveEvidenceBrowserError);
+record('E07-03 employee sees the persisted used leave balance in the personal leave journey',
+  leaveEvidenceBrowserOutput.includes('LEAVE_BALANCE_DETAIL_BROWSER_ACCEPTANCE=PASS'),
+  leaveEvidenceBrowserError || 'the authenticated desktop/mobile and EN/BN balance display matched the persisted RPC row');
+record('E07-04 employee sees the persisted pending leave balance in the personal leave journey',
+  leaveEvidenceBrowserOutput.includes('LEAVE_BALANCE_DETAIL_BROWSER_ACCEPTANCE=PASS'),
+  leaveEvidenceBrowserError || 'the authenticated desktop/mobile and EN/BN balance display matched the persisted RPC row');
+record('E07-02 employee sees the persisted available leave balance with localized digits',
+  leaveEvidenceBrowserOutput.includes('LEAVE_BALANCE_DETAIL_BROWSER_ACCEPTANCE=PASS'),
+  leaveEvidenceBrowserError || 'the authenticated desktop/mobile and EN/BN balance display matched the persisted RPC row');
+record('E07-01 employee can choose every active leave type permitted by the existing employee contract',
+  leaveEvidenceBrowserOutput.includes('LEAVE_TYPES_VISIBLE_BROWSER_ACCEPTANCE=PASS'),
+  leaveEvidenceBrowserError || 'the real Auth browser option set exactly matched the employee-scoped dashboard response');
 record('Employee document self-service browser reads, recovers, downloads, localizes, and stays responsive',
   leaveEvidenceBrowserOutput.includes('EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS'),
   leaveEvidenceBrowserError);

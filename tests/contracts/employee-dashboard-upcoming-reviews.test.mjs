@@ -40,6 +40,8 @@ test('upcoming review cards provide retry, refresh, existing performance navigat
   }
   assert.match(runner, /E01-06 upcoming appraisal deadlines use the authenticated employee appraisal RPC/);
   assert.match(browser, /EMPLOYEE_DASHBOARD_UPCOMING_REVIEWS_BROWSER_ACCEPTANCE=PASS/);
+  assert.match(browser, /failNextDashboardReviewRead = true;\s+await upcomingReviews\.getByRole\('button', \{ name: 'Refresh upcoming reviews', exact: true \}\)\.click\(\)/,
+    'the injected failure must occur at the refresh action being asserted, after dashboard navigation');
   assert.match(browser, /Employee upcoming reviews mobile/);
   assert.match(browser, /Employee upcoming reviews desktop/);
 });

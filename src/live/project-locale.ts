@@ -625,6 +625,7 @@ const bengali: Record<string, string> = {
   'Your leave balances and request history for {tenant}': '{tenant}-এর আপনার ছুটির অবশিষ্ট ও আবেদনের ইতিহাস',
   'Loading your leave information…': 'আপনার ছুটির তথ্য লোড হচ্ছে…',
   'Available leave breakdown': 'ছুটির অবশিষ্টের বিবরণ',
+  'Used': 'ব্যবহৃত',
   'Leave history': 'ছুটির ইতিহাস',
   'Requests overlapping the selected calendar year': 'নির্বাচিত ক্যালেন্ডার বছরের সঙ্গে মেলে এমন আবেদন',
   'Leave history of': 'ছুটির ইতিহাসের বছর',

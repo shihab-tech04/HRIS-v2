@@ -2309,9 +2309,13 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
         <section aria-labelledby="personal-leave-balance-heading" className="min-w-0 border-t border-slate-200 p-3 sm:p-4 md:border-l md:border-t-0">
           <h3 id="personal-leave-balance-heading" className="font-semibold text-[#49454F]">{tx('Available leave breakdown')}</h3>
           {balances.length ? <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
-            {balances.map((row, index) => <div key={String(row.leave_type_id || index)} className="min-w-0 rounded-sm border border-slate-200 p-2">
+            {balances.map((row, index) => <div key={String(row.leave_type_id || index)} data-testid={`personal-leave-balance-${String(row.leave_type_id || index)}`} className="min-w-0 rounded-sm border border-slate-200 p-2">
               <p className="truncate text-xs font-semibold text-[#49454F]" title={String(row.leave_type_name || '')}>{display(row.leave_type_name)}</p>
-              <p className="mt-1 text-sm tabular-nums text-slate-700">{display(row.available_days)}</p>
+              <p data-testid="personal-leave-available-balance" className="mt-1 text-sm tabular-nums text-slate-700">{displayLocalizedNumber(row.available_days, locale)}</p>
+              <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] leading-4 text-slate-600">
+                <dt>{tx('Used')}</dt><dd className="text-right tabular-nums">{displayLocalizedNumber(row.used_days, locale)} {tx('days')}</dd>
+                <dt>{tx('Pending')}</dt><dd className="text-right tabular-nums">{displayLocalizedNumber(row.pending_days, locale)} {tx('days')}</dd>
+              </dl>
             </div>)}
           </div> : <p className="mt-3 rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
         </section>
