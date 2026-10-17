@@ -317,7 +317,15 @@ try {
     throw new Error(`The compact announcement preview returned an unexpected dataset or query: ${JSON.stringify({ dashboardNoticeRequests, count: await announcementPreview.locator('[data-announcement-id]').count() })}.`);
   }
   failDashboardNoticeRead = true;
+  const noticeOutageResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname.endsWith('/rest/v1/notices')
+      && url.searchParams.get('select') === 'id,title,category,pinned,published_at'
+      && response.status() === 503;
+  }, { timeout: 10000 });
   await announcementPreview.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
+  await noticeOutageResponse;
   await announcementPreview.getByRole('alert').filter({ hasText: 'Announcements are unavailable.' }).waitFor({ state: 'visible' });
   await announcementPreview.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
   await dashboardNotice.waitFor({ state: 'visible' });

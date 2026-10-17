@@ -6041,48 +6041,52 @@ const employeeRosterNotification = unifiedRosterRowsA.find(row => row.roster_ass
 const employeeRosterNotificationB = unifiedRosterRowsB.find(row => row.roster_assignment_id === employeeRosterTenantBAssignmentId);
 const unifiedProjectReviewRow = unifiedProjectRows.find(row => row.source === 'project_review' && row.task_id === projectTaskId);
 const unifiedLearningRowCount = unifiedProjectRows.filter(row => row.source === 'learning_completion').length;
-record('Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership',
-  !unifiedLearningNotifications.error && unifiedLearningRows.length === 1
-    && unifiedLearningNotifications.data.has_more === true
-    && unifiedLearningRows[0].source === 'project_review'
-    && unifiedLearningRows[0].task_id === projectTaskId
-    && !unifiedLearningNotificationsPageTwo.error && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
-    && ['project_review','learning_completion','travel_decision','leave_decision','service_request_decision','roster_change'].includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
+const unifiedNotificationFeedChecks = {
+  learningCursor: !unifiedLearningNotifications.error && unifiedLearningRows.length === 1
+    && unifiedLearningNotifications.data.has_more === true && unifiedLearningRows[0].source === 'project_review'
+    && unifiedLearningRows[0].task_id === projectTaskId,
+  keysetContinuation: !unifiedLearningNotificationsPageTwo.error
+    && unifiedLearningNotificationsPageTwo.data.notifications.length === 1
+    && ['project_review','learning_completion','travel_decision','leave_decision','service_request_decision','roster_change']
+      .includes(unifiedLearningNotificationsPageTwo.data.notifications[0].source)
     && unifiedLearningNotificationsPageTwo.data.notifications[0].id !== unifiedLearningRows[0].id
     && unifiedProjectRows.some(row => row.id === unifiedLearningNotificationsPageTwo.data.notifications[0].id
-      && row.source === unifiedLearningNotificationsPageTwo.data.notifications[0].source)
-    && !unifiedProjectNotifications.error && unifiedProjectNotifications.data.unread_project_reviews === 1
-    && unifiedProjectRows.length >= 2 && unifiedLearningRowCount >= 1
-    && unifiedProjectReviewRow?.review_status === 'pending'
-    && travelApprovalNotificationA?.travel_destination === 'QA A client site'
+      && row.source === unifiedLearningNotificationsPageTwo.data.notifications[0].source),
+  projectReview: !unifiedProjectNotifications.error && unifiedProjectNotifications.data.unread_project_reviews === 1
+    && unifiedProjectRows.length >= 2 && unifiedLearningRowCount >= 1 && unifiedProjectReviewRow?.review_status === 'pending',
+  travelDecisions: travelApprovalNotificationA?.travel_destination === 'QA A client site'
     && travelRejectionNotificationA?.travel_from_date === '2026-11-02'
     && travelApprovalNotificationB?.travel_destination === 'QA B client site'
-    && leaveApprovalNotificationA?.leave_type_name === 'Synthetic annual leave'
+    && !unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB),
+  leaveDecisions: leaveApprovalNotificationA?.leave_type_name === 'Synthetic annual leave'
     && leaveRejectionNotificationA?.leave_type_name === 'Synthetic annual leave'
     && leaveBrowserApprovalNotificationA?.leave_type_name === 'Synthetic evidence-required leave'
     && leaveBrowserRejectionNotificationA?.kind === 'rejected'
-    && leaveApprovalNotificationB?.leave_type_name === 'Synthetic tenant B leave'
-    && serviceRequestCompletedNotificationA?.service_request_type === 'other'
+    && leaveApprovalNotificationB?.leave_type_name === 'Synthetic tenant B leave',
+  serviceRequestDecisions: serviceRequestCompletedNotificationA?.service_request_type === 'other'
     && serviceRequestRejectedNotificationA?.service_request_type === 'shift_change'
-    && serviceRequestRejectedNotificationB?.service_request_type === 'other'
-    && employeeRosterNotification?.kind === 'assigned'
+    && serviceRequestRejectedNotificationB?.service_request_type === 'other',
+  employeeRosterNotification: employeeRosterNotification?.kind === 'assigned'
     && employeeRosterNotification?.roster_assignment_date === employeeRosterAssignmentDate
     && employeeRosterNotification?.roster_shift_name === 'Synthetic Day Shift'
     && employeeRosterNotification?.roster_start_time === '09:00:00'
     && employeeRosterNotification?.roster_end_time === '17:00:00'
-    && employeeRosterNotificationB?.roster_shift_name === 'Synthetic Tenant B Shift'
-    && !Object.keys(serviceRequestCompletedNotificationA || {}).some(key => /note|reason|employee|recipient|actor|resolved_by/i.test(key))
+    && employeeRosterNotificationB?.roster_shift_name === 'Synthetic Tenant B Shift',
+  notificationPrivacy: !Object.keys(serviceRequestCompletedNotificationA || {}).some(key => /note|reason|employee|recipient|actor|resolved_by/i.test(key))
     && !Object.keys(leaveApprovalNotificationA || {}).some(key => /note|reason|employee|recipient/i.test(key))
-    && !Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key))
-    && !unifiedProjectRows.some(row => row.source === 'travel_decision' && row.travel_request_id === travelIds.requestB)
-    && !unifiedTenantBNotifications.error
+    && !Object.keys(travelApprovalNotificationA || {}).some(key => /note|purpose|cost|employee/i.test(key)),
+  tenantScopedReads: !unifiedTenantBNotifications.error
     && unifiedTenantBNotifications.data.notifications.every(row => ['travel_decision','leave_decision','service_request_decision','roster_change'].includes(row.source))
-    && unifiedRosterRowsB.length === 1
-    && Boolean(unifiedCrossTenantNotifications.error?.code === '42501')
-    && Boolean(unifiedGlobalNotifications.error?.code === '42501') && !unifiedAnonymousNotifications.ok
+    && unifiedRosterRowsB.length === 1,
+  authorization: unifiedCrossTenantNotifications.error?.code === '42501'
+    && unifiedGlobalNotifications.error?.code === '42501' && !unifiedAnonymousNotifications.ok
     && functionGrantMatrix['public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'].anon === false,
+};
+record('Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership',
+  Object.values(unifiedNotificationFeedChecks).every(Boolean),
   JSON.stringify({ orderedSources: [unifiedLearningRows[0]?.source,
     unifiedLearningNotificationsPageTwo.data?.notifications?.[0]?.source],
+    failedChecks: Object.entries(unifiedNotificationFeedChecks).filter(([, passed]) => !passed).map(([name]) => name),
     sourceCounts: { total: unifiedProjectRows.length, learning: unifiedLearningRowCount,
       travel: unifiedTravelRowsA.length,
       leave: unifiedLeaveRowsA.length,
@@ -6101,7 +6105,8 @@ record('Unified notification feed merges leave decisions with project, learning,
     serviceRequestRejected: serviceRequestRejectedNotificationA?.service_request_id,
     tenantBServiceRequest: serviceRequestRejectedNotificationB?.service_request_id,
     employeeRoster: employeeRosterNotification && { date: employeeRosterNotification.roster_assignment_date,
-      shift: employeeRosterNotification.roster_shift_name, start: employeeRosterNotification.roster_start_time },
+      shift: employeeRosterNotification.roster_shift_name, start: employeeRosterNotification.roster_start_time,
+      end: employeeRosterNotification.roster_end_time },
     tenantBRosterCount: unifiedRosterRowsB.length,
     tenantBRosterShift: employeeRosterNotificationB?.roster_shift_name,
     taskReviewStatus: unifiedProjectReviewRow?.review_status,
