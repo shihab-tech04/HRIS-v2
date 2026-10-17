@@ -4090,9 +4090,11 @@ try {
     .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/g, '[redacted token]')
     .slice(-1400);
 }
-const employeeClockBrowserRow = queryAdmin(`SELECT to_jsonb(a) FROM public.attendance_records a
+const employeeClockBrowserQuery = queryAdmin(`SELECT jsonb_build_object('row',(
+  SELECT to_jsonb(a) FROM public.attendance_records a
   WHERE a.tenant_id='${ids.tenantA}'::uuid AND a.employee_id='${ids.clockEmployee}'::uuid
-    AND a.attendance_date='${localCurrentDate}'::date`);
+    AND a.attendance_date='${localCurrentDate}'::date))`);
+const employeeClockBrowserRow = employeeClockBrowserQuery.row;
 record('E05-01 employee check-in persists through the authenticated desktop/mobile dashboard retry journey',
   employeeClockBrowserOutput.includes('E05-01_AUTH_POSTGRES_BROWSER_PASS')
     && employeeClockBrowserRow?.check_in && employeeClockBrowserRow.tenant_id === ids.tenantA
