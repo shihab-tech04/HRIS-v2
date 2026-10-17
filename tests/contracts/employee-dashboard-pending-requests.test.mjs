@@ -43,7 +43,8 @@ test('E01-04 disposable Auth/Postgres and browser suites assert isolation, retry
   assert.match(runner, /pendingRequestAnonymous/);
   assert.match(runner, /hris_get_my_pending_requests\(uuid\)/);
   assert.match(runner, /EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS/);
-  assert.match(browser, /failInitialDashboardPendingRead/);
+  assert.match(browser, /failNextDashboardPendingRead = true;\s+await pendingRequests\.getByRole\('button', \{ name: 'Refresh pending requests', exact: true \}\)\.click\(\)/,
+    'the pending-request outage must be injected by the explicit refresh action under test');
   assert.match(browser, /My Service Requests/);
   assert.match(browser, /Employee pending requests mobile/);
   assert.match(browser, /Employee pending requests desktop/);

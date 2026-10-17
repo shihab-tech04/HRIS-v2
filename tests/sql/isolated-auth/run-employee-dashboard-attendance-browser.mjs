@@ -70,9 +70,9 @@ try {
   let failInitialPeriodRead = true;
   let failInitialIdentityCardRead = true;
   let failInitialRosterRead = true;
-  let failInitialUpcomingTrainingRead = true;
-  let failInitialDashboardTaskRead = true;
-  let failInitialDashboardPendingRead = true;
+  let failNextUpcomingTrainingRead = false;
+  let failNextDashboardTaskRead = false;
+  let failNextDashboardPendingRead = false;
   let failNextDashboardReviewRead = false;
   let failDashboardNoticeRead = false;
   const identityCardRequests = [];
@@ -138,28 +138,28 @@ try {
           return;
         }
       }
-      if (failInitialUpcomingTrainingRead
+      if (failNextUpcomingTrainingRead
           && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_learning_context')
           && route.request().method() === 'POST') {
-        failInitialUpcomingTrainingRead = false;
+        failNextUpcomingTrainingRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary learning-context outage.',
         }) });
         return;
       }
-      if (failInitialDashboardTaskRead
+      if (failNextDashboardTaskRead
           && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_tasks')
           && route.request().method() === 'POST') {
-        failInitialDashboardTaskRead = false;
+        failNextDashboardTaskRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary project task outage.',
         }) });
         return;
       }
-      if (failInitialDashboardPendingRead
+      if (failNextDashboardPendingRead
           && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_pending_requests')
           && route.request().method() === 'POST') {
-        failInitialDashboardPendingRead = false;
+        failNextDashboardPendingRead = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary dashboard pending-request outage.',
         }) });
@@ -289,8 +289,10 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await upcomingReviews.locator(`[data-upcoming-review="${process.env.HRIS_LOCAL_DASHBOARD_APPRAISAL_ID}"]`).waitFor({ state: 'visible' });
   const pendingRequests = page.locator('section[aria-labelledby="employee-pending-requests-heading"]');
+  failNextDashboardPendingRead = true;
+  await pendingRequests.getByRole('button', { name: 'Refresh pending requests', exact: true }).click();
   await pendingRequests.getByRole('alert').filter({ hasText: 'Unable to load your pending requests.' }).waitFor({ state: 'visible' });
-  if (failInitialDashboardPendingRead) throw new Error('The injected pending-request dashboard outage was not observed.');
+  if (failNextDashboardPendingRead) throw new Error('The injected pending-request dashboard outage was not observed.');
   await pendingRequests.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
   await pendingRequests.locator(`[data-pending-request-id="${process.env.HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID}"]`).waitFor({ state: 'visible' });
   for (const kind of ['leave','attendance','expense','travel','service']) {
@@ -328,8 +330,10 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('heading', { name: 'Recent HR announcements', exact: true }).waitFor({ state: 'visible' });
   const dashboardWork = page.locator('section[aria-labelledby="employee-dashboard-work-heading"]');
+  failNextDashboardTaskRead = true;
+  await dashboardWork.getByRole('button', { name: 'Refresh assigned work', exact: true }).click();
   await dashboardWork.getByRole('alert').filter({ hasText: 'Unable to load your assigned work.' }).waitFor({ state: 'visible' });
-  if (failInitialDashboardTaskRead) throw new Error('The injected dashboard project-task outage was not observed.');
+  if (failNextDashboardTaskRead) throw new Error('The injected dashboard project-task outage was not observed.');
   await dashboardWork.getByRole('button', { name: 'Retry', exact: true }).click();
   await dashboardWork.locator('[data-employee-dashboard-work="task"]')
     .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_TASK_TITLE }).waitFor({ state: 'visible' });
@@ -359,8 +363,10 @@ try {
   await dashboardWork.locator('[data-employee-dashboard-work="goal"][data-overdue="true"]')
     .filter({ hasText: process.env.HRIS_LOCAL_DASHBOARD_GOAL_TITLE }).waitFor({ state: 'visible' });
   const upcomingTraining = page.locator('section[aria-labelledby="employee-upcoming-training-heading"]');
+  failNextUpcomingTrainingRead = true;
+  await upcomingTraining.getByRole('button', { name: 'Refresh upcoming training', exact: true }).click();
   await upcomingTraining.getByRole('alert').filter({ hasText: 'Unable to load upcoming training.' }).waitFor({ state: 'visible' });
-  if (failInitialUpcomingTrainingRead) throw new Error('The injected learning-context outage was not observed.');
+  if (failNextUpcomingTrainingRead) throw new Error('The injected learning-context outage was not observed.');
   await upcomingTraining.getByRole('button', { name: 'Retry', exact: true }).click();
   const confirmedTrainingSession = page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`);
   await confirmedTrainingSession.waitFor({ state: 'visible' });
