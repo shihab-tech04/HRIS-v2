@@ -78,6 +78,8 @@ try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
   page.on('request', request => {
     const url = new URL(request.url());
     if (isNoticeRead(request)) noticeRequests.push(url.search);
@@ -140,7 +142,13 @@ try {
   try {
     await outageAlert.waitFor({ state: 'visible' });
   } catch {
-    throw new Error(`The refresh-triggered 503 completed, but the employee UI did not show its retry alert. Full reads=${fullNoticeReadCount}; recent reads=${JSON.stringify(noticeRequests.slice(-6))}; current announcements page text: ${(await page.locator('main').innerText()).slice(0, 1200)}`);
+    const sectionState = await page.locator('section[aria-labelledby="my-announcements-heading"]').evaluate(section => ({
+      text: section.innerText,
+      alerts: Array.from(section.querySelectorAll('[role="alert"]')).map(element => element.textContent),
+      loading: Boolean(section.querySelector('[role="status"]')),
+      items: section.querySelectorAll('[data-announcement-id]').length,
+    }));
+    throw new Error(`The refresh-triggered 503 completed, but the employee UI did not show its retry alert. Full reads=${fullNoticeReadCount}; recent reads=${JSON.stringify(noticeRequests.slice(-6))}; announcement section=${JSON.stringify(sectionState)}; page errors=${JSON.stringify(pageErrors)}.`);
   }
   if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
   armInitialReadFailure = false;

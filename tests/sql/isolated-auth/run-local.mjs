@@ -6452,6 +6452,13 @@ const dashboardPendingServiceIds = queryAdmin(`SELECT jsonb_build_object('ids',c
 if (dashboardPendingServiceIds.length === 0) throw new Error('The synthetic employee has no pending service request for the dashboard journey.');
 psqlSync(`UPDATE public.performance_goals SET due_date='${addCalendarDays(localCurrentDate, -1)}'::date
   WHERE id='${employeeAGoalId}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+const employeeDashboardAtBrowserStart = queryAs(employeeA,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
+const dashboardLeaveBalanceForBrowser = employeeDashboardAtBrowserStart.balances
+  .find(row => row.leave_type_id === ids.leaveTypeA)?.available_days;
+if (dashboardLeaveBalanceForBrowser === null || dashboardLeaveBalanceForBrowser === undefined) {
+  throw new Error('The isolated employee dashboard has no persisted leave balance for browser acceptance.');
+}
 let employeeAttendanceBrowserOutput = '';
 let employeeAttendanceBrowserError = '';
 try {
@@ -6483,7 +6490,7 @@ try {
       HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE: 'QA A all notice',
       HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: '88888888-8888-4888-8888-888888888801',
       HRIS_LOCAL_DASHBOARD_PENDING_SERVICE_ID: dashboardPendingServiceIds[0],
-      HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS: String(dashboardLeaveBalance),
+      HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS: String(dashboardLeaveBalanceForBrowser),
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
