@@ -40,10 +40,24 @@ let armInitialReadFailure = false;
 let injectedInitialReadFailure = false;
 let showEmptyOnNextRead = false;
 const noticeRequests = [];
+const inFlightFullNoticeReads = new Set();
+let fullNoticeReadCount = 0;
 const isNoticeRead = request => request.method() === 'GET'
   && new URL(request.url()).pathname.replace(/\/+$/, '').endsWith('/rest/v1/notices');
 const isFullNoticeRead = request => isNoticeRead(request)
   && (new URL(request.url()).searchParams.get('select') || '').includes('body,attachment_url');
+async function waitForFullNoticeReadsToSettle() {
+  const deadline = Date.now() + 8_000;
+  let quietSince = 0;
+  while (Date.now() < deadline) {
+    if (inFlightFullNoticeReads.size === 0) {
+      if (!quietSince) quietSince = Date.now();
+      if (Date.now() - quietSince >= 500) return;
+    } else quietSince = 0;
+    await new Promise(resolveWait => setTimeout(resolveWait, 50));
+  }
+  throw new Error(`Full announcement reads did not settle before injecting the refresh outage: ${inFlightFullNoticeReads.size} still active.`);
+}
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
@@ -67,7 +81,13 @@ try {
   page.on('request', request => {
     const url = new URL(request.url());
     if (isNoticeRead(request)) noticeRequests.push(url.search);
+    if (isFullNoticeRead(request)) {
+      fullNoticeReadCount += 1;
+      inFlightFullNoticeReads.add(request);
+    }
   });
+  page.on('requestfinished', request => inFlightFullNoticeReads.delete(request));
+  page.on('requestfailed', request => inFlightFullNoticeReads.delete(request));
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
@@ -105,16 +125,22 @@ try {
   const departmentNotice = page.locator('[data-announcement-id="b1111111-1111-4111-8111-111111111112"]');
   await pinnedNotice.waitFor({ state: 'visible' });
   await departmentNotice.waitFor({ state: 'visible' });
+  await waitForFullNoticeReadsToSettle();
+  const fullNoticeReadCountBeforeFailure = fullNoticeReadCount;
   armInitialReadFailure = true;
   const failedReadResponse = page.waitForResponse(response => isFullNoticeRead(response.request()) && response.status() === 503);
   await page.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
-  await failedReadResponse;
+  const outageResponse = await failedReadResponse;
+  await waitForFullNoticeReadsToSettle();
   if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
+  if (fullNoticeReadCount !== fullNoticeReadCountBeforeFailure + 1 || inFlightFullNoticeReads.size !== 0) {
+    throw new Error(`The refresh outage raced another notice read: before=${fullNoticeReadCountBeforeFailure}, after=${fullNoticeReadCount}, active=${inFlightFullNoticeReads.size}, request=${outageResponse.url()}.`);
+  }
   const outageAlert = page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ });
   try {
     await outageAlert.waitFor({ state: 'visible' });
   } catch {
-    throw new Error(`The 503 notice response completed, but the employee UI did not show its retry alert. Current announcements page text: ${(await page.locator('main').innerText()).slice(0, 1200)}`);
+    throw new Error(`The refresh-triggered 503 completed, but the employee UI did not show its retry alert. Full reads=${fullNoticeReadCount}; recent reads=${JSON.stringify(noticeRequests.slice(-6))}; current announcements page text: ${(await page.locator('main').innerText()).slice(0, 1200)}`);
   }
   if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
   armInitialReadFailure = false;
