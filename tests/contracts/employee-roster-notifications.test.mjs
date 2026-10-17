@@ -52,6 +52,10 @@ test('employee shift roster evidence maps the exact E12-01 through E12-05 source
   assert.match(authRunner, /JSON\.stringify\(employeeOwnRosterRows\[0\]\.weekly_off_days\) === '\[0,6\]'/);
   assert.match(browser, /HRIS_LOCAL_ROSTER_BREAK_MINUTES/);
   assert.match(browser, /HRIS_LOCAL_ROSTER_GRACE_MINUTES/);
+  assert.match(browser, /E13-02_WEEK_MONTH_NAVIGATION_BROWSER_PASS/);
+  assert.match(browser, /navigateRosterRange\(page, 'Next seven days', nextWeek\)/);
+  assert.match(browser, /navigateRosterRange\(page, 'Previous month', currentMonth\)/);
+  assert.match(browser, /Weekly\/monthly navigation did not load both secured RPC datasets/);
   assert.match(browser, /EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS/);
 });
 

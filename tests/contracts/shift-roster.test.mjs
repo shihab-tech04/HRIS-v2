@@ -52,3 +52,10 @@ test('roster date and search drafts commit together only after valid Apply filte
   assert.match(browser, /callsBeforeDateDraft/);
   assert.match(browser, /p_start: assignmentDate, p_end: assignmentDate, p_search: null/);
 });
+
+test('refresh exits a stale shift editor so a manager can retry against the current assignment version', () => {
+  assert.match(workspace, /function refreshRoster()[\s\S]*?setEditingAssignmentId\(''\);[\s\S]*?setReplacementShiftId\(''\);[\s\S]*?void load\(\);/);
+  assert.match(workspace, /onClick=\{refreshRoster\}/);
+  assert.match(browser, /This roster assignment changed since it was loaded\./);
+  assert.match(browser, /await page\.getByRole\('button', \{ name: 'Refresh', exact: true \}\)\.click\(\);[\s\S]*?await expect\(primaryRosterRow\)\.toContainText\('Late Shift'\);[\s\S]*?getByRole\('button', \{ name: 'Change shift for Synthetic Roster Employee' \}\)\.click\(\)/);
+});

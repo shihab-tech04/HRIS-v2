@@ -71,6 +71,45 @@ async function assertNoOverflow(page, label) {
   if (dimensions.document > dimensions.viewport) throw new Error(`${label} overflowed: ${JSON.stringify(dimensions)}.`);
 }
 
+function shiftRosterDate(value, days) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function shiftRosterMonth(value, months) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function rosterMonthRange(value) {
+  const first = new Date(`${value}T12:00:00Z`);
+  const start = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0));
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+async function navigateRosterRange(page, buttonName, expected) {
+  const expectedResponse = (rpcName) => page.waitForResponse(response => {
+    if (!response.url().includes(`/rest/v1/rpc/${rpcName}`) || response.request().method() !== 'POST') return false;
+    try {
+      const body = response.request().postDataJSON();
+      return body?.p_start === expected.start && body?.p_end === expected.end;
+    } catch { return false; }
+  });
+  const rosterResponse = expectedResponse('hris_get_my_shift_roster');
+  const changesResponse = expectedResponse('hris_get_my_shift_changes');
+  await page.getByRole('button', { name: buttonName, exact: true }).click();
+  if (await page.locator('#my-roster-start').inputValue() !== expected.start
+      || await page.locator('#my-roster-end').inputValue() !== expected.end) {
+    throw new Error(`Roster navigation did not select ${buttonName}: expected ${JSON.stringify(expected)}.`);
+  }
+  await Promise.all([rosterResponse, changesResponse]);
+  await page.locator('[aria-labelledby="my-roster-changes-heading"]').waitFor({ state: 'visible' });
+}
+
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
@@ -513,12 +552,27 @@ try {
       || await page.locator('#my-roster-end').inputValue() !== process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE) {
     throw new Error('The roster notification did not focus its exact assigned date.');
   }
-  await page.getByRole('button', { name: 'Next 7 days', exact: true }).click();
-  await employeeRosterCard.waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'This month', exact: true }).click();
-  await employeeRosterCard.waitFor({ state: 'visible' });
   const rosterStart = page.locator('#my-roster-start');
   const rosterEnd = page.locator('#my-roster-end');
+  const rosterToday = await page.evaluate(() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  const currentWeek = { start: rosterToday, end: shiftRosterDate(rosterToday, 6) };
+  const nextWeek = { start: shiftRosterDate(currentWeek.start, 7), end: shiftRosterDate(currentWeek.end, 7) };
+  const expectedNavigationRanges = [currentWeek, nextWeek];
+  await navigateRosterRange(page, 'Next 7 days', currentWeek);
+  await navigateRosterRange(page, 'Next seven days', nextWeek);
+  await navigateRosterRange(page, 'Previous seven days', currentWeek);
+
+  const currentMonth = rosterMonthRange(rosterToday);
+  const nextMonth = rosterMonthRange(shiftRosterMonth(currentMonth.start, 1));
+  expectedNavigationRanges.push(currentMonth, nextMonth);
+  await navigateRosterRange(page, 'This month', currentMonth);
+  await navigateRosterRange(page, 'Next month', nextMonth);
+  await navigateRosterRange(page, 'Previous month', currentMonth);
+  console.log('E13-02_WEEK_MONTH_NAVIGATION_BROWSER_PASS');
+
   await rosterStart.fill(process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE);
   await rosterEnd.fill(process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE);
   await page.getByRole('button', { name: 'Apply dates', exact: true }).click();
@@ -560,6 +614,12 @@ try {
   if (!shiftChangeRequests.some(request => request.start === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE
       && request.end === process.env.HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE)) {
     throw new Error(`Focused shift-change history dates were not requested: ${JSON.stringify(shiftChangeRequests)}.`);
+  }
+  for (const range of expectedNavigationRanges) {
+    if (!rosterRequests.some(request => request.start === range.start && request.end === range.end)
+        || !shiftChangeRequests.some(request => request.start === range.start && request.end === range.end)) {
+      throw new Error(`Weekly/monthly navigation did not load both secured RPC datasets for ${JSON.stringify(range)}.`);
+    }
   }
   if (directRosterTableRequests.length) {
     throw new Error(`Employee roster bypassed the secured RPC: ${JSON.stringify(directRosterTableRequests)}.`);

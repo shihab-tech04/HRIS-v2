@@ -1366,9 +1366,20 @@ function ShiftRoster({ tenantId, canManage, locale }: { tenantId: string; canMan
       return;
     }
     setError('');
+    setEditingAssignmentId('');
+    setReplacementShiftId('');
+    setChangeError('');
     setFrom(draftFrom);
     setTo(draftTo);
     setSubmittedSearch(search.trim());
+  }
+
+  function refreshRoster() {
+    setEditingAssignmentId('');
+    setReplacementShiftId('');
+    setChangeError('');
+    setChangeMessage('');
+    void load();
   }
 
   async function assignShift(event: FormEvent<HTMLFormElement>) {
@@ -1455,7 +1466,7 @@ function ShiftRoster({ tenantId, canManage, locale }: { tenantId: string; canMan
           className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
           <Download className="h-4 w-4" /> Export CSV
         </button>
-        <button type="button" disabled={loading} onClick={() => void load()}
+        <button type="button" disabled={loading} onClick={refreshRoster}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
