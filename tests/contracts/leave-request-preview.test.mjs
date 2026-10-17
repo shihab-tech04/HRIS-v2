@@ -45,6 +45,41 @@ test('E08-07 through E08-09 map to the exact catalogue and mirror the existing i
   assert.match(browser, /HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE/);
   assert.match(browser, /previewedRequestedDays: requestedDaysPreview/);
   assert.match(browser, /previewedHalfDayDays: requestedHalfDayPreview/);
+  assert.match(browser, /getByText\('হিসাব করা ছুটির দিন:', \{ exact: true \}\)/);
   assert.match(browser, /Employee leave request preview mobile/);
   assert.match(browser, /Employee leave request preview desktop/);
+});
+
+test('E08-10 maps employee-visible overlap detection to the existing tenant-authorized submission constraint', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  assert.equal(stories.get('E08-10')?.verbatim_requirement, 'As an employee, I want to know when my request overlaps an existing request.');
+  assert.match(workspace, /request\.status !== 'pending' && request\.status !== 'approved'/);
+  assert.match(workspace, /requestFrom > toDate \|\| requestTo < fromDate/);
+  assert.match(workspace, /request\.day_portion !== dayPortion/);
+  assert.match(workspace, /These dates overlap with an existing pending or approved leave request\./);
+  assert.match(workspace, /failureCode === '23505'[\s\S]*?Overlapping leave request already exists/);
+  assert.match(sql, /daterange\(r\.from_date,r\.to_date,'\[\]'\) && daterange\(v_from,v_to,'\[\]'\)/);
+  assert.match(locale, /'These dates overlap with an existing pending or approved leave request\.':/);
+  assert.match(browser, /E08_OVERLAP_BROWSER_ACCEPTANCE=PASS/);
+  assert.match(browser, /const overlapHistory = overlapEmployee\.getByRole\('table'/);
+  assert.match(browser, /Synthetic evidence-required leave\.\*2026-10-20/);
+  assert.match(runtime, /E08-10 employee sees the overlap in their own history and the server rejects a duplicate without creating a row/);
+});
+
+test('E08-11 maps configured leave restrictions to persisted server validation and localized recovery messages', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const stories = new Map(catalogue.stories.map(story => [story.story_id, story]));
+  assert.equal(stories.get('E08-11')?.verbatim_requirement, 'As an employee, I want to know when leave conflicts with another configured rule.');
+  assert.match(workspace, /selectedLeaveType\?\.min_days_notice/);
+  assert.match(workspace, /selectedLeaveType\?\.requires_document_proof === true/);
+  assert.match(workspace, /failureCode === '42501'[\s\S]*?This leave type is not available to this employee/);
+  assert.match(workspace, /requires \\d\+ day\\\(s\\\) advance notice/);
+  assert.match(workspace, /These dates contain no chargeable leave days\./);
+  for (const phrase of [
+    'This leave type is not available to your employee profile.',
+    'This leave type is no longer available. Refresh and choose another type.',
+    'These dates do not meet the configured advance notice for this leave type.',
+  ]) assert.match(locale, new RegExp(`'${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}':`));
+  assert.match(runtime, /E08-11 configured leave-type restrictions are explained in the UI and enforced without writes/);
 });

@@ -262,7 +262,7 @@ try {
   await employee.getByRole('button', { name: 'ছুটির আবেদন', exact: true }).click();
   const bengaliRequestDialog = employee.getByRole('dialog');
   const bengaliPreview = bengaliRequestDialog.getByTestId('leave-request-days-preview');
-  await bengaliPreview.getByText('হিসাব করা ছুটির দিন', { exact: true }).waitFor({ state: 'visible' });
+  await bengaliPreview.getByText('হিসাব করা ছুটির দিন:', { exact: true }).waitFor({ state: 'visible' });
   if (!(await bengaliPreview.innerText()).includes('১ দিন')) {
     throw new Error(`Bengali leave day preview did not localize its persisted-policy count: ${await bengaliPreview.innerText()}.`);
   }
@@ -484,6 +484,51 @@ try {
   if (!uiApproved.ok()) throw new Error(`Same-tenant manager approval of the employee UI request returned ${uiApproved.status()}.`);
   await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
   await uiManagerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
+
+  const overlapContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await routeOnlyLocalServices(overlapContext);
+  const overlapEmployee = await overlapContext.newPage();
+  await signIn(overlapEmployee, process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL);
+  await navigateTo(overlapEmployee, 'My Leave');
+  await overlapEmployee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  const overlapHistory = overlapEmployee.getByRole('table', {
+    name: `Personal leave history for ${process.env.HRIS_LOCAL_LEAVE_HISTORY_YEAR}`,
+  });
+  await overlapHistory.getByRole('row', { name: /Synthetic evidence-required leave.*2026-10-20/ })
+    .waitFor({ state: 'visible' });
+  await overlapEmployee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  const overlapDialog = overlapEmployee.getByRole('dialog', { name: 'Request for leave' });
+  await overlapDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic annual leave' });
+  await overlapDialog.locator('#personal-leave-from').fill('2026-10-20');
+  await overlapDialog.locator('#personal-leave-to').fill('2026-10-20');
+  const overlapMessage = 'These dates overlap with an existing pending or approved leave request.';
+  await overlapDialog.getByRole('alert').filter({ hasText: overlapMessage }).waitFor({ state: 'visible' });
+  await overlapEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const bengaliOverlapMessage = 'নির্বাচিত তারিখের সঙ্গে আগের অপেক্ষমাণ বা অনুমোদিত ছুটির আবেদন মিলে যাচ্ছে।';
+  await overlapDialog.getByRole('alert').filter({ hasText: bengaliOverlapMessage }).waitFor({ state: 'visible' });
+  await overlapEmployee.getByRole('button', { name: 'Switch language to English' }).click();
+  await overlapDialog.getByLabel('Reason').fill('Synthetic duplicate overlap attempt');
+  await overlapEmployee.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(overlapEmployee, 'Existing leave overlap desktop');
+  await overlapEmployee.setViewportSize({ width: 375, height: 812 });
+  await assertNoHorizontalOverflow(overlapEmployee, 'Existing leave overlap mobile');
+  const overlapSubmitResponse = overlapEmployee.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/rest/v1/rpc/hris_employee_submit_leave_request'),
+  { timeout: 10000 });
+  await overlapDialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  const overlapRejected = await overlapSubmitResponse;
+  const overlapError = await overlapRejected.json();
+  if (overlapRejected.status() !== 400 || overlapError?.code !== '23505') {
+    throw new Error(`The server did not enforce the existing leave overlap: ${JSON.stringify({ status: overlapRejected.status(), code: overlapError?.code })}.`);
+  }
+  const overlapAlerts = await overlapDialog.getByRole('alert').allTextContents();
+  if (overlapAlerts.filter(message => message.includes(overlapMessage)).length < 2) {
+    throw new Error(`The confirmed overlap error was not presented beside the form: ${JSON.stringify(overlapAlerts)}.`);
+  }
+  await overlapDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  console.log('E08_OVERLAP_BROWSER_ACCEPTANCE=PASS');
+  await overlapContext.close();
 
   const rejectionRow = leaveTable.getByRole('row', {
     name: /Synthetic Employee A.*Synthetic annual leave.*2026-10-22/,

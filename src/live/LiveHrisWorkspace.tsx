@@ -1978,6 +1978,18 @@ function PersonalLeaveRequests({
     : '';
   const requestedDaysPreview = calculateLeaveDaysPreview(fromDate, toDate, dayPortion,
     leave.weekly_off_days, leave.holidays);
+  const hasKnownLeaveOverlap = Boolean(fromDate && toDate && fromDate <= toDate && requests.some(request => {
+    if (request.status !== 'pending' && request.status !== 'approved') return false;
+    const requestFrom = String(request.from_date || '');
+    const requestTo = String(request.to_date || '');
+    if (!requestFrom || !requestTo || requestFrom > toDate || requestTo < fromDate) return false;
+    const existingHalfDay = requestFrom === requestTo
+      && (request.day_portion === 'first_half' || request.day_portion === 'second_half');
+    const separateHalfDays = existingHalfDay && fromDate === toDate && requestFrom === fromDate
+      && (dayPortion === 'first_half' || dayPortion === 'second_half')
+      && request.day_portion !== dayPortion;
+    return !separateHalfDays;
+  }));
   const currentBalanceYear = Number(leave.balance_year);
   const requestWithinBalanceYear = requestedDaysPreview !== null
     && Number.isInteger(currentBalanceYear)
@@ -2087,7 +2099,25 @@ function PersonalLeaveRequests({
           cleanupFailed = true;
         }
       }
-      const message = tx(cause instanceof Error ? cause.message : 'Unable to submit this leave request.');
+      const failure = cause && typeof cause === 'object'
+        ? cause as { code?: unknown; message?: unknown }
+        : null;
+      const failureCode = typeof failure?.code === 'string' ? failure.code : '';
+      const failureMessage = typeof failure?.message === 'string' ? failure.message
+        : cause instanceof Error ? cause.message : 'Unable to submit this leave request.';
+      const message = failureCode === '23505' && failureMessage.includes('Overlapping leave request already exists.')
+        ? tx('These dates overlap with an existing pending or approved leave request.')
+        : failureCode === '42501' && failureMessage.includes('This leave type is not available to this employee.')
+          ? tx('This leave type is not available to your employee profile.')
+          : failureCode === '23503' && failureMessage.includes('Leave type is not available.')
+            ? tx('This leave type is no longer available. Refresh and choose another type.')
+            : failureCode === '22000' && /requires \d+ day\(s\) advance notice/i.test(failureMessage)
+              ? tx('These dates do not meet the configured advance notice for this leave type.')
+              : failureCode === '22000' && failureMessage.includes('The selected date range contains no chargeable leave day.')
+                ? tx('These dates contain no chargeable leave days.')
+                : failureCode === '22000' && failureMessage.includes('Insufficient leave balance')
+                  ? tx('This request exceeds the current balance; the server will check again.')
+                  : tx(failureMessage);
       setFormError(cleanupFailed
         ? `${message} ${tx('The private evidence upload could not be removed; please contact HRIS support.')}`
         : message);
@@ -2192,6 +2222,9 @@ function PersonalLeaveRequests({
                   </>
                   : <p>{tx('The server checks balance separately for each calendar year when submitted.')}</p>}
             </div>}
+            {hasKnownLeaveOverlap && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              {tx('These dates overlap with an existing pending or approved leave request.')}
+            </p>}
             <div><label htmlFor="personal-leave-portion" className="mb-1 block text-sm font-medium text-slate-700">{tx('Day portion')}</label>
               <select id="personal-leave-portion" value={dayPortion} onChange={event => setDayPortion(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
                 <option value="full">{tx('Full day')}</option><option value="first_half">{tx('First half')}</option><option value="second_half">{tx('Second half')}</option>

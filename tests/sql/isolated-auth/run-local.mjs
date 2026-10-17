@@ -3605,6 +3605,16 @@ record('E08-09 selected-year balance status uses the authenticated employee’s 
       === (Number(uiLeaveAcceptance.selectedAvailableDays) >= Number(uiLeaveAcceptance.previewedRequestedDays)),
   JSON.stringify({ sufficient: uiLeaveAcceptance?.previewedBalanceSufficient,
     available: uiLeaveAcceptance?.selectedAvailableDays, requested: uiLeaveAcceptance?.previewedRequestedDays }));
+const duplicateLeaveUiRows = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
+  FROM public.leave_requests r WHERE r.tenant_id='${ids.tenantA}'::uuid
+    AND r.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+    AND r.leave_type_id='${ids.leaveTypeA}'::uuid
+    AND r.from_date='2026-10-20'::date AND r.to_date='2026-10-20'::date`);
+record('E08-10 employee sees the overlap in their own history and the server rejects a duplicate without creating a row',
+  leaveEvidenceBrowserOutput.includes('E08_OVERLAP_BROWSER_ACCEPTANCE=PASS')
+    && duplicateLeaveUiRows.count === 0,
+  JSON.stringify({ browserWarningAndDenial: leaveEvidenceBrowserOutput.includes('E08_OVERLAP_BROWSER_ACCEPTANCE=PASS'),
+    duplicateAnnualRows: duplicateLeaveUiRows.count }));
 record('Real employee UI submission persists its own proof-backed leave row, balance and tenant-private history',
   Boolean(uiLeaveAcceptance?.id && uiLeaveAcceptance?.path)
   && browserUiLeave?.status === 'approved'
@@ -4912,6 +4922,16 @@ record('Minimum advance notice is enforced at submission; an eligible work date 
     tooSoonRows: tooSoonRows.count, eligibleDate: leavePolicyEligibleDate.date,
     validRequestError: noticeRequest.error?.code || null, validRequestStatus: noticeRequestRow?.status,
     pendingDays: noticeBalance?.pending_days ?? null }));
+record('E08-11 configured leave-type restrictions are explained in the UI and enforced without writes',
+  Boolean(missingProof.error?.code === '22000')
+    && Boolean(genderRestrictedRequest.error?.code === '42501')
+    && genderRestrictedRows.requests === 0 && genderRestrictedRows.balances === 0
+    && Boolean(tooSoonRequest.error?.code === '22000') && tooSoonRows.count === 0
+    && !noticeRequest.error && noticeRequestRow?.status === 'pending',
+  JSON.stringify({ missingProof: missingProof.error?.code, genderRestriction: genderRestrictedRequest.error?.code,
+    genderRows: genderRestrictedRows.requests, genderBalances: genderRestrictedRows.balances,
+    minimumNotice: tooSoonRequest.error?.code, tooSoonRows: tooSoonRows.count,
+    validNoticeRequest: noticeRequestRow?.status }));
 
 const leaveApproved = resolveLeave(managerA, ids.leaveApprove, 'approved', 'isolated local acceptance');
 const approvedRow = tableRow('leave_requests', ids.leaveApprove);
