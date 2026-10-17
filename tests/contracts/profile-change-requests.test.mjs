@@ -58,6 +58,9 @@ test('profile request migration and synthetic Auth/RLS plus browser journeys run
   assert.match(browser, /1280/);
   assert.match(browser, /Switch language to Bengali/);
   assert.match(browser, /Synthetic transient reviewer queue outage/);
+  assert.match(browser, /const isMobileViewport = await page\.evaluate\(\(\) => window\.innerWidth < 1024\)/);
+  assert.match(browser, /await nav\.waitFor\(\{ state: 'visible' \}\)/,
+    'desktop navigation must wait for session restoration before selecting a module');
 });
 
 test('profile request fields match columns in the existing employee schema', () => {

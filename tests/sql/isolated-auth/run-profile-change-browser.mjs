@@ -39,7 +39,16 @@ async function signIn(page, email) {
 }
 async function openNav(page, label) {
   const nav = page.getByRole('navigation', { name: 'HRIS modules' });
-  if (!(await nav.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  const isMobileViewport = await page.evaluate(() => window.innerWidth < 1024);
+  if (isMobileViewport) {
+    if (!(await nav.isVisible())) {
+      const openMenu = page.getByRole('button', { name: 'Open navigation menu' });
+      await openMenu.waitFor({ state: 'visible' });
+      await openMenu.click();
+    }
+  } else {
+    await nav.waitFor({ state: 'visible' });
+  }
   await nav.getByRole('button', { name: label, exact: true }).click();
   return nav;
 }
