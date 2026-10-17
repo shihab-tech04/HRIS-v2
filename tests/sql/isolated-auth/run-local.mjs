@@ -7158,7 +7158,7 @@ if (!attendanceCorrectionFreeDate) {
       WHERE id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)}::uuid),
     'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
       WHERE (target_type='attendance_record' AND target_id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)})
-        OR (target_type='attendance_correction' AND target_id IN (${correctionAuditTargetIds})))`);
+        OR (target_type='attendance_correction' AND target_id IN (${correctionAuditTargetIds}))))`);
   record('Attendance-correction browser acceptance removes only its synthetic requests, attendance row, and audit events',
     attendanceCorrectionCleanup.request_count === 0 && attendanceCorrectionCleanup.record_count === 0
       && attendanceCorrectionCleanup.audit_count === 0,
