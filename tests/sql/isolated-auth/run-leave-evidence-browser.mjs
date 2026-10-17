@@ -166,6 +166,13 @@ try {
   await employee.setViewportSize({ width: 1280, height: 900 });
   const personalLeaveSummaryColumns = await personalLeaveSummary.evaluate(element => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length);
   if (personalLeaveSummaryColumns !== 2) throw new Error(`Personal leave summary desktop layout has ${personalLeaveSummaryColumns} columns instead of two.`);
+  await employee.setViewportSize({ width: 1920, height: 1080 });
+  const requestSummaryPane = await personalLeaveSummary.locator(':scope > section[aria-labelledby="personal-leave-heading"]').boundingBox();
+  const balanceSummaryPane = await personalLeaveSummary.locator(':scope > section[aria-labelledby="personal-leave-balance-heading"]').boundingBox();
+  if (Math.abs((requestSummaryPane?.width ?? 0) - 358) >= 1
+      || Math.abs((balanceSummaryPane?.x ?? 0) - ((requestSummaryPane?.x ?? 0) + (requestSummaryPane?.width ?? 0))) >= 1) {
+    throw new Error(`Personal leave summary does not match Figma's 358px request panel at 1920px: ${JSON.stringify({ requestSummaryPane, balanceSummaryPane })}.`);
+  }
   await employee.setViewportSize({ width: 375, height: 812 });
   console.log('Personal leave summary mobile and desktop layouts passed.');
   await assertNoHorizontalOverflow(employee, 'Employee personal leave mobile');

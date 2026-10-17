@@ -2304,7 +2304,7 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
     {evidenceMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{evidenceMessage}</p>}
     {(loading || (!currentTenantDataReady && !error)) && <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading your leave information…')}</p>}
     {currentTenantDataReady && leave && <>
-      <div data-testid="personal-leave-summary" className="grid min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:grid-cols-[minmax(190px,0.62fr)_minmax(0,2fr)]">
+      <div data-testid="personal-leave-summary" className="grid min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:grid-cols-[minmax(190px,0.62fr)_minmax(0,2fr)] 2xl:grid-cols-[358px_minmax(0,1fr)]">
         <PersonalLeaveRequests tenantId={tenantId} userId={userId} leave={leave} onRefresh={() => load(false)} compact summaryLayout showBalances={false} showHistory={false} locale={locale} />
         <section aria-labelledby="personal-leave-balance-heading" className="min-w-0 border-t border-slate-200 p-3 sm:p-4 md:border-l md:border-t-0">
           <h3 id="personal-leave-balance-heading" className="font-semibold text-[#49454F]">{tx('Available leave breakdown')}</h3>
