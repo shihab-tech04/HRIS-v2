@@ -222,6 +222,7 @@ try {
   await employee.getByRole('button', { name: 'Switch language to English' }).click();
   await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
   await employee.reload();
+  await navigateTo(employee, 'My Leave');
   await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
   await employee.getByTestId(`personal-leave-unavailable-type-${process.env.HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID}`)
     .getByText('This leave type does not meet the eligibility requirements for your employee profile.', { exact: true }).waitFor({ state: 'visible' });

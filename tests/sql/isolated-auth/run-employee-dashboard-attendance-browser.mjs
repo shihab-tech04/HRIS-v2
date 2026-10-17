@@ -75,6 +75,7 @@ try {
   let failNextDashboardPendingRead = false;
   let failNextDashboardReviewRead = false;
   let failDashboardNoticeRead = false;
+  let dashboardNoticeOutageAttempts = 0;
   const identityCardRequests = [];
   const periodRequests = [];
   const rosterRequests = [];
@@ -177,7 +178,7 @@ try {
       if (failDashboardNoticeRead && url.pathname.endsWith('/rest/v1/notices')
           && route.request().method() === 'GET'
           && url.searchParams.get('select') === 'id,title,category,pinned,published_at') {
-        failDashboardNoticeRead = false;
+        dashboardNoticeOutageAttempts += 1;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
           code: 'XX000', message: 'Synthetic temporary dashboard announcement outage.',
         }) });
@@ -327,6 +328,10 @@ try {
   await announcementPreview.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
   await noticeOutageResponse;
   await announcementPreview.getByRole('alert').filter({ hasText: 'Announcements are unavailable.' }).waitFor({ state: 'visible' });
+  if (dashboardNoticeOutageAttempts < 2) {
+    throw new Error(`The announcement outage did not exercise Supabase's transient GET retry behavior: ${dashboardNoticeOutageAttempts} request(s).`);
+  }
+  failDashboardNoticeRead = false;
   await announcementPreview.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
   await dashboardNotice.waitFor({ state: 'visible' });
   await announcementPreview.getByRole('button', { name: 'View all announcements', exact: true }).click();
