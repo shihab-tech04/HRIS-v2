@@ -4279,7 +4279,7 @@ const missingAttendanceCorrectionPersistence = queryAdmin(`SELECT jsonb_build_ob
       AND reason=${sqlLiteral(missingAttendanceCorrectionReason)}),
   'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
     WHERE action='attendance.correction.submitted' AND details->>'attendance_date'='2000-01-01'
-      AND details->>'employee_id'='55555555-5555-4555-8555-555555555555')`);
+      AND details->>'employee_id'='55555555-5555-4555-8555-555555555555'))`);
 record('Employee correction submission rejects empty changes and a different tenant',
   Boolean(emptyAttendanceCorrection.error) && Boolean(crossTenantAttendanceCorrection.error)
   && tableRow('attendance_corrections', submittedCorrectionId).status === 'pending');
@@ -7090,7 +7090,7 @@ if (!attendanceCorrectionFreeDate) {
       'client_name',a.client_name,'status',a.status)
       FROM public.attendance_records a WHERE a.id=${sqlLiteral(attendanceCorrectionBrowserFixtureId)}::uuid
         AND a.tenant_id='${ids.tenantA}'::uuid
-        AND a.employee_id='55555555-5555-4555-8555-555555555555'::uuid)`);
+        AND a.employee_id='55555555-5555-4555-8555-555555555555'::uuid))`);
   const correctionRequests = attendanceCorrectionBrowserPersistence.requests || [];
   attendanceCorrectionBrowserRequestIds = correctionRequests.map(row => row.id).filter(Boolean);
   const rejectedCorrection = correctionRequests.find(row => row.reason === rejectReason);
