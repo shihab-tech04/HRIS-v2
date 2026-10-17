@@ -233,8 +233,8 @@ try {
   }
   console.log('EMPLOYEE_DASHBOARD_TODAY_TIMES_BROWSER_ACCEPTANCE=PASS');
   const dashboardLeaveBalances = page.locator('section[aria-labelledby="employee-leave-balances-heading"]');
-  await dashboardLeaveBalances.getByText(process.env.HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS, { exact: true }).waitFor({ state: 'visible' });
-  await dashboardLeaveBalances.getByText('days available', { exact: true }).first().waitFor({ state: 'visible' });
+  const expectedAvailableBalance = `${process.env.HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS} days`;
+  await dashboardLeaveBalances.getByText(expectedAvailableBalance, { exact: true }).waitFor({ state: 'visible' });
   console.log('EMPLOYEE_DASHBOARD_LEAVE_BALANCE_BROWSER_ACCEPTANCE=PASS');
   const quickAccess = page.getByRole('navigation', { name: 'Quick access', exact: true });
   await quickAccess.waitFor({ state: 'visible' });
