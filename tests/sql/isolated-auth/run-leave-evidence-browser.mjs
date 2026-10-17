@@ -12,7 +12,8 @@ const required = [
   'HRIS_LOCAL_LEAVE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_LEAVE_MANAGER_EMAIL',
   'HRIS_LOCAL_LEAVE_TENANT_ID', 'HRIS_LOCAL_LEAVE_EMPLOYEE_ID',
   'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
-  'HRIS_LOCAL_LEAVE_TYPES_JSON',
+  'HRIS_LOCAL_LEAVE_TYPES_JSON', 'HRIS_LOCAL_LEAVE_BALANCES_JSON',
+  'HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE', 'HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE',
   'HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID', 'HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS',
   'HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS',
   'HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS',
@@ -221,6 +222,58 @@ try {
   }
   console.log('LEAVE_TYPES_VISIBLE_BROWSER_ACCEPTANCE=PASS');
   await requestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic evidence-required leave' });
+  const selectedLeaveTypeId = await requestDialog.locator('#personal-leave-type').inputValue();
+  const selectedLedgerBalance = JSON.parse(process.env.HRIS_LOCAL_LEAVE_BALANCES_JSON)
+    .find(row => String(row.leave_type_id) === selectedLeaveTypeId);
+  if (!selectedLedgerBalance || !Number.isFinite(Number(selectedLedgerBalance.available_days))) {
+    throw new Error('The real employee leave form has no persisted selected-type balance for its pre-submission check.');
+  }
+  const previewValue = requestDialog.getByTestId('leave-request-days-preview-value');
+  const setPreviewDate = async date => {
+    await requestDialog.locator('#personal-leave-from').fill(date);
+    await requestDialog.locator('#personal-leave-to').fill(date);
+  };
+  await setPreviewDate(process.env.HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE);
+  const holidayDays = Number(await previewValue.innerText());
+  if (holidayDays !== 0) throw new Error(`Tenant-wide weekday holiday was not excluded from the leave preview: ${holidayDays}.`);
+  await setPreviewDate(process.env.HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE);
+  const weekendDays = Number(await previewValue.innerText());
+  if (weekendDays !== 0) throw new Error(`The employee weekly-off day was not excluded from the leave preview: ${weekendDays}.`);
+  await setPreviewDate('2026-10-20');
+  const requestedDaysPreview = Number(await previewValue.innerText());
+  await requestDialog.locator('#personal-leave-portion').selectOption('first_half');
+  const requestedHalfDayPreview = Number(await previewValue.innerText());
+  await requestDialog.locator('#personal-leave-portion').selectOption('full');
+  if (requestedDaysPreview !== 1 || requestedHalfDayPreview !== 0.5) {
+    throw new Error(`The full/half-day estimate does not match the selected working date: ${JSON.stringify({ requestedDaysPreview, requestedHalfDayPreview })}.`);
+  }
+  const selectedAvailableDays = Number(selectedLedgerBalance.available_days);
+  const previewedBalanceSufficient = selectedAvailableDays >= requestedDaysPreview;
+  const balanceStatusText = previewedBalanceSufficient
+    ? 'The current balance covers this request; the server will check again.'
+    : 'This request exceeds the current balance; the server will check again.';
+  await requestDialog.getByText(balanceStatusText, { exact: true }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(employee, 'Employee leave request preview mobile');
+  await employee.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(employee, 'Employee leave request preview desktop');
+  await employee.setViewportSize({ width: 375, height: 812 });
+  await requestDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await employee.getByRole('button', { name: 'ছুটির আবেদন', exact: true }).click();
+  const bengaliRequestDialog = employee.getByRole('dialog');
+  const bengaliPreview = bengaliRequestDialog.getByTestId('leave-request-days-preview');
+  await bengaliPreview.getByText('হিসাব করা ছুটির দিন', { exact: true }).waitFor({ state: 'visible' });
+  if (!(await bengaliPreview.innerText()).includes('১ দিন')) {
+    throw new Error(`Bengali leave day preview did not localize its persisted-policy count: ${await bengaliPreview.innerText()}.`);
+  }
+  await bengaliRequestDialog.getByText(previewedBalanceSufficient
+    ? 'বর্তমান অবশিষ্ট ছুটি এই আবেদনের জন্য যথেষ্ট; সার্ভার জমা দেওয়ার সময় আবার যাচাই করবে।'
+    : 'এই আবেদন বর্তমান অবশিষ্ট ছুটির চেয়ে বেশি; সার্ভার জমা দেওয়ার সময় আবার যাচাই করবে।', { exact: true }).waitFor({ state: 'visible' });
+  await bengaliRequestDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
+  await employee.getByRole('button', { name: 'Switch language to English' }).click();
+  await employee.getByRole('button', { name: 'Request for leave', exact: true }).click();
+  await requestDialog.waitFor({ state: 'visible' });
+  await requestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic evidence-required leave' });
   await requestDialog.locator('#personal-leave-from').fill('2026-10-20');
   await requestDialog.locator('#personal-leave-to').fill('2026-10-20');
   await requestDialog.getByLabel('Reason').fill(uiEvidenceReason);
@@ -244,7 +297,10 @@ try {
   const uiLeaveRequestId = typeof uiLeaveRequestValue === 'string' ? uiLeaveRequestValue : uiLeaveRequestValue?.id;
   const uiEvidencePath = decodeURIComponent(new URL(uploadedResponse.url()).pathname.split('/storage/v1/object/leave-evidence/')[1] || '');
   const submittedPayload = submittedResponse.request().postDataJSON();
-  console.log(`LEAVE_UI_REQUEST_ACCEPTANCE=${JSON.stringify({ id: uiLeaveRequestId, path: uiEvidencePath, reason: uiEvidenceReason })}`);
+  console.log(`LEAVE_UI_REQUEST_ACCEPTANCE=${JSON.stringify({ id: uiLeaveRequestId, path: uiEvidencePath, reason: uiEvidenceReason,
+    previewedRequestedDays: requestedDaysPreview, previewedHalfDayDays: requestedHalfDayPreview,
+    previewedHolidayDays: holidayDays, previewedWeekendDays: weekendDays,
+    previewedBalanceSufficient, selectedAvailableDays })}`);
   if (!uiLeaveRequestId || !uiEvidencePath.startsWith(`${process.env.HRIS_LOCAL_LEAVE_EMPLOYEE_ID}/${process.env.HRIS_LOCAL_LEAVE_TENANT_ID}/`)
       || submittedPayload?.p_tenant_id !== process.env.HRIS_LOCAL_LEAVE_TENANT_ID
       || submittedPayload?.p_payload?.attachment_url !== uiEvidencePath

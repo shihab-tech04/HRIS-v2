@@ -3475,7 +3475,8 @@ record('Employee creates a distinct tenant-bound leave request for the manager r
   leaveRejectionSubmit.error?.message || 'pending rejection fixture persisted');
 
 psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
-  VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true);`);
+  VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true),
+    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday','2026-10-21','2026-10-21','general',true);`);
 
 const personalLeaveBalanceResponse = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
@@ -3483,8 +3484,11 @@ const personalLeaveBalance = personalLeaveBalanceResponse?.balances
   ?.find(row => row.leave_type_id === ids.leaveTypeA);
 const personalLeaveTypes = Array.isArray(personalLeaveBalanceResponse?.leave_types)
   ? personalLeaveBalanceResponse.leave_types : [];
+const personalLeaveBalances = Array.isArray(personalLeaveBalanceResponse?.balances)
+  ? personalLeaveBalanceResponse.balances : [];
 if (!personalLeaveBalance || personalLeaveBalance.used_days === undefined || personalLeaveBalance.pending_days === undefined
-    || personalLeaveTypes.length === 0 || personalLeaveTypes.some(row => !row?.id || !row?.name)) {
+    || personalLeaveTypes.length === 0 || personalLeaveTypes.some(row => !row?.id || !row?.name)
+    || !personalLeaveBalances.some(row => row?.leave_type_id === ids.leaveTypeEvidence && row.available_days !== undefined)) {
   throw new Error('The isolated employee leave balance contract is missing persisted used or pending days.');
 }
 
@@ -3508,11 +3512,14 @@ try {
       HRIS_LOCAL_LEAVE_HISTORY_YEAR: String(evidenceRequest?.from_date).slice(0, 4),
       HRIS_LOCAL_LEAVE_REQUEST_DATE: String(evidenceRequest?.from_date),
       HRIS_LOCAL_LEAVE_TYPES_JSON: JSON.stringify(personalLeaveTypes.map(row => ({ id: row.id, name: row.name }))),
+      HRIS_LOCAL_LEAVE_BALANCES_JSON: JSON.stringify(personalLeaveBalances.map(row => ({ leave_type_id: row.leave_type_id, available_days: row.available_days }))),
       HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID: ids.leaveTypeA,
       HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS: String(personalLeaveBalance.available_days),
       HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS: String(personalLeaveBalance.used_days),
       HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS: String(personalLeaveBalance.pending_days),
       HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
+      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: '2026-10-21',
+      HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE: '2026-10-25',
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
       HRIS_LOCAL_DOCUMENT_TENANT_ID: ids.tenantA,
@@ -3578,6 +3585,26 @@ const employeeHistoryAfterUiLeave = queryAs(employeeA,
 const foreignHistoryAfterUiLeave = queryAs(employeeB,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
 const employeeUiLeaveHistoryRow = employeeHistoryAfterUiLeave.requests.find(row => row.id === uiLeaveAcceptance?.id);
+const leaveDaysPreviewMatchesPersisted = Number.isFinite(Number(uiLeaveAcceptance?.previewedRequestedDays))
+  && Number(browserUiLeave?.requested_days) === Number(uiLeaveAcceptance.previewedRequestedDays);
+record('E08-07 the employee preview matches requested days persisted by the real leave RPC',
+  leaveEvidenceBrowserPassed && leaveDaysPreviewMatchesPersisted,
+  JSON.stringify({ previewed: uiLeaveAcceptance?.previewedRequestedDays, persisted: browserUiLeave?.requested_days }));
+record('E08-08 preview applies the employee weekly-off schedule and tenant-wide holidays, including half-days',
+  leaveEvidenceBrowserPassed && Number(uiLeaveAcceptance?.previewedHalfDayDays) === 0.5
+    && Number(uiLeaveAcceptance?.previewedWeekendDays) === 0
+    && Number(uiLeaveAcceptance?.previewedHolidayDays) === 0
+    && leaveDaysPreviewMatchesPersisted,
+  JSON.stringify({ halfDay: uiLeaveAcceptance?.previewedHalfDayDays,
+    weekend: uiLeaveAcceptance?.previewedWeekendDays, holiday: uiLeaveAcceptance?.previewedHolidayDays,
+    previewed: uiLeaveAcceptance?.previewedRequestedDays, persisted: browserUiLeave?.requested_days }));
+record('E08-09 selected-year balance status uses the authenticated employee’s persisted leave ledger',
+  leaveEvidenceBrowserPassed && typeof uiLeaveAcceptance?.previewedBalanceSufficient === 'boolean'
+    && Number.isFinite(Number(uiLeaveAcceptance?.selectedAvailableDays))
+    && uiLeaveAcceptance.previewedBalanceSufficient
+      === (Number(uiLeaveAcceptance.selectedAvailableDays) >= Number(uiLeaveAcceptance.previewedRequestedDays)),
+  JSON.stringify({ sufficient: uiLeaveAcceptance?.previewedBalanceSufficient,
+    available: uiLeaveAcceptance?.selectedAvailableDays, requested: uiLeaveAcceptance?.previewedRequestedDays }));
 record('Real employee UI submission persists its own proof-backed leave row, balance and tenant-private history',
   Boolean(uiLeaveAcceptance?.id && uiLeaveAcceptance?.path)
   && browserUiLeave?.status === 'approved'

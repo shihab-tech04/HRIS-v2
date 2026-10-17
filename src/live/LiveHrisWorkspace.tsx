@@ -167,6 +167,45 @@ function displayLocalizedNumber(value: unknown, locale: Locale): string {
   return number.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US');
 }
 
+function calculateLeaveDaysPreview(
+  fromDate: string,
+  toDate: string,
+  portion: string,
+  weeklyOffValue: unknown,
+  holidaysValue: unknown,
+): number | null {
+  const toUtcDay = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value ? timestamp : null;
+  };
+  const start = toUtcDay(fromDate);
+  const end = toUtcDay(toDate);
+  if (start === null || end === null || end < start || !['full', 'first_half', 'second_half'].includes(portion)
+      || !Array.isArray(weeklyOffValue) || !Array.isArray(holidaysValue)) return null;
+  if (portion !== 'full' && fromDate !== toDate) return null;
+
+  const dayMilliseconds = 86_400_000;
+  const count = Math.floor((end - start) / dayMilliseconds) + 1;
+  if (count > 3_660) return null;
+  const weeklyOffDays = new Set(weeklyOffValue.map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6));
+  const holidays = holidaysValue.filter(asObject).map(value => value as Record<string, unknown>).flatMap(row => {
+    const from = typeof row.start_date === 'string' ? toUtcDay(row.start_date) : null;
+    const to = typeof row.end_date === 'string' ? toUtcDay(row.end_date) : null;
+    return from !== null && to !== null && to >= from ? [{ from, to }] : [];
+  });
+  const isChargeableDay = (timestamp: number) => {
+    const weekday = new Date(timestamp).getUTCDay();
+    return !weeklyOffDays.has(weekday) && !holidays.some(holiday => timestamp >= holiday.from && timestamp <= holiday.to);
+  };
+  if (portion !== 'full') return isChargeableDay(start) ? 0.5 : 0;
+  let chargeableDays = 0;
+  for (let day = start; day <= end; day += dayMilliseconds) {
+    if (isChargeableDay(day)) chargeableDays += 1;
+  }
+  return chargeableDays;
+}
+
 function localizedEmployeeNumber(value: unknown, locale: Locale, fractionDigits = 0): string {
   if (value === null || value === undefined || value === '') return '—';
   const number = typeof value === 'number' ? value : Number(value);
@@ -1932,10 +1971,19 @@ function PersonalLeaveRequests({
   const balances = asRows(leave.balances);
   const requests = asRows(leave.requests);
   const selectedLeaveType = leaveTypes.find(item => item.id === leaveTypeId);
+  const selectedBalance = balances.find(item => String(item.leave_type_id) === leaveTypeId);
   const noticeDays = selectedLeaveType?.min_days_notice == null ? null : Number(selectedLeaveType.min_days_notice);
   const earliestStartDate = noticeDays != null && Number.isInteger(noticeDays) && noticeDays >= 0
     ? addIsoDateDays(String(leave.dashboard_date || ''), noticeDays)
     : '';
+  const requestedDaysPreview = calculateLeaveDaysPreview(fromDate, toDate, dayPortion,
+    leave.weekly_off_days, leave.holidays);
+  const currentBalanceYear = Number(leave.balance_year);
+  const requestWithinBalanceYear = requestedDaysPreview !== null
+    && Number.isInteger(currentBalanceYear)
+    && fromDate.slice(0, 4) === String(currentBalanceYear)
+    && toDate.slice(0, 4) === String(currentBalanceYear);
+  const selectedAvailableDays = selectedBalance?.available_days == null ? null : Number(selectedBalance.available_days);
 
   useEffect(() => {
     if (!requestOpen) return;
@@ -2128,6 +2176,22 @@ function PersonalLeaveRequests({
               <div><label htmlFor="personal-leave-to" className="mb-1 block text-sm font-medium text-slate-700">{tx('To date')} <span aria-hidden="true">*</span></label>
                 <input id="personal-leave-to" type="date" required min={fromDate || undefined} value={toDate} onChange={event => setToDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
             </div>
+            {requestedDaysPreview !== null && <div data-testid="leave-request-days-preview" role="status" aria-live="polite" className="space-y-1 rounded-lg border border-slate-200 bg-[#F8FAFA] p-3 text-sm text-slate-700">
+              <p><span className="font-medium">{tx('Estimated chargeable days')}:</span> <strong data-testid="leave-request-days-preview-value" className="tabular-nums">{displayLocalizedNumber(requestedDaysPreview, locale)}</strong> {tx('days')}</p>
+              <p className="text-xs text-slate-600">{tx('The estimate uses your current weekly-off schedule and tenant-wide holidays. The server validates again on submission.')}</p>
+              {requestedDaysPreview <= 0
+                ? <p className="font-medium text-rose-700">{tx('These dates contain no chargeable leave days.')}</p>
+                : requestWithinBalanceYear && selectedAvailableDays !== null && Number.isFinite(selectedAvailableDays)
+                  ? <>
+                    <p>{tx('Current available balance')}: {displayLocalizedNumber(selectedAvailableDays, locale)} {tx('days')}</p>
+                    <p className={`font-medium ${requestedDaysPreview <= selectedAvailableDays ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {tx(requestedDaysPreview <= selectedAvailableDays
+                        ? 'The current balance covers this request; the server will check again.'
+                        : 'This request exceeds the current balance; the server will check again.')}
+                    </p>
+                  </>
+                  : <p>{tx('The server checks balance separately for each calendar year when submitted.')}</p>}
+            </div>}
             <div><label htmlFor="personal-leave-portion" className="mb-1 block text-sm font-medium text-slate-700">{tx('Day portion')}</label>
               <select id="personal-leave-portion" value={dayPortion} onChange={event => setDayPortion(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
                 <option value="full">{tx('Full day')}</option><option value="first_half">{tx('First half')}</option><option value="second_half">{tx('Second half')}</option>
