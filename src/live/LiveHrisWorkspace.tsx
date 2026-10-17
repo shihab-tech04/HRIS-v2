@@ -2303,6 +2303,7 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
   }, [tenantId]);
 
   const balances = asRows(leave?.balances);
+  const unavailableLeaveTypes = asRows(leave?.unavailable_leave_types);
   const requests = asRows(leave?.requests);
   const defaultYear = String(leave?.balance_year || String(leave?.dashboard_date || '').slice(0, 4) || new Date().getFullYear());
   const requestYears = requests.flatMap(row => {
@@ -2418,6 +2419,15 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
               </dl>
             </div>)}
           </div> : <p className="mt-3 rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
+          {unavailableLeaveTypes.length > 0 && <section data-testid="personal-leave-unavailable-types" aria-labelledby="personal-leave-unavailable-heading" className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <h4 id="personal-leave-unavailable-heading" className="text-sm font-semibold text-[#49454F]">{tx('Unavailable leave types')}</h4>
+            <ul className="mt-2 space-y-2">
+              {unavailableLeaveTypes.map((item, index) => <li key={String(item.id || index)} data-testid={`personal-leave-unavailable-type-${String(item.id || index)}`} className="min-w-0 border-t border-slate-200 pt-2 first:border-0 first:pt-0">
+                <p className="text-sm font-medium text-slate-700">{display(item.name)}</p>
+                <p data-testid="personal-leave-unavailability-reason" className="mt-0.5 text-xs leading-5 text-slate-600">{tx('This leave type does not meet the eligibility requirements for your employee profile.')}</p>
+              </li>)}
+            </ul>
+          </section>}
         </section>
       </div>
 

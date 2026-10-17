@@ -431,6 +431,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017040000_hris_employee_dashboard_work_identity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017050000_hris_employee_dashboard_team_identity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017060000_hris_employee_dashboard_pending_requests.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017060001_hris_employee_unavailable_leave_type_reason.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -3474,6 +3475,14 @@ record('Employee creates a distinct tenant-bound leave request for the manager r
     && tableRow('leave_requests', leaveRejectionRequestId)?.status === 'pending',
   leaveRejectionSubmit.error?.message || 'pending rejection fixture persisted');
 
+const genderPolicyId = '99999999-9999-4999-8999-999999999911';
+const genderPolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
+  p_tenant_id: ids.tenantA, p_leave_type_id: genderPolicyId, p_expected: null,
+  p_payload: { name: 'Synthetic gender-restricted leave', code: 'SYN-GENDER',
+    applicable_gender: 'female', min_days_notice: null, requires_document_proof: false,
+    annual_entitlement: 5, active: true },
+});
+
 psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
   VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true),
     ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday','2026-10-21','2026-10-21','general',true);`);
@@ -3484,6 +3493,8 @@ const personalLeaveBalance = personalLeaveBalanceResponse?.balances
   ?.find(row => row.leave_type_id === ids.leaveTypeA);
 const personalLeaveTypes = Array.isArray(personalLeaveBalanceResponse?.leave_types)
   ? personalLeaveBalanceResponse.leave_types : [];
+const unavailableLeaveTypes = Array.isArray(personalLeaveBalanceResponse?.unavailable_leave_types)
+  ? personalLeaveBalanceResponse.unavailable_leave_types : [];
 const personalLeaveBalances = Array.isArray(personalLeaveBalanceResponse?.balances)
   ? personalLeaveBalanceResponse.balances : [];
 if (!personalLeaveBalance || personalLeaveBalance.used_days === undefined || personalLeaveBalance.pending_days === undefined
@@ -3491,6 +3502,24 @@ if (!personalLeaveBalance || personalLeaveBalance.used_days === undefined || per
     || !personalLeaveBalances.some(row => row?.leave_type_id === ids.leaveTypeEvidence && row.available_days !== undefined)) {
   throw new Error('The isolated employee leave balance contract is missing persisted used or pending days.');
 }
+const unavailableGenderPolicy = unavailableLeaveTypes.find(row => row?.id === genderPolicyId);
+const employeeBDashboardForLeave = queryAs(employeeB,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
+const employeeBLeaveTypeIds = [
+  ...(employeeBDashboardForLeave?.leave_types || []).map(row => row.id),
+  ...(employeeBDashboardForLeave?.unavailable_leave_types || []).map(row => row.id),
+];
+record('E07-08 explains an unavailable active leave type without exposing profile values or crossing tenants',
+  !genderPolicyCreate.error
+    && unavailableGenderPolicy?.name === 'Synthetic gender-restricted leave'
+    && unavailableGenderPolicy?.availability_reason_code === 'profile_eligibility'
+    && Object.keys(unavailableGenderPolicy || {}).sort().join(',') === 'availability_reason_code,id,name'
+    && !JSON.stringify(unavailableGenderPolicy).toLowerCase().includes('female')
+    && !JSON.stringify(unavailableGenderPolicy).toLowerCase().includes('applicable_gender')
+    && !personalLeaveTypes.some(row => row.id === genderPolicyId)
+    && !employeeBLeaveTypeIds.includes(genderPolicyId),
+  JSON.stringify({ policyError: genderPolicyCreate.error?.code, reasonCode: unavailableGenderPolicy?.availability_reason_code,
+    returnedKeys: Object.keys(unavailableGenderPolicy || {}).sort(), tenantBExposed: employeeBLeaveTypeIds.includes(genderPolicyId) }));
 
 let leaveEvidenceBrowserOutput = '';
 let leaveEvidenceBrowserError = '';
@@ -3512,6 +3541,8 @@ try {
       HRIS_LOCAL_LEAVE_HISTORY_YEAR: String(evidenceRequest?.from_date).slice(0, 4),
       HRIS_LOCAL_LEAVE_REQUEST_DATE: String(evidenceRequest?.from_date),
       HRIS_LOCAL_LEAVE_TYPES_JSON: JSON.stringify(personalLeaveTypes.map(row => ({ id: row.id, name: row.name }))),
+      HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPES_JSON: JSON.stringify(unavailableLeaveTypes.map(row => ({ id: row.id, name: row.name, availability_reason_code: row.availability_reason_code }))),
+      HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID: genderPolicyId,
       HRIS_LOCAL_LEAVE_BALANCES_JSON: JSON.stringify(personalLeaveBalances.map(row => ({ leave_type_id: row.leave_type_id, available_days: row.available_days }))),
       HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID: ids.leaveTypeA,
       HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS: String(personalLeaveBalance.available_days),
@@ -4880,14 +4911,7 @@ record('Leave policy writes require active same-tenant leave.manage and cannot b
     viewer: policyReadOnlyViewer.error?.code, globalOnly: policyGlobalOnly.error?.code,
     crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code }));
 
-const genderPolicyId = '99999999-9999-4999-8999-999999999911';
 const noticePolicyId = '99999999-9999-4999-8999-999999999912';
-const genderPolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
-  p_tenant_id: ids.tenantA, p_leave_type_id: genderPolicyId, p_expected: null,
-  p_payload: { name: 'Synthetic gender-restricted leave', code: 'SYN-GENDER',
-    applicable_gender: 'female', min_days_notice: null, requires_document_proof: false,
-    annual_entitlement: 5, active: true },
-});
 const noticePolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
   p_tenant_id: ids.tenantA, p_leave_type_id: noticePolicyId, p_expected: null,
   p_payload: { name: 'Synthetic notice-restricted leave', code: 'SYN-NOTICE',

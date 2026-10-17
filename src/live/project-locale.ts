@@ -625,6 +625,8 @@ const bengali: Record<string, string> = {
   'Your leave balances and request history for {tenant}': '{tenant}-এর আপনার ছুটির অবশিষ্ট ও আবেদনের ইতিহাস',
   'Loading your leave information…': 'আপনার ছুটির তথ্য লোড হচ্ছে…',
   'Available leave breakdown': 'ছুটির অবশিষ্টের বিবরণ',
+  'Unavailable leave types': 'যেসব ছুটির ধরন পাওয়া যাচ্ছে না',
+  'This leave type does not meet the eligibility requirements for your employee profile.': 'আপনার কর্মী প্রোফাইলের যোগ্যতার শর্তের সঙ্গে এই ছুটির ধরন মেলে না।',
   'Used': 'ব্যবহৃত',
   'Estimated chargeable days': 'হিসাব করা ছুটির দিন',
   'The estimate uses your current weekly-off schedule and tenant-wide holidays. The server validates again on submission.': 'এই হিসাব আপনার বর্তমান সাপ্তাহিক ছুটির সূচি ও প্রতিষ্ঠানের ছুটির ক্যালেন্ডার ব্যবহার করে। জমা দেওয়ার সময় সার্ভার আবার যাচাই করবে।',

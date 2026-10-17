@@ -13,6 +13,7 @@ const required = [
   'HRIS_LOCAL_LEAVE_TENANT_ID', 'HRIS_LOCAL_LEAVE_EMPLOYEE_ID',
   'HRIS_LOCAL_LEAVE_REQUEST_ID', 'HRIS_LOCAL_LEAVE_EVIDENCE_PATH',
   'HRIS_LOCAL_LEAVE_TYPES_JSON', 'HRIS_LOCAL_LEAVE_BALANCES_JSON',
+  'HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPES_JSON', 'HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID',
   'HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE', 'HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE',
   'HRIS_LOCAL_LEAVE_BALANCE_TYPE_ID', 'HRIS_LOCAL_LEAVE_BALANCE_AVAILABLE_DAYS',
   'HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS',
@@ -159,6 +160,20 @@ try {
   const personalLeaveSummary = employee.getByTestId('personal-leave-summary');
   await personalLeaveSummary.getByRole('heading', { name: 'Request time off', exact: true }).waitFor({ state: 'visible' });
   await personalLeaveSummary.getByRole('heading', { name: 'Available leave breakdown', exact: true }).waitFor({ state: 'visible' });
+  const unavailableTypesData = JSON.parse(process.env.HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPES_JSON);
+  const unavailableType = unavailableTypesData.find(row => String(row.id) === process.env.HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID);
+  if (!unavailableType || unavailableType.availability_reason_code !== 'profile_eligibility') {
+    throw new Error('The authenticated leave dashboard did not provide the expected profile-eligibility explanation.');
+  }
+  const unavailableTypesPanel = personalLeaveSummary.getByTestId('personal-leave-unavailable-types');
+  const unavailableTypeCard = personalLeaveSummary.getByTestId(`personal-leave-unavailable-type-${process.env.HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID}`);
+  await unavailableTypesPanel.getByRole('heading', { name: 'Unavailable leave types', exact: true }).waitFor({ state: 'visible' });
+  await unavailableTypeCard.getByText(unavailableType.name, { exact: true }).waitFor({ state: 'visible' });
+  const unavailableReason = unavailableTypeCard.getByTestId('personal-leave-unavailability-reason');
+  await unavailableReason.waitFor({ state: 'visible' });
+  if (await unavailableReason.innerText() !== 'This leave type does not meet the eligibility requirements for your employee profile.') {
+    throw new Error('The unavailable leave reason did not match the English eligibility explanation.');
+  }
   const mobileSummaryColumns = await personalLeaveSummary.evaluate(element => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length);
   if (mobileSummaryColumns !== 1) throw new Error(`Personal leave summary mobile layout has ${mobileSummaryColumns} columns instead of one.`);
   const primaryHistoryBeforeCalendar = await employee.evaluate(() => {
@@ -169,6 +184,7 @@ try {
   });
   if (!primaryHistoryBeforeCalendar) throw new Error('Personal leave history should precede the calendar on the Figma-aligned page.');
   await employee.setViewportSize({ width: 1280, height: 900 });
+  await unavailableReason.waitFor({ state: 'visible' });
   const personalLeaveSummaryColumns = await personalLeaveSummary.evaluate(element => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length);
   if (personalLeaveSummaryColumns !== 2) throw new Error(`Personal leave summary desktop layout has ${personalLeaveSummaryColumns} columns instead of two.`);
   await employee.setViewportSize({ width: 1920, height: 1080 });
@@ -191,6 +207,11 @@ try {
   await balanceDetail.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
   await balanceDetail.getByText(`${localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS, 'en')} days`, { exact: true }).waitFor({ state: 'visible' });
   await employee.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await unavailableTypesPanel.getByRole('heading', { name: 'যেসব ছুটির ধরন পাওয়া যাচ্ছে না', exact: true }).waitFor({ state: 'visible' });
+  await unavailableReason.waitFor({ state: 'visible' });
+  if (await unavailableReason.innerText() !== 'আপনার কর্মী প্রোফাইলের যোগ্যতার শর্তের সঙ্গে এই ছুটির ধরন মেলে না।') {
+    throw new Error('The unavailable leave reason did not match the Bengali eligibility explanation.');
+  }
   await balanceDetail.getByText('ব্যবহৃত', { exact: true }).waitFor({ state: 'visible' });
   await balanceDetail.getByText(`${localizedBalance(process.env.HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS, 'bn')} দিন`, { exact: true }).waitFor({ state: 'visible' });
   await balanceDetail.getByText('অপেক্ষমাণ', { exact: true }).waitFor({ state: 'visible' });
@@ -200,6 +221,11 @@ try {
   }
   await employee.getByRole('button', { name: 'Switch language to English' }).click();
   await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  await employee.reload();
+  await employee.getByRole('heading', { name: 'Personal leave' }).waitFor({ state: 'visible' });
+  await employee.getByTestId(`personal-leave-unavailable-type-${process.env.HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID}`)
+    .getByText('This leave type does not meet the eligibility requirements for your employee profile.', { exact: true }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(employee, 'Employee leave availability explanation mobile after refresh');
   console.log('LEAVE_BALANCE_DETAIL_BROWSER_ACCEPTANCE=PASS');
   console.log('Personal leave summary mobile and desktop layouts passed.');
   await assertNoHorizontalOverflow(employee, 'Employee personal leave mobile');
@@ -221,6 +247,9 @@ try {
     options.map(option => option.value).filter(Boolean))).sort();
   if (JSON.stringify(actualLeaveTypeIds) !== JSON.stringify(expectedLeaveTypeIds)) {
     throw new Error(`Employee leave-type options did not match the active employee-scoped contract: ${JSON.stringify({ actualLeaveTypeIds, expectedLeaveTypeIds })}.`);
+  }
+  if (actualLeaveTypeIds.includes(process.env.HRIS_LOCAL_UNAVAILABLE_LEAVE_TYPE_ID)) {
+    throw new Error('An unavailable leave type appeared in the request form options.');
   }
   console.log('LEAVE_TYPES_VISIBLE_BROWSER_ACCEPTANCE=PASS');
   await requestDialog.getByLabel('Leave type').selectOption({ label: 'Synthetic evidence-required leave' });
