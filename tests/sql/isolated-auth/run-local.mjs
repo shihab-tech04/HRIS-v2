@@ -6933,6 +6933,27 @@ record('E01-04 pending leave, attendance, expense, travel, service and learning 
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_PENDING_REQUESTS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 record('E01-06 upcoming appraisal deadlines use the authenticated employee appraisal RPC and recover on retry at 375px/1280px in EN/BN',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_UPCOMING_REVIEWS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
+record('E04-01 employee sees their own tenant-linked employee number on the digital identity card',
+  employeeAttendanceBrowserOutput.includes('E04-01_EMPLOYEE_NUMBER_BROWSER_PASS')
+    && !employeeIdentityCardA.error && employeeIdentityCard?.employee_number === 'QA-A-001',
+  JSON.stringify({ employeeNumber: employeeIdentityCard?.employee_number, browserError: employeeAttendanceBrowserError }));
+record('E04-02 employee opens, retries, and closes the responsive digital identity card',
+  employeeAttendanceBrowserOutput.includes('E04-02_DIGITAL_CARD_RECOVERY_BROWSER_PASS'), employeeAttendanceBrowserError);
+record('E04-03 digital identity card shows the employee’s verified designation and department',
+  employeeAttendanceBrowserOutput.includes('E04-03_DESIGNATION_DEPARTMENT_BROWSER_PASS')
+    && employeeIdentityCard?.designation_title === 'QA A designation'
+    && employeeIdentityCard?.department_name === 'QA A department',
+  JSON.stringify({ designation: employeeIdentityCard?.designation_title, department: employeeIdentityCard?.department_name,
+    browserError: employeeAttendanceBrowserError }));
+record('E04-04 digital identity card reflects the active employment status',
+  employeeAttendanceBrowserOutput.includes('E04-04_ACTIVE_EMPLOYMENT_BROWSER_PASS')
+    && employeeIdentityCard?.employment_status === 'active',
+  JSON.stringify({ employmentStatus: employeeIdentityCard?.employment_status, browserError: employeeAttendanceBrowserError }));
+record('E04-05 partially verified: inactive and terminated employment states are handled; no approved expiry rule exists',
+  !inactiveEmployeeIdentityCard.error && inactiveEmployeeIdentityCard.data?.employment_status === 'inactive'
+    && Boolean(terminatedEmployeeIdentityCard.error),
+  JSON.stringify({ inactive: inactiveEmployeeIdentityCard.data?.employment_status,
+    terminatedDenied: Boolean(terminatedEmployeeIdentityCard.error), expiryRule: 'not present in the approved identity-card contract' }));
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';

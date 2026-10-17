@@ -471,10 +471,14 @@ try {
   for (const value of ['QA-A-001', 'Synthetic Employee A', 'QA A designation', 'QA A department', 'Active']) {
     await identityDialog.getByText(value, { exact: true }).waitFor({ state: 'visible' });
   }
+  console.log('E04-01_EMPLOYEE_NUMBER_BROWSER_PASS');
+  console.log('E04-03_DESIGNATION_DEPARTMENT_BROWSER_PASS');
+  console.log('E04-04_ACTIVE_EMPLOYMENT_BROWSER_PASS');
   if (failInitialIdentityCardRead) throw new Error('The injected identity-card outage was not observed.');
   await assertNoOverflow(page, 'Employee digital ID mobile');
   await identityDialog.getByRole('button', { name: 'Close', exact: true }).click();
   await identityDialog.waitFor({ state: 'detached' });
+  console.log('E04-02_DIGITAL_CARD_RECOVERY_BROWSER_PASS');
 
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'Notifications', exact: true }).click();

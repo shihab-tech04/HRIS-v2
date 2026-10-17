@@ -55,3 +55,21 @@ test('employees can open, retry, refresh, and close their translated identity ca
   assert.match(browser, /Employee digital ID desktop/);
   assert.match(browser, /EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS/);
 });
+
+test('E04-01 through E04-04 link exact recovered requirements to isolated browser and database acceptance', () => {
+  const expected = new Map([
+    ['E04-01', 'As an employee, I want to see my employee ID.'],
+    ['E04-02', 'As an employee, I want to access a digital employee card where supported.'],
+    ['E04-03', 'As an employee, I want to see my official designation and department.'],
+    ['E04-04', 'As an employee, I want the card to reflect active employment information.'],
+  ]);
+  for (const [id, requirement] of expected) {
+    assert.equal(catalogue.stories.find(story => story.story_id === id)?.verbatim_requirement, requirement);
+    assert.match(runner, new RegExp(`record\\('${id} `));
+  }
+  assert.match(browser, /E04-01_EMPLOYEE_NUMBER_BROWSER_PASS/);
+  assert.match(browser, /E04-02_DIGITAL_CARD_RECOVERY_BROWSER_PASS/);
+  assert.match(browser, /E04-03_DESIGNATION_DEPARTMENT_BROWSER_PASS/);
+  assert.match(browser, /E04-04_ACTIVE_EMPLOYMENT_BROWSER_PASS/);
+  assert.match(runner, /record\('E04-05 partially verified:/);
+});

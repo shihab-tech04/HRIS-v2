@@ -123,7 +123,8 @@ try {
   await checkOutResponse;
   await today.getByRole('status').getByText('আজকের জন্য আপনার চেক-আউট হয়েছে।', { exact: true }).waitFor({ state: 'visible' });
   await page.reload();
-  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  // Bengali is deliberately selected before clock-out; locale persists across a full refresh.
+  await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
   const recoveredToday = page.locator('section[aria-labelledby="employee-today-heading"]');
   await recoveredToday.getByText(/পর্যন্ত উপস্থিতি নথিভুক্ত হয়েছে/).waitFor({ state: 'visible' });
   if (await recoveredToday.getByRole('button', { name: 'চেক-আউট করুন', exact: true }).count()) {
