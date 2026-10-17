@@ -390,6 +390,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261012230100_hris_membership_tenant_read_guards.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013023141_hris_performance_appraisal_membership_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013073243_hris_tenant_employee_directory.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017092147_employee_directory_team_filter.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014171952_employee_contact_details_editing.sql'),
   path.join(mainRoot, 'supabase/migrations/20261015173616_prevent_direct_employee_row_updates.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
@@ -1938,6 +1939,32 @@ const employeeDirectoryFiltered = await employeesViewer.client.rpc('hris_get_ten
   p_tenant_id: ids.tenantA, p_search: 'Synthetic Employee A',
   p_department_id: 'eeeeeeee-0000-4000-8000-000000000001', p_status: 'active',
 });
+psqlSync(`UPDATE public.employees SET team_id='dddddddd-0000-4000-8000-000000000003'::uuid
+  WHERE id='55555555-5555-4555-8555-555555555559'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+let employeeDirectoryTeamOptions;
+let employeeDirectoryTeamFiltered;
+let employeeDirectoryForeignTeamFilter;
+try {
+  employeeDirectoryTeamOptions = await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
+    p_tenant_id: ids.tenantA,
+  });
+  employeeDirectoryTeamFiltered = await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
+    p_tenant_id: ids.tenantA, p_department_id: 'eeeeeeee-0000-4000-8000-000000000001',
+    p_team_id: 'dddddddd-0000-4000-8000-000000000003',
+  });
+  employeeDirectoryForeignTeamFilter = await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
+    p_tenant_id: ids.tenantA, p_team_id: 'dddddddd-0000-4000-8000-000000000002',
+  });
+} finally {
+  psqlSync(`UPDATE public.employees SET team_id='dddddddd-0000-4000-8000-000000000001'::uuid
+    WHERE id='55555555-5555-4555-8555-555555555559'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+const employeeDirectoryV2NoPermission = await noPermission.client.rpc('hris_get_tenant_employee_directory_v2', {
+  p_tenant_id: ids.tenantA, p_team_id: 'dddddddd-0000-4000-8000-000000000003',
+});
+const employeeDirectoryV2Acl = queryAdmin(`SELECT jsonb_build_object(
+  'anon',has_function_privilege('anon','public.hris_get_tenant_employee_directory_v2(uuid,text,uuid,uuid,text,integer,integer)','EXECUTE'),
+  'authenticated',has_function_privilege('authenticated','public.hris_get_tenant_employee_directory_v2(uuid,text,uuid,uuid,text,integer,integer)','EXECUTE'))`);
 const employeeDirectoryPage = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
   p_tenant_id: ids.tenantA, p_limit: 2, p_offset: 2,
 });
@@ -1975,6 +2002,34 @@ record('Employee directory search, department/status filters, and non-PII search
   !employeeDirectoryFiltered.error && employeeDirectoryFiltered.data.employees.length === 1
     && employeeDirectoryFiltered.data.employees[0].full_name === 'Synthetic Employee A'
     && !employeeDirectoryPrivateSearch.error && employeeDirectoryPrivateSearch.data.employees.length === 0);
+record('E37-01 employee directory search returns only persisted tenant-authorized matches',
+  !employeeDirectoryFiltered.error && employeeDirectoryFiltered.data.total_count === 1
+    && employeeDirectoryFiltered.data.employees[0]?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && !employeeDirectoryPrivateSearch.error && employeeDirectoryPrivateSearch.data.total_count === 0);
+record('Employee directory team options and filtering are tenant-scoped and intersect department/search/status filters',
+  !employeeDirectoryTeamOptions.error
+    && employeeDirectoryTeamOptions.data.teams.length === 2
+    && employeeDirectoryTeamOptions.data.teams.some(row => row.id === 'dddddddd-0000-4000-8000-000000000001')
+    && employeeDirectoryTeamOptions.data.teams.some(row => row.id === 'dddddddd-0000-4000-8000-000000000003')
+    && !employeeDirectoryTeamOptions.data.teams.some(row => row.id === 'dddddddd-0000-4000-8000-000000000002')
+    && !employeeDirectoryTeamFiltered.error
+    && employeeDirectoryTeamFiltered.data.total_count === 1
+    && employeeDirectoryTeamFiltered.data.employees[0]?.full_name === 'Synthetic WFH Employee A'
+    && !employeeDirectoryForeignTeamFilter.error
+    && employeeDirectoryForeignTeamFilter.data.total_count === 0
+    && employeeDirectoryForeignTeamFilter.data.employees.length === 0
+    && Boolean(employeeDirectoryV2NoPermission.error?.code === '42501')
+    && employeeDirectoryV2Acl.anon === false && employeeDirectoryV2Acl.authenticated === true,
+  JSON.stringify({ optionIds: employeeDirectoryTeamOptions.data?.teams?.map(row => row.id),
+    filtered: employeeDirectoryTeamFiltered.data?.employees?.map(row => row.full_name),
+    foreignTeamCount: employeeDirectoryForeignTeamFilter.data?.total_count,
+    noPermission: employeeDirectoryV2NoPermission.error?.code || null, acl: employeeDirectoryV2Acl }));
+record('E37-02 department and team filters stay within the authorized tenant; location is not exposed without an approved directory contract',
+  !employeeDirectoryTeamFiltered.error && employeeDirectoryTeamFiltered.data.total_count === 1
+    && employeeDirectoryTeamFiltered.data.employees[0]?.team_name === 'QA A Other Team'
+    && !employeeDirectoryForeignTeamFilter.error && employeeDirectoryForeignTeamFilter.data.total_count === 0
+    && !JSON.stringify(employeeDirectoryTeamOptions.data).includes('QA B Team')
+    && !JSON.stringify(employeeDirectoryTeamOptions.data).includes('address'));
 record('Employee directory clamps page size, preserves the full result count, and returns the requested page',
   !employeeDirectoryPage.error && employeeDirectoryPage.data.employees.length === 2
     && employeeDirectoryPage.data.total_count === 6
@@ -2157,6 +2212,8 @@ record('Employee directory immediately denies inactive tenant membership',
 
 let employeeDirectoryBrowserOutput = '';
 let employeeDirectoryBrowserError = '';
+psqlSync(`UPDATE public.employees SET team_id='dddddddd-0000-4000-8000-000000000003'::uuid
+  WHERE id='55555555-5555-4555-8555-555555555559'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 try {
   employeeDirectoryBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-directory-browser.mjs')], {
     cwd: mainRoot,
@@ -2174,9 +2231,12 @@ try {
   }).trim();
 } catch (error) {
   employeeDirectoryBrowserError = String(error.stderr || error.message || 'local employee-directory browser run failed').slice(-1400);
+} finally {
+  psqlSync(`UPDATE public.employees SET team_id='dddddddd-0000-4000-8000-000000000001'::uuid
+    WHERE id='55555555-5555-4555-8555-555555555559'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 }
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
-  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
+  employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with tenant-scoped team filtering, filtered CSV, manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
 let profileChangeBrowserOutput = '';
 let profileChangeBrowserError = '';

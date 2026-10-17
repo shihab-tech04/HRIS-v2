@@ -151,19 +151,19 @@ try {
       forbiddenDirectoryReads.push('employees');
     }
     if (url.pathname.endsWith('/rest/v1/departments')) forbiddenDirectoryReads.push('departments');
-    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_employee_directory') && request.method() === 'POST') {
+    if (url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_employee_directory_v2') && request.method() === 'POST') {
       rpcPayloads.push(request.postDataJSON());
     }
   });
   page.on('response', async response => {
-    if (response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory') && response.ok()) {
+    if (response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2') && response.ok()) {
       try { rpcPayloads.push(await response.json()); } catch { /* response body is not required for rendering */ }
     }
   });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
-      && url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_employee_directory')
+      && url.pathname.endsWith('/rest/v1/rpc/hris_get_tenant_employee_directory_v2')
       && route.request().method() === 'POST') {
       rpcCalls += 1;
       if (rpcCalls === 1) {
@@ -221,7 +221,7 @@ try {
   if (forbiddenDirectoryReads.length) throw new Error(`Employee-only role triggered legacy directory reads: ${forbiddenDirectoryReads.join(', ')}.`);
 
   await page.getByLabel('Search employees').fill('Synthetic Employee A');
-  const searchResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory'));
+  const searchResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await searchResponse;
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
@@ -230,19 +230,43 @@ try {
   }
   await page.getByLabel('Filter employees by department').selectOption('eeeeeeee-0000-4000-8000-000000000001');
   await page.getByLabel('Filter employees by employment status').selectOption('active');
-  const filterResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory'));
+  const filterResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await filterResponse;
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  await page.getByLabel('Search employees').fill('');
+  await page.getByLabel('Filter employees by team').selectOption('dddddddd-0000-4000-8000-000000000001');
+  const firstTeamResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await firstTeamResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  await (await employeeInCurrentLayout(page, 'Synthetic WFH Employee A')).waitFor({ state: 'detached' });
+  await page.getByLabel('Filter employees by team').selectOption('dddddddd-0000-4000-8000-000000000003');
+  const otherTeamResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await otherTeamResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic WFH Employee A')).waitFor({ state: 'visible' });
+  await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'detached' });
+  const teamDownloadWait = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export current page' }).click();
+  const teamDownload = await teamDownloadWait;
+  const teamDownloadStream = await teamDownload.createReadStream();
+  const teamChunks = [];
+  for await (const chunk of teamDownloadStream) teamChunks.push(chunk);
+  const teamExportCsv = Buffer.concat(teamChunks).toString('utf8');
+  if (!teamExportCsv.includes('Synthetic WFH Employee A') || teamExportCsv.includes('Synthetic Employee A')) {
+    throw new Error('Employee directory team-filter CSV did not match the authorized filtered page.');
+  }
   await assertNoOverflow(page, 'Employee directory filtered mobile');
 
   await page.getByLabel('Search employees').fill('No matching employee in this fixture');
-  const emptyResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory'));
+  const emptyResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await emptyResponse;
   await page.getByText('No employees found', { exact: true }).waitFor({ state: 'visible' });
   await page.getByLabel('Search employees').fill('Synthetic Employee A');
-  const restoreResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory'));
+  await page.getByLabel('Filter employees by team').selectOption('');
+  const restoreResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await restoreResponse;
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
@@ -251,6 +275,20 @@ try {
   await page.getByRole('button', { name: 'Refresh employee directory' }).click();
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Employee directory desktop');
+  await page.getByLabel('Search employees').fill('');
+  await page.getByLabel('Filter employees by team').selectOption('dddddddd-0000-4000-8000-000000000003');
+  const desktopTeamResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await desktopTeamResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic WFH Employee A')).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Refresh employee directory' }).click();
+  await (await employeeInCurrentLayout(page, 'Synthetic WFH Employee A')).waitFor({ state: 'visible' });
+  await page.getByLabel('Filter employees by team').selectOption('');
+  await page.getByLabel('Search employees').fill('Synthetic Employee A');
+  const restoreDesktopResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await restoreDesktopResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
   const desktopDetailTrigger = page.getByRole('button', { name: 'View details for Synthetic Employee A' });
   await desktopDetailTrigger.click();
   const desktopDetails = page.getByRole('dialog', { name: 'Synthetic Employee A' });
@@ -445,7 +483,7 @@ try {
   if (requestTenants.some(id => id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID)) {
     throw new Error(`Employee directory requested a different tenant: ${requestTenants.join(', ')}.`);
   }
-  console.log('Local Auth-to-Postgres employee directory and contact-editing journey passed with manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.');
+  console.log('Local Auth-to-Postgres employee directory and contact-editing journey passed with tenant-scoped team filtering, filtered CSV, manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.');
 } finally {
   if (browser) await browser.close();
   if (server.exitCode === null) {

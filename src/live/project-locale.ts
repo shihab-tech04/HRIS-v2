@@ -271,6 +271,8 @@ const bengali: Record<string, string> = {
   'Department': 'বিভাগ',
   'Filter employees by department': 'বিভাগ অনুযায়ী কর্মচারী ফিল্টার করুন',
   'All departments': 'সব বিভাগ',
+  'Filter employees by team': 'দল অনুযায়ী কর্মচারী ফিল্টার করুন',
+  'All teams': 'সব দল',
   'Employment status': 'চাকরির অবস্থা',
   'Filter employees by employment status': 'চাকরির অবস্থা অনুযায়ী কর্মচারী ফিল্টার করুন',
   'All statuses': 'সব অবস্থা',

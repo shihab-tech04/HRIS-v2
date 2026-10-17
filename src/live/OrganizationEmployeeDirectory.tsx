@@ -19,6 +19,7 @@ type EmployeeRow = {
 type DirectoryPayload = {
   employees?: EmployeeRow[];
   departments?: { id: string; name: string }[];
+  teams?: { id: string; name: string; department_id: string | null }[];
   available_statuses?: string[];
   total_count?: number;
 };
@@ -84,13 +85,16 @@ function statusLabel(value: string, locale: Locale) {
 export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManage = false }: { tenantId: string; locale: Locale; employeesManage?: boolean }) {
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: string; name: string; department_id: string | null }[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [teamId, setTeamId] = useState('');
   const [status, setStatus] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [appliedDepartmentId, setAppliedDepartmentId] = useState('');
+  const [appliedTeamId, setAppliedTeamId] = useState('');
   const [appliedStatus, setAppliedStatus] = useState('');
   const [offset, setOffset] = useState(0);
   const [revision, setRevision] = useState(0);
@@ -117,9 +121,11 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
   useEffect(() => {
     setSearch('');
     setDepartmentId('');
+    setTeamId('');
     setStatus('');
     setAppliedSearch('');
     setAppliedDepartmentId('');
+    setAppliedTeamId('');
     setAppliedStatus('');
     setOffset(0);
     setSelectedEmployee(null);
@@ -145,6 +151,7 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
     const requestTenant = tenantId;
     setEmployees([]);
     setDepartments([]);
+    setTeams([]);
     setStatuses([]);
     setTotalCount(0);
     setSelectedEmployee(null);
@@ -152,10 +159,11 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
     setError('');
     void (async () => {
       try {
-        const result = await supabase.rpc('hris_get_tenant_employee_directory', {
+        const result = await supabase.rpc('hris_get_tenant_employee_directory_v2', {
           p_tenant_id: requestTenant,
           p_search: appliedSearch || null,
           p_department_id: appliedDepartmentId || null,
+          p_team_id: appliedTeamId || null,
           p_status: appliedStatus || null,
           p_limit: PAGE_SIZE,
           p_offset: offset,
@@ -164,17 +172,20 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
         if (result.error) throw result.error;
         const payload = result.data as DirectoryPayload | null;
         if (!payload || !Array.isArray(payload.employees) || !Array.isArray(payload.departments)
+          || !Array.isArray(payload.teams)
           || !Array.isArray(payload.available_statuses) || typeof payload.total_count !== 'number') {
           throw new Error('Employee directory returned an invalid response.');
         }
         setEmployees(payload.employees);
         setDepartments(payload.departments);
+        setTeams(payload.teams);
         setStatuses(payload.available_statuses);
         setTotalCount(payload.total_count);
       } catch {
         if (requestId !== requestSequence.current || activeTenantId.current !== requestTenant) return;
         setEmployees([]);
         setDepartments([]);
+        setTeams([]);
         setStatuses([]);
         setTotalCount(0);
         setError('Unable to load employees for this organization. Check your employee-directory access and try again.');
@@ -183,7 +194,7 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       }
     })();
     return () => { requestSequence.current += 1; };
-  }, [tenantId, appliedSearch, appliedDepartmentId, appliedStatus, offset, revision]);
+  }, [tenantId, appliedSearch, appliedDepartmentId, appliedTeamId, appliedStatus, offset, revision]);
 
   useEffect(() => {
     if (!selectedEmployee) return;
@@ -204,12 +215,14 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
   const first = totalCount === 0 ? 0 : offset + 1;
   const last = Math.min(offset + employees.length, totalCount);
   const visibleDepartmentName = useMemo(() => new Map(departments.map(item => [item.id, item.name])), [departments]);
+  const visibleTeams = useMemo(() => teams.filter(item => !departmentId || item.department_id === departmentId), [teams, departmentId]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setOffset(0);
     setAppliedSearch(search.trim());
     setAppliedDepartmentId(departmentId);
+    setAppliedTeamId(teamId);
     setAppliedStatus(status);
   }
 
@@ -366,7 +379,7 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       </div>
     </header>
 
-    <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_220px_200px_auto]">
+    <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_220px_220px_200px_auto]">
       <label className="relative block text-xs font-medium text-slate-600">
         {tx('Search employees')}
         <Search className="pointer-events-none absolute left-3 top-[2.35rem] h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -376,10 +389,23 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       </label>
       <label className="block text-xs font-medium text-slate-600">
         {tx('Department')}
-        <select aria-label={tx('Filter employees by department')} value={departmentId} onChange={event => setDepartmentId(event.target.value)}
+        <select aria-label={tx('Filter employees by department')} value={departmentId} onChange={event => {
+          const nextDepartmentId = event.target.value;
+          setDepartmentId(nextDepartmentId);
+          const selectedTeam = teams.find(item => item.id === teamId);
+          if (selectedTeam && nextDepartmentId && selectedTeam.department_id !== nextDepartmentId) setTeamId('');
+        }}
           className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
           <option value="">{tx('All departments')}</option>
           {departments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </label>
+      <label className="block text-xs font-medium text-slate-600">
+        {tx('Team')}
+        <select aria-label={tx('Filter employees by team')} value={teamId} onChange={event => setTeamId(event.target.value)}
+          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+          <option value="">{tx('All teams')}</option>
+          {visibleTeams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
       </label>
       <label className="block text-xs font-medium text-slate-600">

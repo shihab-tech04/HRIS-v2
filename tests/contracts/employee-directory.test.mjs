@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261013073243_hris_tenant_employee_directory.sql', import.meta.url), 'utf8');
+const teamMigration = readFileSync(new URL('../../supabase/migrations/20261017092147_employee_directory_team_filter.sql', import.meta.url), 'utf8');
 const contactMigration = readFileSync(new URL('../../supabase/migrations/20261014171952_employee_contact_details_editing.sql', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../../src/live/OrganizationEmployeeDirectory.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
@@ -36,12 +37,28 @@ test('directory payload is tenant-joined, paginated, searchable, and omits sensi
   assert.match(isolatedRunner, /employeeDirectoryPrivateSearch/);
 });
 
+test('additive team-filter RPC preserves the existing contract and enforces active tenant permissions', () => {
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.hris_get_tenant_employee_directory\(/);
+  assert.match(teamMigration, /CREATE OR REPLACE FUNCTION public\.hris_get_tenant_employee_directory_v2\(/);
+  assert.match(teamMigration, /public\.is_live_session\(\)/);
+  assert.match(teamMigration, /public\.tenants t WHERE t\.id=p_tenant_id AND t\.is_active IS TRUE/);
+  assert.match(teamMigration, /hris_admin_can_read_tenant\(p_tenant_id, 'employees\.view'\)[\s\S]*?hris_admin_can_read_tenant\(p_tenant_id, 'employees\.manage'\)/);
+  assert.match(teamMigration, /tm\.id=p_team_id AND tm\.tenant_id=p_tenant_id/);
+  assert.match(teamMigration, /WHERE tm\.tenant_id=p_tenant_id[\s\S]*?e\.tenant_id=p_tenant_id AND e\.team_id=tm\.id/);
+  assert.match(teamMigration, /REVOKE ALL ON FUNCTION public\.hris_get_tenant_employee_directory_v2[^;]* FROM PUBLIC,anon/);
+  assert.match(teamMigration, /GRANT EXECUTE ON FUNCTION public\.hris_get_tenant_employee_directory_v2[^;]* TO authenticated,service_role/);
+  assert.match(isolatedRunner, /Employee directory team options and filtering are tenant-scoped/);
+  assert.match(isolatedRunner, /employeeDirectoryForeignTeamFilter/);
+});
+
 test('employee directory UI uses the secured RPC and supports error recovery, filtering, paging, export, and responsive views', () => {
-  assert.match(page, /rpc\('hris_get_tenant_employee_directory'/);
+  assert.match(page, /rpc\('hris_get_tenant_employee_directory_v2'/);
   assert.match(page, /p_tenant_id: requestTenant/);
+  assert.match(page, /p_team_id: appliedTeamId \|\| null/);
   assert.match(page, /Retry/);
   assert.match(page, /No employees found/);
   assert.match(page, /Filter employees by department/);
+  assert.match(page, /Filter employees by team/);
   assert.match(page, /Filter employees by employment status/);
   assert.match(page, /Export current page/);
   assert.match(page, /md:hidden/);
@@ -86,6 +103,7 @@ test('employee detail sheet preserves permission-limited directory fields and ad
   const missing = [...page.matchAll(/tx\('([^']+)'\)/g)].map(([, key]) => key).filter(key => !translations.has(key));
   assert.deepEqual(missing, [], 'employee directory strings must have Bengali translations');
   assert.match(locale, /'Employee record': 'কর্মচারীর রেকর্ড'/);
+  assert.match(locale, /'Filter employees by team': 'দল অনুযায়ী কর্মচারী ফিল্টার করুন'/);
   const browser = readFileSync(new URL('../sql/isolated-auth/run-employee-directory-browser.mjs', import.meta.url), 'utf8');
   assert.match(browser, /getByRole\('dialog'/);
   assert.match(browser, /keyboard\.press\('Escape'\)/);
