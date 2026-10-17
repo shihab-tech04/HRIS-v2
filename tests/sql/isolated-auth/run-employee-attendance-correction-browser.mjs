@@ -137,7 +137,7 @@ try {
     && response.status() === 200);
   await dialog.getByLabel('Attendance month', { exact: true }).fill(process.env.HRIS_LOCAL_CORRECTION_DATE.slice(0, 7));
   await currentMonthRead;
-  const correctionDate = dialog.getByLabel('Attendance date', { exact: true });
+  const correctionDate = dialog.getByLabel('Attendance date');
   await correctionDate.selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
   await dialog.getByLabel('Reason', { exact: true }).fill(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT);
   await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
@@ -147,7 +147,7 @@ try {
   await dialog.waitFor({ state: 'detached' });
   await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
   await dialog.waitFor({ state: 'visible' });
-  await dialog.getByLabel('Attendance date', { exact: true }).selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
+  await dialog.getByLabel('Attendance date').selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
   if (await dialog.getByLabel('Reason', { exact: true }).inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
     throw new Error('Cancel and reopen discarded the employee correction draft.');
   }

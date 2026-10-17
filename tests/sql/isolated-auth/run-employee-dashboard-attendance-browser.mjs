@@ -576,7 +576,7 @@ try {
   await correctionButton.click();
   const correctionDialog = page.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
   await correctionDialog.waitFor({ state: 'visible' });
-  await correctionDialog.getByLabel('উপস্থিতির তারিখ', { exact: true })
+  await correctionDialog.getByLabel('উপস্থিতির তারিখ')
     .selectOption(process.env.HRIS_LOCAL_ATTENDANCE_CORRECTION_DATE);
   // The required marker is visually hidden from assistive technology but remains
   // part of Playwright's associated-label text; match the translated label
