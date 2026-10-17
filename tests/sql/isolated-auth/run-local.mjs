@@ -3922,7 +3922,7 @@ const timesheetContextB = queryAs(employeeB,
 const timesheetDirectTableReads = ['timesheets', 'timesheet_entries', 'timesheet_project_reviews',
   'timesheet_project_review_events'].map(table => attemptAs(employeeA,
   `SELECT count(*) FROM public.${table}`));
-record('Timesheet context returns each linked employee’s own tenant activities and rows while direct table reads are denied',
+record('[E15-07, E15-11] Timesheet context returns each linked employee’s own tenant activities and rows while direct table reads are denied',
   timesheetContextA.employee_id === '55555555-5555-4555-8555-555555555555'
     && timesheetContextA.activities.length === 1
     && timesheetContextA.activities[0].id === '88888888-8888-4888-8888-888888888901'
@@ -3939,7 +3939,7 @@ const timesheetContextCrossTenant = attemptAs(employeeA,
   `SELECT public.hris_get_my_timesheet_context('${ids.tenantB}'::uuid)`);
 const timesheetContextGlobalOnly = attemptAs(globalOnly,
   `SELECT public.hris_get_my_timesheet_context('${ids.tenantA}'::uuid)`);
-record('Timesheet context denies cross-tenant IDs and global roles without an active employee link',
+record('[E15-07] Timesheet context denies cross-tenant IDs and global roles without an active employee link',
   !timesheetContextCrossTenant.ok && !timesheetContextGlobalOnly.ok);
 
 const newTimesheetEntries = [{ activity_id: '88888888-8888-4888-8888-888888888901',
@@ -3949,7 +3949,7 @@ const savedTimesheet = saveTimesheet(employeeA, ids.tenantA, null, 'weekly',
 const savedTimesheetState = queryAdmin(`SELECT jsonb_build_object(
   'status',(SELECT status FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid),
   'entries',(SELECT count(*) FROM public.timesheet_entries WHERE timesheet_id='${savedTimesheet.id}'::uuid))`);
-record('Employee saves a tenant-bound draft with one atomic audit event',
+record('[E15-01, E15-02, E15-03, E15-04, E15-05] Employee saves a tenant-bound draft with one atomic audit event',
   Boolean(savedTimesheet.id)
     && savedTimesheetState.status === 'draft'
     && savedTimesheetState.entries === 1
@@ -3959,7 +3959,7 @@ const submittedTimesheet = submitTimesheet(employeeA, ids.tenantA, savedTimeshee
 const submittedTimesheetState = queryAdmin(`SELECT jsonb_build_object(
   'status',(SELECT status FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid),
   'submitted_at',(SELECT submitted_at FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid))`);
-record('Employee submits the saved timesheet and records the submission once',
+record('[E15-06, E15-07] Employee submits the saved timesheet and records the submission once',
   submittedTimesheet.id === savedTimesheet.id
     && submittedTimesheetState.status === 'submitted'
     && Boolean(submittedTimesheetState.submitted_at)
@@ -3973,7 +3973,7 @@ const foreignTimesheetEdit = attemptAs(employeeA, `SELECT public.hris_save_my_ti
   '2026-10-05','2026-10-11','${JSON.stringify(newTimesheetEntries)}'::jsonb)`);
 const foreignTimesheetSubmit = attemptAs(employeeA,
   `SELECT public.hris_submit_my_timesheet('${ids.tenantA}'::uuid,'77777777-7777-4777-8777-777777777702'::uuid)`);
-record('Submitted and another employee’s timesheets cannot be edited',
+record('[E15-07, E15-10] Submitted and another employee’s timesheets cannot be edited',
   !submittedEdit.ok && !foreignTimesheetEdit.ok && !foreignTimesheetSubmit.ok
     && queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${savedTimesheet.id}'::uuid`).status === 'submitted'
     && auditCount(savedTimesheet.id, 'timesheet.saved') === 1);
@@ -3982,7 +3982,7 @@ const emptyTimesheet = saveTimesheet(employeeA, ids.tenantA, null, 'daily',
   '2026-10-09', '2026-10-09', []);
 const emptySubmit = attemptAs(employeeA,
   `SELECT public.hris_submit_my_timesheet('${ids.tenantA}'::uuid,'${emptyTimesheet.id}'::uuid)`);
-record('Empty draft can be saved for later but cannot be submitted',
+record('[E15-05, E15-06] Empty draft can be saved for later but cannot be submitted',
   Boolean(emptyTimesheet.id) && !emptySubmit.ok
     && queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${emptyTimesheet.id}'::uuid`).status === 'draft'
     && auditCount(emptyTimesheet.id, 'timesheet.saved') === 1
@@ -4010,7 +4010,7 @@ const timesheetWriteCounts = queryAdmin(`SELECT jsonb_build_object(
   'a',(SELECT count(*) FROM public.timesheets WHERE tenant_id='${ids.tenantA}'::uuid),
   'b',(SELECT count(*) FROM public.timesheets WHERE tenant_id='${ids.tenantB}'::uuid),
   'activity_audit',(SELECT count(*) FROM public.admin_audit_logs WHERE action='timesheet.saved'))`);
-record('Cross-tenant or inactive activity, out-of-period date, and over-24-hour daily totals roll back completely',
+record('[E15-01, E15-02, E15-03] Cross-tenant or inactive activity, out-of-period date, and over-24-hour daily totals roll back completely',
   !badActivitySave.ok && !inactiveActivitySave.ok && !badDateSave.ok && !tooManyHoursSave.ok
     && timesheetWriteCounts.a === 3 && timesheetWriteCounts.b === 1
     && timesheetWriteCounts.activity_audit === 2);
@@ -5513,7 +5513,7 @@ const invalidAllocationDate = attemptAs(managerA2, `SELECT public.hris_save_my_t
 const projectSubmission = submitTimesheet(managerA2, ids.tenantA, projectTimesheet.id);
 const projectReviewRows = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer)
   FROM public.timesheet_project_reviews WHERE tenant_id='${ids.tenantA}'::uuid AND timesheet_id='${projectTimesheet.id}'::uuid`);
-record('New project hours require a verified employee allocation and optimistic draft version; submit creates two independent reviews',
+record('[E15-01, E15-02, E15-03, E15-04, E15-06, E15-07] New project hours require a verified employee allocation and optimistic draft version; submit creates two independent reviews',
   !submitterProjectAllocationA.error && !submitterProjectAllocationB.error
     && draftVersionedUpdate.id === projectTimesheet.id && !staleDraftUpdate.ok
     && !invalidNoAllocation.ok && !invalidForeignAllocation.ok && !invalidAllocationDate.ok
@@ -5577,7 +5577,7 @@ const projectAEntryAfterCorrection = queryAdmin(`SELECT jsonb_build_object('rows
 const projectBReviewAfterCorrection = queryAdmin(`SELECT jsonb_build_object('status',status,'revision',revision)
   FROM public.timesheet_project_reviews WHERE tenant_id='${ids.tenantA}'::uuid
     AND timesheet_id='${projectTimesheet.id}'::uuid AND project_id='${otherProjectManagerProject.id}'::uuid`);
-record('Rejected resubmission changes only that project, preserves approved rows, increments revision, and rejects stale/approved edits',
+record('[E15-08, E15-09, E15-10] Rejected resubmission changes only that project, preserves approved rows, increments revision, and rejects stale/approved edits',
   !rejectProjectB.error && overallRejected === 'rejected' && !resubmittedProjectB.error
     && !staleProjectBResubmit.ok && !approvedProjectEdit.ok
     && JSON.stringify(projectAEntryAfterCorrection) === JSON.stringify(projectAEntryBeforeCorrection)
@@ -5592,7 +5592,7 @@ const finalProjectTimesheetState = queryAdmin(`SELECT jsonb_build_object(
   'events',(SELECT count(*)::integer FROM public.timesheet_project_review_events WHERE timesheet_id=t.id),
   'review_audit',(SELECT count(*)::integer FROM public.admin_audit_logs WHERE target_type='timesheet_project_review'
     AND details->>'timesheet_id'=t.id::text)) FROM public.timesheets t WHERE t.id='${projectTimesheet.id}'::uuid`);
-record('All project portions must pass before overall approval, with append-only decision and correction audit history',
+record('[E15-07, E15-10] All project portions must pass before overall approval, with append-only decision and correction audit history',
   !approveProjectBRevision2.error && finalProjectTimesheetState.status === 'approved'
     && finalProjectTimesheetState.project_a === 'approved' && finalProjectTimesheetState.project_b === 'approved'
     && finalProjectTimesheetState.events === 6 && finalProjectTimesheetState.review_audit === 4);
@@ -5605,7 +5605,7 @@ submitTimesheet(managerA2, ids.tenantA, mixedProjectTimesheet.id);
 const mixedProjectReview = queryAdmin(`SELECT jsonb_build_object('id',project_id::text)
   FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).id;
 resolveProjectTimesheet(employeeA, ids.tenantA, mixedProjectTimesheet.id, mixedProjectReview, 1, 'approved');
-record('Non-project hours remain submitted after project approval because no non-project approval authority is defined',
+record('[E15-08, E15-10] Non-project hours remain submitted after project approval because no non-project approval authority is defined',
   queryAdmin(`SELECT jsonb_build_object('status',status) FROM public.timesheets WHERE id='${mixedProjectTimesheet.id}'::uuid`).status === 'submitted'
     && queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer) FROM public.timesheet_project_reviews WHERE timesheet_id='${mixedProjectTimesheet.id}'::uuid`).count === 1);
 
@@ -5667,7 +5667,7 @@ const projectTimesheetBrowserRow = queryAdmin(`SELECT COALESCE((
       AND e.note LIKE 'Synthetic project timesheet browser acceptance%')
   ORDER BY t.created_at DESC LIMIT 1),
   jsonb_build_object('id',NULL,'status',NULL,'review_status',NULL,'entry_count',0,'corrected_note',NULL,'history',0))`);
-record('Real Auth-to-Postgres project timesheet browser journey completes allocation, rejection, scoped correction, approval, retry, refresh, EN/BN, and mobile/desktop states',
+record('[E15-01 through E15-10] Real Auth-to-Postgres project timesheet browser journey completes allocation, rejection, scoped correction, approval, retry, refresh, EN/BN, and mobile/desktop states',
   projectTimesheetBrowserOutput.includes('Real Auth/Postgres project timesheet journey passed: allocation-bound submission, PM-only rejection/approval, scoped correction, outage retry, refresh persistence, EN/BN, and 375px/1280px layouts.')
     && projectTimesheetBrowserRow.status === 'approved' && projectTimesheetBrowserRow.review_status === 'approved'
     && projectTimesheetBrowserRow.entry_count === 1
