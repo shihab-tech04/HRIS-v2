@@ -111,7 +111,8 @@ try {
   await checkInResponse;
   await today.getByRole('status').getByText('You are checked in for today.', { exact: true }).waitFor({ state: 'visible' });
   await today.getByText(/Checked in at/).waitFor({ state: 'visible' });
-  await today.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  // The locale switch is in the persistent app shell, outside the attendance card.
+  await page.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
   await today.getByRole('button', { name: 'চেক-আউট করুন', exact: true }).waitFor({ state: 'visible' });
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, '1280px employee check-out');
