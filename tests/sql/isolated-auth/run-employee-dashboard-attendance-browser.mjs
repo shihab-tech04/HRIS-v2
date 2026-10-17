@@ -227,6 +227,13 @@ try {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  const initialMonthRetry = page.getByRole('button', { name: 'Retry attendance month', exact: true });
+  await initialMonthRetry.waitFor({ state: 'visible' });
+  if (failInitialPeriodRead) throw new Error('The injected monthly attendance outage was not observed.');
+  const recoveredInitialMonth = page.waitForResponse(response =>
+    response.url().endsWith('/rest/v1/rpc/hris_get_my_attendance_period') && response.status() === 200);
+  await initialMonthRetry.click();
+  await recoveredInitialMonth;
   const todayAttendance = page.locator('section[aria-labelledby="employee-today-heading"]');
   const todayAttendanceText = await todayAttendance.innerText();
   if (!todayAttendanceText.includes(process.env.HRIS_LOCAL_DASHBOARD_TODAY_STATUS)
@@ -455,8 +462,6 @@ try {
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   const monthInput = page.locator('input[type="month"][aria-label="Attendance month"]');
   await monthInput.waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Retry attendance month', exact: true }).waitFor({ state: 'visible' });
-  if (failInitialPeriodRead) throw new Error('The injected monthly attendance outage was not observed.');
 
   await page.getByRole('button', { name: 'View digital employee ID', exact: true }).click();
   const identityDialog = page.getByRole('dialog', { name: 'Digital employee ID', exact: true });
