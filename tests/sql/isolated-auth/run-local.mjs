@@ -434,6 +434,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261017060001_hris_employee_unavailable_leave_type_reason.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql'),
 ]) applySql(file);
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
@@ -613,7 +614,7 @@ function record(label, ok, note = '') {
 const profileChangeValue = `Verified profile request ${randomUUID()}`;
 const profileChangeSubmit = await employeeA.client.rpc('employee_submit_profile_change_request', {
   p_tenant_id: ids.tenantA,
-  p_field_key: 'birthplace', p_requested_value: profileChangeValue,
+  p_field_key: 'address', p_requested_value: profileChangeValue,
   p_reason: 'Synthetic employee profile correction acceptance.',
 });
 const profileChangeId = profileChangeSubmit.data;
@@ -623,7 +624,7 @@ const profileDirectOwnRows = await employeeA.client.from('employee_profile_chang
 const profileOtherTenantHistory = await employeeB.client.rpc('employee_get_my_profile_change_requests', { p_tenant_id: ids.tenantB });
 const profileDuplicate = await employeeA.client.rpc('employee_submit_profile_change_request', {
   p_tenant_id: ids.tenantA,
-  p_field_key: 'birthplace', p_requested_value: 'A second concurrent birthplace', p_reason: 'Duplicate should be denied.',
+  p_field_key: 'address', p_requested_value: 'A second concurrent address', p_reason: 'Duplicate should be denied.',
 });
 let profileInactiveMembership;
 psqlSync(`UPDATE public.tenant_memberships SET status='inactive'
@@ -635,7 +636,7 @@ try {
     WHERE user_id=${sqlLiteral(employeeA.userId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
 }
 const profileCrossTenantSubmit = await employeeA.client.rpc('employee_submit_profile_change_request', {
-  p_tenant_id: ids.tenantB, p_field_key: 'birthplace', p_requested_value: 'Cross-tenant attempt',
+  p_tenant_id: ids.tenantB, p_field_key: 'address', p_requested_value: 'Cross-tenant attempt',
   p_reason: 'This must be rejected.',
 });
 const profileEmployeeReview = await employeeA.client.rpc('admin_list_profile_change_requests', { p_tenant_id: ids.tenantA });
@@ -671,7 +672,7 @@ const profileDuplicateDecision = await managerA.client.rpc('admin_review_profile
   p_id: profileChangeId, p_decision: 'approved', p_note: null,
 });
 const profileHistoryAfterReview = await employeeA.client.rpc('employee_get_my_profile_change_requests', { p_tenant_id: ids.tenantA });
-const profileEmployeeAfterReview = await adminAuth.from('employees').select('birthplace,full_name')
+const profileEmployeeAfterReview = await adminAuth.from('employees').select('address,full_name')
   .eq('id', '55555555-5555-4555-8555-555555555555').single();
 const profileAudit = queryAdmin(`SELECT jsonb_build_object('count',count(*),'redacted',bool_and(details ? 'field_key' AND NOT (details ? 'requested_value')))
   FROM public.admin_audit_logs WHERE target_id=${sqlLiteral(profileChangeId)} AND action='self_service.profile_change.approved'`);
@@ -679,10 +680,10 @@ record('E02-17 approved profile changes update only the requested field, persist
   !profileApproval.error && profileApproval.data?.status === 'approved'
     && profileDuplicateDecision.error?.code === 'P0002'
     && profileHistoryAfterReview.data?.some(row => row.id === profileChangeId && row.status === 'approved' && row.review_note === 'Verified synthetic employee correction.')
-    && profileEmployeeAfterReview.data?.birthplace === profileChangeValue
+    && profileEmployeeAfterReview.data?.address === profileChangeValue
     && profileEmployeeAfterReview.data?.full_name === 'Synthetic Employee A'
     && profileAudit.count === 1 && profileAudit.redacted === true,
-  JSON.stringify({ approval: profileApproval.data?.status || profileApproval.error?.code, duplicateDecision: profileDuplicateDecision.error?.code, history: profileHistoryAfterReview.data?.find(row => row.id === profileChangeId)?.status, fieldPersisted: profileEmployeeAfterReview.data?.birthplace === profileChangeValue, audit: profileAudit }));
+  JSON.stringify({ approval: profileApproval.data?.status || profileApproval.error?.code, duplicateDecision: profileDuplicateDecision.error?.code, history: profileHistoryAfterReview.data?.find(row => row.id === profileChangeId)?.status, fieldPersisted: profileEmployeeAfterReview.data?.address === profileChangeValue, audit: profileAudit }));
 
 const familyPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
@@ -1771,12 +1772,25 @@ const dashboardTrainingEnrollmentAfter = queryAdmin(`SELECT jsonb_build_object(
   FROM public.learning_enrollments
   WHERE tenant_id='${ids.tenantA}'::uuid AND employee_id='55555555-5555-4555-8555-555555555555'::uuid
     AND program_id='${learningIds.directProgram}'::uuid AND session_id='${learningIds.directSession}'::uuid`);
+const dashboardTrainingContext = await employeeA.client.rpc('hris_get_my_learning_context', { p_tenant_id: ids.tenantA });
+const dashboardTrainingEnrolledSessions = new Set((dashboardTrainingContext.data?.enrollments || [])
+  .filter(enrollment => enrollment.status === 'enrolled' && typeof enrollment.session_id === 'string')
+  .map(enrollment => enrollment.session_id));
+const dashboardExpectedUpcomingTraining = (dashboardTrainingContext.data?.programs || []).flatMap(program =>
+  (program.sessions || []).filter(session => dashboardTrainingEnrolledSessions.has(session.id)
+    && typeof session.start_at === 'string' && Date.parse(session.start_at) > Date.now())
+    .map(session => ({ id: session.id, title: program.title, start_at: session.start_at })))
+  .sort((left, right) => Date.parse(left.start_at) - Date.parse(right.start_at))
+  .slice(0, 3);
 record('Employee dashboard fixture restores its upcoming training enrollment after the learning cancellation journey',
   dashboardTrainingEnrollmentAfter.enrolled_count === 1
     && (dashboardTrainingEnrollmentBefore.enrolled_count === 1
-      || (!dashboardTrainingEnrollmentRestore?.error && dashboardTrainingEnrollmentRestore?.data?.status === 'enrolled')),
+      || (!dashboardTrainingEnrollmentRestore?.error && dashboardTrainingEnrollmentRestore?.data?.status === 'enrolled'))
+    && !dashboardTrainingContext.error && dashboardTrainingContext.data?.tenant_id === ids.tenantA
+    && dashboardExpectedUpcomingTraining.some(session => session.id === learningIds.directSession),
   JSON.stringify({ before: dashboardTrainingEnrollmentBefore, restored: dashboardTrainingEnrollmentRestore?.error?.code || dashboardTrainingEnrollmentRestore?.data?.status || null,
-    after: dashboardTrainingEnrollmentAfter }));
+    after: dashboardTrainingEnrollmentAfter, contextError: dashboardTrainingContext.error?.code || null,
+    expectedUpcoming: dashboardExpectedUpcomingTraining }));
 const browserTimesheetRows = queryAdmin(`SELECT COALESCE(jsonb_agg(DISTINCT t.id::text),'[]'::jsonb) FROM public.timesheets t
   JOIN public.timesheet_entries e ON e.timesheet_id=t.id
   WHERE t.tenant_id='${ids.tenantA}'::uuid AND t.employee_id='55555555-5555-4555-8555-555555555555'::uuid
@@ -6779,6 +6793,7 @@ try {
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
       HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE: 'QA A Direct Learning',
+      HRIS_LOCAL_UPCOMING_TRAINING_EXPECTED: JSON.stringify(dashboardExpectedUpcomingTraining),
       HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID: '55555555-5555-4555-8555-555555555555',
       HRIS_LOCAL_DASHBOARD_TODAY_STATUS: displayAttendanceValue(dashboardTodayAttendance.status),
       HRIS_LOCAL_DASHBOARD_TODAY_WORK_MODE: displayAttendanceValue(dashboardTodayAttendance.work_mode),

@@ -11,10 +11,6 @@ const fields = [
   ['emergency_contact_name', 'Emergency contact name', 'text'],
   ['emergency_contact_phone', 'Emergency contact phone', 'tel'],
   ['emergency_contact_relation', 'Emergency contact relation', 'text'],
-  ['father_name', 'Father name', 'text'], ['mother_name', 'Mother name', 'text'],
-  ['birthplace', 'Birthplace', 'text'], ['blood_group', 'Blood group', 'text'],
-  ['religion', 'Religion', 'text'], ['nid_number', 'National ID', 'text'],
-  ['passport_number', 'Passport number', 'text'], ['etin_number', 'Tax identification number', 'text'],
 ] as const;
 type HistoryRow = { id: string; field_key: string; reason: string; status: 'pending' | 'approved' | 'rejected'; submitted_at: string; review_note: string | null };
 type ReviewRow = { id: string; employee_number: string | null; full_name: string; field_key: string; requested_value: string; reason: string; submitted_at: string };

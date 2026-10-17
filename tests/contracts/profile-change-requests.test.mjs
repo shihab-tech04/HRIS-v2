@@ -8,6 +8,7 @@ const app = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url),
 const ui = readFileSync(new URL('../../src/live/ProfileChangeRequests.tsx', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261016141000_employee_profile_change_requests.sql', import.meta.url), 'utf8');
 const tenantMigration = readFileSync(new URL('../../supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql', import.meta.url), 'utf8');
+const schemaCorrection = readFileSync(new URL('../../supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-profile-change-browser.mjs', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
@@ -46,6 +47,7 @@ test('review UI and navigation require active-tenant self_service.manage permiss
 test('profile request migration and synthetic Auth/RLS plus browser journeys run in disposable acceptance', () => {
   assert.match(runner, /20261016141000_employee_profile_change_requests\.sql/);
   assert.match(runner, /20261017100000_employee_profile_change_request_tenant_scope\.sql/);
+  assert.match(runner, /20261017130000_employee_profile_change_schema_contract\.sql/);
   assert.match(runner, /E02-03 employee requests a protected field correction/);
   assert.match(runner, /E02-17 approved profile changes update only the requested field/);
   assert.match(runner, /run-profile-change-browser\.mjs/);
@@ -54,6 +56,18 @@ test('profile request migration and synthetic Auth/RLS plus browser journeys run
   assert.match(browser, /1280/);
   assert.match(browser, /Switch language to Bengali/);
   assert.match(browser, /Synthetic transient reviewer queue outage/);
+});
+
+test('profile request fields match columns in the existing employee schema', () => {
+  const employeeTable = fixture.match(/CREATE TABLE public\.employees \(([\s\S]*?)\n\);/)?.[1] || '';
+  const employeeColumns = new Set([...employeeTable.matchAll(/^\s{2}([a-z_][a-z0-9_]*)\s+/gm)].map(match => match[1]));
+  const fieldList = ui.match(/const fields = \[([\s\S]*?)\] as const;/)?.[1] || '';
+  const requestedFields = [...fieldList.matchAll(/\['([a-z_][a-z0-9_]*)',/g)].map(match => match[1]);
+  assert.ok(requestedFields.length > 0, 'the UI must expose a schema-backed list of protected profile fields');
+  for (const field of requestedFields) assert.ok(employeeColumns.has(field), `${field} is not an employees column`);
+  for (const field of requestedFields) assert.match(schemaCorrection, new RegExp(`'${field}'`));
+  assert.match(schemaCorrection, /ADD CONSTRAINT employee_profile_change_requests_field_key_check CHECK/);
+  assert.doesNotMatch(schemaCorrection, /father_name|mother_name|birthplace|blood_group|nid_number|passport_number|etin_number/);
 });
 
 test('synthetic employee identities are active tenant members without management permissions', () => {

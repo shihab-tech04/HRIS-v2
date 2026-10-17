@@ -54,6 +54,8 @@ test('Employee Dashboard work supports recovery, existing route access, responsi
   assert.match(runner, /Employee dashboard fixture restores its upcoming training enrollment after the learning cancellation journey/);
   assert.match(runner, /employeeA\.client\.rpc\('hris_employee_enroll_learning',[\s\S]*?p_session_id: learningIds\.directSession/,
     'the dashboard fixture must restore its own enrollment after the preceding learning journey cancels it');
+  assert.match(runner, /HRIS_LOCAL_UPCOMING_TRAINING_EXPECTED: JSON\.stringify\(dashboardExpectedUpcomingTraining\)/);
+  assert.match(browser, /active-tenant enrolled session set/);
   assert.match(browser, /Open My Projects/);
   assert.match(browser, /View my goals/);
   assert.match(browser, /375px|setViewportSize/);

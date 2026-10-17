@@ -12,6 +12,7 @@ const required = [
   'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
   'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
+  'HRIS_LOCAL_UPCOMING_TRAINING_EXPECTED',
   'HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID', 'HRIS_LOCAL_DASHBOARD_TASK_TITLE', 'HRIS_LOCAL_DASHBOARD_GOAL_TITLE',
   'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID', 'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE',
   'HRIS_LOCAL_DASHBOARD_TEAM_NAME',
@@ -20,6 +21,11 @@ const required = [
   'HRIS_LOCAL_DASHBOARD_LEAVE_AVAILABLE_DAYS',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
+const expectedUpcomingTraining = JSON.parse(process.env.HRIS_LOCAL_UPCOMING_TRAINING_EXPECTED);
+if (!Array.isArray(expectedUpcomingTraining) || expectedUpcomingTraining.some(session =>
+  typeof session?.id !== 'string' || typeof session?.title !== 'string')) {
+  throw new Error('Expected upcoming-training sessions must come from the authenticated tenant context.');
+}
 
 const repo = process.cwd();
 const port = await new Promise((resolvePort, reject) => {
@@ -409,9 +415,20 @@ try {
   const confirmedTrainingSession = expectedTrainingSession;
   await confirmedTrainingSession.waitFor({ state: 'visible' });
   await confirmedTrainingSession.getByText(process.env.HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE, { exact: true }).waitFor({ state: 'visible' });
-  if (await upcomingTraining.locator('[data-upcoming-training-session]').count() !== 1
-      || await upcomingTraining.getByText('QA A Approval Learning', { exact: true }).count() !== 0) {
-    throw new Error('Upcoming training included a requested session or a session without an enrolled assignment.');
+  if (await upcomingTraining.locator('[data-upcoming-training-session]').count() !== expectedUpcomingTraining.length) {
+    const actualTrainingSessions = await upcomingTraining.locator('[data-upcoming-training-session]').evaluateAll(nodes =>
+      nodes.map(node => ({ id: node.getAttribute('data-upcoming-training-session'), title: node.innerText })));
+    throw new Error(`Upcoming training did not match the authenticated employee's confirmed future assignments: ${JSON.stringify({ expectedUpcomingTraining, actualTrainingSessions })}.`);
+  }
+  const actualTrainingSessionIds = await upcomingTraining.locator('[data-upcoming-training-session]').evaluateAll(nodes =>
+    nodes.map(node => node.getAttribute('data-upcoming-training-session')).sort());
+  const expectedTrainingSessionIds = expectedUpcomingTraining.map(session => session.id).sort();
+  if (JSON.stringify(actualTrainingSessionIds) !== JSON.stringify(expectedTrainingSessionIds)) {
+    throw new Error(`Upcoming training session IDs differed from the active-tenant enrolled session set: ${JSON.stringify({ expectedTrainingSessionIds, actualTrainingSessionIds })}.`);
+  }
+  for (const session of expectedUpcomingTraining) {
+    await page.locator(`[data-upcoming-training-session="${session.id}"]`)
+      .getByText(session.title, { exact: true }).waitFor({ state: 'visible' });
   }
   if (await upcomingTraining.locator('a').count() !== 0) {
     throw new Error('Upcoming training exposed a join URL instead of linking to the established My Learning journey.');
