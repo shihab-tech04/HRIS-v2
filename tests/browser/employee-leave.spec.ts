@@ -243,7 +243,10 @@ test('linked employee can complete the private evidence leave request on mobile'
   await page.getByRole('button', { name: 'Request a correction' }).click();
   const correctionDialog = page.getByRole('dialog', { name: 'Request attendance correction' });
   await expect(correctionDialog).toBeVisible();
-  await expect(page.getByLabel('Attendance date')).toHaveValue('2026-10-12');
+  const correctionDate = page.getByLabel('Attendance date');
+  await expect(correctionDate).toHaveValue('');
+  await correctionDate.selectOption('2026-10-12');
+  await expect(correctionDate).toHaveValue('2026-10-12');
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/employee-attendance-correction-mobile-20261012.png') });
   await page.getByLabel('Requested check-in').fill('09:15');
   await correctionDialog.getByLabel(/Reason/).fill('Synthetic missed punch correction');
