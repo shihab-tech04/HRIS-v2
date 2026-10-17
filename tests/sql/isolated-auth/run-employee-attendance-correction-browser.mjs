@@ -39,7 +39,7 @@ const server = spawn(process.execPath, [resolve(process.cwd(), 'node_modules/vit
 });
 
 let browser;
-let failFirstHistoryRead = true;
+let failFirstHistoryRead = false;
 let failFirstRequest = true;
 const submitted = [];
 async function waitForServer() {
@@ -110,9 +110,13 @@ try {
     return route.abort();
   });
 
+  const dashboardHistory = employee.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_attendance_period')
+    && response.status() === 200);
   await signIn(employee, process.env.HRIS_LOCAL_CORRECTION_EMPLOYEE_EMAIL);
+  await dashboardHistory;
   const historyFailure = employee.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_attendance_period')
     && response.status() === 503);
+  failFirstHistoryRead = true;
   await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
   const dialog = employee.getByRole('dialog', { name: 'Request attendance correction', exact: true });
   await dialog.waitFor({ state: 'visible' });

@@ -9,7 +9,8 @@ const required = [
   'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
   'HRIS_LOCAL_ATTENDANCE_EMPLOYEE_EMAIL', 'HRIS_LOCAL_ATTENDANCE_TENANT_ID',
   'HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH', 'HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH',
-  'HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE', 'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
+  'HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE', 'HRIS_LOCAL_ATTENDANCE_CORRECTION_DATE',
+  'HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH',
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
   'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID',
   'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
@@ -575,6 +576,8 @@ try {
   await correctionButton.click();
   const correctionDialog = page.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
   await correctionDialog.waitFor({ state: 'visible' });
+  await correctionDialog.getByLabel('উপস্থিতির তারিখ', { exact: true })
+    .selectOption(process.env.HRIS_LOCAL_ATTENDANCE_CORRECTION_DATE);
   // The required marker is visually hidden from assistive technology but remains
   // part of Playwright's associated-label text; match the translated label
   // without requiring an exact text-node match.

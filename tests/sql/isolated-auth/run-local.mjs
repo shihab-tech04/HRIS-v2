@@ -6903,6 +6903,7 @@ try {
       HRIS_LOCAL_ATTENDANCE_CURRENT_MONTH: currentAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_MONTH: previousAttendanceMonthStart.slice(0, 7),
       HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE: previousAttendanceMonthDate,
+      HRIS_LOCAL_ATTENDANCE_CORRECTION_DATE: localCurrentDate,
       HRIS_LOCAL_ATTENDANCE_EMPTY_MONTH: emptyAttendanceMonth.slice(0, 7),
       HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID: learningIds.directSession,
       HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_ID: learningIds.directProgram,
