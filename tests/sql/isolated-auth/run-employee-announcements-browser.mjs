@@ -35,12 +35,12 @@ const server = spawn(process.execPath, [resolve(repo, 'node_modules/vite/bin/vit
 });
 
 let browser;
-let failInitialRead = true;
 let armInitialReadFailure = false;
 let injectedInitialReadFailure = false;
 let showEmptyOnNextRead = false;
 const noticeRequests = [];
 const inFlightFullNoticeReads = new Set();
+const fullNoticeRetryCounts = [];
 let fullNoticeReadCount = 0;
 const isNoticeRead = request => request.method() === 'GET'
   && new URL(request.url()).pathname.replace(/\/+$/, '').endsWith('/rest/v1/notices');
@@ -85,6 +85,7 @@ try {
     if (isNoticeRead(request)) noticeRequests.push(url.search);
     if (isFullNoticeRead(request)) {
       fullNoticeReadCount += 1;
+      fullNoticeRetryCounts.push(Number(request.headers()['x-retry-count'] || 0));
       inFlightFullNoticeReads.add(request);
     }
   });
@@ -94,8 +95,7 @@ try {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
       if (isFullNoticeRead(route.request())) {
-        if (failInitialRead && armInitialReadFailure) {
-          failInitialRead = false;
+        if (armInitialReadFailure) {
           injectedInitialReadFailure = true;
           await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
             code: 'XX000', message: 'Synthetic temporary notice read outage.',
@@ -129,15 +129,11 @@ try {
   await departmentNotice.waitFor({ state: 'visible' });
   await waitForFullNoticeReadsToSettle();
   const fullNoticeReadCountBeforeFailure = fullNoticeReadCount;
+  const failureAttemptStart = fullNoticeRetryCounts.length;
   armInitialReadFailure = true;
   const failedReadResponse = page.waitForResponse(response => isFullNoticeRead(response.request()) && response.status() === 503);
   await page.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
-  const outageResponse = await failedReadResponse;
-  await waitForFullNoticeReadsToSettle();
-  if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
-  if (fullNoticeReadCount !== fullNoticeReadCountBeforeFailure + 1 || inFlightFullNoticeReads.size !== 0) {
-    throw new Error(`The refresh outage raced another notice read: before=${fullNoticeReadCountBeforeFailure}, after=${fullNoticeReadCount}, active=${inFlightFullNoticeReads.size}, request=${outageResponse.url()}.`);
-  }
+  await failedReadResponse;
   const outageAlert = page.getByRole('alert').filter({ hasText: /Announcements are unavailable\.|ঘোষণাগুলো এখন পাওয়া যাচ্ছে না/ });
   try {
     await outageAlert.waitFor({ state: 'visible' });
@@ -148,10 +144,17 @@ try {
       loading: Boolean(section.querySelector('[role="status"]')),
       items: section.querySelectorAll('[data-announcement-id]').length,
     }));
-    throw new Error(`The refresh-triggered 503 completed, but the employee UI did not show its retry alert. Full reads=${fullNoticeReadCount}; recent reads=${JSON.stringify(noticeRequests.slice(-6))}; announcement section=${JSON.stringify(sectionState)}; page errors=${JSON.stringify(pageErrors)}.`);
+    throw new Error(`The refresh-triggered 503 retry sequence completed, but the employee UI did not show its retry alert. Full reads=${fullNoticeReadCount}; recent reads=${JSON.stringify(noticeRequests.slice(-6))}; announcement section=${JSON.stringify(sectionState)}; page errors=${JSON.stringify(pageErrors)}.`);
   }
-  if (failInitialRead) throw new Error('The injected initial announcement read outage was not observed.');
+  await waitForFullNoticeReadsToSettle();
   armInitialReadFailure = false;
+  const failureRetryCounts = fullNoticeRetryCounts.slice(failureAttemptStart);
+  if (!injectedInitialReadFailure) throw new Error(`The isolated notices endpoint was not intercepted; observed reads=${noticeRequests.length}.`);
+  if (failureRetryCounts.length < 2 || failureRetryCounts.some((retryCount, index) => retryCount !== index)
+      || fullNoticeReadCount !== fullNoticeReadCountBeforeFailure + failureRetryCounts.length
+      || inFlightFullNoticeReads.size !== 0) {
+    throw new Error(`The bounded PostgREST retry sequence did not settle in order: before=${fullNoticeReadCountBeforeFailure}, after=${fullNoticeReadCount}, retries=${JSON.stringify(failureRetryCounts)}, active=${inFlightFullNoticeReads.size}.`);
+  }
   await page.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
 
   await pinnedNotice.waitFor({ state: 'visible' });

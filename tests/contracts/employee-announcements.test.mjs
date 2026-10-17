@@ -67,8 +67,10 @@ test('E01-08 shows a recent employee-safe dashboard preview and opens the existi
 
 test('announcement outage injection starts only after the employee opens the announcement page', () => {
   assert.match(browser, /let armInitialReadFailure = false/);
-  assert.match(browser, /if \(failInitialRead && armInitialReadFailure\)/);
+  assert.match(browser, /fullNoticeRetryCounts\.push\(Number\(request\.headers\(\)\['x-retry-count'\] \|\| 0\)\)/);
+  assert.match(browser, /if \(armInitialReadFailure\) \{[\s\S]*?status: 503/);
   assert.match(browser, /async function waitForFullNoticeReadsToSettle\(\)[\s\S]*?await pinnedNotice\.waitFor\(\{ state: 'visible' \}\)[\s\S]*?await waitForFullNoticeReadsToSettle\(\)[\s\S]*?const fullNoticeReadCountBeforeFailure = fullNoticeReadCount[\s\S]*?armInitialReadFailure = true/);
-  assert.match(browser, /fullNoticeReadCount !== fullNoticeReadCountBeforeFailure \+ 1/);
-  assert.match(browser, /refresh-triggered 503 completed, but the employee UI did not show its retry alert/);
+  assert.match(browser, /failureRetryCounts\.length < 2/);
+  assert.match(browser, /fullNoticeReadCount !== fullNoticeReadCountBeforeFailure \+ failureRetryCounts\.length/);
+  assert.match(browser, /refresh-triggered 503 retry sequence completed, but the employee UI did not show its retry alert/);
 });
