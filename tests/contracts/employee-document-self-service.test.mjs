@@ -24,6 +24,16 @@ test('recovered E03 requirements remain byte-verified and unchanged in source', 
   assert.deepEqual(stories.map(story => story.story_id), [
     'E03-01', 'E03-02', 'E03-03', 'E03-04', 'E03-05', 'E03-06', 'E03-07', 'E03-08',
   ]);
+  assert.deepEqual(stories.map(story => story.verbatim_requirement), [
+    'As an employee, I want to view documents stored against my employment record.',
+    'As an employee, I want to upload documents HR allows me to provide.',
+    'As an employee, I want to replace an expired document.',
+    'As an employee, I want to see document verification status.',
+    'As an employee, I want to see document expiry dates.',
+    'As an employee, I want reminders for documents approaching expiry.',
+    'As an employee, I want to download documents I am permitted to access.',
+    'As an employee, I want rejected documents to show the reason so I can correct them.',
+  ]);
 });
 
 test('E03 self-service projection is bound to the authenticated employee and active tenant', () => {
@@ -56,4 +66,5 @@ test('E03 read, download, retry, refresh and responsive bilingual journeys are m
   assert.match(browser, /Employee documents Bengali mobile/);
   assert.match(browser, /Synthetic temporary outage\./);
   assert.match(runner, /20261017010000_hris_employee_document_self_service\.sql/);
+  assert.match(runner, /Employee document self-service browser reads, recovers, downloads, localizes, and stays responsive/);
 });

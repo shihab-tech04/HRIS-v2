@@ -83,4 +83,6 @@ test('assignment notifications flow through the employee-owned inbox without cha
   assert.match(locale, /'Roster update': 'রোস্টার হালনাগাদ'/);
   assert.match(browser, /EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS/);
   assert.match(browser, /directRosterTableRequests\.length/);
+  assert.match(authRunner, /Employees read only their own date-filtered shift roster and assignment-created notification/);
+  assert.match(authRunner, /Unified notification feed merges leave decisions with project, learning, and travel events using keyset paging and tenant ownership/);
 });
