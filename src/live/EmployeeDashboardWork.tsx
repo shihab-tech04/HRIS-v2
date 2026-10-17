@@ -182,7 +182,7 @@ export function EmployeeDashboardWork({ tenantId, employeeId, dashboardDate, loc
     </ul> : !loading && !error ? <p role="status" className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx(locale, 'No assigned tasks or goals are available.')}</p> : null)}
     <div className="mt-3 flex flex-wrap gap-2">
       <button type="button" onClick={onOpenProjects} className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx(locale, 'Open My Projects')}</button>
-      <button type="button" onClick={onOpenPerformance} className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx(locale, 'Open My Performance')}</button>
+      <button type="button" onClick={onOpenPerformance} className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx(locale, 'View my goals')}</button>
     </div>
   </section>;
 }

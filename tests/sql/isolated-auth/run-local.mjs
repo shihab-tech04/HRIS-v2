@@ -6390,6 +6390,8 @@ try {
       HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID: '55555555-5555-4555-8555-555555555555',
       HRIS_LOCAL_DASHBOARD_TASK_TITLE: employeeDashboardTaskTitle,
       HRIS_LOCAL_DASHBOARD_GOAL_TITLE: 'QA A goal',
+      HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID: 'b1111111-1111-4111-8111-111111111111',
+      HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE: 'QA A all notice',
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -6424,6 +6426,8 @@ record('E01-07 assigned tasks, own goals, and overdue work open their existing p
     && employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_WORK_BROWSER_ACCEPTANCE=PASS'),
   JSON.stringify({ taskError: employeeDashboardTask.error?.message,
     browserError: employeeAttendanceBrowserError }));
+record('E01-08 recent HR announcements appear on the employee dashboard and open the RLS-filtered history',
+  employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);
 
 let browserIntegrationOutput = '';
 let browserIntegrationError = '';

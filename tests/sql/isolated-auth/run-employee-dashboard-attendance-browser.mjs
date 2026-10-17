@@ -13,6 +13,7 @@ const required = [
   'HRIS_LOCAL_ROSTER_ASSIGNMENT_ID', 'HRIS_LOCAL_ROSTER_ASSIGNMENT_DATE', 'HRIS_LOCAL_ROSTER_SHIFT_NAME',
   'HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID', 'HRIS_LOCAL_UPCOMING_TRAINING_PROGRAM_TITLE',
   'HRIS_LOCAL_DASHBOARD_EMPLOYEE_ID', 'HRIS_LOCAL_DASHBOARD_TASK_TITLE', 'HRIS_LOCAL_DASHBOARD_GOAL_TITLE',
+  'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID', 'HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
 
@@ -67,12 +68,14 @@ try {
   let failInitialRosterRead = true;
   let failInitialUpcomingTrainingRead = true;
   let failInitialDashboardTaskRead = true;
+  let failDashboardNoticeRead = false;
   const identityCardRequests = [];
   const periodRequests = [];
   const rosterRequests = [];
   const upcomingTrainingRequests = [];
   const dashboardTaskRequests = [];
   const dashboardGoalRequests = [];
+  const dashboardNoticeRequests = [];
   const directRosterTableRequests = [];
   const directAttendanceTableRequests = [];
   page.on('request', request => {
@@ -94,6 +97,10 @@ try {
     }
     if (url.pathname.endsWith('/rest/v1/performance_goals') && request.method() === 'GET') {
       dashboardGoalRequests.push({ tenantId: url.searchParams.get('tenant_id'), employeeId: url.searchParams.get('employee_id') });
+    }
+    if (url.pathname.endsWith('/rest/v1/notices') && request.method() === 'GET') {
+      dashboardNoticeRequests.push({ tenantId: url.searchParams.get('tenant_id'), active: url.searchParams.get('active'),
+        select: url.searchParams.get('select'), limit: url.searchParams.get('limit') });
     }
     if (/\/rest\/v1\/(?:employee_shift_assignments|roster_change_notifications)(?:\?|$)/.test(url.pathname + url.search)) {
       directRosterTableRequests.push(url.pathname);
@@ -135,6 +142,14 @@ try {
         }) });
         return;
       }
+      if (failDashboardNoticeRead && url.pathname.endsWith('/rest/v1/notices')
+          && route.request().method() === 'GET') {
+        failDashboardNoticeRead = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+          code: 'XX000', message: 'Synthetic temporary dashboard announcement outage.',
+        }) });
+        return;
+      }
       if (failInitialPeriodRead && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_attendance_period')
           && route.request().method() === 'POST') {
         failInitialPeriodRead = false;
@@ -167,6 +182,29 @@ try {
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
   await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
+  const announcementPreview = page.locator('section[aria-labelledby="my-announcements-heading"]');
+  await announcementPreview.getByRole('heading', { name: 'Recent HR announcements', exact: true }).waitFor({ state: 'visible' });
+  const dashboardNotice = announcementPreview.locator(`[data-announcement-id="${process.env.HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID}"]`);
+  await dashboardNotice.getByRole('heading', { name: process.env.HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_TITLE, exact: true }).waitFor({ state: 'visible' });
+  if (await announcementPreview.locator('[data-announcement-id]').count() !== 2
+      || !dashboardNoticeRequests.length
+      || dashboardNoticeRequests.some(request => request.tenantId !== `eq.${process.env.HRIS_LOCAL_ATTENDANCE_TENANT_ID}`
+        || request.active !== 'eq.true' || request.select !== 'id,title,category,pinned,published_at' || request.limit !== '3')) {
+    throw new Error(`The compact announcement preview returned an unexpected dataset or query: ${JSON.stringify({ dashboardNoticeRequests, count: await announcementPreview.locator('[data-announcement-id]').count() })}.`);
+  }
+  failDashboardNoticeRead = true;
+  await announcementPreview.getByRole('button', { name: 'Refresh announcements', exact: true }).click();
+  await announcementPreview.getByRole('alert').filter({ hasText: 'Announcements are unavailable.' }).waitFor({ state: 'visible' });
+  await announcementPreview.getByRole('alert').getByRole('button', { name: 'Retry', exact: true }).click();
+  await dashboardNotice.waitFor({ state: 'visible' });
+  await announcementPreview.getByRole('button', { name: 'View all announcements', exact: true }).click();
+  await page.getByRole('heading', { name: 'Announcements', exact: true }).waitFor({ state: 'visible' });
+  await page.locator(`[data-announcement-id="${process.env.HRIS_LOCAL_DASHBOARD_ANNOUNCEMENT_ID}"]`).waitFor({ state: 'visible' });
+  if (await page.locator('[data-announcement-id]').count() !== 2) throw new Error('The dashboard announcement link did not open the full employee-safe announcement list.');
+  if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
+  await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'Recent HR announcements', exact: true }).waitFor({ state: 'visible' });
   const dashboardWork = page.locator('section[aria-labelledby="employee-dashboard-work-heading"]');
   await dashboardWork.getByRole('alert').filter({ hasText: 'Unable to load your assigned work.' }).waitFor({ state: 'visible' });
   if (failInitialDashboardTaskRead) throw new Error('The injected dashboard project-task outage was not observed.');
@@ -191,7 +229,7 @@ try {
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'Personal Dashboard', exact: true }).waitFor({ state: 'visible' });
-  await dashboardWork.getByRole('button', { name: 'Open My Performance', exact: true }).click();
+  await dashboardWork.getByRole('button', { name: 'View my goals', exact: true }).click();
   await page.getByRole('heading', { name: 'My Performance', exact: true }).waitFor({ state: 'visible' });
   if (!(await navigation.isVisible())) await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await navigation.getByRole('button', { name: 'My Overview', exact: true }).click();
@@ -282,6 +320,7 @@ try {
   await employeeRosterCard.waitFor({ state: 'visible' });
   await page.reload();
   await page.getByRole('heading', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'সাম্প্রতিক এইচআর ঘোষণা', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('heading', { name: 'আমার কাজ ও লক্ষ্যসমূহ', exact: true }).waitFor({ state: 'visible' });
   await page.getByText('মেয়াদোত্তীর্ণ', { exact: true }).first().waitFor({ state: 'visible' });
   await page.locator(`[data-upcoming-training-session="${process.env.HRIS_LOCAL_UPCOMING_TRAINING_SESSION_ID}"]`).waitFor({ state: 'visible' });
@@ -446,8 +485,9 @@ try {
   console.log('EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_UPCOMING_TRAINING_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_DASHBOARD_WORK_BROWSER_ACCEPTANCE=PASS');
+  console.log('EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS');
   console.log('EMPLOYEE_ROSTER_NOTIFICATION_BROWSER_ACCEPTANCE=PASS');
-  console.log('Local Auth/Postgres employee dashboard journeys passed: own assigned tasks and goals, overdue status, retry, task/performance navigation, upcoming confirmed training, My Learning navigation, English/Bengali, refresh and routing recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
+  console.log('Local Auth/Postgres employee dashboard journeys passed: audience-filtered recent announcements and full-list navigation, task/goal recovery, upcoming confirmed training, My Learning navigation, English/Bengali, refresh and route recovery, own contact fields, tenant-bound reads, and 375px/1280px layouts.');
 } finally {
   await browser?.close();
   await stopChildProcess(server);

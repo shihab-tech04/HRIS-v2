@@ -41,17 +41,17 @@ test('employee work dashboard uses existing own-project RPC and employee-goal RL
 
 test('Employee Dashboard work supports recovery, existing route access, responsive layout, and EN/BN', () => {
   assert.match(workspace, /<EmployeeDashboardWork tenantId=\{tenantId\} employeeId=\{employeeId\} dashboardDate=\{today\}/);
-  assert.match(workspace, /onOpenProjects=\{\(\) => navigate\('my-projects'\)\} onOpenPerformance=\{\(\) => navigate\('my-performance'\)\}/);
+  assert.match(workspace, /onOpenProjects=\{\(\) => navigate\('my-projects'\)\}\s+onOpenPerformance=\{\(\) => navigate\('my-performance'\)\}/);
   assert.match(component, /role="status"/);
   assert.match(component, /role="alert"/);
   assert.match(component, /Refresh assigned work/);
   assert.match(component, /Retry/);
   assert.match(browser, /Synthetic temporary project task outage\./);
   assert.match(browser, /Open My Projects/);
-  assert.match(browser, /Open My Performance/);
+  assert.match(browser, /View my goals/);
   assert.match(browser, /375px|setViewportSize/);
   assert.match(browser, /1280px|setViewportSize/);
-  for (const phrase of ['My tasks and goals', 'Overdue', 'Goal', 'Task', 'Open My Projects', 'Open My Performance']) {
+  for (const phrase of ['My tasks and goals', 'Overdue', 'Goal', 'Task', 'Open My Projects', 'View my goals']) {
     assert.ok(locale.includes(`'${phrase}':`), `Missing Bengali translation for ${phrase}`);
   }
 });

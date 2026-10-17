@@ -2991,7 +2991,7 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void }) {
+function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
@@ -3309,6 +3309,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           <EmployeeDashboardWork tenantId={tenantId} employeeId={employeeId} dashboardDate={today} locale={locale}
             onOpenProjects={onOpenProjects} onOpenPerformance={onOpenPerformance} />
           <EmployeeUpcomingTraining tenantId={tenantId} locale={locale} onOpen={onOpenLearning} />
+          <MyEmployeeAnnouncements tenantId={tenantId} locale={locale} compact onOpen={onOpenAnnouncements} />
         </aside>
       </div>
 
@@ -3509,7 +3510,8 @@ export function LiveHrisWorkspace({
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
           {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale}
-            onOpenLearning={() => navigate('my-learning')} onOpenProjects={() => navigate('my-projects')} onOpenPerformance={() => navigate('my-performance')} />}
+            onOpenLearning={() => navigate('my-learning')} onOpenProjects={() => navigate('my-projects')}
+            onOpenPerformance={() => navigate('my-performance')} onOpenAnnouncements={() => navigate('my-announcements')} />}
           {page === 'my-projects' && isEmployee && <>
             <MyProjects tenantId={tenantId} locale={locale} />
             <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />

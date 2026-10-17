@@ -35,8 +35,8 @@ test('employee dashboard and inline request journeys have unique Bengali transla
 });
 
 test('Employee Dashboard shares the active locale with date, number, leave, and correction views', () => {
-  assert.match(workspace, /function EmployeeOverview\(\{ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance \}/);
-  assert.match(workspace, /<EmployeeOverview tenantId=\{tenantId\} tenantName=\{tenantName\} userId=\{userId\} locale=\{locale\}[\s\S]*?onOpenLearning=\{\(\) => navigate\('my-learning'\)\}[\s\S]*?onOpenProjects=\{\(\) => navigate\('my-projects'\)\}[\s\S]*?onOpenPerformance=\{\(\) => navigate\('my-performance'\)\} \/>/);
+  assert.match(workspace, /function EmployeeOverview\(\{ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements \}/);
+  assert.match(workspace, /<EmployeeOverview tenantId=\{tenantId\} tenantName=\{tenantName\} userId=\{userId\} locale=\{locale\}[\s\S]*?onOpenLearning=\{\(\) => navigate\('my-learning'\)\}[\s\S]*?onOpenProjects=\{\(\) => navigate\('my-projects'\)\}[\s\S]*?onOpenPerformance=\{\(\) => navigate\('my-performance'\)\}[\s\S]*?onOpenAnnouncements=\{\(\) => navigate\('my-announcements'\)\} \/>/);
   assert.match(workspace, /showHistory=\{false\} locale=\{locale\} \/>/);
   assert.ok(workspace.includes('onRefresh={() => load(false)} locale={locale} />'));
   assert.match(workspace, /toLocaleString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);

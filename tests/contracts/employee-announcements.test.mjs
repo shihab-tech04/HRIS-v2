@@ -12,6 +12,7 @@ const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', i
 const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const authRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../sql/isolated-auth/run-employee-announcements-browser.mjs', import.meta.url), 'utf8');
+const dashboardBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs', import.meta.url), 'utf8');
 
 test('employee announcement requirements resolve to the verified source catalogue', () => {
   assert.equal(createHash('sha256').update(sourceBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
@@ -49,6 +50,19 @@ test('employee announcement UI supports pinned items, attachment links, recovery
   assert.match(locale, /'Announcements': 'ঘোষণা'/);
   assert.match(browser, /journey passed at 375px mobile and 1280px desktop, EN\/BN, retry, refresh, empty, audience and attachment states/);
   assert.match(browser, /page\.reload\(\)/);
+});
+
+test('E01-08 shows a recent employee-safe dashboard preview and opens the existing announcement history', () => {
+  const story = source.stories.find(item => item.story_id === 'E01-08');
+  assert.equal(story?.module_id, 'E01');
+  assert.equal(story?.source_locator.line, 18);
+  assert.equal(story?.verbatim_requirement, 'As an employee, I want to see recent HR announcements.');
+  assert.match(component, /compact\?: boolean/);
+  assert.match(component, /if \(compact\) \{[\s\S]*?\.select\('id,title,category,pinned,published_at'\)[\s\S]*?\.limit\(3\)/);
+  assert.match(component, /\.select\('id,title,category,body,attachment_url,pinned,published_at'\)[\s\S]*?\.limit\(50\)/);
+  assert.match(workspace, /<MyEmployeeAnnouncements tenantId=\{tenantId\} locale=\{locale\} compact onOpen=\{onOpenAnnouncements\}/);
+  assert.match(dashboardBrowser, /EMPLOYEE_DASHBOARD_ANNOUNCEMENTS_BROWSER_ACCEPTANCE=PASS/);
+  assert.match(authRunner, /E01-08 recent HR announcements appear on the employee dashboard/);
 });
 
 test('announcement outage injection starts only after the employee opens the announcement page', () => {
