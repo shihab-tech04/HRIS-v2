@@ -48,6 +48,8 @@ test('profile request migration and synthetic Auth/RLS plus browser journeys run
   assert.match(runner, /20261016141000_employee_profile_change_requests\.sql/);
   assert.match(runner, /20261017100000_employee_profile_change_request_tenant_scope\.sql/);
   assert.match(runner, /20261017130000_employee_profile_change_schema_contract\.sql/);
+  assert.match(runner, /DELETE FROM public\.employee_profile_change_requests[\s\S]*?reviewed_by IN \(\$\{createdIds\}\)/,
+    'disposable teardown must preserve the restrictive reviewer FK while removing only synthetic requests');
   assert.match(runner, /E02-03 employee requests a protected field correction/);
   assert.match(runner, /E02-17 approved profile changes update only the requested field/);
   assert.match(runner, /run-profile-change-browser\.mjs/);

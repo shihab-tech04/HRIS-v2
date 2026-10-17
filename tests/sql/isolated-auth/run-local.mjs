@@ -7290,6 +7290,14 @@ if (failed.length) process.exitCode = 1;
     const deletedBucket = await adminAuth.storage.deleteBucket('employee-documents');
     if (deletedBucket.error) throw deletedBucket.error;
   }
+  // Reviewer attribution is intentionally restrictive so historical audit rows
+  // are not silently detached from their actor. Remove only these synthetic
+  // profile-request fixtures before deleting Auth users from the empty test DB.
+  const createdIds = createdUserIds.map(sqlLiteral).join(',');
+  if (createdIds) {
+    psqlSync(`DELETE FROM public.employee_profile_change_requests
+      WHERE requested_by IN (${createdIds}) OR reviewed_by IN (${createdIds});`);
+  }
   for (const userId of createdUserIds) {
     await deleteTrackedAuthUser({
       userId,
