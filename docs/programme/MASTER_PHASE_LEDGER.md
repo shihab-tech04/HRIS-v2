@@ -1,5 +1,7 @@
 # Synesis HRIS 360° — Master Phase Ledger
 
+> Gate B hosted SQL/API reconciliation: [18 October 2026 read-only status](GATE_B_HOSTED_SQL_PARITY_2026-10-18.md). The 25-check preflight is blocked (0/25), and no hosted migration or release is authorized by that finding.
+
 ## Current evidence pointer — 2026-10-18
 
 The latest source-linked acceptance baseline is `docs/evidence/acceptance-and-story-snapshot-20261017.md`, superseding the October 16 source-unavailable count below. Its aggregate is 82 verified, 13 partial, 13 blocked, and 939 not yet classified out of 1,047. The immutable source is recovered at `docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json`.
