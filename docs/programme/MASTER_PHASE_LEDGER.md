@@ -6,6 +6,8 @@ The latest source-linked acceptance baseline is `docs/evidence/acceptance-and-st
 
 `docs/programme/USER_STORY_ACCEPTANCE_OVERLAY.json` records the twelve individually verified CA14 IDs and their exact Candidate commit/runtime run. Since the 82-story historical aggregate did not preserve its full ID membership, the deduplicated union remains unknown; **do not add twelve to eighty-two**. The overlay has a contract test enforcing that evidence boundary. This is a Phase 00/20 reconciliation checkpoint only; it does not promote production or accept Phase 21.
 
+Run `node scripts/story-evidence-index.mjs` (or append `--json`) for a reproducible 1,047-ID inventory of exact test-source references across Main and the adjacent Candidate checkout. These references identify which stories to inspect next; they are **not** acceptance results and must never be converted into verified counts without runtime and requirement-level evidence.
+
 ## Historical checkpoint — 2026-10-16
 
 **Checkpoint:** 2026-10-16 20:58 Asia/Dhaka. **Overall state:** INCOMPLETE; Phase 21 is not accepted.
