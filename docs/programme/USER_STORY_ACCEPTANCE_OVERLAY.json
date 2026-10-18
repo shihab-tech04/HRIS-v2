@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Source-ID acceptance evidence without altering the immutable requirements catalogue or double-counting prior aggregate acceptance",
+  "canonical_source": {
+    "path": "docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json",
+    "sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "story_count": 1047,
+    "module_count": 153
+  },
+  "legacy_aggregate_checkpoint": {
+    "source": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+    "verified": 82,
+    "partial": 13,
+    "blocked": 13,
+    "broken_within_tested_scope": 0,
+    "not_yet_classified": 939,
+    "verified_story_id_membership": "NOT_RECORDED",
+    "note": "The 82 verified stories were reported as an aggregate. Their complete IDs were not preserved, so no later evidence can safely be added to this numerator yet."
+  },
+  "evidence_sets": [
+    {
+      "id": "candidate-ca14-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "CA14-01",
+        "CA14-02",
+        "CA14-03",
+        "CA14-04",
+        "CA14-05",
+        "CA14-06",
+        "CA14-07",
+        "CA14-08",
+        "CA14-09",
+        "CA14-10",
+        "CA14-11",
+        "CA14-12"
+      ],
+      "repository": "shihab-tech04/HRIS-Candidate-v2",
+      "commit": "e3cb9c178cbfb66eb611c640f885a13581b50f51",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/39025809497",
+      "runtime_test_path": "tests/candidate-application-local-e2e.mjs",
+      "runtime_marker": "CANDIDATE_CA14_STORY_EVIDENCE PASS=12 FAIL=0",
+      "evidence_scope": "isolated synthetic authentication, Postgres persistence, application browser journey, mobile/desktop checks",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    }
+  ],
+  "reconciliation": {
+    "individual_verified_ids_recorded": 12,
+    "legacy_verified_overlap": "UNKNOWN",
+    "deduplicated_verified_total": null,
+    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate."
+  }
+}

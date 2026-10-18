@@ -1,5 +1,13 @@
 # Synesis HRIS 360° — Master Phase Ledger
 
+## Current evidence pointer — 2026-10-18
+
+The latest source-linked acceptance baseline is `docs/evidence/acceptance-and-story-snapshot-20261017.md`, superseding the October 16 source-unavailable count below. Its aggregate is 82 verified, 13 partial, 13 blocked, and 939 not yet classified out of 1,047. The immutable source is recovered at `docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json`.
+
+`docs/programme/USER_STORY_ACCEPTANCE_OVERLAY.json` records the twelve individually verified CA14 IDs and their exact Candidate commit/runtime run. Since the 82-story historical aggregate did not preserve its full ID membership, the deduplicated union remains unknown; **do not add twelve to eighty-two**. The overlay has a contract test enforcing that evidence boundary. This is a Phase 00/20 reconciliation checkpoint only; it does not promote production or accept Phase 21.
+
+## Historical checkpoint — 2026-10-16
+
 **Checkpoint:** 2026-10-16 20:58 Asia/Dhaka. **Overall state:** INCOMPLETE; Phase 21 is not accepted.
 
 This ledger records verified implementation evidence against the user-supplied master directive. The owner reports the canonical source contains 1,047 original stories across 153 modules with SHA-256 `c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520`; stories are not marked accepted until their canonical text is linked to observed acceptance evidence.
