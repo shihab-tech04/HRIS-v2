@@ -4415,7 +4415,6 @@ BEGIN
     RAISE EXCEPTION 'Hosted transition stopped: an authorized platform RPC/helper is absent.';
   END IF;
 
-  WITH
 WITH required_procedures(signature, source) AS (
   VALUES
     ('private.hris_get_my_employee_documents(uuid)', '20261017010000'),
