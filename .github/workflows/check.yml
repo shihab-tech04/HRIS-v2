@@ -39,25 +39,7 @@ jobs:
           console.log('PASS: Supabase recovery endpoint accepted a synthetic non-account request with the production redirect.');
           console.log('Limit: This does not prove real email delivery, callback allow-list behavior, or a credential change.');
           NODE
-      - name: Browser acceptance build (root base)
-        run: npm run build
-      - name: Verify browser-test entry and platform controls
-        run: |
-          set -euo pipefail
-          grep -Fq 'src="/assets/' dist/index.html
-          grep -Fq 'href="/assets/' dist/index.html
-          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
-          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
-          grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
-          grep -R -Fq 'Optional modules' dist/assets
-          echo 'PASS: root-base browser bundle includes tenant module controls.'
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Actual browser responsive/sign-in smoke
-        run: npm run test:e2e
-      - name: Production GitHub Pages bundle
-        env:
-          GITHUB_PAGES: 'true'
+      - name: Production Pages bundle
         run: npm run build
       - name: Verify the built Pages entry and platform controls
         run: |
@@ -69,6 +51,10 @@ jobs:
           grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
           grep -R -Fq 'Optional modules' dist/assets
           echo 'PASS: production Pages bundle includes tenant module controls and its asset base.'
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Actual browser responsive/sign-in smoke (root development server)
+        run: npm run test:e2e
       - name: Upload failing browser evidence
         if: failure()
         uses: actions/upload-artifact@v4
