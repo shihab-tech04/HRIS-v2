@@ -482,7 +482,7 @@ for (const file of [
       'audit', (SELECT jsonb_build_object(
         'count', count(*),
         'fingerprint', md5(coalesce(string_agg(to_jsonb(l)::text, '|' ORDER BY id), ''))
-      ) FROM public.admin_audit_logs)
+      ) FROM public.admin_audit_logs l)
     )::text;`).trim() : null;
   applySql(file);
   if (noticesPolicyMigration) {
@@ -495,7 +495,7 @@ for (const file of [
         'audit', (SELECT jsonb_build_object(
           'count', count(*),
           'fingerprint', md5(coalesce(string_agg(to_jsonb(l)::text, '|' ORDER BY id), ''))
-        ) FROM public.admin_audit_logs)
+        ) FROM public.admin_audit_logs l)
       )::text;`).trim();
     if (identityAuditSnapshotBefore !== identityAuditSnapshotAfter) {
       throw new Error('The notices policy transition changed administrator rows or audit history.');
