@@ -35,9 +35,9 @@ const legacyGuardRetirementSql = readFileSync(
   path.join(root, 'supabase/staging/hosted-legacy-notices/retire-legacy-security-guard.staging.sql'),
   'utf8',
 ).trim();
-const retirementSqlLines = legacyGuardRetirementSql.split('\\n');
+const retirementSqlLines = legacyGuardRetirementSql.split(String.fromCharCode(10));
 while (retirementSqlLines[0]?.trimStart().startsWith('--')) retirementSqlLines.shift();
-const retirementSqlBody = retirementSqlLines.join('\\n').trim();
+const retirementSqlBody = retirementSqlLines.join(String.fromCharCode(10)).trim();
 if (!retirementSqlBody.startsWith('BEGIN;')
     || !retirementSqlBody.endsWith('COMMIT;')) {
   throw new Error('Refusing notices guard rehearsal: staging retirement must remain a single transaction.');
