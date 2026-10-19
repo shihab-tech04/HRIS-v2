@@ -12,6 +12,7 @@ const dockerContext = process.env.HRIS_DOCKER_CONTEXT || 'default';
 const allowedWorkdirs = new Set([
   path.resolve('/tmp/synesis-local-hris-test'),
   path.resolve('/private/tmp/synesis-local-hris-test'),
+  path.resolve('/tmp/synesis-local-hris-parity-test'),
 ]);
 
 if (!allowedWorkdirs.has(workdir)) {

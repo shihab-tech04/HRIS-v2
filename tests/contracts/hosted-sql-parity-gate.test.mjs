@@ -43,10 +43,12 @@ test('all latest migration RPC signatures are covered by the hosted probe', () =
 });
 
 test('disposable Auth/Postgres acceptance executes all 25 Phase 04 parity checks', () => {
-  assert.match(workflow, /Verify Phase 04 SQL\/API parity against disposable source schema/);
-  assert.match(workflow, /node tests\/sql\/hosted-parity\/run-local\.mjs/);
+  assert.match(workflow, /Build Phase 04 source schema on a separate disposable Supabase project/);
+  assert.match(workflow, /supabase db reset --workdir "\$HRIS_PHASE04_SUPABASE_TEST_WORKDIR"/);
+  assert.match(workflow, /HRIS_SUPABASE_TEST_WORKDIR="\$HRIS_PHASE04_SUPABASE_TEST_WORKDIR" node tests\/sql\/hosted-parity\/run-local\.mjs/);
   assert.match(localParityHarness, /tests\/sql\/hosted-parity\/check-read-only\.sql/);
   assert.match(localParityHarness, /rows\.length !== 25/);
   assert.match(localParityHarness, /failures\.length/);
   assert.match(localParityHarness, /synesis-local-hris-test/);
+  assert.match(localParityHarness, /synesis-local-hris-parity-test/);
 });
