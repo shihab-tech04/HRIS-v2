@@ -376,13 +376,15 @@ try {
   const revokedAttempt = await staleClient.rpc('platform_hris_list_tenants');
   requireError(revokedAttempt, '42501', 'Revoked Auth session cannot continue platform tenant administration');
 
+  const moduleAdmin = await signIn(users[0]);
+  check(Boolean(moduleAdmin.session?.access_token), 'Fresh Super Admin session is available for module browser persistence checks');
   await runPhase2aBrowserAcceptance({
     root,
     apiUrl: services.API_URL,
     anonKey: services.ANON_KEY,
     password,
     superAdmin: users[0],
-    moduleClient: superAdmin.client,
+    moduleClient: moduleAdmin.client,
     moduleTenantId: seedTenant.data.id,
     moduleTenantName: seedTenant.data.name,
     ordinary: users[1],
