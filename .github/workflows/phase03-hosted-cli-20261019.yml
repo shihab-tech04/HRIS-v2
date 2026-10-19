@@ -5,7 +5,7 @@ on:
     branches:
       - checkpoint/phase03-hosted-cli-20261019
     paths:
-      - .ops/phase03-hosted-transition/execute-20261019
+      - .ops/phase03-hosted-transition/execute-*
 
 permissions:
   contents: read
