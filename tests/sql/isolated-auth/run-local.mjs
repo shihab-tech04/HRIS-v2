@@ -2,6 +2,7 @@
 // creates real synthetic Auth sessions; psql uses their JWT claims as the
 // authenticated database role so RLS and SECURITY DEFINER paths are exercised.
 // This harness never logs local API keys, access tokens, or synthetic passwords.
+import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
