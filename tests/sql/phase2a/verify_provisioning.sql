@@ -140,5 +140,11 @@ SELECT public.check_phase2a(
   FROM public.tenants WHERE slug='qa-one'),
  'Tenant metadata persists without activating tenancy');
 SELECT public.check_phase2a(
+ (SELECT count(*) FROM public.admin_audit_logs
+  WHERE action='PLATFORM_TENANT_METADATA_CHANGED'
+    AND target_type='tenants'
+    AND details->'fields' @> '["name","timezone","default_locale"]'::jsonb)=1,
+ 'Tenant metadata updates produce server-side audit evidence with changed field names');
+SELECT public.check_phase2a(
  (SELECT count(*) FROM public.tenants)=2,
  'Rejected provisioning attempts leave no tenants');
