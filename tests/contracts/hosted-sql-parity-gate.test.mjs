@@ -4,6 +4,8 @@ import { test } from 'node:test';
 
 const root = new URL('../../', import.meta.url);
 const query = readFileSync(new URL('tests/sql/hosted-parity/check-read-only.sql', root), 'utf8');
+const workflow = readFileSync(new URL('.github/workflows/disposable-auth-postgres-acceptance.yml', root), 'utf8');
+const localParityHarness = readFileSync(new URL('tests/sql/hosted-parity/run-local.mjs', root), 'utf8');
 const migrationNames = [
   '20261017010000_hris_employee_document_self_service.sql',
   '20261017020000_hris_employee_identity_card.sql',
@@ -38,4 +40,13 @@ test('all latest migration RPC signatures are covered by the hosted probe', () =
   assert.match(query, /public\.has_tenant_permission\(uuid,text\)/);
   assert.match(query, /public\.hris_is_active_tenant_member\(uuid\)/);
   assert.match(query, /legacy tenant-implicit RPC absent/);
+});
+
+test('disposable Auth/Postgres acceptance executes all 25 Phase 04 parity checks', () => {
+  assert.match(workflow, /Verify Phase 04 SQL\/API parity against disposable source schema/);
+  assert.match(workflow, /node tests\/sql\/hosted-parity\/run-local\.mjs/);
+  assert.match(localParityHarness, /tests\/sql\/hosted-parity\/check-read-only\.sql/);
+  assert.match(localParityHarness, /rows\.length !== 25/);
+  assert.match(localParityHarness, /failures\.length/);
+  assert.match(localParityHarness, /synesis-local-hris-test/);
 });

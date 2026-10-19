@@ -64,6 +64,8 @@ jobs:
             exit 1
           fi
           echo "Disposable local Auth, Postgres and Storage are ready; generated keys were not written to logs."
+      - name: Verify Phase 04 SQL/API parity against disposable source schema
+        run: node tests/sql/hosted-parity/run-local.mjs
       - name: TypeScript, contract and production-bundle regressions
         run: npm run check
       - name: Install Chromium for isolated browser acceptance
