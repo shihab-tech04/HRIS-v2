@@ -272,6 +272,7 @@ const emails = [
   'assessment-candidate-a@hris.test',
   'assessment-candidate-b@hris.test',
   'notices-platform-super-admin@hris.test',
+  'notices-unassigned-platform-super-admin@hris.test',
   'notices-global-admin-45@hris.test',
 ];
 
@@ -377,7 +378,8 @@ const recruitmentManagerA = await signIn(emails[16]);
 const assessmentCandidateA = await signIn(emails[17]);
 const assessmentCandidateB = await signIn(emails[18]);
 const noticesPlatformSuperAdmin = await signIn(emails[19]);
-const noticesGlobalAdmin45 = await signIn(emails[20]);
+const noticesUnassignedPlatformSuperAdmin = await signIn(emails[20]);
+const noticesGlobalAdmin45 = await signIn(emails[21]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -703,6 +705,27 @@ record('Tenant Super Admin notice exception requires active membership and stays
     && superAdminNoticeTenants.length === 1
     && superAdminNoticeTenants[0] === ids.tenantA
     && scopedSuperAdminNotices.data.some(row => row.id === 'b1111111-1111-4111-8111-111111111111'));
+
+const unassignedPlatformSuperAdminScope = await noticesUnassignedPlatformSuperAdmin.client.rpc(
+  'hris_notices_super_admin_tenant_member', { p_tenant_id: ids.tenantA },
+);
+assert.ifError(unassignedPlatformSuperAdminScope.error);
+const unassignedPlatformSuperAdminNotices = await noticesUnassignedPlatformSuperAdmin.client
+  .from('notices').select('id,tenant_id').order('id');
+assert.ifError(unassignedPlatformSuperAdminNotices.error);
+const unassignedPlatformSuperAdminFacts = queryAdmin(`SELECT jsonb_build_object(
+  'is_active_super_admin', EXISTS (SELECT 1 FROM public.admin_users a
+    WHERE a.user_id=${sqlLiteral(noticesUnassignedPlatformSuperAdmin.userId)}::uuid
+      AND a.active IS TRUE AND a.is_super_admin IS TRUE),
+  'active_tenant_membership_count', (SELECT count(*) FROM public.tenant_memberships m
+    WHERE m.user_id=${sqlLiteral(noticesUnassignedPlatformSuperAdmin.userId)}::uuid
+      AND lower(m.status)='active')
+)`);
+record('Active platform Super Admin without tenant membership remains denied tenant notices',
+  unassignedPlatformSuperAdminFacts.is_active_super_admin === true
+    && unassignedPlatformSuperAdminFacts.active_tenant_membership_count === 0
+    && unassignedPlatformSuperAdminScope.data === false
+    && unassignedPlatformSuperAdminNotices.data.length === 0);
 
 const globalAdmin45Facts = queryAdmin(`SELECT jsonb_build_object(
   'global_permission_count', (
@@ -7908,8 +7931,15 @@ if (failed.length) process.exitCode = 1;
   // profile-request fixtures before deleting Auth users from the empty test DB.
   const createdIds = createdUserIds.map(sqlLiteral).join(',');
   if (createdIds) {
-    psqlSync(`DELETE FROM public.employee_profile_change_requests
-      WHERE requested_by IN (${createdIds}) OR reviewed_by IN (${createdIds});`);
+    const deleteProfileRequestFixture = `DELETE FROM public.employee_profile_change_requests
+      WHERE requested_by IN (${createdIds}) OR reviewed_by IN (${createdIds})`;
+    psqlSync(`DO $cleanup$
+    BEGIN
+      IF pg_catalog.to_regclass('public.employee_profile_change_requests') IS NOT NULL THEN
+        EXECUTE ${sqlLiteral(deleteProfileRequestFixture)};
+      END IF;
+    END
+    $cleanup$;`);
   }
   for (const userId of createdUserIds) {
     await deleteTrackedAuthUser({

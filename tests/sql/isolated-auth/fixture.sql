@@ -1172,6 +1172,8 @@ INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,true FROM auth.users WHERE email='notices-platform-super-admin@hris.test';
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
+  SELECT id,email,true,true FROM auth.users WHERE email='notices-unassigned-platform-super-admin@hris.test';
+INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,false FROM auth.users WHERE email='notices-global-admin-45@hris.test';
 INSERT INTO public.user_roles(user_id,role_id)
   SELECT id,'qa_global_manager' FROM auth.users
