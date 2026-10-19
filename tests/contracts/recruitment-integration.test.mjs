@@ -44,10 +44,13 @@ test('candidate CVs stay private and are opened through short-lived owner-scoped
   assert.match(pipeline, /target="_blank"\s+rel="noopener noreferrer"/);
 });
 
-test('recruitment and profile-review workspace access are active-admin and Synesis scoped', () => {
+test('recruitment and profile-review workspace access require active tenant membership and stay Synesis scoped', () => {
   assert.match(app, /adminResult\.data\?\.active\s*===\s*true\s*&&\s*\n\s*permissions\.slice\(5,\s*7\)/);
   assert.match(app, /const profileChangeReviewWorkspaceAllowed\s*=\s*adminResult\.data\?\.active\s*===\s*true/);
-  assert.match(app, /\(recruitmentAllowed\s*\|\|\s*profileChangeReviewAllowed\)\s*&&\s*tenants\.some\(t\s*=>\s*t\.id\s*===\s*tenantId\s*&&\s*t\.slug\s*===\s*'synesis-it'\)/);
+  assert.match(app, /const hasActiveSelectedTenantMembership = memberships\.some\(m => m\.tenant_id === tenantId && m\.status\.toLowerCase\(\) === 'active'\)/);
+  assert.match(app, /const canAdminSelectedTenant = adminAllowed && hasActiveSelectedTenantMembership && isLegacySynesisTenant/);
+  assert.match(app, /const canUseSystemWorkspace = hasActiveSelectedTenantMembership && \(canAdminSelectedTenant \|\| \(\(recruitmentAllowed \|\| profileChangeReviewAllowed\) && isLegacySynesisTenant\)\)/);
+  assert.match(app, /const hasLegacyTenantMembership = Boolean\(legacyTenantId && mine\.some\(m => m\.tenant_id === legacyTenantId\)\)/);
   assert.match(app, /eq\('slug','synesis-it'\)/);
   assert.match(app, /view\s*===\s*'admin'\s*&&\s*!canAdminSelectedTenant/);
   assert.match(app, /canUseSystemWorkspace\s*&&\s*<button onClick=\{\(\)\s*=>\s*setView\('system'\)\}/);

@@ -8,6 +8,8 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      VITE_ENABLE_PLATFORM_TENANTS: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,13 +39,21 @@ jobs:
           console.log('PASS: Supabase recovery endpoint accepted a synthetic non-account request with the production redirect.');
           console.log('Limit: This does not prove real email delivery, callback allow-list behavior, or a credential change.');
           NODE
-      - name: Production bundle
+      - name: Production Pages bundle
         run: npm run build
-      - name: Verify the branch-served Pages entry matches the production build
-        run: git diff --exit-code -- index.html assets .nojekyll
+      - name: Verify the built Pages entry and platform controls
+        run: |
+          set -euo pipefail
+          grep -Fq 'src="/HRIS-v2/assets/' dist/index.html
+          grep -Fq 'href="/HRIS-v2/assets/' dist/index.html
+          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
+          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
+          grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
+          grep -R -Fq 'Optional modules' dist/assets
+          echo 'PASS: production Pages bundle includes tenant module controls and its asset base.'
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Actual browser responsive/sign-in smoke
+      - name: Actual browser responsive/sign-in smoke (root development server)
         run: npm run test:e2e
       - name: Upload failing browser evidence
         if: failure()

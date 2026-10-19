@@ -41,6 +41,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
     submitted_at: '2026-10-15T12:00:00Z'
   }];
   const permissionChecks: string[] = [];
+  let activeMembershipReads = 0;
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -137,7 +138,10 @@ test('recruiter reviews an application, signs a private CV link and persists a s
     }
 
     let data: unknown = [];
-    if (endpoint === 'admin_users') data = { active: true, is_super_admin: false };
+    if (endpoint === 'tenant_memberships') {
+      activeMembershipReads += 1;
+      data = [{ tenant_id: tenantId, role: 'hr_admin', status: 'active' }];
+    } else if (endpoint === 'admin_users') data = { active: true, is_super_admin: false };
     else if (endpoint === 'tenants') data = url.searchParams.get('select') === 'id'
       ? { id: tenantId } : [{ id: tenantId, name: 'Synthetic Synesis', slug: 'synesis-it', timezone: 'Asia/Dhaka' }];
     if (request.method() === 'HEAD') {
@@ -159,6 +163,7 @@ test('recruiter reviews an application, signs a private CV link and persists a s
 
   const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
   await expect(moduleNav).toBeVisible();
+  expect(activeMembershipReads).toBeGreaterThan(0);
   await moduleNav.getByRole('button', { name: /Candidate pipeline/ }).click();
   const pipeline = page.getByRole('region', { name: 'Recruiter candidate pipeline' });
   await expect(pipeline.getByText('Synthetic Candidate')).toBeVisible();
