@@ -12,7 +12,7 @@ const jwtPayload = Buffer.from(JSON.stringify({ sub: userId, aud: 'authenticated
   exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-async function interceptAuth(page: import('@playwright/test').Page): Promise<() => Record<string, unknown> | null> {
+async function interceptAuth(page: import('@playwright/test').Page, options: { superAdmin?: boolean; tenantMembership?: boolean } = {}): Promise<() => Record<string, unknown> | null> {
   let pendingProfileChange = true;
   let profileChangeReviewPayload: Record<string, unknown> | null = null;
   await page.route('**/auth/v1/**', async route => {
@@ -35,19 +35,26 @@ async function interceptAuth(page: import('@playwright/test').Page): Promise<() 
     const table = url.pathname.split('/').pop();
     const requested = url.searchParams.get('select') || '';
     let data: unknown = [];
-    if (url.pathname.endsWith('/rpc/admin_list_profile_change_requests')) data = pendingProfileChange ? [{ id: 'pf-1', employee_id: 'emp-1', employee_number: 'TEST-01', full_name: 'Synthetic Test Employee', field_key: 'official_email', requested_value: 'new.employee@example.org', reason: 'Employee contact address changed.', submitted_at: '2026-10-16T12:00:00.000Z' }] : [];
+    if (url.pathname.endsWith('/rpc/platform_hris_is_super_admin')) data = options.superAdmin !== false;
+    else if (url.pathname.endsWith('/rpc/platform_hris_list_tenants')) data = options.superAdmin === false ? [] : [{ id: tenantId, code: 'SYN-01', slug: 'synesis-it', name: 'Synthetic Synesis', is_active: true, timezone: 'Asia/Dhaka', default_locale: 'en', active_admin_count: 1 }];
+    else if (url.pathname.endsWith('/rpc/platform_hris_list_tenant_modules')) data = [
+      { module_key: 'travel', enabled: true, updated_at: null },
+      { module_key: 'expenses', enabled: true, updated_at: null },
+      { module_key: 'learning', enabled: true, updated_at: null },
+    ];
+    else if (url.pathname.endsWith('/rpc/admin_list_profile_change_requests')) data = pendingProfileChange ? [{ id: 'pf-1', employee_id: 'emp-1', employee_number: 'TEST-01', full_name: 'Synthetic Test Employee', field_key: 'official_email', requested_value: 'new.employee@example.org', reason: 'Employee contact address changed.', submitted_at: '2026-10-16T12:00:00.000Z' }] : [];
     else if (url.pathname.endsWith('/rpc/admin_review_profile_change_request')) {
       profileChangeReviewPayload = JSON.parse(request.postData() || '{}');
       pendingProfileChange = false;
       data = { success: true, status: 'approved' };
     }
-    else if (table === 'tenant_memberships') data = [];
+    else if (table === 'tenant_memberships') data = options.tenantMembership === false ? [] : [{ tenant_id: tenantId, role: 'hr_admin', status: 'active' }];
     else if (table === 'employees') {
       data = requested.includes('full_name')
         ? [{ id: 'emp-1', full_name: 'Synthetic Test Employee', employee_number: 'TEST-01', employment_status: 'active' }]
         : [];
     }
-    else if (table === 'admin_users') data = { active: true, is_super_admin: true };
+    else if (table === 'admin_users') data = { active: true, is_super_admin: options.superAdmin !== false };
     else if (table === 'tenants') data = requested === 'id'
       ? { id: tenantId } : [{ id: tenantId, name: 'Synthetic Synesis', slug: 'synesis-it', timezone: 'Asia/Dhaka' }];
     else if (table === 'has_permission') data = true;
@@ -60,6 +67,35 @@ async function interceptAuth(page: import('@playwright/test').Page): Promise<() 
   });
   return () => profileChangeReviewPayload;
 }
+
+test('active Super Admin opens tenant optional module controls without writing', async ({ page }) => {
+  await interceptAuth(page);
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Platform tenants', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Platform tenants', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tenant organizations', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Optional modules', exact: true }).click();
+  await expect(page.getByText('Travel requests', { exact: true })).toBeVisible();
+  await expect(page.getByText('Expense claims', { exact: true })).toBeVisible();
+  await expect(page.getByText('Learning', { exact: true })).toBeVisible();
+  await expect(page.getByText('Enabled', { exact: true })).toHaveCount(3);
+});
+
+test('unassigned global administrator has no tenant or platform module access', async ({ page }) => {
+  await interceptAuth(page, { superAdmin: false, tenantMembership: false });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  await expect(page.getByText('No authorized HRIS organization', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Platform tenants', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Tenant organizations', exact: true })).toHaveCount(0);
+});
 
 test('authorized Super Admin opens real system navigation, not fixture preview', async ({ page }) => {
   const getProfileChangeReviewPayload = await interceptAuth(page);

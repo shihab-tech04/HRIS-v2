@@ -8,6 +8,9 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_PAGES: 'true'
+      VITE_ENABLE_PLATFORM_TENANTS: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,8 +42,16 @@ jobs:
           NODE
       - name: Production bundle
         run: npm run build
-      - name: Verify the branch-served Pages entry matches the production build
-        run: git diff --exit-code -- index.html assets .nojekyll
+      - name: Verify the built Pages entry and platform controls
+        run: |
+          set -euo pipefail
+          grep -Eq 'src="/HRIS-v2/assets/[^"]+\\.js"' dist/index.html
+          grep -Eq 'href="/HRIS-v2/assets/[^"]+\\.css"' dist/index.html
+          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
+          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
+          grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
+          grep -R -Fq 'Optional modules' dist/assets
+          echo 'PASS: production bundle includes tenant module controls and the Pages asset base.'
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Actual browser responsive/sign-in smoke

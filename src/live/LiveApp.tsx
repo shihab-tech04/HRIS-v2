@@ -6,6 +6,9 @@ import { supabase } from '../lib/supabase';
 import { tenantAttendanceDate, tenantAttendanceDateTime, tenantAttendanceTime } from './attendanceDate.mjs';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveSystemWorkspace } from './LiveSystemWorkspace';
+import { PlatformTenantWorkspace } from './PlatformTenantWorkspace';
+import { platformTenantFeatureAvailable } from './platformTenantApi';
+import type { Locale } from './platform-tenant-locale';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
@@ -105,7 +108,7 @@ function profileFieldLabel(key: string) {
   return protectedProfileFields.find(([field]) => field === key)?.[1] || key.replace(/_/g, ' ');
 }
 type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; pendingRequests: DashboardActionRequest[]; pendingRequestErrors: string[]; attendanceToday: AttendanceToday | null; employeeProfile: DashboardProfile | null; payslips: DashboardPayslip[]; payslipsError: boolean };
-type View = 'employee' | 'admin' | 'preview' | 'system';
+type View = 'employee' | 'admin' | 'preview' | 'system' | 'platform';
 const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
 function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
   const schedule = value && typeof value === 'object' ? value as Partial<DashboardSchedule> : {};
@@ -741,12 +744,15 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [recruitmentAllowed, setRecruitmentAllowed] = useState(false);
   const [profileChangeReviewAllowed, setProfileChangeReviewAllowed] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  // Legacy permissions are globally stored, therefore valid for Synesis only.
-  const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
-  const canUseSystemWorkspace = canAdminSelectedTenant || ((recruitmentAllowed || profileChangeReviewAllowed) && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it'));
+  // Legacy permissions are tenant-scoped only after an active membership exists.
+  const hasActiveSelectedTenantMembership = memberships.some(m => m.tenant_id === tenantId && m.status.toLowerCase() === 'active');
+  const isLegacySynesisTenant = tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
+  const canAdminSelectedTenant = adminAllowed && hasActiveSelectedTenantMembership && isLegacySynesisTenant;
+  const canUseSystemWorkspace = hasActiveSelectedTenantMembership && (canAdminSelectedTenant || ((recruitmentAllowed || profileChangeReviewAllowed) && isLegacySynesisTenant));
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
+  const browserLocale: Locale = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('bn') ? 'bn' : 'en';
   const [view, setView] = useState<View>('system');
-  const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) ? 'employee' : view;
+  const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) || (view === 'platform' && (!platformTenantFeatureAvailable || !isSuperAdmin)) ? 'employee' : view;
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -878,10 +884,12 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           : { data: null, error: null };
         if (legacyTenant.error) throw legacyTenant.error;
 
+        const legacyTenantId = legacyTenant.data?.id;
+        const hasLegacyTenantMembership = Boolean(legacyTenantId && mine.some(m => m.tenant_id === legacyTenantId));
         const tenantIds = Array.from(new Set([
           ...mine.map(m => m.tenant_id),
           ...ownedTenantIds,
-          ...(legacyTenant.data?.id ? [legacyTenant.data.id] : []),
+          ...(legacyTenantId && hasLegacyTenantMembership ? [legacyTenantId] : []),
         ]));
         const found = tenantIds.length
           ? await supabase.from('tenants').select('id,name,slug,timezone')
@@ -1078,12 +1086,13 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       {current && <>
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
           {canUseSystemWorkspace && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
+          {platformTenantFeatureAvailable && isSuperAdmin && <button onClick={() => setView('platform')} className={currentView === 'platform' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Platform tenants</button>}
           <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
           {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
           {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
-          {currentView !== 'preview' && <button disabled={loading || membershipLoading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
+          {currentView !== 'preview' && currentView !== 'platform' && <button disabled={loading || membershipLoading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
         </nav>
-        {currentView === 'system' ? <LiveSystemWorkspace tenantId={tenantId} tenantName={current.name} /> : currentView === 'preview' ? <>
+        {currentView === 'platform' ? <PlatformTenantWorkspace locale={browserLocale} /> : currentView === 'system' ? <LiveSystemWorkspace tenantId={tenantId} tenantName={current.name} /> : currentView === 'preview' ? <>
           <section role="status" className="p-4 bg-amber-50 border border-amber-300 rounded-lg mb-4"><h2 className="font-semibold text-amber-900">Design preview — NOT connected to SQL</h2><p className="text-sm text-amber-900 mt-1">All tenants, employees, roles, actions, audit logs, and security tests in the preview are simulated browser-only fixtures. Do not use for real HR administration.</p></section>
           <div className="border rounded-lg overflow-hidden">{preview}</div>
         </> : <>
