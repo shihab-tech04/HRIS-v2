@@ -51,5 +51,5 @@ test('disposable Auth/Postgres acceptance executes all 25 Phase 04 parity checks
   assert.match(localParityHarness, /rows\.length !== 25/);
   assert.match(localParityHarness, /failures\.length/);
   assert.match(localParityHarness, /synesis-local-hris-test/);
-  assert.match(localParityHarness, /synesis-local-hris-parity-test/);
+  assert.doesNotMatch(localParityHarness, /synesis-local-hris-parity-test/);
 });

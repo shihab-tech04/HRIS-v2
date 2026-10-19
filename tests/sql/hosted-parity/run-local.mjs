@@ -1,6 +1,6 @@
-// Run the hosted Phase 04 catalog contract against the repository's disposable
-// Supabase source schema. This harness refuses every workdir except the local
-// acceptance stack used by the no-deployment CI workflow.
+// Run the hosted Phase 04 catalog contract against the isolated Auth/RLS
+// schema after the selected source migrations have been installed. This harness
+// refuses every workdir except the local acceptance stack used by no-deploy CI.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -44,4 +44,4 @@ if (!Array.isArray(rows) || rows.length !== 25 || failures.length) {
   const missing = failures.map((row) => `${row.kind}:${row.object}`).join(', ');
   throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/25): ${missing || 'unexpected contract count'}`);
 }
-console.log(`Phase 04 SQL/API parity contract: ${rows.length}/25 passed on disposable source schema.`);
+console.log(`Phase 04 SQL/API parity contract: ${rows.length}/25 passed on Auth-tested disposable schema.`);
