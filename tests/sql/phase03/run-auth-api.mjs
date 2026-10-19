@@ -90,8 +90,10 @@ export async function runPhase03OptionalModuleAuthAcceptance({ admin, superAdmin
   check(Boolean(receiptInsertDenied.error), 'Disabled expenses rejects a Storage API receipt upload');
   const receiptUpdateDenied = await receiptStorage.upload(receiptPath, payload('replacement receipt'), { upsert: true });
   check(Boolean(receiptUpdateDenied.error), 'Disabled expenses rejects a Storage API receipt upsert');
-  const receiptDeleteDenied = await receiptStorage.remove([receiptPath]);
-  check(Boolean(receiptDeleteDenied.error), 'Disabled expenses rejects a Storage API receipt deletion');
+  const receiptDeleteAttempt = await receiptStorage.remove([receiptPath]);
+  const receiptAfterDelete = await receiptStorage.download(receiptPath);
+  assert.ifError(receiptAfterDelete.error);
+  check(true, 'Disabled expenses prevents a Storage API delete attempt from removing historical receipt evidence');
   check(true, 'Authorized historical receipt remains downloadable after expenses are disabled');
 
   await setModule('learning', false);
@@ -106,10 +108,10 @@ export async function runPhase03OptionalModuleAuthAcceptance({ admin, superAdmin
     superAdmin.id + '/' + tenantId + '/' + enrollment.data.id + '/new-completion.txt', payload('new evidence'),
   );
   check(Boolean(evidenceUploadDenied.error), 'Disabled learning rejects a Storage API evidence upload');
-  const evidenceDeleteDenied = await learningStorage.remove([evidencePath]);
-  check(Boolean(evidenceDeleteDenied.error), 'Disabled learning rejects a Storage API evidence deletion');
+  const evidenceDeleteAttempt = await learningStorage.remove([evidencePath]);
   const historicEvidence = await learningStorage.download(evidencePath);
   assert.ifError(historicEvidence.error);
+  check(true, 'Disabled learning prevents a Storage API delete attempt from removing historical completion evidence');
   check(true, 'Authorized historical learning evidence remains downloadable after learning is disabled');
 
   const unrelated = await unrelatedStorage.upload(superAdmin.id + '/unrelated.txt', payload('unrelated module'));
