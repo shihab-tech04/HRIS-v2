@@ -14,7 +14,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      GITHUB_PAGES: 'true'
       VITE_ENABLE_PLATFORM_TENANTS: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +24,25 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript and static contract checks
         run: npm run lint && npm run test:contracts
+      - name: Browser acceptance build (root base)
+        run: npm run build
+      - name: Verify browser-test entry and platform controls
+        run: |
+          set -euo pipefail
+          grep -Fq 'src="/assets/' dist/index.html
+          grep -Fq 'href="/assets/' dist/index.html
+          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
+          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
+          grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
+          grep -R -Fq 'Optional modules' dist/assets
+          echo 'PASS: root-base browser bundle includes tenant module controls.'
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke gate
+        run: npm run test:e2e
       - name: Build GitHub Pages application
+        env:
+          GITHUB_PAGES: 'true'
         run: npm run build
       - name: Verify the built Pages entry and platform controls
         run: |
@@ -36,11 +53,7 @@ jobs:
           find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
           grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
           grep -R -Fq 'Optional modules' dist/assets
-          echo 'PASS: production bundle includes tenant module controls and the Pages asset base.'
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Browser smoke gate
-        run: npm run test:e2e
+          echo 'PASS: production Pages bundle includes tenant module controls and its asset base.'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
