@@ -67,8 +67,8 @@ test('every individual evidence record maps to a real and uniquely evidenced can
   assert.deepEqual(phase03.story_ids, ['SA01-01', 'SA01-02', 'SA01-03', 'SA01-04', 'SA12-01', 'SA12-02', 'SA12-03']);
   assert.equal(phase03.classification, 'VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY');
   assert.equal(phase03.hosted_cross_system_acceptance, 'NOT_VERIFIED');
-  assert.ok(phase03.workflow_run.endsWith('/actions/runs/39202158704'));
-  assert.ok(phase03.full_suite_workflow_run.endsWith('/actions/runs/39202158588'));
+  assert.ok(phase03.workflow_run.endsWith('/actions/runs/39203699646'));
+  assert.ok(phase03.full_suite_workflow_run.endsWith('/actions/runs/39203699636'));
   assert.match(phase03.commit, /^214ccbcf8d33ca30cd09813107f89162a79003ed$/);
   const phase03Report = readFileSync(new URL(`../../${phase03.evidence_document}`, import.meta.url), 'utf8');
   for (const id of phase03.story_ids) assert.ok(phase03Report.includes(id), `Phase 03 evidence missing ${id}`);

@@ -19,7 +19,7 @@ test('Phase 00 inventories every original story without inflating the legacy acc
   assert.equal(result.phase00_legacy_aggregate_disposition, 'QUARANTINED_FOR_ID_BY_ID_REVALIDATION_IN_PHASE20');
   assert.equal(result.story_total, 1047);
   assert.equal(result.module_total, 153);
-  assert.equal(result.individually_evidenced_in_disposable_journeys, 27);
+  assert.equal(result.individually_evidenced_in_disposable_journeys, 34);
   assert.equal(result.individually_not_yet_evidenced, 1020);
   assert.equal(result.explicitly_blocked_story_count, 13);
   assert.equal(result.explicitly_partial_story_count, 4);
