@@ -27,7 +27,7 @@ jobs:
       TARGET_VERSION: "20261019170600"
       EXPECTED_MIGRATION_BLOB: "5f62ab8e3bd8311306bb6cff0bbd89a918f6cd63"
       SOURCE_MIGRATION: supabase/staging/phase03/20261019_phase03_phase04_hosted_compatibility.staging.sql
-      WORKDIR: ${{ runner.temp }}/synesis-phase03-hosted-transition
+      WORKDIR: /tmp/synesis-phase03-hosted-transition
     steps:
       - name: Check out this checkpoint
         uses: actions/checkout@v4
