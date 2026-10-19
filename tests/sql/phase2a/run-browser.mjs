@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 
-export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, password, superAdmin, ordinary, firstAdmin, secondAdmin, admin, check }) {
+export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, password, superAdmin, moduleClient, moduleTenantId, moduleTenantName, ordinary, firstAdmin, secondAdmin, admin, check }) {
   const port = '48383';
   const origin = `http://127.0.0.1:${port}`;
   const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
@@ -55,6 +55,36 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await heading.waitFor({ state: 'visible', timeout: 15000 });
     return page.locator('article').filter({ has: heading }).first();
   }
+
+  async function moduleRow(card, label) {
+    return card.locator('div.rounded-md.border').filter({ hasText: label }).first();
+  }
+  async function assertModuleState(moduleKey, expected) {
+    const result = await moduleClient.rpc('platform_hris_list_tenant_modules', { p_tenant_id: moduleTenantId });
+    assert.ifError(result.error);
+    const row = result.data.find(item => item.module_key === moduleKey);
+    assert.ok(row, 'Missing module state for ' + moduleKey);
+    assert.equal(row.enabled, expected, 'Unexpected persisted state for ' + moduleKey);
+  }
+  async function confirmModuleToggle(page, card, moduleKey, label, enabled, cancel = false) {
+    const row = await moduleRow(card, label);
+    await row.getByRole('button', { name: enabled ? 'Enable' : 'Disable', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await dialog.waitFor({ state: 'visible' });
+    if (cancel) {
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await assertModuleState(moduleKey, !enabled);
+      await check('Optional module confirmation can be cancelled without changing ' + label);
+      return;
+    }
+    await dialog.getByRole('button', { name: 'Confirm change', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await row.getByText(enabled ? 'Enabled' : 'Disabled · historical records preserved', { exact: true })
+      .waitFor({ state: 'visible', timeout: 15000 });
+    await assertModuleState(moduleKey, enabled);
+    await check('Optional module confirmation persists the ' + label + ' setting');
+  }
   async function openAdministratorControls(card) {
     const details = card.locator('details').filter({ hasText: 'Manage tenant administrator' });
     if (!(await details.evaluate(element => element.open))) await details.locator('summary').click();
@@ -89,6 +119,19 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await desktop.getByRole('button', { name: 'Switch language to English' }).click();
     await desktop.getByRole('heading', { name: 'Platform tenants', exact: true }).waitFor({ state: 'visible' });
     await check('Desktop platform tenant journey switches between English and Bengali');
+
+    const seededModuleCard = await cardFor(desktop, moduleTenantName);
+    await seededModuleCard.getByRole('button', { name: 'Optional modules', exact: true }).click();
+    for (const [moduleKey, label] of [['travel', 'Travel requests'], ['expenses', 'Expense claims'], ['learning', 'Learning']]) {
+      const row = await moduleRow(seededModuleCard, label);
+      await row.getByText('Disabled · historical records preserved', { exact: true }).waitFor({ state: 'visible' });
+      await assertModuleState(moduleKey, false);
+    }
+    await confirmModuleToggle(desktop, seededModuleCard, 'travel', 'Travel requests', true, true);
+    await confirmModuleToggle(desktop, seededModuleCard, 'travel', 'Travel requests', true);
+    await confirmModuleToggle(desktop, seededModuleCard, 'expenses', 'Expense claims', true);
+    await confirmModuleToggle(desktop, seededModuleCard, 'learning', 'Learning', true);
+    await assertNoHorizontalOverflow(desktop, 'Desktop optional-module controls');
     await assertNoHorizontalOverflow(desktop, 'Desktop platform tenant workspace');
     await desktop.getByRole('button', { name: 'Create tenant', exact: true }).click();
     await desktop.getByLabel('Tenant code').fill(`P2A_CANCEL_${stamp.slice(-6)}`);
@@ -221,6 +264,13 @@ export async function runPhase2aBrowserAcceptance({ root, apiUrl, anonKey, passw
     await mobile.getByRole('button', { name: 'Open navigation menu' }).click();
     await mobile.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button', { name: 'Platform tenants', exact: true }).click();
     await mobile.getByRole('heading', { name: 'Platform tenants', exact: true }).waitFor({ state: 'visible' });
+    const mobileModuleCard = await cardFor(mobile, moduleTenantName);
+    await mobileModuleCard.getByRole('button', { name: 'Optional modules', exact: true }).click();
+    const mobileLearningRow = await moduleRow(mobileModuleCard, 'Learning');
+    await mobileLearningRow.getByText('Enabled', { exact: true }).waitFor({ state: 'visible' });
+    await confirmModuleToggle(mobile, mobileModuleCard, 'learning', 'Learning', false);
+    await confirmModuleToggle(mobile, mobileModuleCard, 'learning', 'Learning', true);
+    await assertNoHorizontalOverflow(mobile, 'Mobile optional-module controls');
     const mobileCode = `P2A_MB_${stamp.slice(-8)}`;
     const mobileSlug = `p2a-mobile-${stamp.slice(-10)}`;
     const mobileName = `Phase2A Mobile ${stamp.slice(-6)}`;

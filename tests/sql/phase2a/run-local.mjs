@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { createTrackedAuthUser, signInTrackedAuthUser } from '../isolated-auth/auth-user-fixture.mjs';
 import { runPhase2aBrowserAcceptance } from './run-browser.mjs';
+import { runPhase03OptionalModuleAuthAcceptance } from '../phase03/run-auth-api.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const workdir = path.resolve(process.env.HRIS_PHASE2A_TEST_WORKDIR || '/private/tmp/synesis-hris-phase2a-20261014');
@@ -180,7 +181,7 @@ try {
   check(!directTenantRead.error && directTenantRead.data.length === 0,
     'Direct tenant reads are filtered by RLS for ordinary authenticated users');
 
-  const seedTenant = await admin.from('tenants').select('id').eq('slug', 'synesis-it').single();
+  const seedTenant = await admin.from('tenants').select('id,name').eq('slug', 'synesis-it').single();
   assert.ifError(seedTenant.error);
   const ordinaryBootstrap = await ordinary.client.from('tenant_memberships').insert({
     tenant_id: seedTenant.data.id, user_id: ordinary.id, role: 'hr_admin', status: 'active',
@@ -190,6 +191,13 @@ try {
     tenant_id: seedTenant.data.id, user_id: superAdmin.id, role: 'hr_admin', status: 'active',
   });
   check(!superBootstrap.error, 'The authorized platform super-admin retains the guarded first-admin flow');
+
+  psql(readFileSync(path.join(root, 'tests/sql/phase03/auth_module_fixture.sql'), 'utf8'));
+  psql(readFileSync(path.join(root, 'supabase/staging/phase03/tenant_optional_modules.staging.sql'), 'utf8'));
+  psql("NOTIFY pgrst, 'reload schema';");
+  await runPhase03OptionalModuleAuthAcceptance({
+    admin, superAdmin, ordinary, tenantId: seedTenant.data.id, check,
+  });
 
   const listedBefore = await superAdmin.client.rpc('platform_hris_list_tenants');
   check(!listedBefore.error && listedBefore.data.length === 1 && listedBefore.data[0].slug === 'synesis-it',
@@ -371,6 +379,9 @@ try {
     anonKey: services.ANON_KEY,
     password,
     superAdmin: users[0],
+    moduleClient: superAdmin.client,
+    moduleTenantId: seedTenant.data.id,
+    moduleTenantName: seedTenant.data.name,
     ordinary: users[1],
     firstAdmin: users[2],
     secondAdmin,

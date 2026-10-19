@@ -67,3 +67,34 @@ test('staging-only tenant UI loads persisted values and confirms changes', () =>
   assert.match(ui,/confirmModuleChange/);
   assert.match(ui,/Historical records remain/);
 });
+
+const authFixture = readFileSync('tests/sql/phase03/auth_module_fixture.sql','utf8');
+const authRunner = readFileSync('tests/sql/phase03/run-auth-api.mjs','utf8');
+const authSetup = readFileSync('tests/sql/phase2a/run-local.mjs','utf8');
+const browser = readFileSync('tests/sql/phase2a/run-browser.mjs','utf8');
+
+test('real Auth, PostgREST and Storage API cover optional-module controls', () => {
+  assert.match(authFixture,/CREATE SCHEMA IF NOT EXISTS private/);
+  assert.match(authSetup,/runPhase03OptionalModuleAuthAcceptance/);
+  assert.match(authSetup,/tenant_optional_modules\.staging\.sql/);
+  for (const check of [
+    'platform_hris_list_tenant_modules',
+    'platform_hris_set_tenant_module',
+    'tenant_module_settings',
+    'travelInsertDenied',
+    'travelUpdateDenied',
+    'travelDeleteDenied',
+    'receiptInsertDenied',
+    'receiptUpdateDenied',
+    'receiptDeleteDenied',
+    'evidenceUploadDenied',
+    'historical receipt remains downloadable',
+    'historical learning evidence remains downloadable',
+    'unrelated Storage bucket',
+  ]) assert.ok(authRunner.includes(check), 'Missing real Auth/API check: ' + check);
+  assert.match(authRunner,/superAdmin\.client\.storage\.from/);
+  assert.match(authRunner,/ordinary\.client\.rpc/);
+  assert.match(browser,/Confirm change/);
+  assert.match(browser,/Optional module confirmation can be cancelled/);
+  assert.match(browser,/Mobile optional-module controls/);
+});

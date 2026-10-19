@@ -1,5 +1,9 @@
 -- Synthetic disposable Supabase Auth/Storage fixture for Phase 03 optional modules.
 -- This file must only run in the dedicated local Phase 2A/3 acceptance project.
+CREATE SCHEMA IF NOT EXISTS private;
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon;
+GRANT USAGE ON SCHEMA private TO authenticated;
+
 DO $setup$
 DECLARE v_table text;
 BEGIN
