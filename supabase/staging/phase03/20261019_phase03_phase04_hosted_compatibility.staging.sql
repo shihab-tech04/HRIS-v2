@@ -38,10 +38,18 @@ BEGIN
           WHERE a.active IS TRUE AND a.is_super_admin IS TRUE
             AND lower(m.status)='active'
           GROUP BY a.user_id HAVING count(*) <> 1)
-      OR EXISTS (SELECT 1 FROM public.tenant_memberships m
-          JOIN public.admin_users a ON a.user_id=m.user_id
+      OR EXISTS (
+          SELECT 1
+          FROM public.admin_users a
+          JOIN public.tenant_memberships m ON m.user_id=a.user_id
+          JOIN public.user_roles ur ON ur.user_id=a.user_id
           WHERE a.active IS TRUE AND a.is_super_admin IS FALSE
-            AND lower(m.status)='active')
+            AND lower(m.status)='active'
+            AND (
+              ur.role_id='hris_system_admin'
+              OR (SELECT count(*) FROM public.role_permissions rp WHERE rp.role_id=ur.role_id)=45
+            )
+        )
       OR (SELECT count(*) FROM public.roles WHERE id='hr_admin' AND active IS TRUE) <> 1
       OR (SELECT count(*) FROM public.role_permissions WHERE role_id='hr_admin') <> 1
       OR NOT EXISTS (SELECT 1 FROM public.role_permissions
@@ -4382,9 +4390,19 @@ BEGIN
     RAISE EXCEPTION 'Hosted transition stopped: module defaults were unexpectedly seeded.';
   END IF;
 
-  IF EXISTS(SELECT 1 FROM public.admin_users a JOIN public.tenant_memberships m ON m.user_id=a.user_id
-       WHERE a.active IS TRUE AND a.is_super_admin IS FALSE AND lower(m.status)='active') THEN
-    RAISE EXCEPTION 'Hosted transition stopped: an unassigned administrator acquired a tenant membership.';
+  IF EXISTS(
+    SELECT 1
+    FROM public.admin_users a
+    JOIN public.tenant_memberships m ON m.user_id=a.user_id
+    JOIN public.user_roles ur ON ur.user_id=a.user_id
+    WHERE a.active IS TRUE AND a.is_super_admin IS FALSE
+      AND lower(m.status)='active'
+      AND (
+        ur.role_id='hris_system_admin'
+        OR (SELECT count(*) FROM public.role_permissions rp WHERE rp.role_id=ur.role_id)=45
+      )
+  ) THEN
+    RAISE EXCEPTION 'Hosted transition stopped: the unassigned 45-permission global administrator acquired a tenant membership.';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_policies p
