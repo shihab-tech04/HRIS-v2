@@ -45,9 +45,8 @@ ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 CREATE POLICY synthetic_storage_permissive ON storage.objects FOR ALL TO authenticated
  USING (true) WITH CHECK (true);
 INSERT INTO public.tenants(code,slug,name) VALUES('B','second-tenant','Second tenant');
-INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
-SELECT id,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','hr_admin','active'
-FROM public.tenants;
+-- The platform Super Admin starts unassigned. The assertions grant a synthetic
+-- tenant membership only after proving platform controls do not imply tenant reads.
 INSERT INTO public.travel_requests(tenant_id,note)
 SELECT id,'historical travel' FROM public.tenants;
 INSERT INTO public.expense_claims(tenant_id,note)

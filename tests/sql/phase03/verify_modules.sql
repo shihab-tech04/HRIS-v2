@@ -4,6 +4,26 @@
 SELECT pg_catalog.set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
 SELECT pg_catalog.set_config('request.test.session_active','yes',false);
 SET ROLE authenticated;
+DO $unassigned$
+DECLARE v_first uuid;
+BEGIN
+ SELECT id INTO v_first FROM public.tenants WHERE slug='synesis-it';
+ IF NOT public.platform_hris_is_super_admin() THEN
+  RAISE EXCEPTION 'Unassigned platform Super Admin lost platform access';
+ END IF;
+ IF (SELECT count(*) FROM public.platform_hris_list_tenant_modules(v_first)) <> 3 THEN
+  RAISE EXCEPTION 'Unassigned platform Super Admin cannot read platform module controls';
+ END IF;
+ IF (SELECT count(*) FROM public.travel_requests) <> 0 THEN
+  RAISE EXCEPTION 'Unassigned platform Super Admin gained tenant-row access';
+ END IF;
+END;
+$unassigned$;
+RESET ROLE;
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+SELECT id,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','hr_admin','active'
+FROM public.tenants;
+SET ROLE authenticated;
 DO $assert$
 DECLARE v_first uuid;v_second uuid;v_enabled boolean;v_affected bigint;
 BEGIN
