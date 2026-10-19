@@ -42,12 +42,100 @@
       "runtime_marker": "CANDIDATE_CA14_STORY_EVIDENCE PASS=12 FAIL=0",
       "evidence_scope": "isolated synthetic authentication, Postgres persistence, application browser journey, mobile/desktop checks",
       "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e03-documents-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": ["E03-01", "E03-04", "E03-05", "E03-07", "E03-08"],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "426527fd45a983e6958a0ca5ef063305d69bd48a",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39018685182",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/employee-document-self-service-E03-20261017.md",
+      "runtime_marker": "EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS",
+      "evidence_scope": "isolated employee document projection, owner-scoped private download, rejected verification note, EN/BN desktop/mobile browser and persisted Auth/RLS acceptance",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e04-digital-id-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": ["E04-01", "E04-02", "E04-03", "E04-04"],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "426527fd45a983e6958a0ca5ef063305d69bd48a",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39018685182",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/employee-identity-card-E04-20261017.md",
+      "runtime_marker": "E04-01_EMPLOYEE_NUMBER_BROWSER_PASS; E04-02_DIGITAL_CARD_RECOVERY_BROWSER_PASS; E04-03_DESIGNATION_DEPARTMENT_BROWSER_PASS; E04-04_ACTIVE_EMPLOYMENT_BROWSER_PASS",
+      "evidence_scope": "isolated employee ID and digital card ownership, official department/designation, active employment status, EN/BN desktop/mobile browser and persisted Auth/RLS acceptance",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e02-profile-change-20261018",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": ["E02-03", "E02-17"],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39147470480",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-profile-change-browser.mjs",
+      "runtime_marker": "E02_PROFILE_CHANGE_BROWSER_ACCEPTANCE=PASS",
+      "evidence_scope": "disposable real Auth/Postgres/RLS employee protected-field request/status, duplicate-denial, manager review, redacted private values, persisted audit, EN/BN 375px/1280px browser and refresh/retry",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e13-shift-change-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": ["E13-04", "E13-05"],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "01b20934a9a63e0f220eb30c9a65d55daf4010b4",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39025622956",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "runtime_marker": "E13-04/05 attendance managers change only the shift with concurrency checks, durable employee history and a private notification",
+      "evidence_scope": "isolated manager shift replacement, expected-value concurrency, append-only employee history, notification and Auth/RLS denials",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e37-directory-privacy-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": ["E37-01", "E37-05"],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "01b20934a9a63e0f220eb30c9a65d55daf4010b4",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39025622956",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "runtime_marker": "E37-01 employee directory search returns only persisted tenant-authorized matches; privacy-limited fields",
+      "evidence_scope": "isolated tenant-scoped directory search, non-PII projection and browser privacy checks",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    }
+  ],
+  "open_story_evidence": [
+    {
+      "id": "snapshot-blocked-approved-contracts-20261017",
+      "classification": "BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT",
+      "story_ids": [
+        "E03-02", "E03-03", "E03-06",
+        "E07-05", "E07-06", "E07-07",
+        "E08-15", "E08-16",
+        "E12-06", "E12-07", "E12-08", "E12-09",
+        "E35-04"
+      ],
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "meaning": "The 13 explicitly named blocked stories are not implemented/verified by the source snapshot; technical and business contract gaps need controlled resolution."
+    },
+    {
+      "id": "snapshot-partial-identified-20261017",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": ["E04-05", "E37-02", "E37-03", "E37-04"],
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "additional_evidence_document": "docs/evidence/employee-identity-card-E04-20261017.md",
+      "meaning": "Explicit source-linked partial cases; the remaining historical partial-ID membership is not known."
     }
   ],
   "reconciliation": {
-    "individual_verified_ids_recorded": 12,
+    "individual_verified_ids_recorded": 27,
     "legacy_verified_overlap": "UNKNOWN",
     "deduplicated_verified_total": null,
-    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate."
+    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 27 individually recorded story IDs are not an addition to the 82 historical aggregate."
   }
 }

@@ -23,9 +23,11 @@ BEGIN
   SELECT u.id INTO v_user_id
   FROM auth.users AS u
   WHERE lower(u.email) = v_email
-    AND u.email_confirmed_at IS NOT NULL;
+    AND u.email_confirmed_at IS NOT NULL
+    AND u.deleted_at IS NULL
+    AND (u.banned_until IS NULL OR u.banned_until <= now());
   IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'A confirmed Auth account was not found for this email.' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'An active, confirmed Auth account was not found for this email.' USING ERRCODE = '22023';
   END IF;
   RETURN v_user_id;
 END

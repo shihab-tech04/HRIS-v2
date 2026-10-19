@@ -33,6 +33,8 @@
 
 ## Open/blocked items
 
+- **19 October additional fail-closed repair (staged only):** provisioning and tenant-admin appointment now reject a missing, inactive or unprivileged `hr_admin` registry role (required `organization.manage`) before inserting a membership. The isolated fixtures explicitly model the registry. This prevents a legacy allow-list membership from being mistaken for an effective tenant permission. It does **not** seed live roles, choose the full administrator permission bundle, authorize a production backfill, or certify Phase 03.
+
 - Tenant activation/deactivation remains **BLOCKED** until comprehensive tenant-scoped authorization/RLS is ready (2C); hiding a menu is not a backend denial.
 - Platform tenant UI remains behind the explicit staging feature flag; the local acceptance does not certify the production release.
 - The current approved contract requires a known existing Auth UUID for administrator assignment. Account search, invitations, and account creation remain outside this phase; identity lookup is an operational dependency.

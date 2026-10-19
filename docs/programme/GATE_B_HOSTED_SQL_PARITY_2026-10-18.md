@@ -43,3 +43,13 @@ Observed result on 18 October: **0 passed / 25 failed**. This means the **17 Oct
 5. **Production promotion:** only with clean migration provenance, hosted security/RLS review, green isolated Auth/Postgres/browser regression, UI parity and explicit release decision. No production SQL or website deployment was performed in this checkpoint.
 
 The [canonical acceptance overlay](USER_STORY_ACCEPTANCE_OVERLAY.json) remains the source for count-qualified evidence: this SQL preflight check alone establishes **zero additional VERIFIED stories**.
+
+## Read-only hosted recheck — 19 October 2026, 10:06 Asia/Dhaka
+
+The same catalog-only Gate B query was rerun against HRIS Supabase `oslgwxaqfbteqtwqvdzs` after the minimal Phase 03 role transition. It still returns **0/25 PASS**. The live history now contains **113** migration records, latest `20261019024848`; this count is descriptive only and is not a proposal to replay or rewrite that history.
+
+The read-only Phase 03 postflight independently confirms one active configurable `hr_admin` with exactly `organization.manage`, one eligible active membership, all 45 legacy `hris_system_admin` grants retained, the other active administrator retained, one migration audit record, and the active-Auth bootstrap helper. These role-transition facts do not satisfy the missing Phase 04 API contract.
+
+Current catalog gaps remain the two membership helpers, roster notification/history prerequisites, required employee and profile-change RPCs, the private roster trigger, and removal of four tenant-implicit profile overloads. The live notice restrictive policy is `hris_notices_legacy_security_guard`; it limits the existing single-tenant topology and leaves the old permissive policy in place behind that guard. It is not the required future multi-tenant `hris_notices_membership_guard`. The profile-change read policy remains pinned to `synesis_tenant_id()`. Phase 03 module installation also fails closed because `travel_request_notifications`, `learning_completion_events`, and `learning_completion_notifications` are absent.
+
+No SQL or user rows were changed during this recheck. The local Main worktree has the current Phase 03/04 source checkpoint, but the tracked remote development branch has not yet received those uncommitted files. No story is newly marked accepted.

@@ -46,7 +46,7 @@ export function buildStoryReferenceIndex(stories, sources) {
   };
 }
 
-function collectTests(root, label) {
+export function collectTests(root, label) {
   const testsRoot = join(root, 'tests');
   if (!existsSync(testsRoot)) return [];
   const result = [];

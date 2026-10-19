@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Building2, Pencil, Plus, RefreshCw, Save, ShieldCheck, X } from 'lucide-react';
+import { Building2, Pencil, Plus, RefreshCw, Save, Settings2, ShieldCheck, X } from 'lucide-react';
 import {
   isPlatformSuperAdmin,
+  listPlatformTenantModules,
   listPlatformTenants,
   platformTenantFeatureAvailable,
   provisionPlatformTenantByEmail,
+  setPlatformTenantModule,
   setPlatformTenantAdministratorByEmail,
   updatePlatformTenantMetadata,
 } from './platformTenantApi';
-import type { PlatformTenant } from './platformTenantApi';
+import type { PlatformTenant, TenantOptionalModule, TenantOptionalModuleKey } from './platformTenantApi';
 import { projectText, type Locale } from './project-locale';
 import { activateModalFocusTrap } from './modal-focus';
 
@@ -26,6 +28,9 @@ const emptyTenantForm = (): TenantForm => ({
   code: '', slug: '', name: '', timezone: 'Asia/Dhaka', defaultLocale: 'en', existingAdminEmail: '',
 });
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const optionalModuleLabels: Record<TenantOptionalModuleKey, string> = {
+  travel: 'Travel requests', expenses: 'Expense claims', learning: 'Learning',
+};
 
 function errorMessage(cause: unknown, tx: (text: string) => string): string {
   const message = cause && typeof cause === 'object' && 'message' in cause
@@ -70,8 +75,16 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
   const [editLocale, setEditLocale] = useState<'en' | 'bn'>('en');
   const [adminEmails, setAdminEmails] = useState<Record<string, string>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<{ tenantId: string; email: string } | null>(null);
+  const [openModulesTenant, setOpenModulesTenant] = useState('');
+  const [modulesLoading, setModulesLoading] = useState('');
+  const [tenantModules, setTenantModules] = useState<Record<string, TenantOptionalModule[]>>({});
+  const [confirmModuleChange, setConfirmModuleChange] = useState<{
+    tenantId: string; tenantName: string; moduleKey: TenantOptionalModuleKey; enabled: boolean;
+  } | null>(null);
   const revokeDialogRef = useRef<HTMLElement>(null);
   const cancelRevokeRef = useRef<HTMLButtonElement>(null);
+  const moduleDialogRef = useRef<HTMLElement>(null);
+  const cancelModuleRef = useRef<HTMLButtonElement>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
 
@@ -82,6 +95,14 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       onEscape: () => { if (!busyRef.current) setConfirmRevoke(null); },
     });
   }, [Boolean(confirmRevoke)]);
+
+  useEffect(() => {
+    if (!confirmModuleChange) return;
+    return activateModalFocusTrap(moduleDialogRef.current, {
+      initialFocus: cancelModuleRef.current,
+      onEscape: () => { if (!busyRef.current) setConfirmModuleChange(null); },
+    });
+  }, [Boolean(confirmModuleChange)]);
 
   async function loadTenants(showLoading = true): Promise<boolean> {
     if (showLoading) setLoading(true);
@@ -183,6 +204,32 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
     });
   }
 
+  async function toggleModulePanel(tenantId: string) {
+    if (openModulesTenant === tenantId) { setOpenModulesTenant(''); return; }
+    setOpenModulesTenant(tenantId);
+    setModulesLoading(tenantId);
+    setError('');
+    try {
+      const modules = await listPlatformTenantModules(tenantId);
+      setTenantModules(previous => ({ ...previous, [tenantId]: modules }));
+    } catch (cause) {
+      setTenantModules(previous => ({ ...previous, [tenantId]: [] }));
+      setError(errorMessage(cause, tx));
+    } finally { setModulesLoading(''); }
+  }
+
+  async function saveModuleChange() {
+    if (!confirmModuleChange) return;
+    const target = confirmModuleChange;
+    await runAction(`module:${target.tenantId}:${target.moduleKey}`,
+      tx('Tenant module configuration updated. Historical records were retained.'), async () => {
+        await setPlatformTenantModule(target.tenantId, target.moduleKey, target.enabled);
+        const refreshed = await listPlatformTenantModules(target.tenantId);
+        setTenantModules(previous => ({ ...previous, [target.tenantId]: refreshed }));
+        setConfirmModuleChange(null);
+      });
+  }
+
   if (!platformTenantFeatureAvailable) return <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
     <h2 className="font-semibold">{tx('Platform tenant administration is not enabled.')}</h2>
     <p className="mt-1">{tx('This staging-only workflow is not available in this deployment.')}</p>
@@ -253,6 +300,28 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
                 <Field id={`tenant-admin-email-${tenant.id}`} type="email" autoComplete="email" label={tx('Administrator email address')} value={adminEmails[tenant.id] || ''} maxLength={320} onChange={value => setAdminEmails(values => ({ ...values, [tenant.id]: value }))} placeholder="admin@example.com" />
                 <div className="flex flex-wrap gap-2"><button type="submit" disabled={Boolean(busy)} className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-medium text-white disabled:opacity-50">{busy === `admin:${tenant.id}` ? tx('Saving…') : tx('Assign administrator')}</button><button type="button" disabled={Boolean(busy)} onClick={() => requestAdministratorRevocation(tenant.id)} className="min-h-10 rounded-lg border border-rose-300 px-3 text-sm font-medium text-rose-800 disabled:opacity-50">{busy === `revoke:${tenant.id}` ? tx('Revoking…') : tx('Revoke by email')}</button></div>
               </form></details>
+
+              <div className="mt-3 rounded-lg border border-slate-200">
+                <button type="button" aria-expanded={openModulesTenant === tenant.id}
+                  onClick={() => void toggleModulePanel(tenant.id)} disabled={Boolean(busy)}
+                  className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[#085587] disabled:opacity-50">
+                  <Settings2 className="h-4 w-4" />{tx('Optional modules')}
+                </button>
+                {openModulesTenant === tenant.id && <div className="space-y-3 border-t border-slate-200 p-3">
+                  <p className="text-xs text-slate-600">{tx('Disabling a module stops new operations and edits for this tenant. Historical records remain available to authorized readers.')}</p>
+                  {modulesLoading === tenant.id ? <p role="status" className="text-sm text-slate-500">{tx('Loading modules…')}</p>
+                    : tenantModules[tenant.id]?.map(module => <div key={module.module_key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50 p-3">
+                      <div><p className="text-sm font-medium text-slate-800">{tx(optionalModuleLabels[module.module_key])}</p>
+                        <p className="text-xs text-slate-600">{module.enabled ? tx('Enabled') : tx('Disabled · historical records preserved')}</p></div>
+                      <button type="button" disabled={Boolean(busy)}
+                        onClick={() => setConfirmModuleChange({ tenantId: tenant.id, tenantName: tenant.name,
+                          moduleKey: module.module_key, enabled: !module.enabled })}
+                        className={`min-h-10 rounded-lg border px-3 text-sm font-medium disabled:opacity-50 ${module.enabled ? 'border-amber-300 text-amber-900' : 'border-emerald-300 text-emerald-900'}`}>
+                        {module.enabled ? tx('Disable') : tx('Enable')}
+                      </button>
+                    </div>)}
+                </div>}
+              </div>
             </article>)}</div>}
         </section>
         <p className="flex items-start gap-2 text-xs text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#085587]" />{tx('All write actions call tenant-provisioning RPCs that verify the active platform Super Admin session and write an audit record. No service-role credential is used in the browser.')}</p>
@@ -262,6 +331,17 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       <section ref={revokeDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="revoke-admin-title" aria-describedby="revoke-admin-description" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
         <h2 id="revoke-admin-title" className="text-lg font-semibold text-slate-900">{tx('Revoke tenant administrator?')}</h2><p id="revoke-admin-description" className="mt-2 break-all text-sm text-slate-600">{tx('This removes active administrator access for')} {confirmRevoke.email}. {tx('The last active tenant administrator cannot be removed.')}</p>
         <div className="mt-5 flex flex-wrap justify-end gap-2"><button ref={cancelRevokeRef} type="button" onClick={() => setConfirmRevoke(null)} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm">{tx('Cancel')}</button><button type="button" onClick={() => void revokeAdministrator()} disabled={Boolean(busy)} className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy.startsWith('revoke:') ? tx('Revoking…') : tx('Confirm revocation')}</button></div>
+      </section>
+    </div>}
+
+    {confirmModuleChange && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setConfirmModuleChange(null); }}>
+      <section ref={moduleDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="module-confirm-title" aria-describedby="module-confirm-description" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+        <h2 id="module-confirm-title" className="text-lg font-semibold text-slate-900">{confirmModuleChange.enabled ? tx('Enable optional module?') : tx('Disable optional module?')}</h2>
+        <p id="module-confirm-description" className="mt-2 break-words text-sm text-slate-600">{tx(optionalModuleLabels[confirmModuleChange.moduleKey])} · {confirmModuleChange.tenantName}. {confirmModuleChange.enabled
+          ? tx('New module operations will be available again, subject to normal access permissions.')
+          : tx('New operations, edits and deletions will be blocked. Existing records remain readable to authorized users.')}</p>
+        <div className="mt-5 flex flex-wrap justify-end gap-2"><button ref={cancelModuleRef} type="button" onClick={() => setConfirmModuleChange(null)} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium">{tx('Cancel')}</button>
+          <button type="button" onClick={() => void saveModuleChange()} disabled={Boolean(busy)} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy.startsWith('module:') ? tx('Saving…') : tx('Confirm change')}</button></div>
       </section>
     </div>}
   </section>;

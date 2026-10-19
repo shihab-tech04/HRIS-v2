@@ -17,6 +17,21 @@ CREATE TABLE public.admin_users (
   is_super_admin boolean NOT NULL DEFAULT false
 );
 
+-- Reproduce the role-registry dependency of the future tenant permission
+-- resolver; the production legacy membership allow-list alone is insufficient.
+CREATE TABLE public.roles (
+  id text PRIMARY KEY,
+  active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE public.role_permissions (
+  role_id text NOT NULL REFERENCES public.roles(id),
+  permission_id text NOT NULL,
+  PRIMARY KEY (role_id,permission_id)
+);
+INSERT INTO public.roles(id,active) VALUES ('hr_admin',true);
+INSERT INTO public.role_permissions(role_id,permission_id)
+VALUES ('hr_admin','organization.manage');
+
 CREATE TABLE public.tenant_memberships (
   tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE RESTRICT,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -88,6 +103,8 @@ INSERT INTO public.tenants(code,slug,name) VALUES ('SY','synesis-it','Synthetic 
 
 ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;

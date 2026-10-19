@@ -26,7 +26,75 @@ BEGIN
  END;
 END $$;
 
+-- An allow-listed membership string is not enough. Without a registered,
+-- enabled tenant-admin role and an organization-management grant, tenant
+-- creation must fail atomically before it writes the tenant or membership.
+RESET ROLE;
+BEGIN;
+UPDATE public.roles SET active=false WHERE id='hr_admin';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
 SELECT set_config('request.test.session_active','yes',false);
+DO $$
+BEGIN
+ BEGIN
+  PERFORM public.platform_hris_provision_tenant('NO_ROLE','no-role','Missing Admin Role',
+   'Asia/Dhaka','en','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  RAISE EXCEPTION 'Tenant created with an inactive administrator role';
+ EXCEPTION WHEN SQLSTATE '55000' THEN NULL;
+ END;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT public.check_phase2a(
+ (SELECT count(*) FROM public.tenants WHERE slug='no-role')=0
+ AND (SELECT active FROM public.roles WHERE id='hr_admin') IS TRUE,
+ 'Missing tenant-admin role blocks provisioning with no retained records');
+
+-- The confirmed-email bit is not enough: a banned/deleted Auth identity must
+-- not receive new tenant authority. Both negative journeys are atomic.
+BEGIN;
+UPDATE auth.users SET banned_until=now()+interval '1 day'
+ WHERE id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+SELECT set_config('request.test.session_active','yes',false);
+DO $$
+BEGIN
+ BEGIN
+  PERFORM public.platform_hris_provision_tenant('BANNED','banned-admin','Banned Admin',
+   'Asia/Dhaka','en','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  RAISE EXCEPTION 'Banned user appointed first tenant administrator';
+ EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+ END;
+END $$;
+RESET ROLE;
+ROLLBACK;
+
+BEGIN;
+UPDATE auth.users SET deleted_at=now()
+ WHERE id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+SELECT set_config('request.test.session_active','yes',false);
+DO $$
+BEGIN
+ BEGIN
+  PERFORM public.platform_hris_provision_tenant('DELETED','deleted-admin','Deleted Admin',
+   'Asia/Dhaka','en','dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+  RAISE EXCEPTION 'Deleted user appointed first tenant administrator';
+ EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+ END;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT public.check_phase2a(
+ (SELECT count(*) FROM public.tenants WHERE slug IN ('banned-admin','deleted-admin'))=0
+ AND (SELECT count(*) FROM public.tenant_memberships)=1,
+ 'Banned and deleted first-admin accounts are rejected without partial tenant writes');
+
+SELECT set_config('request.test.session_active','yes',false);
+SET ROLE authenticated;
 SELECT public.platform_hris_provision_tenant('QA_ONE','qa-one','Synthetic QA One',
  'Asia/Dhaka','en','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 RESET ROLE;

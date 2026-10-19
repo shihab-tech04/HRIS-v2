@@ -1,0 +1,73 @@
+name: Phase 03 isolated tenant-role and module security SQL
+on:
+  workflow_dispatch:
+  push:
+    branches: [development/hris-checkpoints]
+    paths:
+      - 'supabase/staging/phase03/**'
+      - 'supabase/staging/hosted-membership-transition/**'
+      - 'tests/sql/phase03/**'
+      - '.github/workflows/phase03-postgres.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  phase03-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [minimal-role-backfill, optional-modules]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: phase03_synthetic
+          POSTGRES_USER: isolated_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U isolated_runner -d phase03_synthetic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Rehearse minimal live-role transition
+        if: matrix.scenario == 'minimal-role-backfill'
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: isolated_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: phase03_synthetic
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase03/hosted_bootstrap_fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/staging/hosted-membership-transition/20261019_minimal_hr_admin_bootstrap.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase03/verify_bootstrap.sql
+      - name: Rehearse tenant-scoped module enforcement
+        if: matrix.scenario == 'optional-modules'
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: isolated_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: phase03_synthetic
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase2a/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/staging/phase2a/tenant_provisioning.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/staging/phase2a/first_admin_guard.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase03/module_fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/staging/phase03/tenant_optional_modules.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/phase03/verify_modules.sql
+      - name: Report test boundary
+        run: |
+          echo 'Isolated PostgreSQL 17 with synthetic identities and tenant records.'
+          echo 'No hosted HRIS writes, real Auth-browser checks, or production deployment.'

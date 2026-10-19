@@ -4,7 +4,10 @@ CREATE ROLE authenticated NOLOGIN;
 CREATE ROLE anon NOLOGIN;
 CREATE SCHEMA auth;
 CREATE SCHEMA private;
-CREATE TABLE auth.users (id uuid PRIMARY KEY, email_confirmed_at timestamptz);
+CREATE TABLE auth.users (
+ id uuid PRIMARY KEY, email text UNIQUE, email_confirmed_at timestamptz,
+ deleted_at timestamptz, banned_until timestamptz
+);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
  SELECT NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
 $$;
@@ -29,6 +32,16 @@ CREATE TABLE public.admin_users (
  active boolean NOT NULL DEFAULT true,
  is_super_admin boolean NOT NULL DEFAULT false
 );
+CREATE TABLE public.roles (
+ id text PRIMARY KEY,active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE public.role_permissions (
+ role_id text NOT NULL REFERENCES public.roles(id),permission_id text NOT NULL,
+ PRIMARY KEY(role_id,permission_id)
+);
+INSERT INTO public.roles(id,active) VALUES('hr_admin',true);
+INSERT INTO public.role_permissions(role_id,permission_id)
+VALUES('hr_admin','organization.manage');
 CREATE TABLE public.tenant_memberships (
  tenant_id uuid REFERENCES public.tenants(id) ON DELETE RESTRICT,
  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -49,11 +62,11 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  SELECT EXISTS(SELECT 1 FROM public.tenant_memberships
  WHERE tenant_id=p_tenant_id AND status='active')
 $$;
-INSERT INTO auth.users(id,email_confirmed_at) VALUES
- ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now()),
- ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',now()),
- ('cccccccc-cccc-4ccc-8ccc-cccccccccccc',now()),
- ('dddddddd-dddd-4ddd-8ddd-dddddddddddd',now());
+INSERT INTO auth.users(id,email,email_confirmed_at) VALUES
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','platform@synesisit.info',now()),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','first-admin@hris.test',now()),
+ ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','staff@synesisit.info',now()),
+ ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','recruiter@hris.test',now());
 INSERT INTO public.admin_users(user_id,active,is_super_admin) VALUES
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true,true),
  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc',true,false);

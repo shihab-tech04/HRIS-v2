@@ -8,6 +8,12 @@ export type PlatformTenant = {
   is_active: boolean; timezone: string;
   default_locale: 'en' | 'bn' | null; active_admin_count: number;
 };
+export type TenantOptionalModuleKey = 'travel' | 'expenses' | 'learning';
+export type TenantOptionalModule = {
+  module_key: TenantOptionalModuleKey;
+  enabled: boolean;
+  updated_at: string | null;
+};
 export type ProvisionTenantInput = {
   code: string; slug: string; name: string; timezone: string;
   defaultLocale: 'en' | 'bn'; existingAdminUserId: string;
@@ -79,4 +85,28 @@ export async function setPlatformTenantAdministratorByEmail(
     p_tenant_id:tenantId,p_admin_email:adminEmail.trim(),p_enabled:enabled,
   });
   if(error) throw error;
+}
+
+export async function listPlatformTenantModules(tenantId: string): Promise<TenantOptionalModule[]> {
+  requireStagingFeature();
+  const { data, error } = await supabase.rpc('platform_hris_list_tenant_modules', {
+    p_tenant_id: tenantId,
+  });
+  if (error) throw error;
+  if (!Array.isArray(data) || data.length !== 3 || data.some(module =>
+    !['travel', 'expenses', 'learning'].includes(module.module_key) ||
+    typeof module.enabled !== 'boolean')) {
+    throw new Error('Tenant module configuration returned an invalid response.');
+  }
+  return data as TenantOptionalModule[];
+}
+
+export async function setPlatformTenantModule(
+  tenantId: string, moduleKey: TenantOptionalModuleKey, enabled: boolean,
+): Promise<void> {
+  requireStagingFeature();
+  const { error } = await supabase.rpc('platform_hris_set_tenant_module', {
+    p_tenant_id: tenantId, p_module_key: moduleKey, p_enabled: enabled,
+  });
+  if (error) throw error;
 }

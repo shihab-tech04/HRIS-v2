@@ -31,9 +31,46 @@ test('every individual evidence record maps to a real and uniquely evidenced can
   assert.match(ca14Set.runtime_marker, /^CANDIDATE_CA14_STORY_EVIDENCE PASS=12 FAIL=0$/);
   assert.match(ca14Set.commit, /^[a-f0-9]{40}$/);
   assert.match(ca14Set.workflow_run, /\/actions\/runs\/39025809497$/);
+  const e03 = overlay.evidence_sets.find(set => set.id === 'employee-e03-documents-20261017');
+  const e04 = overlay.evidence_sets.find(set => set.id === 'employee-e04-digital-id-20261017');
+  assert.deepEqual(e03.story_ids, ['E03-01', 'E03-04', 'E03-05', 'E03-07', 'E03-08']);
+  assert.deepEqual(e04.story_ids, ['E04-01', 'E04-02', 'E04-03', 'E04-04']);
+  for (const set of [e03, e04]) {
+    assert.match(set.workflow_run, /\/actions\/runs\/39018685182$/);
+    assert.match(set.commit, /^[a-f0-9]{40}$/);
+    assert.equal(set.hosted_cross_system_acceptance, 'NOT_VERIFIED');
+    const report = readFileSync(new URL(`../../${set.evidence_document}`, import.meta.url), 'utf8');
+    for (const id of set.story_ids) assert.ok(report.includes(id), `${set.id} evidence missing ${id}`);
+  }
+  const e04Browser = readFileSync(new URL('../../tests/sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs', import.meta.url), 'utf8');
+  for (const id of e04.story_ids) assert.ok(e04Browser.includes(`${id}_`), `E04 runtime marker missing: ${id}`);
+  for (const [name, expected] of [
+    ['employee-e13-shift-change-20261017', ['E13-04', 'E13-05']],
+    ['employee-e37-directory-privacy-20261017', ['E37-01', 'E37-05']],
+  ]) {
+    const set = overlay.evidence_sets.find(item => item.id === name);
+    assert.deepEqual(set.story_ids, expected);
+    assert.match(set.workflow_run, /\/actions\/runs\/39025622956$/);
+    const report = readFileSync(new URL(`../../${set.evidence_document}`, import.meta.url), 'utf8');
+    for (const id of set.story_ids) assert.ok(report.includes(id), `${name} evidence missing ${id}`);
+  }
+  const e02 = overlay.evidence_sets.find(set => set.id === 'employee-e02-profile-change-20261018');
+  assert.deepEqual(e02.story_ids, ['E02-03', 'E02-17']);
+  assert.match(e02.workflow_run, /\/actions\/runs\/39147470480$/);
+  assert.equal(e02.hosted_cross_system_acceptance, 'NOT_VERIFIED');
+  const e02Runner = readFileSync(new URL('../../tests/sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  const e02Browser = readFileSync(new URL('../../tests/sql/isolated-auth/run-profile-change-browser.mjs', import.meta.url), 'utf8');
+  for (const id of e02.story_ids) assert.ok(e02Runner.includes(`${id} `) || e02Runner.includes(`${id}/`), `Missing ${id} real-Auth runtime record`);
+  assert.ok(e02Browser.includes(e02.runtime_marker), 'Profile-change browser acceptance marker is not present');
+  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 27);
+  const openEvidence = overlay.open_story_evidence.flatMap(set => set.story_ids);
+  assert.equal(new Set(openEvidence).size, openEvidence.length);
+  assert.ok(openEvidence.every(id => sourceIds.has(id) && !evidenceIds.includes(id)), 'No open story is also counted as individually verified.');
+  assert.equal(overlay.open_story_evidence.find(set => set.classification === 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT').story_ids.length, 13);
+  assert.equal(overlay.open_story_evidence.find(set => set.classification === 'PARTIAL_ACCEPTANCE').story_ids.length, 4);
 });
 
-test('historical aggregate is conserved without an unproven CA14 addition', () => {
+test('historical aggregate is conserved without adding any individually evidenced IDs', () => {
   const legacy = overlay.legacy_aggregate_checkpoint;
   assert.equal(legacy.verified + legacy.partial + legacy.blocked + legacy.broken_within_tested_scope + legacy.not_yet_classified, 1047);
   assert.equal(legacy.verified, 82);
