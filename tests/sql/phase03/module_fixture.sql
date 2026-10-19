@@ -62,5 +62,3 @@ SELECT 'expense-receipts','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/' || id::text ||
 INSERT INTO storage.objects(bucket_id,name)
 SELECT 'learning-completion-evidence','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/' || tenant_id::text || '/' || id::text || '/old.pdf'
  FROM public.learning_enrollments;
-SELECT pg_catalog.set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
-SELECT pg_catalog.set_config('request.test.session_active','yes',false);

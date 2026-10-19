@@ -1,4 +1,8 @@
 -- Test the actual platform RPC and tenant-row guards, not UI-only flags.
+-- The fixture and assertion files run in separate psql connections, so establish
+-- the synthetic JWT/session context in this connection before assuming the role.
+SELECT pg_catalog.set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+SELECT pg_catalog.set_config('request.test.session_active','yes',false);
 SET ROLE authenticated;
 DO $assert$
 DECLARE v_first uuid;v_second uuid;v_enabled boolean;v_affected bigint;
