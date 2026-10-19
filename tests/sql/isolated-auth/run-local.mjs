@@ -271,6 +271,8 @@ const emails = [
   'recruitment-manager-a@hris.test',
   'assessment-candidate-a@hris.test',
   'assessment-candidate-b@hris.test',
+  'notices-platform-super-admin@hris.test',
+  'notices-global-admin-45@hris.test',
 ];
 
 // Refuse to touch Auth unless this disposable stack is demonstrably empty.
@@ -374,6 +376,8 @@ const payrollViewerA = await signIn(emails[15]);
 const recruitmentManagerA = await signIn(emails[16]);
 const assessmentCandidateA = await signIn(emails[17]);
 const assessmentCandidateB = await signIn(emails[18]);
+const noticesPlatformSuperAdmin = await signIn(emails[19]);
+const noticesGlobalAdmin45 = await signIn(emails[20]);
 for (const file of [
   path.join(here, 'fixture.sql'),
   path.join(here, 'recruitment-fixture.sql'),
@@ -463,7 +467,39 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql'),
-]) applySql(file);
+]) {
+  const noticesPolicyMigration = file.endsWith(
+    '20261017030000_hris_employee_announcement_audience.sql',
+  );
+  const identityAuditSnapshotBefore = noticesPolicyMigration ? psqlSync(`
+    SELECT jsonb_build_object(
+      'admins', (SELECT jsonb_build_object(
+        'count', count(*),
+        'fingerprint', md5(coalesce(string_agg(to_jsonb(a)::text, '|' ORDER BY user_id), ''))
+      ) FROM public.admin_users a),
+      'audit', (SELECT jsonb_build_object(
+        'count', count(*),
+        'fingerprint', md5(coalesce(string_agg(to_jsonb(l)::text, '|' ORDER BY id), ''))
+      ) FROM public.admin_audit_logs)
+    )::text;`).trim() : null;
+  applySql(file);
+  if (noticesPolicyMigration) {
+    const identityAuditSnapshotAfter = psqlSync(`
+      SELECT jsonb_build_object(
+        'admins', (SELECT jsonb_build_object(
+          'count', count(*),
+          'fingerprint', md5(coalesce(string_agg(to_jsonb(a)::text, '|' ORDER BY user_id), ''))
+        ) FROM public.admin_users a),
+        'audit', (SELECT jsonb_build_object(
+          'count', count(*),
+          'fingerprint', md5(coalesce(string_agg(to_jsonb(l)::text, '|' ORDER BY id), ''))
+        ) FROM public.admin_audit_logs)
+      )::text;`).trim();
+    if (identityAuditSnapshotBefore !== identityAuditSnapshotAfter) {
+      throw new Error('The notices policy transition changed administrator rows or audit history.');
+    }
+  }
+}
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
   WHERE conrelid='public.candidate_application_stage_history'::regclass
@@ -638,6 +674,71 @@ function record(label, ok, note = '') {
   results.push({ label, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${note ? ` — ${note}` : ''}`);
 }
+
+const superAdminTenantPermission = await noticesPlatformSuperAdmin.client.rpc(
+  'has_tenant_permission', { p_tenant_id: ids.tenantA, p_permission_id: 'notices.view' },
+);
+assert.ifError(superAdminTenantPermission.error);
+const superAdminTenantManagePermission = await noticesPlatformSuperAdmin.client.rpc(
+  'has_tenant_permission', { p_tenant_id: ids.tenantA, p_permission_id: 'notices.manage' },
+);
+assert.ifError(superAdminTenantManagePermission.error);
+const scopedSuperAdminCheck = await noticesPlatformSuperAdmin.client.rpc(
+  'hris_notices_super_admin_tenant_member', { p_tenant_id: ids.tenantA },
+);
+assert.ifError(scopedSuperAdminCheck.error);
+const otherTenantSuperAdminCheck = await noticesPlatformSuperAdmin.client.rpc(
+  'hris_notices_super_admin_tenant_member', { p_tenant_id: ids.tenantB },
+);
+assert.ifError(otherTenantSuperAdminCheck.error);
+const scopedSuperAdminNotices = await noticesPlatformSuperAdmin.client.from('notices')
+  .select('id,tenant_id').order('id');
+assert.ifError(scopedSuperAdminNotices.error);
+const superAdminNoticeTenants = [...new Set(scopedSuperAdminNotices.data.map(row => row.tenant_id))];
+record('Tenant Super Admin notice exception requires active membership and stays within that tenant',
+  superAdminTenantPermission.data === false
+    && superAdminTenantManagePermission.data === false
+    && scopedSuperAdminCheck.data === true
+    && otherTenantSuperAdminCheck.data === false
+    && superAdminNoticeTenants.length === 1
+    && superAdminNoticeTenants[0] === ids.tenantA
+    && scopedSuperAdminNotices.data.some(row => row.id === 'b1111111-1111-4111-8111-111111111111'));
+
+const globalAdmin45Facts = queryAdmin(`SELECT jsonb_build_object(
+  'global_permission_count', (
+    SELECT count(DISTINCT rp.permission_id)
+    FROM public.user_roles ur
+    JOIN public.role_permissions rp ON rp.role_id=ur.role_id
+    WHERE ur.user_id=${sqlLiteral(noticesGlobalAdmin45.userId)}
+  ),
+  'active_tenant_membership_count', (
+    SELECT count(*) FROM public.tenant_memberships tm
+    WHERE tm.user_id=${sqlLiteral(noticesGlobalAdmin45.userId)}::uuid
+      AND lower(tm.status)='active'
+  )
+)`);
+const unassignedAdminNotices = await noticesGlobalAdmin45.client.from('notices')
+  .select('id,tenant_id').order('id');
+assert.ifError(unassignedAdminNotices.error);
+record('Unassigned 45-permission global administrator remains denied tenant notices',
+  globalAdmin45Facts.global_permission_count === 45
+    && globalAdmin45Facts.active_tenant_membership_count === 0
+    && unassignedAdminNotices.data.length === 0);
+
+const tenantManagerNotices = await managerA.client.from('notices').select('id,tenant_id').order('id');
+assert.ifError(tenantManagerNotices.error);
+record('Existing tenant notice manager retains authorized reads without cross-tenant rows',
+  tenantManagerNotices.data.length > 0
+    && tenantManagerNotices.data.every(row => row.tenant_id === ids.tenantA));
+
+const anonNoticesClient = createClient(services.API_URL, services.ANON_KEY, authOptions);
+const anonNotices = await anonNoticesClient.from('notices').select('id,tenant_id');
+const anonNoticeHelper = await anonNoticesClient.rpc(
+  'hris_notices_super_admin_tenant_member', { p_tenant_id: ids.tenantA },
+);
+record('Anonymous clients cannot read tenant notices or call the Super Admin scope helper',
+  (Boolean(anonNotices.error) || (anonNotices.data || []).length === 0)
+    && Boolean(anonNoticeHelper.error));
 
 const profileChangeValue = `Verified profile request ${randomUUID()}`;
 const profileChangeSubmit = await employeeA.client.rpc('employee_submit_profile_change_request', {

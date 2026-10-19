@@ -76,6 +76,8 @@ checks AS (
             THEN p.qual LIKE '%hris_profile_change_active_member%'
           WHEN table_name = 'notices'
             THEN p.qual LIKE '%hris_own_employee_for_tenant%'
+              AND p.qual LIKE '%hris_notices_super_admin_tenant_member%'
+              AND p.qual NOT LIKE '%is_active_admin%'
               AND NOT EXISTS (
                 SELECT 1 FROM pg_policies legacy
                 WHERE legacy.schemaname = 'public'

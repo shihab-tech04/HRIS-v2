@@ -54,8 +54,11 @@ BEGIN
       AND p.policyname='hris_notices_membership_guard'
       AND p.permissive='RESTRICTIVE' AND p.cmd='SELECT'
       AND 'authenticated'=ANY(p.roles)
+      AND p.qual LIKE '%hris_notices_super_admin_tenant_member%'
+      AND p.qual NOT LIKE '%is_active_admin%'
+      AND to_regprocedure('public.hris_notices_super_admin_tenant_member(uuid)') IS NOT NULL
   ) THEN
-    RAISE EXCEPTION 'Disposable rehearsal requires the replacement tenant guard.';
+    RAISE EXCEPTION 'Disposable rehearsal requires the membership-scoped Super Admin replacement guard.';
   END IF;
   IF EXISTS (
     SELECT 1 FROM pg_policies p
@@ -87,6 +90,8 @@ BEGIN
     WHERE p.schemaname='public' AND p.tablename='notices'
       AND p.policyname='hris_notices_membership_guard'
       AND p.permissive='RESTRICTIVE' AND p.cmd='SELECT'
+      AND p.qual LIKE '%hris_notices_super_admin_tenant_member%'
+      AND p.qual NOT LIKE '%is_active_admin%'
   ) THEN
     RAISE EXCEPTION 'Notices retirement removed or changed the replacement policy.';
   END IF;
@@ -107,6 +112,33 @@ execFileSync('docker', [
   '-X', '-A', '-t', '-q', '--set=ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres',
 ], { input: retirementRehearsal, encoding: 'utf8' });
 console.log('Legacy notices guard retirement rehearsal passed in a rolled-back disposable transaction.');
+const rollbackStateOutput = execFileSync('docker', [
+  '--context', dockerContext, 'exec', '-i', container, 'psql',
+  '-X', '-A', '-t', '-q', '--set=ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres',
+], {
+  input: `SELECT jsonb_build_object(
+    'replacement_guard', EXISTS (
+      SELECT 1 FROM pg_policies p WHERE p.schemaname='public' AND p.tablename='notices'
+        AND p.policyname='hris_notices_membership_guard'
+        AND p.permissive='RESTRICTIVE' AND p.cmd='SELECT'
+        AND p.qual LIKE '%hris_notices_super_admin_tenant_member%'
+        AND p.qual NOT LIKE '%is_active_admin%'
+    ),
+    'legacy_guard_absent', NOT EXISTS (
+      SELECT 1 FROM pg_policies p WHERE p.schemaname='public' AND p.tablename='notices'
+        AND p.policyname='hris_notices_legacy_security_guard'
+    ),
+    'super_admin_helper', to_regprocedure('public.hris_notices_super_admin_tenant_member(uuid)') IS NOT NULL
+  )::text;`,
+  encoding: 'utf8',
+}).trim();
+const rollbackState = JSON.parse(rollbackStateOutput);
+if (rollbackState.replacement_guard !== true
+    || rollbackState.legacy_guard_absent !== true
+    || rollbackState.super_admin_helper !== true) {
+  throw new Error('Rolled-back notices retirement did not restore the prior safe replacement policy state.');
+}
+
 
 const paritySql = readFileSync(path.join(root, 'tests/sql/hosted-parity/check-read-only.sql'), 'utf8')
   .trim().replace(/;\s*$/, '');

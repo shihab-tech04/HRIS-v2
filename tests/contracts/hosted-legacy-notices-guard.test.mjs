@@ -54,10 +54,31 @@ test('legacy guard retirement requires the tenant replacement and removes only t
   assert.ok(sql.includes("p.cmd = 'SELECT'"));
   assert.ok(sql.includes("p.qual LIKE '%has_tenant_permission%'"));
   assert.ok(sql.includes("p.qual LIKE '%hris_own_employee_for_tenant%'"));
+  assert.ok(sql.includes("p.qual LIKE '%hris_notices_super_admin_tenant_member%'"));
+  assert.ok(sql.includes("p.qual NOT LIKE '%is_active_admin%'"));
+  assert.ok(sql.includes("to_regprocedure('public.hris_notices_super_admin_tenant_member(uuid)') IS NOT NULL"));
   assert.ok(sql.includes('its catalog definition has drifted.'));
   assert.ok(sql.includes('DROP POLICY IF EXISTS hris_notices_legacy_security_guard ON public.notices'));
   assert.equal((sql.match(/DROP POLICY/g) || []).length, 1);
   for (const forbidden of ['DROP TABLE', 'DROP FUNCTION', 'DELETE FROM', 'TRUNCATE', 'GRANT', 'REVOKE']) {
     assert.ok(!sql.toUpperCase().includes(forbidden), `unexpected statement: ${forbidden}`);
   }
+});
+
+test('notices Super Admin access is identity-bound and requires active tenant membership', () => {
+  const sql = readFileSync(
+    new URL('../../supabase/migrations/20261017030000_hris_employee_announcement_audience.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.hris_notices_super_admin_tenant_member\(p_tenant_id uuid\)/);
+  assert.match(sql, /public\.is_live_session\(\)/);
+  assert.match(sql, /au\.is_super_admin IS TRUE/);
+  assert.match(sql, /u\.email_confirmed_at IS NOT NULL/);
+  assert.match(sql, /u\.deleted_at IS NULL/);
+  assert.match(sql, /u\.banned_until IS NULL/);
+  assert.match(sql, /m\.tenant_id = p_tenant_id/);
+  assert.match(sql, /lower\(m\.status\) = 'active'/);
+  assert.match(sql, /CREATE POLICY hris_notices_membership_guard[\s\S]*hris_notices_super_admin_tenant_member/);
+  assert.doesNotMatch(sql, /hris_notices_membership_guard[\s\S]*public\.is_active_admin\(\)/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.hris_notices_super_admin_tenant_member\(uuid\) FROM PUBLIC, anon/);
 });

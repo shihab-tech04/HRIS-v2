@@ -1101,6 +1101,12 @@ INSERT INTO public.permissions(id,module,action) VALUES
   ('learning.view','learning','view'),('learning.manage','learning','manage');
 INSERT INTO public.permissions(id,module,action) VALUES
   ('travel.view','travel','view'),('travel.manage','travel','manage');
+INSERT INTO public.roles(id,name) VALUES
+  ('qa_minimal_hr_admin','Synthetic minimum tenant Super Admin'),
+  ('qa_global_admin_45','Synthetic unassigned global admin with 45 grants');
+INSERT INTO public.permissions(id,module,action)
+SELECT 'qa.global_admin.permission_' || lpad(i::text,2,'0'),'qa_global_admin','permission'
+FROM generate_series(1,43) AS i;
 INSERT INTO public.role_permissions(role_id,permission_id) VALUES
   ('qa_global_manager','leave.manage'),('qa_global_manager','leave.view'),
   ('qa_global_manager','attendance.manage'),('qa_global_manager','attendance.view'),
@@ -1128,6 +1134,13 @@ INSERT INTO public.permissions(id,module,action) VALUES
   ('self_service.view','self_service','view'),('self_service.manage','self_service','manage'),
   ('employees.view','employees','view'),('employees.manage','employees','manage'),
   ('expenses.view','expenses','view'),('expenses.manage','expenses','manage');
+INSERT INTO public.role_permissions(role_id,permission_id) VALUES
+  ('qa_minimal_hr_admin','organization.manage'),
+  ('qa_global_admin_45','notices.view'),
+  ('qa_global_admin_45','notices.manage');
+INSERT INTO public.role_permissions(role_id,permission_id)
+SELECT 'qa_global_admin_45','qa.global_admin.permission_' || lpad(i::text,2,'0')
+FROM generate_series(1,43) AS i;
 INSERT INTO public.role_permissions(role_id,permission_id)
 SELECT role_id, permission_id
 FROM (VALUES ('qa_global_manager'),('qa_tenant_admin_a'),('qa_tenant_manager_b')) roles(role_id)
@@ -1156,12 +1169,22 @@ INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   WHERE email IN ('global-only@hris.test','manager-a@hris.test','manager-b@hris.test');
 INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
   SELECT id,email,true,true FROM auth.users WHERE email='super-admin@hris.test';
+INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
+  SELECT id,email,true,true FROM auth.users WHERE email='notices-platform-super-admin@hris.test';
+INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
+  SELECT id,email,true,false FROM auth.users WHERE email='notices-global-admin-45@hris.test';
 INSERT INTO public.user_roles(user_id,role_id)
   SELECT id,'qa_global_manager' FROM auth.users
   WHERE email IN ('manager-a@hris.test','manager-b@hris.test','global-only@hris.test');
+INSERT INTO public.user_roles(user_id,role_id)
+  SELECT id,'qa_global_admin_45' FROM auth.users
+  WHERE email='notices-global-admin-45@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_admin_a','active'
   FROM auth.users WHERE email='manager-a@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_minimal_hr_admin','active'
+  FROM auth.users WHERE email='notices-platform-super-admin@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_reviewer_a','active'
   FROM auth.users WHERE email='manager-a2@hris.test';

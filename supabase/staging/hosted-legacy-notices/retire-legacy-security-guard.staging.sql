@@ -18,6 +18,9 @@ BEGIN
       AND 'authenticated' = ANY(p.roles)
       AND p.qual LIKE '%has_tenant_permission%'
       AND p.qual LIKE '%hris_own_employee_for_tenant%'
+      AND p.qual LIKE '%hris_notices_super_admin_tenant_member%'
+      AND p.qual NOT LIKE '%is_active_admin%'
+      AND to_regprocedure('public.hris_notices_super_admin_tenant_member(uuid)') IS NOT NULL
   ) THEN
     RAISE EXCEPTION 'Refusing to retire the legacy notices guard: the tenant-membership replacement is not installed as expected.';
   END IF;
