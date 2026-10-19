@@ -5791,6 +5791,12 @@ const leaveViewWindowB = queryAs(tenantViewer, `SELECT public.hris_get_tenant_le
   '${ids.tenantB}'::uuid,'2026-10-18'::date,'2026-10-19'::date)`);
 const leaveInvalidWindowB = queryAs(managerB, `SELECT public.hris_get_tenant_leave_data(
   '${ids.tenantB}'::uuid,'2026-10-21'::date,'2026-10-19'::date)`);
+const dashboardAExpectedOnLeaveToday = queryAdmin(`SELECT jsonb_build_object('count',count(DISTINCT r.employee_id)::integer)
+  FROM public.leave_requests r
+  JOIN public.employees e ON e.id=r.employee_id AND e.tenant_id=r.tenant_id
+  WHERE r.tenant_id='${ids.tenantA}'::uuid AND lower(btrim(r.status))='approved'
+    AND r.from_date<='${localCurrentDate}'::date AND r.to_date>='${localCurrentDate}'::date
+    AND e.employment_status NOT IN ('resigned','terminated')`).count;
 record('Tenant B dashboard, attendance and leave RPCs return tenant B data only',
   Number(dashboardB.employees) === 1
   && dashboardB.dashboard_date === localCurrentDate
@@ -5821,18 +5827,18 @@ const dashboardAValid = Number(dashboardA.team_members) === 6
   && Number(dashboardA.wfo_today) === 3
   && Number(dashboardA.wfh_today) === 1
   && Number(dashboardA.client_meeting_today) === 1
-  && Number(dashboardA.on_leave_today) === 1
+  && Number(dashboardA.on_leave_today) === Number(dashboardAExpectedOnLeaveToday)
   && Number(dashboardA.late_today) === 1
   && dashboardA.attendance_last_7_days.length === 7
   && dashboardA.attendance_last_30_days.length === 30;
 record('Tenant A dashboard counts explicit attendance modes/statuses and approved leave only',
-  dashboardAValid, dashboardAValid ? '' : JSON.stringify(dashboardA));
+  dashboardAValid, dashboardAValid ? '' : JSON.stringify({ dashboardA, expectedOnLeaveToday: dashboardAExpectedOnLeaveToday }));
 record('E08-18 approved leave updates the employee balance and the tenant dashboard leave attendance summary',
   leaveEvidenceBrowserPassed && browserApprovedEvidence?.status === 'approved'
     && Number(approvedEvidenceBalance.pending_days) === 0 && Number(approvedEvidenceBalance.used_days) === 2
-    && dashboardAValid && Number(dashboardA.on_leave_today) === 1,
+    && dashboardAValid && Number(dashboardA.on_leave_today) === Number(dashboardAExpectedOnLeaveToday),
   JSON.stringify({ leaveStatus: browserApprovedEvidence?.status, balance: approvedEvidenceBalance,
-    onLeaveToday: dashboardA.on_leave_today }));
+    onLeaveToday: dashboardA.on_leave_today, expectedOnLeaveToday: dashboardAExpectedOnLeaveToday }));
 
 const crossDashboard = attemptAs(managerB, `SELECT public.hris_get_tenant_dashboard_summary('${ids.tenantA}'::uuid)`);
 const crossAttendanceData = attemptAs(managerB, `SELECT public.hris_get_tenant_attendance_data(
@@ -7221,7 +7227,7 @@ let attendanceCorrectionBrowserOutput = '';
 let attendanceCorrectionBrowserError = '';
 const attendanceCorrectionFreeDate = psqlSync(`SELECT COALESCE((
   SELECT g.day::date::text FROM generate_series(
-    date_trunc('week','${localCurrentDate}'::date)::date,
+    date_trunc('month','${localCurrentDate}'::date)::date,
     '${localCurrentDate}'::date, interval '1 day'
   ) g(day)
   WHERE NOT EXISTS (SELECT 1 FROM public.attendance_records a
@@ -7232,7 +7238,7 @@ const attendanceCorrectionFreeDate = psqlSync(`SELECT COALESCE((
 ), '');`).trim();
 if (!attendanceCorrectionFreeDate) {
   record('E06 attendance-correction browser fixture has a free employee attendance date in the current report range', false,
-    'No unused date exists in the active report week.');
+    'No unused date exists in the active attendance month.');
 } else {
   attendanceCorrectionBrowserDate = attendanceCorrectionFreeDate;
   attendanceCorrectionBrowserFixtureId = randomUUID();
