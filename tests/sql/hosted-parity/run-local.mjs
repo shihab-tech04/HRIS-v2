@@ -187,7 +187,7 @@ const rollbackSnapshotSql = `SELECT jsonb_build_object(
   'columns', (SELECT md5(coalesce(string_agg(table_schema||'.'||table_name||'.'||column_name||':'||udt_name||':'||is_nullable||':'||coalesce(column_default,''),chr(10)
                     ORDER BY table_schema,table_name,ordinal_position),''))
               FROM information_schema.columns WHERE table_schema IN ('auth','private','public','storage')),
-  'relations', (SELECT md5(coalesce(string_agg(n.nspname||'.'||c.relname||':'||c.relkind||':'||c.relrowsecurity||':'||c.relforcerowsecurity,chr(10)
+  'relations', (SELECT md5(coalesce(string_agg(n.nspname||'.'||c.relname||':'||c.relkind::text||':'||c.relrowsecurity||':'||c.relforcerowsecurity,chr(10)
                       ORDER BY n.nspname,c.relname),''))
                 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                 WHERE n.nspname IN ('auth','private','public','storage') AND c.relkind IN ('r','p','v','m','S')),
