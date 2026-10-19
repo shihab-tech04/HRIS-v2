@@ -5,7 +5,12 @@ const buckets = ['expense-receipts', 'learning-completion-evidence', 'phase03-un
 const payload = text => new Blob([text], { type: 'text/plain' });
 
 export async function runPhase03OptionalModuleAuthAcceptance({ admin, superAdmin, ordinary, tenantId, check }) {
-  const modules = await superAdmin.client.rpc('platform_hris_list_tenant_modules', { p_tenant_id: tenantId });
+  let modules;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    modules = await superAdmin.client.rpc('platform_hris_list_tenant_modules', { p_tenant_id: tenantId });
+    if (!modules.error || modules.error.code !== 'PGRST202') break;
+    await new Promise(resolve => setTimeout(resolve, Math.min(250 + attempt * 150, 1000)));
+  }
   assert.ifError(modules.error);
   assert.deepEqual(modules.data.map(row => row.module_key), moduleKeys);
   assert.ok(modules.data.every(row => row.enabled === true), 'New tenant modules must default to enabled.');

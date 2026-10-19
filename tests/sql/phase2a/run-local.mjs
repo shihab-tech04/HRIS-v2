@@ -195,6 +195,9 @@ try {
   psql(readFileSync(path.join(root, 'tests/sql/phase03/auth_module_fixture.sql'), 'utf8'));
   psql(readFileSync(path.join(root, 'supabase/staging/phase03/tenant_optional_modules.staging.sql'), 'utf8'));
   psql("NOTIFY pgrst, 'reload schema';");
+  const moduleRpcsInstalled = psql(`SELECT to_regprocedure('public.platform_hris_list_tenant_modules(uuid)') IS NOT NULL
+    AND to_regprocedure('public.platform_hris_set_tenant_module(uuid,text,boolean)') IS NOT NULL;`).trim();
+  check(moduleRpcsInstalled === 't', 'Phase 03 module RPCs are installed in the isolated PostgreSQL catalog');
   await runPhase03OptionalModuleAuthAcceptance({
     admin, superAdmin, ordinary, tenantId: seedTenant.data.id, check,
   });
