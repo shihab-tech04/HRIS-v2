@@ -21,3 +21,14 @@ test('a fake duplicate story appears as a duplicate in the canonical input and m
   source.stories.push(source.stories[0]);
   assert.throws(() => phaseReadiness({ phase: '05', source, overlay: { evidence_sets: [], open_story_evidence: [] } }), /Duplicate canonical story IDs/);
 });
+
+test('Phase 03 exact seven tenant and optional-module requirements retain source evidence and hosted blocker', () => {
+  const result = readPhaseReadiness('03');
+  assert.deepEqual(result.module_ids, ['SA01', 'SA12']);
+  assert.deepEqual(result.counts, { total: 7, disposable_evidenced: 7, blocked: 0, partial: 0, not_classified: 0 });
+  assert.deepEqual(result.stories.map(row => row.story_id), [
+    'SA01-01', 'SA01-02', 'SA01-03', 'SA01-04', 'SA12-01', 'SA12-02', 'SA12-03',
+  ]);
+  assert.ok(result.stories.every(row => row.hosted_accepted === false));
+  assert.equal(result.legacy_verified_union, null);
+});

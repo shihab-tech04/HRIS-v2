@@ -62,7 +62,16 @@ test('every individual evidence record maps to a real and uniquely evidenced can
   const e02Browser = readFileSync(new URL('../../tests/sql/isolated-auth/run-profile-change-browser.mjs', import.meta.url), 'utf8');
   for (const id of e02.story_ids) assert.ok(e02Runner.includes(`${id} `) || e02Runner.includes(`${id}/`), `Missing ${id} real-Auth runtime record`);
   assert.ok(e02Browser.includes(e02.runtime_marker), 'Profile-change browser acceptance marker is not present');
-  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 27);
+  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 34);
+  const phase03 = overlay.evidence_sets.find(set => set.id === 'phase03-saas-tenant-modules-20261019');
+  assert.deepEqual(phase03.story_ids, ['SA01-01', 'SA01-02', 'SA01-03', 'SA01-04', 'SA12-01', 'SA12-02', 'SA12-03']);
+  assert.equal(phase03.classification, 'VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY');
+  assert.equal(phase03.hosted_cross_system_acceptance, 'NOT_VERIFIED');
+  assert.ok(phase03.workflow_run.endsWith('/actions/runs/39202158704'));
+  assert.ok(phase03.full_suite_workflow_run.endsWith('/actions/runs/39202158588'));
+  assert.match(phase03.commit, /^214ccbcf8d33ca30cd09813107f89162a79003ed$/);
+  const phase03Report = readFileSync(new URL(`../../${phase03.evidence_document}`, import.meta.url), 'utf8');
+  for (const id of phase03.story_ids) assert.ok(phase03Report.includes(id), `Phase 03 evidence missing ${id}`);
   const openEvidence = overlay.open_story_evidence.flatMap(set => set.story_ids);
   assert.equal(new Set(openEvidence).size, openEvidence.length);
   assert.ok(openEvidence.every(id => sourceIds.has(id) && !evidenceIds.includes(id)), 'No open story is also counted as individually verified.');

@@ -46,7 +46,13 @@
     {
       "id": "employee-e03-documents-20261017",
       "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
-      "story_ids": ["E03-01", "E03-04", "E03-05", "E03-07", "E03-08"],
+      "story_ids": [
+        "E03-01",
+        "E03-04",
+        "E03-05",
+        "E03-07",
+        "E03-08"
+      ],
       "repository": "shihab-tech04/HRIS-v2",
       "commit": "426527fd45a983e6958a0ca5ef063305d69bd48a",
       "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39018685182",
@@ -59,7 +65,12 @@
     {
       "id": "employee-e04-digital-id-20261017",
       "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
-      "story_ids": ["E04-01", "E04-02", "E04-03", "E04-04"],
+      "story_ids": [
+        "E04-01",
+        "E04-02",
+        "E04-03",
+        "E04-04"
+      ],
       "repository": "shihab-tech04/HRIS-v2",
       "commit": "426527fd45a983e6958a0ca5ef063305d69bd48a",
       "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39018685182",
@@ -72,7 +83,10 @@
     {
       "id": "employee-e02-profile-change-20261018",
       "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
-      "story_ids": ["E02-03", "E02-17"],
+      "story_ids": [
+        "E02-03",
+        "E02-17"
+      ],
       "repository": "shihab-tech04/HRIS-v2",
       "commit": "445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5",
       "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39147470480",
@@ -85,7 +99,10 @@
     {
       "id": "employee-e13-shift-change-20261017",
       "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
-      "story_ids": ["E13-04", "E13-05"],
+      "story_ids": [
+        "E13-04",
+        "E13-05"
+      ],
       "repository": "shihab-tech04/HRIS-v2",
       "commit": "01b20934a9a63e0f220eb30c9a65d55daf4010b4",
       "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39025622956",
@@ -98,7 +115,10 @@
     {
       "id": "employee-e37-directory-privacy-20261017",
       "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
-      "story_ids": ["E37-01", "E37-05"],
+      "story_ids": [
+        "E37-01",
+        "E37-05"
+      ],
       "repository": "shihab-tech04/HRIS-v2",
       "commit": "01b20934a9a63e0f220eb30c9a65d55daf4010b4",
       "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39025622956",
@@ -107,6 +127,28 @@
       "runtime_marker": "E37-01 employee directory search returns only persisted tenant-authorized matches; privacy-limited fields",
       "evidence_scope": "isolated tenant-scoped directory search, non-PII projection and browser privacy checks",
       "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "phase03-saas-tenant-modules-20261019",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "SA01-01",
+        "SA01-02",
+        "SA01-03",
+        "SA01-04",
+        "SA12-01",
+        "SA12-02",
+        "SA12-03"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "214ccbcf8d33ca30cd09813107f89162a79003ed",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39203699646",
+      "full_suite_workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39203699636",
+      "runtime_test_path": "tests/sql/phase2a/run-local.mjs; tests/sql/phase03/run-auth-api.mjs; tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/programme/PHASE03_SOURCE_EVIDENCE_2026-10-19.md",
+      "runtime_marker": "Phase 03 tenant provisioning and optional module source acceptance passed on the exact tested Main checkpoint.",
+      "evidence_scope": "Fresh disposable Supabase Auth, PostgreSQL, Storage, synthetic tenants/users, desktop/mobile browser journeys, tenant isolation, audit and historical-row preservation.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
     }
   ],
   "open_story_evidence": [
@@ -114,10 +156,18 @@
       "id": "snapshot-blocked-approved-contracts-20261017",
       "classification": "BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT",
       "story_ids": [
-        "E03-02", "E03-03", "E03-06",
-        "E07-05", "E07-06", "E07-07",
-        "E08-15", "E08-16",
-        "E12-06", "E12-07", "E12-08", "E12-09",
+        "E03-02",
+        "E03-03",
+        "E03-06",
+        "E07-05",
+        "E07-06",
+        "E07-07",
+        "E08-15",
+        "E08-16",
+        "E12-06",
+        "E12-07",
+        "E12-08",
+        "E12-09",
         "E35-04"
       ],
       "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
@@ -126,16 +176,21 @@
     {
       "id": "snapshot-partial-identified-20261017",
       "classification": "PARTIAL_ACCEPTANCE",
-      "story_ids": ["E04-05", "E37-02", "E37-03", "E37-04"],
+      "story_ids": [
+        "E04-05",
+        "E37-02",
+        "E37-03",
+        "E37-04"
+      ],
       "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
       "additional_evidence_document": "docs/evidence/employee-identity-card-E04-20261017.md",
       "meaning": "Explicit source-linked partial cases; the remaining historical partial-ID membership is not known."
     }
   ],
   "reconciliation": {
-    "individual_verified_ids_recorded": 27,
+    "individual_verified_ids_recorded": 34,
     "legacy_verified_overlap": "UNKNOWN",
     "deduplicated_verified_total": null,
-    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 27 individually recorded story IDs are not an addition to the 82 historical aggregate."
+    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 34 individually recorded story IDs are not an addition to the 82 historical aggregate."
   }
 }
