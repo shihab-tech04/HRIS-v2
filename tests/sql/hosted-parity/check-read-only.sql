@@ -13,6 +13,7 @@ WITH required_procedures(signature, source) AS (
     ('public.hris_change_tenant_employee_shift(uuid,uuid,uuid,uuid)', '20261017095321'),
     ('public.hris_get_my_shift_changes(uuid,date,date)', '20261017095321'),
     ('public.hris_profile_change_active_member(uuid)', '20261017130000'),
+    ('public.hris_notices_super_admin_tenant_member(uuid)', '20261017030000'),
     ('public.employee_submit_profile_change_request(uuid,text,text,text)', '20261017130000'),
     ('public.employee_get_my_profile_change_requests(uuid)', '20261017130000'),
     ('public.admin_list_profile_change_requests(uuid)', '20261017130000'),
