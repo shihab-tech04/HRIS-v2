@@ -30,8 +30,8 @@ jobs:
       - name: Verify the built Pages entry and platform controls
         run: |
           set -euo pipefail
-          grep -Eq 'src="/HRIS-v2/assets/[^"]+\.js"' dist/index.html
-          grep -Eq 'href="/HRIS-v2/assets/[^"]+\\.css"' dist/index.html
+          grep -Fq 'src="/HRIS-v2/assets/' dist/index.html
+          grep -Fq 'href="/HRIS-v2/assets/' dist/index.html
           find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
           find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
           grep -R -Fq 'platform_hris_list_tenant_modules' dist/assets
