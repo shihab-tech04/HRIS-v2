@@ -43,3 +43,21 @@ test('read-only verification does not enumerate user identities', () => {
   assert.match(sql, /notice_policies/);
   assert.doesNotMatch(sql, /\b(INSERT|UPDATE|DELETE|TRUNCATE|ALTER|DROP|CREATE)\b\s+(TABLE|POLICY|FUNCTION|INTO|FROM|public)/i);
 });
+
+test('legacy guard retirement requires the tenant replacement and removes only the named policy', () => {
+  const sql = read('retire-legacy-security-guard.staging.sql');
+  assert.ok(sql.startsWith('-- Retire only the legacy Synesis-pinned notices guard'));
+  assert.ok(sql.includes('BEGIN;') && sql.includes('COMMIT;'));
+  assert.ok(sql.includes("SET LOCAL lock_timeout = '5s'"));
+  assert.ok(sql.includes("policyname = 'hris_notices_membership_guard'"));
+  assert.ok(sql.includes("p.permissive = 'RESTRICTIVE'"));
+  assert.ok(sql.includes("p.cmd = 'SELECT'"));
+  assert.ok(sql.includes("p.qual LIKE '%has_tenant_permission%'"));
+  assert.ok(sql.includes("p.qual LIKE '%hris_own_employee_for_tenant%'"));
+  assert.ok(sql.includes('its catalog definition has drifted.'));
+  assert.ok(sql.includes('DROP POLICY IF EXISTS hris_notices_legacy_security_guard ON public.notices'));
+  assert.equal((sql.match(/DROP POLICY/g) || []).length, 1);
+  for (const forbidden of ['DROP TABLE', 'DROP FUNCTION', 'DELETE FROM', 'TRUNCATE', 'GRANT', 'REVOKE']) {
+    assert.ok(!sql.toUpperCase().includes(forbidden), `unexpected statement: ${forbidden}`);
+  }
+});

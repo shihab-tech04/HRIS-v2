@@ -71,11 +71,20 @@ checks AS (
       SELECT 1 FROM pg_policies p
       WHERE p.schemaname = 'public' AND p.tablename = table_name
         AND p.policyname = policy_name AND p.permissive = expected_permissive
-        AND CASE WHEN table_name = 'employee_profile_change_requests'
-          THEN p.qual LIKE '%hris_profile_change_active_member%'
-          ELSE p.qual LIKE '%hris_own_employee_for_tenant%'
+        AND CASE
+          WHEN table_name = 'employee_profile_change_requests'
+            THEN p.qual LIKE '%hris_profile_change_active_member%'
+          WHEN table_name = 'notices'
+            THEN p.qual LIKE '%hris_own_employee_for_tenant%'
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_policies legacy
+                WHERE legacy.schemaname = 'public'
+                  AND legacy.tablename = 'notices'
+                  AND legacy.policyname = 'hris_notices_legacy_security_guard'
+              )
+          ELSE FALSE
         END
-    ), 'named policy with tenant-scoped predicate and expected mode'
+    ), 'tenant-scoped predicate; legacy notices guard absent where applicable'
   FROM required_policies
 )
 SELECT kind, object, source AS source_version, passed, requirement
