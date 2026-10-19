@@ -67,10 +67,10 @@ jobs:
           if ! supabase start --workdir "$HRIS_PHASE04_SUPABASE_TEST_WORKDIR" --exclude studio,edge-runtime,logflare,vector,supavisor >"$RUNNER_TEMP/supabase-phase04-start.log" 2>&1; then
             echo "Phase 04 source Supabase startup failed on the standard ubuntu-24.04 runner. Sanitized CLI diagnostics follow."
             sed -E \
-              -e 's/eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+/[REDACTED-JWT]/g' \
-              -e 's#(postgres(ql)?://[^:/[:space:]]+:)[^@[:space:]]+@#\\1[REDACTED]@#g' \
-              -e 's/((anon|service[_ -]?role|secret|publishable)[ _-]*key[ :=]+)[^[:space:]]+/\\1[REDACTED]/Ig' \
-              -e 's/((key|token|secret|password)[_ -]*[ :=]+)[^[:space:]]+/\\1[REDACTED]/Ig' \
+              -e 's/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/[REDACTED-JWT]/g' \
+              -e 's#(postgres(ql)?://[^:/[:space:]]+:)[^@[:space:]]+@#\1[REDACTED]@#g' \
+              -e 's/((anon|service[_ -]?role|secret|publishable)[ _-]*key[ :=]+)[^[:space:]]+/\1[REDACTED]/Ig' \
+              -e 's/((key|token|secret|password)[_ -]*[ :=]+)[^[:space:]]+/\1[REDACTED]/Ig' \
               "$RUNNER_TEMP/supabase-phase04-start.log" | tail -n 100 || true
             docker ps --format '{{.Names}} {{.Status}}' | sed -n '/synesis-local-hris-parity-test/p' || true
             exit 1
