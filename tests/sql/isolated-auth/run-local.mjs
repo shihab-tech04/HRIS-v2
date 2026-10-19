@@ -470,6 +470,9 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql'),
+  // Hosted parity rollback expects this historical production base table to exist
+  // in the isolated schema as well as production before Phase 03/04 guards install.
+  path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
