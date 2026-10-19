@@ -64,3 +64,16 @@ The latest catalog-only probe still returns **0/25**. The hosted migration ledge
 - Main exact-head disposable run 39203699636 passed 362/362 Auth/RLS checks, the rolled-back notices-policy retirement rehearsal, and the revised source Gate B at 25/25; the disposable security advisor found no issues. This does not certify the hosted production API, Auth, RLS, Storage or browser behavior, where Gate B remains 0/25.
 
 No production DDL, data, Auth users, policy grants or website versions changed. Phase 03 remains **IN PROGRESS / NOT ACCEPTED** until Gate B, the required module tables, the administrator's tenant-role decision, and live postflight acceptance are resolved.
+
+## Hosted security-advisor recheck — 19 October 2026, 05:38 UTC
+
+A read-only Supabase security-advisor check reports these catalog/auth findings:
+
+- **24 INFO:** RLS-enabled public tables with no policies.
+- **1 WARN:** `public.candidate_public_jobs_source()` is executable by `anon` as a `SECURITY DEFINER` function.
+- **211 WARN:** `SECURITY DEFINER` functions executable by `authenticated`.
+- **1 WARN:** leaked-password protection is disabled in Supabase Auth.
+
+These advisor lints are review signals, not proof that each function is exploitable. Existing functions may intentionally use `SECURITY DEFINER` with server-side identity and tenant checks. Review affected objects individually with direct authorization tests; do not bulk-revoke execute grants or change Auth settings based only on these aggregate counts. No production grants, policies, Auth settings, data or schema were changed by this recheck.
+
+Remediation references: [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [anonymous access to security-definer functions](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [authenticated access to security-definer functions](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), and [leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
