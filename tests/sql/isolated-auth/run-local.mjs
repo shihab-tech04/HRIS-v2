@@ -2464,6 +2464,15 @@ record('HR01-06 partial: authorized HR contact changes emit a redacted changed-f
     auditedFieldNames: auditedContactFieldNames,
     allChangedValuesExcluded: contactAuditRedactsEveryChangedValue,
     browserMarker: employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS') }));
+record('HR01-02 partial: employee-directory updates stay within the allowlisted contact fields',
+  employeeDirectoryBrowserOutput.includes('HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS'),
+  'The browser journey verified tenant-scoped contact payloads and rejected writes containing extra fields.');
+record('HR01-06 partial: a missing contact-read RPC shows an unavailable state and hides edit access',
+  employeeDirectoryBrowserOutput.includes('HR01-06_PGRST202_CONTACT_READ_SAFE_BROWSER_PASS'),
+  'The browser journey verified PGRST202 recovery without exposing the contact editor.');
+record('HR01-06 partial: a missing contact-update RPC preserves the draft without reporting success',
+  employeeDirectoryBrowserOutput.includes('HR01-06_PGRST202_CONTACT_UPDATE_SAFE_BROWSER_PASS'),
+  'The browser journey verified PGRST202 recovery without losing the unsaved contact draft.');
 
 record('HR01-04 HR sees and filters each configured employment status within the current tenant',
   !employeeDirectoryTeamOptions.error
