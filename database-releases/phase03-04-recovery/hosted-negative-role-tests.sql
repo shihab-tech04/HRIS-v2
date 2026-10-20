@@ -7,6 +7,7 @@ BEGIN
  BEGIN PERFORM public.platform_hris_list_tenant_modules(NULL::uuid); RAISE EXCEPTION 'Unexpected module access'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
  BEGIN PERFORM public.platform_hris_set_tenant_module(NULL::uuid,'travel',false); RAISE EXCEPTION 'Unexpected module mutation'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
  BEGIN PERFORM 1 FROM public.tenant_module_settings; RAISE EXCEPTION 'Unexpected direct module table access'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
+ BEGIN PERFORM public.hris_get_my_learning_context(NULL::uuid); RAISE EXCEPTION 'Unexpected sessionless learning context'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
  PERFORM set_config('hris.recovery.auth_negative_count',ok::text,true);
 END $tests$;
 SET LOCAL ROLE anon;
@@ -16,6 +17,7 @@ BEGIN
  BEGIN PERFORM public.platform_hris_list_tenants(); RAISE EXCEPTION 'Unexpected anonymous platform access'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
  BEGIN PERFORM public.hris_can_read_learning_catalog(NULL::uuid); RAISE EXCEPTION 'Unexpected anonymous learning access'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
  BEGIN PERFORM 1 FROM public.tenant_module_settings; RAISE EXCEPTION 'Unexpected anonymous table access'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
+ BEGIN PERFORM public.hris_get_my_learning_context(NULL::uuid); RAISE EXCEPTION 'Unexpected anonymous learning context'; EXCEPTION WHEN insufficient_privilege THEN ok:=ok+1; END;
  PERFORM set_config('hris.recovery.anon_negative_count',ok::text,true);
 END $tests$;
 RESET ROLE;
