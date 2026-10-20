@@ -2,16 +2,26 @@
   "project_id": "oslgwxaqfbteqtwqvdzs",
   "organization_id": "qdcgrdntvspjsdszuzmy",
   "connector": "link_6ac07a13790c81919fcc5f7af6dbcef9",
-  "version": "20261020043721",
-  "name": "phase03_phase04_hosted_compatibility_recovery_20261020",
-  "route": "Supabase apply_migration via existing authenticated HRIS connector",
-  "result": "success",
+  "route": "existing authenticated Supabase apply_migration",
+  "status": "DEPLOYED_NATIVE_HISTORY_VERIFIED",
   "history_before": 114,
-  "history_after": 115,
-  "sql_bytes": 228160,
-  "sql_md5": "0dc7616842901820ebde629c3519cf60",
-  "sql_sha256": "fa390e603bb08ad2417e11d627304cce2197ad003aa44c4f097cc7ea1dcf82ed",
-  "parity": [
+  "history_after": 116,
+  "production_head": "20261020044145",
+  "ordered_migrations": [
+    {
+      "version": "20261020043721",
+      "name": "phase03_phase04_hosted_compatibility_recovery_20261020",
+      "bytes": 228160,
+      "sql_md5": "0dc7616842901820ebde629c3519cf60"
+    },
+    {
+      "version": "20261020044145",
+      "name": "phase03_learning_context_authenticated_acl_20261020",
+      "bytes": 1077,
+      "sql_md5": "add4d73bacabc008716109d22324319c"
+    }
+  ],
+  "schema_parity": [
     {
       "kind": "internal_trigger",
       "object": "private.hris_record_employee_shift_change()",
@@ -195,9 +205,25 @@
       "requirement": "legacy tenant-implicit RPC absent"
     }
   ],
-  "security": [
+  "security_assertions": [
+    {
+      "test": "exactly_two_reviewed_history_records",
+      "passed": true
+    },
     {
       "test": "fourteen_module_write_guards",
+      "passed": true
+    },
+    {
+      "test": "learning_context_anon_denied",
+      "passed": true
+    },
+    {
+      "test": "learning_context_authenticated_callable",
+      "passed": true
+    },
+    {
+      "test": "learning_context_definition_unchanged",
       "passed": true
     },
     {
@@ -241,10 +267,6 @@
       "passed": true
     },
     {
-      "test": "only_one_new_history_record",
-      "passed": true
-    },
-    {
       "test": "platform_requires_live_session",
       "passed": true
     },
@@ -266,18 +288,47 @@
     }
   ],
   "negative_database_role_checks": {
-    "authenticated_without_session": 4,
-    "anonymous": 3,
-    "passed": 7,
-    "total": 7,
-    "transaction": "READ ONLY; ROLLBACK",
-    "boundary": "SQL-role tests, not signed-in HTTP journeys"
+    "authenticated_without_session_denials": 5,
+    "anonymous_denials": 4,
+    "passed": 9,
+    "total": 9,
+    "transaction": "READ ONLY; ROLLBACK"
   },
   "source_function_names_present": 55,
   "source_function_names_missing": 0,
-  "super_admins": 1,
-  "active_memberships": 1,
-  "non_super_admin_active_memberships": 0,
+  "new_rls_tables": 6,
+  "sole_super_admin_preserved": true,
+  "second_administrator_unassigned": true,
+  "disposable_acceptance_run": 39369561233,
+  "first_install_and_acl_rehearsal_run": 39370837800,
+  "remaining_database_migrations_for_reviewed_package": [],
   "production_signed_in_http_journeys": "NOT_EXECUTED",
-  "phase03_phase04_overall_acceptance": "NOT_DECLARED"
+  "overall_phase03_phase04_acceptance": "NOT_DECLARED",
+  "advisor_summary": [
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "count": 27,
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+    },
+    {
+      "name": "anon_security_definer_function_executable",
+      "level": "WARN",
+      "count": 1,
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable"
+    },
+    {
+      "name": "authenticated_security_definer_function_executable",
+      "level": "WARN",
+      "count": 246,
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable"
+    },
+    {
+      "name": "auth_leaked_password_protection",
+      "level": "WARN",
+      "count": 1,
+      "remediation": "https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection"
+    }
+  ],
+  "advisor_notes": "No error-level findings. Public candidate job source is intentionally anonymous and pre-existed this migration. Protected RPC-only tables intentionally have RLS and no direct-table policies. Signed-in SECURITY DEFINER RPC warnings require their authorization predicates, not automatic revoke. Leaked-password-protection setting was not changed."
 }
