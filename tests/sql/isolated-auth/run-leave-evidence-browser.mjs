@@ -854,12 +854,19 @@ try {
       json: {
         ...payload,
         documents: payload.documents.map(document => document.id === process.env.HRIS_LOCAL_DOCUMENT_ID
-          ? { ...document, expires_at: '2030-05-21' } : document),
+          ? { ...document, expires_at: '2030-05-21',
+            verification_note: process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON } : document),
       },
     });
   });
   await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
   await ownDocumentCard.getByText('May 21, 2030', { exact: true }).waitFor({ state: 'visible' });
+  // E03-08: a verified document must never reveal a stray correction note.
+  // The rejected document still shows its own correction reason after the same refresh.
+  if (await ownDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).count() !== 0) {
+    throw new Error('E03-08 verified document unexpectedly exposed a rejection reason.');
+  }
+  await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).waitFor({ state: 'visible' });
   await refreshedEmployee.unroute('**/rest/v1/rpc/hris_get_my_employee_documents');
   if (expiryProjectionCalls !== 1) {
     throw new Error('E03-05 expected exactly one synthetic date-projection response.');
@@ -870,6 +877,7 @@ try {
   console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
   console.log('E03-04_DOCUMENT_VERIFICATION_STATUS_BROWSER_PASS');
   console.log('E03-05_EXPIRY_DATE_BROWSER_PASS');
+  console.log('E03-08_REJECTED_REASON_VISIBILITY_BROWSER_PASS');
   console.log('EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS');
 } finally {
   if (browser) await browser.close();
