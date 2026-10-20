@@ -56,6 +56,30 @@ test('employees can open, retry, refresh, and close their translated identity ca
   assert.match(browser, /EMPLOYEE_IDENTITY_CARD_BROWSER_ACCEPTANCE=PASS/);
 });
 
+
+test('E02-08 employment information is read from the authenticated employee’s own identity projection', () => {
+  const story = catalogue.stories.find(item => item.story_id === 'E02-08');
+  assert.ok(story);
+  assert.equal(story.module_id, 'E02');
+  assert.equal(story.role_name, 'Employee');
+  assert.equal(story.verbatim_requirement, 'As an employee, I want to view my employment information.');
+  assert.equal(story.source_locator.line, 33);
+  assert.equal(story.status, 'NOT TESTED');
+  assert.deepEqual(story.test_ids, []);
+
+  for (const field of [
+    "'employee_number',e.employee_number",
+    "'designation_title',ds.title",
+    "'department_name',d.name",
+    "'employment_status',e.employment_status",
+  ]) assert.ok(migration.includes(field), `Identity projection is missing ${field}.`);
+
+  assert.match(runner, /Employee identity card returns only current employee identity and employment fields in the active tenant/);
+  assert.match(runner, /Employee identity card denies tenant mismatch, cross-tenant identity, manager without employee link, and anonymous access/);
+  assert.match(browser, /for \(const value of \['QA-A-001', 'Synthetic Employee A', 'QA A designation', 'QA A department', 'Active'\]\)/);
+  assert.match(browser, /E02-08_EMPLOYMENT_INFORMATION_BROWSER_PASS/);
+});
+
 test('E04-01 through E04-04 link exact recovered requirements to isolated browser and database acceptance', () => {
   const expected = new Map([
     ['E04-01', 'As an employee, I want to see my employee ID.'],
