@@ -1,80 +1,76 @@
-# HRIS release blocker and dependency ledger — live refresh
+# HRIS release blocker and dependency ledger — WS05 live refresh
 
-**Verified:** 2026-10-20 17:50 Asia/Dhaka  
-**Decision: HOLD.** Main PR #38 and Candidate PR #5 remain open drafts. No merge, production database write, migration replay, permission change, or deployment was performed in this refresh. This section supersedes the earlier point-in-time statuses in this file; Git history retains the prior snapshot.
+**Verified:** 2026-10-20, live ref and hosted checks  
+**Decision: HOLD.** Main PR #38 and Candidate PR #5 remain open drafts. No merge, production database write, migration replay, permission change, or deployment occurred in this refresh.
 
-## Current refs and release candidates
+## Current repository refs and release candidates
 
-| Repository | Production main | Current development | Frozen release |
+| Repository | Production main / hosted source | Current development | Frozen release |
 |---|---|---|---|
-| HRIS-v2 | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 | b262cade4175fc98cac56af05f88c3d16e68dc53 | PR #38, release/hris-integrated-20261020, 686eec7016ec831e9b679500f28f553b8f93b14f, draft |
-| HRIS-Candidate-v2 | 38174c7b607999f951c7eea47aefaa443735080e | e3cb9c178cbfb66eb611c640f885a13581b50f51 | PR #5, release/hris-integrated-20261020, e3cb9c178cbfb66eb611c640f885a13581b50f51, draft |
+| HRIS-v2 | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 | 3f6ea22eb0b7f0e4b4424552694e92652116c196 | PR #38, 686eec7016ec831e9b679500f28f553b8f93b14f, draft |
+| HRIS-Candidate-v2 | 38174c7b607999f951c7eea47aefaa443735080e | e3cb9c178cbfb66eb611c640f885a13581b50f51 | PR #5, e3cb9c178cbfb66eb611c640f885a13581b50f51, draft |
 
-Main open PRs: #13 draft; #35 open/ready; #36–#44 open drafts. Candidate open PRs: #3, #5, and #6, all drafts. PR #37 is on a divergent checkpoint base. No unrelated PR is approved for integration. Main development and Candidate development have not moved the frozen release heads.
+Main PR heads: #39 0309e4022dc9db4182900899d99c87d107634411; #40 ecd799a7937af3445e7ebc59eed9f9f5accdd1cf; #41 this ledger refresh; #42 340fb923bffadb1fff4ae2bf243f8843fee2ccb0; #43 779c8130e09281e60af94713de250edeca3703ea; #44 b0938065e4fe753cb545b569b2b8ab84c27968ae. PRs #38–#44 remain drafts. PR #42–#44 still target old development base 1714a08e24f47999618b0127fc818a3d19eb187a, behind current development 3f6ea22. Candidate PR #6 is 709760cc5bc91e6d5c62179f62dfe32e92a1fac6, based on current Candidate development e3cb9c1; it is a draft.
 
-## Exact-head workflow results
+## Exact-head CI and build evidence
 
-| Ref | Current head | Exact-head evidence | Release interpretation |
-|---|---|---|---|
-| Main development | b262cade4175fc98cac56af05f88c3d16e68dc53 | Disposable Auth/RLS run 39397459369 PASS; Phase 2A run 39397459373 PASS; runner probe 39397459353 PASS | No full build/browser result on this head. These are isolated tests, not hosted acceptance. |
-| Main PR #38 | 686eec7016ec831e9b679500f28f553b8f93b14f | Disposable Auth/RLS 39378140222 PASS; Phase 2A 39378140175 PASS; runner probe 39378140171 PASS; employee-family privacy 39379214697 PASS | No full build/browser run is recorded on the frozen release head. It also lacks later Main development changes. |
-| Main PR #39 | 4282085312e1963e1fc90082677bbb89e43d35d1 | Docs/build/browser run 39398288647 PASS | Evidence document only; PR remains PARTIAL / NOT ACCEPTED. |
-| Main PR #40 | ecd799a7937af3445e7ebc59eed9f9f5accdd1cf | Docs/build/browser run 39396642999 PASS | The audit files are stale against the current development overlay; not certification. |
-| Main PR #41 | Controller ledger branch; this refresh commit | Prior docs/build/browser run 39396919133 PASS on the prior head | This change is docs-only. The new exact head and its check will be verified after the update. |
-| Main PR #42 | 4a7656325b9e8cc3a99e47535d937dc7ff1feba9 | Disposable Auth/Postgres/browser 39397073988 PASS; build/browser 39397073999 FAIL at Pages asset parity | Base is stale at 1714a08. Failure compares generated app-C4oUgMGJ.js / app-GpVcVTBs.css with tracked app-2l-hdvDU.js / app-BWuIahKW.css. |
-| Main PR #43 | 779c8130e09281e60af94713de250edeca3703ea | No exact-head workflow | Base is stale at 1714a08; local readiness results do not satisfy current-head CI. |
-| Main PR #44 | f4c44bf52c4041232d591746651ee409ccf8c120 | No exact-head workflow | Base is stale at 1714a08; no isolated Auth/Postgres result is claimed. |
-| Candidate PR #5 | e3cb9c178cbfb66eb611c640f885a13581b50f51 | Candidate disposable acceptance 39025809497 PASS on this Candidate SHA | It is an older run and does not prove acceptance against current Main b262cade or hosted production. |
-| Candidate PR #6 | 3427678feb72e61e17420509e3eb4980cc68a672 | Candidate privacy/full-journey run 39397992774 FAIL | The run passed CA10–CA13 markers and then failed CA14: withdrawing an application removed it from history or hid another completed application. Fix and rerun at the new exact head; record the Main dependency SHA. |
+| Ref | Exact-head result | Release interpretation |
+|---|---|---|
+| Main development 3f6ea22 | Runner probe 39418704923 PASS; Phase 2A Auth/RLS 39418705013 PASS; disposable Auth/Postgres/browser 39418704906 was IN PROGRESS at last check | No completed full build/browser result on the current development head. |
+| Main PR #38 686eec7 | Auth/RLS 39378140222 PASS; Phase 2A 39378140175 PASS; probe 39378140171 PASS; employee-family privacy 39379214697 PASS | No full build/browser run is recorded on this frozen release head; it lacks later Main development changes. |
+| Main PR #39 0309e40 | Build/browser 39417825181 PASS | Docs/evidence workflow only; the production API/security report remains PARTIAL / NOT ACCEPTED. Its source audit references Main b262cade, now behind current development 3f6ea22. |
+| Main PR #40 ecd799a | Build/browser 39396642999 PASS | CSV/inventory evidence is not independent certification and is unreconciled with the latest acceptance overlay. |
+| Main PR #41 | Build/browser 39418545661 PASS on the prior ledger head | This docs-only refresh creates a new exact head; its check must be verified after the commit. |
+| Main PR #42 340fb92 | Disposable Auth/Postgres/browser 39418189411 PASS; build/browser 39418189536 FAIL at “Verify the branch-served Pages entry matches the production build” | Generated assets app-C4oUgMGJ.js and app-GpVcVTBs.css do not match tracked app-2l-hdvDU.js and app-BWuIahKW.css. Rebase and resolve provenance before rerunning. |
+| Main PR #43 779c813 | No exact-head workflow | Stale base; local/source checks do not replace exact-head CI. |
+| Main PR #44 b093806 | No exact-head workflow | Stale base; no isolated Auth/Postgres result is claimed. |
+| Candidate PR #5 e3cb9c1 | Disposable acceptance 39025809497 PASS on this Candidate SHA | Historical isolated pass; it does not prove acceptance against current Main development or hosted production. |
+| Candidate PR #6 709760c | Disposable full-journey run 39418609374 FAIL | Auth/RLS 166/166 and local profile E2E 19/19 passed; CA10 5/5, CA12 4/4, CA13 5/5 passed. CA11-04 failed because the generated browser PDF did not contain the selected CV profile data. The run checked out Main development b262cade as its fixture source; current Main has since advanced to 3f6ea22. Fix, rebase/update fixture evidence, and rerun the full suite at an exact current dependency SHA. |
 
-## Current hosted and production evidence
+## Hosted version and signed-in observations
 
-- Main Pages run 38927896559 completed successfully from current production-main SHA cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7. Candidate Pages run 38893422405 completed successfully from current production-main SHA 38174c7b607999f951c7eea47aefaa443735080e. Both GitHub main refs still equal those source SHAs.
-- Fresh read-only browser inspection of Main loaded the authenticated workspace and Admin View. The visible tenant role is hr_admin; the page shows a read-only integration foundation, two department records, and no visible employee records. Candidate pipeline access is correctly denied to this session. Employee View currently shows both “Database read failed” and “No linked employee profile is available”; no browser console errors appeared. Treat this as a live UI defect, not a passing employee journey.
-- Candidate remains a public vacancy preview with 0 active positions; candidate registration and application submission are disabled.
-- Read-only production counts show one active tenant and one active tenant membership, with role hr_admin. There is no separate hosted HR/Admin or employee-linked session and no second production tenant. Synthetic two-tenant CI cannot certify hosted tenant isolation.
+- Main Pages run 38927896559 succeeded from cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7; the live Main default branch still points to that SHA. Candidate Pages run 38893422405 succeeded from 38174c7b607999f951c7eea47aefaa443735080e; Candidate production main still points to it.
+- Read-only signed-in Main inspection shows the available session is hr_admin. Admin View displays two departments. Employee View shows “Database read failed” and “No linked employee profile is available.” Candidate pipeline is denied with “Recruitment view permission is required.” These are live observations; Employee View is a live defect and no independent employee-linked session was available.
+- Candidate production remains a public vacancy preview with 0 active positions; candidate registration and applications are unavailable. No Candidate action was submitted.
+- Production catalog counts: one active tenant and one active membership with role hr_admin. There is no second production tenant or separate hosted HR/Admin or employee-linked session to certify cross-tenant/role behavior.
 
-## SQL, migration, and authorization blockers
+## SQL, API, migration, and tenant-security blockers
 
-The connected production project is hrmis-saas. Its migration ledger has 116 rows through 20261020044145. Read-only catalog checks show:
+Production project hrmis-saas has 116 migration rows through 20261020044145. Read-only checks confirmed:
 
-- PR #37 migrations 20261020043721 and 20261020044145 are already applied. Do not replay them. Migrations 20261014171952 (HR contact source) and 20261016171104 (family tenant-scoped read) are absent from production.
-- The two HR01 contact routines hris_get_tenant_employee_contact_details and hris_update_tenant_employee_contact_details are absent. The three hosted employee self-write routines employee_update_my_profile(p_payload jsonb), employee_save_my_addresses_v2(p_rows jsonb), and employee_save_my_family_members_v2(p_rows jsonb) exist, but source provenance/parity and focused two-tenant field/ownership tests remain unresolved. employee_update_my_emergency_contacts is absent.
-- Production has 0/7 Candidate/interview release RPCs: hris_get_recruitment_pipeline, hris_issue_candidate_offer, hris_schedule_candidate_interview, hris_get_candidate_interview_responses, hris_update_candidate_application_stage, hris_save_candidate_interview_panel_notes, and hris_complete_candidate_interview. The offer-issuance positive/negative case also remains uncovered in disposable acceptance.
-- employee_family_admin_read uses global has_permission checks without a row-tenant predicate. employee_family_members has authenticated SELECT plus TRUNCATE, REFERENCES, and TRIGGER privileges; direct authenticated DML is false in the catalog query.
-- leave_requests and leave_types have RLS enabled but also anonymous table-level SELECT and INSERT grants. candidate_job_alerts has anonymous SELECT and INSERT grants; its row policy targets authenticated owners. The live catalog is not an anonymous HTTP rejection test. The production HTTP check could not be executed through the read-only browser evaluation surface, so anonymous HTTP acceptance remains NOT RUN.
-- Current deployed has_permission is tenant-scoped; the separate System Administrator’s legacy user_roles do not substitute for active tenant membership. Do not add a global fallback, new membership, role, tenant, or production test data.
+- Migrations 20261020043721 and 20261020044145 are already applied. Do not replay them. HR contact migration 20261014171952 and family tenant-scope migration 20261016171104 are absent.
+- Both HR01 contact RPCs are absent: hris_get_tenant_employee_contact_details and hris_update_tenant_employee_contact_details. Production has 0/7 Candidate/interview release RPCs: hris_get_recruitment_pipeline, hris_issue_candidate_offer, hris_schedule_candidate_interview, hris_get_candidate_interview_responses, hris_update_candidate_application_stage, hris_save_candidate_interview_panel_notes, and hris_complete_candidate_interview.
+- Three hosted employee self-write functions exist as SECURITY DEFINER: employee_update_my_profile(p_payload jsonb), employee_save_my_addresses_v2(p_rows jsonb), and employee_save_my_family_members_v2(p_rows jsonb). Authenticated EXECUTE is true and anon EXECUTE is false. Their source provenance and focused two-tenant field/ownership tests are unresolved; the latest source scan in PR #39 covered Main b262cade, not current 3f6ea22. employee_update_my_emergency_contacts is absent.
+- RLS is enabled on employee_addresses, employee_family_members, leave_requests, leave_types, and candidate_job_alerts. Read-only ACL checks show anon has SELECT, INSERT, UPDATE, and DELETE table privileges on leave_requests, leave_types, and candidate_job_alerts. Authenticated also has TRUNCATE on candidate_job_alerts, employee_addresses, employee_family_members, leave_requests, and leave_types. This is an excess-privilege blocker. Catalog ACLs alone do not prove anonymous row access; no anonymous HTTP acceptance test was run.
+- employee_family_admin_read still uses global has_permission checks without a row-tenant predicate. Current SELECT policies include legacy global-permission checks alongside tenant-aware policies. The authenticated role has direct SELECT but no direct INSERT/UPDATE/DELETE on employee_family_members in the catalog check.
+- No production DDL, DML, Auth, membership, role, tenant, setting, grant, or migration-history write was made. Do not create production test tenants/users or replay migrations. Resolve on Main-based source and disposable two-tenant Auth/Postgres tests first.
 
-No production migration or API mutation is approved. Source parity must be reviewed on a Main-based branch and tested in a disposable two-tenant stack before any production change.
+## 1,047 story IDs and Figma parity
 
-## Story and Figma acceptance
+- Canonical source remains 1,047 unique story IDs across 153 modules. The current Main development acceptance overlay at 3f6ea22 has blob 818405ca6dbd88863eb8150c058d078216930e04 (same overlay as the previous checkpoint): 39 unique IDs with disposable journey evidence, 8 partial, 14 explicit contract blockers, and 986 unclassified. The groups do not overlap. Zero are independently hosted-certified. The historical 82 verified aggregate has no preserved ID membership and cannot be added to the 39.
+- PR #40 CSV at ecd799a has blob 1b7801e3fb1299688188a207b583d98014ecde09: 1,047 unique IDs, 50 IMPLEMENTED_NOT_CERTIFIED, 8 PARTIAL, 989 BLOCKED; every row says hosted acceptance NOT_VERIFIED. This classification does not reconcile with the current overlay.
+- CSV Figma values: 966 have no exact story-to-node mapping; 23 have only unapproved/insufficient correspondence; the remaining 58 possible profile/candidate/screen references are unverified or lack visual parity. No independent WS04 1,047-ID reconciliation or Main+Candidate full certification was located in the refreshed PR set. PR #43 records NO_APPROVED_FIGMA_MAPPING and has no implementation desktop/mobile screenshots; PR #44 records no SA06 master-data frame. PR #44’s manager parity audit is explicitly partial; selected browser checks are blocked before launch by missing Chromium. Accessibility acceptance is open. No 100% parity claim is supported.
 
-The current Main development overlay at b262cade has blob 818405ca6dbd88863eb8150c058d078216930e04. It records 39 unique story IDs with disposable journey evidence, 8 partial IDs, 14 explicit contract blockers, and 986 unclassified IDs; the groups do not overlap. None is independently hosted-certified. The historical 82-story aggregate has no preserved ID membership and must not be added to the 39.
+## Off-GitHub recovery and protected review
 
-PR #40’s CSV at ecd799a has blob 1b7801e3fb1299688188a207b583d98014ecde09 and 1,047 unique rows: 50 IMPLEMENTED_NOT_CERTIFIED, 8 PARTIAL, and 989 BLOCKED. Its implementation count is unreconciled with the current overlay. All 1,047 CSV rows say hosted acceptance NOT_VERIFIED. The CSV records 966 rows with no exact Figma-node map, 23 with only unapproved/insufficient contract correspondence, and 58 possible screen references that remain unverified or lack visual parity.
-
-WS04 has not published the refreshed 1,047-ID reconciliation or an independent Main+Candidate screen certification. WS07’s PR #43 contains one HR03 Figma candidate screenshot but records NO_APPROVED_FIGMA_MAPPING; it is not a parity PASS. WS08’s PR #44 reports no SA06/master-data frame. The Candidate development tree has no independent parity matrix. The required gate remains 100% approved Figma frame → route → role/state → desktop/mobile evidence, with every absent/failed mapping explicit. Accessibility acceptance is also open. No 100% parity claim is supported.
-
-## Off-GitHub recovery and repository protection
-
-- The Drive r3 manifest and local bundles agree byte-for-byte: Main SHA-256 5caa6734b41714ada8622a4238e099621626d6ea250517c3009a0efa0b4c0c01; Candidate SHA-256 fe95ce709e79b2ca70eb2f093264059051fdb668688363c39b93bfd1adc0a826. Both bundles restored into isolated bare mirrors and passed git fsck; their backup refs match production-main cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 and 38174c7b607999f951c7eea47aefaa443735080e. These are October 17 source backups, not a backup of current development work.
-- Drive searches found runbooks/manifests and code checkpoints, but no encrypted production database dump, checksum/read-back receipt, or isolated database restore proof. The production database backup/restore gate is BLOCKED.
-- No independent four-day Mac checkout or transcript is available in this workspace; Mac-only changes cannot be confirmed beyond the recoverable Git refs.
-- GitHub repository rulesets are empty. The branch-protection endpoints returned 403 to this integration, so classic protection cannot be verified. Review lists for frozen PR #38 and #5 are empty. Required protection and independent approval remain BLOCKED.
+- Drive r3 source-bundle hashes remain Main 5caa6734b41714ada8622a4238e099621626d6ea250517c3009a0efa0b4c0c01 and Candidate fe95ce709e79b2ca70eb2f093264059051fdb668688363c39b93bfd1adc0a826. Both October 17 bundles were restored into isolated bare mirrors and passed git fsck; their refs match the production-main SHAs above. These are source backups, not a current development backup or database snapshot.
+- Fresh Drive searches returned backup runbooks/manifests but no encrypted production database dump, ciphertext checksum/read-back, or isolated restore proof. The production database backup/restore gate remains BLOCKED.
+- GitHub reports no active rulesets for either repo. Branch API reports main and development unprotected in both repos (protected=false; required status checks off). Review submissions on frozen Main PR #38 and Candidate PR #5 are empty. Protected review is BLOCKED.
+- No separate four-day Mac checkout/transcript was found; Mac-only changes cannot be confirmed beyond the recoverable Git refs.
 
 ## Owner dependency ledger
 
 | Owner | Required next evidence |
 |---|---|
-| WS01 Main | Fix the live Employee View’s generic read-failure state; preserve fail-closed contact editing; reconcile contact RPC source/signature/grants and migration 20261014171952 without replay; rerun current-head build/browser and exact HR01 cases. |
-| WS02 API/security | Publish source-backed signature/grant/provenance for all hosted self-write routines; add disposable two-tenant own/foreign/unlinked tests; complete Candidate offer allow/deny tests; reconcile family/leave/alert ACL and policy behavior; run anonymous HTTP and authorized HR/Admin/employee role tests. No production writes. |
-| WS03 Candidate | Fix the exact CA14 withdrawal/history failure on #6; rerun full acceptance and record current Main SHA b262cade; prove candidate-to-employee/privacy/tenant cases in isolated flows. Keep production public-only. |
-| WS04 story/Figma certification | Reconcile PR #40 CSV against the b262cade overlay without double-counting; keep the 82 legacy IDs unknown unless recovered; then publish independent route/frame/role/state/mobile/desktop evidence for Main and Candidate and accessibility status. |
-| WS06 Employee | Rebase #42 onto current Main development b262cade, resolve asset provenance with WS01, rerun build/browser and isolated Auth/RLS at exact head; do not invent self-write contracts. |
-| WS07 HR Operations | Keep HR03-01 blocked pending approved legal-entity cardinality/fields/authorization/history linkage; rebase #43 and run exact-head CI; record absent Figma mapping explicitly. |
-| WS08 Management | Keep SA06-01..04 blocked until catalog scope, server write/API, navigation, tenant/role, retention, and duplicate contracts are approved; run exact-head tests and record absent Figma mappings. |
-| WS05 release control | Keep #38/#5 draft. Require passing exact-head CI/build, source-to-hosted API/SQL parity, real signed-in role journeys and tenant isolation, verified database backup/restore, independent Figma/accessibility acceptance, protected review, and public URL/source SHA verification before merge/deploy. |
+| WS01 Main | Fix the live Employee View read-error/no-linked-profile state; reconcile HR01 contact RPC source/signatures/grants and migration 20261014171952 against current Main 3f6ea22; keep contact actions fail-closed; exact-head build/browser and HR01 tests. |
+| WS02 API/security | Reconcile hosted APIs/ACLs with current Main 3f6ea22; prove source parity and own/foreign/unlinked writes in disposable two-tenant Auth/Postgres; review excess anon DML grants and family/leave/alert policies; cover Candidate offer allow/deny; run safe anonymous HTTP and signed-in role acceptance without production writes. |
+| WS03 Candidate | Fix CA11-04 PDF content failure on PR #6, record/retest against current Main dependency 3f6ea22, and rerun full privacy/application/employee-transition acceptance at exact head. Keep production public-only and all unhosted HR actions gated. |
+| WS04 story/Figma certification | Reconcile the 1,047-row PR #40 CSV to the 3f6ea22 overlay without double-counting; recover the 82 legacy IDs or leave their overlap UNKNOWN; publish independent story-level Main+Candidate frame/route/role/state and desktop/mobile evidence plus accessibility results. |
+| WS06 Employee | Rebase PR #42 onto 3f6ea22; resolve generated/tracked Pages asset provenance with WS01; rerun exact-head build/browser and isolated Auth/RLS. Do not invent employee-write schema. |
+| WS07 HR Operations | Rebase PR #43 and run exact-head CI; keep HR03-01 blocked until legal-entity cardinality, fields, authorization, lifecycle, and history are approved; record missing Figma mapping explicitly. |
+| WS08 Management | Rebase PR #44 and run exact-head CI; keep SA06 blocked until catalog scope, server writer/API, navigation, tenant/role, retention, and duplicate contracts are approved; publish accurate frame/route evidence. |
+| WS05 release control | Keep PR #38 and #5 draft. Require all tenant-security/API/SQL, exact-head CI/build, hosted source parity, real signed-in role journeys, verified off-GitHub database backup/restore, independent WS04/Figma/accessibility acceptance, protected reviews, and URL/source-SHA checks before using the protected merge/deploy workflow. |
 
 ## Release decision
 
-HOLD remains. Do not merge, enable Candidate sign-up/applications, mutate production records/permissions/schema, or replay applied migrations. Only WS05 may use the protected release workflow after every gate above passes and the final live URL confirms the deployed commit.
+HOLD. Do not merge, enable Candidate registration/applications, mutate production records/permissions/schema, or replay applied migrations. Only WS05 may merge/deploy, after every listed gate passes and the hosted URLs confirm the intended deployed commit.
