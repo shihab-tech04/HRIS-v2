@@ -478,6 +478,7 @@ for (const file of [
   // Hosted parity rollback expects this historical production base table to exist
   // in the isolated schema as well as production before Phase 03/04 guards install.
   path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -8232,6 +8233,8 @@ const hr0101EmployeeRoleMembership = queryAdmin(`SELECT jsonb_build_object('coun
     AND role='qa_hris_employee_role';`);
 record('HR01-01 partial: the HR workspace activates a verified candidate into a tenant employee record with safe retry',
   hr0101BrowserOutput.includes('HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS')
+    && Boolean(hr0101Employee?.id)
+    && hr0101Employee?.user_id === assessmentCandidateA.userId
     && hr0101Employee?.employee_number === hr0101EmployeeNumber
     && hr0101Employee?.full_name === 'HR01-01 Synthetic Candidate'
     && hr0101Employee?.employment_status === 'active'
