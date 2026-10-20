@@ -8,7 +8,7 @@ const contactSql = read('../../supabase/migrations/20261014171952_employee_conta
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-employee-directory-browser.mjs');
 
-test('HR01-06 records a verified partial boundary for sensitive contact-change auditing', () => {
+test('HR01-06 records a partial boundary and verifies redacted auditing for all supported contact fields', () => {
   const story = catalogue.stories.find(item => item.story_id === 'HR01-06');
   assert.ok(story);
   assert.equal(story.module_id, 'HR01');
@@ -20,10 +20,15 @@ test('HR01-06 records a verified partial boundary for sensitive contact-change a
   assert.ok(contactSql.includes('INSERT INTO public.admin_audit_logs'));
   assert.ok(contactSql.includes('employee.contact_details_updated'));
   assert.ok(contactSql.includes('changed_fields'));
+  for (const field of [
+    'official_email', 'personal_email', 'phone', 'official_phone', 'address',
+    'mailing_address', 'emergency_contact_name', 'emergency_contact_phone',
+    'emergency_contact_relation',
+  ]) assert.ok(contactSql.includes(`v_before.${field} IS DISTINCT FROM`), `SQL does not track ${field}.`);
   assert.ok(runner.includes('contactAudit.count === 1'));
-  assert.ok(runner.includes("contactAudit.details.includes('official_email')"));
-  assert.ok(runner.includes("contactAudit.details.includes('emergency_contact_phone')"));
-  assert.ok(runner.includes("!contactAudit.details.includes('employee-a-updated@hris.test')"));
+  assert.ok(runner.includes('auditedContactFieldNames.every(field => contactAudit.details.includes(field))'));
+  assert.ok(runner.includes('.every(value => !contactAudit.details.includes(value))'));
+  assert.ok(runner.includes("auditedContactFieldNames = Object.keys(contactUpdatePayload)"));
   assert.ok(runner.includes("record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event'"));
   assert.ok(runner.includes("employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS')"));
   assert.ok(browser.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS'));

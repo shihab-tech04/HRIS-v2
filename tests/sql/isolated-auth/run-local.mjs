@@ -2330,6 +2330,10 @@ const contactUpdate = await managerA.client.rpc('hris_update_tenant_employee_con
 });
 const restrictedEmployeeAfterContactEdit = queryAdmin("SELECT jsonb_build_object('id',e.id,'tenant_id',e.tenant_id,'user_id',e.user_id,'employee_number',e.employee_number,'full_name',e.full_name,'department_id',e.department_id,'team_id',e.team_id,'designation_id',e.designation_id,'joining_date',e.joining_date,'employment_status',e.employment_status,'auth_email',u.email) FROM public.employees e LEFT JOIN auth.users u ON u.id=e.user_id WHERE e.id='55555555-5555-4555-8555-555555555555'::uuid");
 const contactAudit = queryAdmin("SELECT jsonb_build_object('count',count(*)::integer,'details',max(details::text)) FROM public.admin_audit_logs WHERE target_type='employees' AND target_id='55555555-5555-4555-8555-555555555555' AND action='employee.contact_details_updated'");
+const auditedContactFieldNames = Object.keys(contactUpdatePayload);
+const contactAuditHasEveryFieldName = auditedContactFieldNames.every(field => contactAudit.details.includes(field));
+const contactAuditRedactsEveryChangedValue = Object.values(contactUpdatePayload)
+  .every(value => !contactAudit.details.includes(value));
 record('Employee contact save validates input, rejects non-contact keys and duplicate emails, audits field names, and preserves identifiers/org/lifecycle/Auth identity',
   contactBaseline?.official_email === 'employee-a@hris.test'
     && Boolean(nonContactFieldAttempt.error?.code === '22023')
@@ -2347,9 +2351,8 @@ record('Employee contact save validates input, rejects non-contact keys and dupl
     && contactUpdate.data?.official_email === contactUpdatePayload.official_email
     && JSON.stringify(restrictedEmployeeAfterContactEdit) === JSON.stringify(restrictedEmployeeBeforeContactEdit)
     && contactAudit.count === 1
-    && contactAudit.details.includes('official_email')
-    && contactAudit.details.includes('emergency_contact_phone')
-    && !contactAudit.details.includes('employee-a-updated@hris.test'),
+    && contactAuditHasEveryFieldName
+    && contactAuditRedactsEveryChangedValue,
   JSON.stringify({ badPayloadCode: nonContactFieldAttempt.error?.code, invalidCode: invalidContactAttempt.error?.code,
     longFieldCode: longContactAttempt.error?.code,
     duplicateCode: duplicateContactAttempt.error?.code, viewerUpdateCode: contactUpdateDeniedForViewer.error?.code,
@@ -2451,13 +2454,12 @@ record('Real local Auth-to-Postgres employee directory journey passes on mobile 
   employeeDirectoryBrowserError);
 record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event',
   contactAudit.count === 1
-    && contactAudit.details.includes('official_email')
-    && contactAudit.details.includes('emergency_contact_phone')
-    && !contactAudit.details.includes('employee-a-updated@hris.test')
+    && contactAuditHasEveryFieldName
+    && contactAuditRedactsEveryChangedValue
     && employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS'),
   JSON.stringify({ auditCount: contactAudit.count,
-    auditedFieldNames: ['official_email', 'emergency_contact_phone'],
-    changedValuesExcluded: !contactAudit.details.includes('employee-a-updated@hris.test'),
+    auditedFieldNames: auditedContactFieldNames,
+    allChangedValuesExcluded: contactAuditRedactsEveryChangedValue,
     browserMarker: employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS') }));
 
 record('HR01-04 HR sees and filters each configured employment status within the current tenant',
