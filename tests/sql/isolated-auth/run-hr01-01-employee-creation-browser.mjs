@@ -89,8 +89,11 @@ try {
   const activationResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_activate_candidate_employee'));
   await candidateRow.getByRole('button', { name: 'Activate employee', exact: true }).click();
   const response = await activationResponse;
-  if (!response.ok()) throw new Error(`HR activation RPC failed with HTTP ${response.status()}.`);
-  const payload = await response.json();
+  const responseBody = await response.text();
+  let payload;
+  try { payload = JSON.parse(responseBody); }
+  catch { payload = { response: responseBody }; }
+  if (!response.ok()) throw new Error(`HR activation RPC failed with HTTP ${response.status()}: ${JSON.stringify(payload)}.`);
   if (payload?.success !== true || payload?.idempotent !== false || !payload?.employee_id) {
     throw new Error(`HR activation returned an unexpected result: ${JSON.stringify(payload)}.`);
   }

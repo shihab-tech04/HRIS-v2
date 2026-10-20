@@ -8142,6 +8142,10 @@ const hr0101ApplicationId = 'ab010001-0000-4000-8000-000000000002';
 const hr0101HandoffId = 'ab010001-0000-4000-8000-000000000003';
 const hr0101OfferId = 'ab010001-0000-4000-8000-000000000004';
 const hr0101EmployeeNumber = 'HR01-01-E001';
+// The suite intentionally revokes managerA's earlier token in its session
+// revocation checks. Sign in again here so the HR activation test uses a live
+// Auth session rather than the deliberately revoked token.
+const hr0101Manager = await signIn(emails[0]);
 psqlSync(`INSERT INTO public.jobs(id,tenant_id,reference_number,title,status,is_published,is_active)
   VALUES('${hr0101JobId}'::uuid,'${ids.tenantA}'::uuid,'HR01-01-QA','HR01-01 synthetic role','open',true,true);
 INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,stage)
@@ -8153,6 +8157,9 @@ INSERT INTO public.onboarding_handoffs(
   id,application_id,status,candidate_personal_data,candidate_completed_steps,candidate_submitted_at
 ) VALUES('${hr0101HandoffId}'::uuid,'${hr0101ApplicationId}'::uuid,'submitted_for_verification','{}'::jsonb,
   ARRAY['step_identity','step_emergency','step_payroll','step_policies']::text[],now());`);
+const hr0101ManagerPermission = await hr0101Manager.client.rpc('has_tenant_permission', {
+  p_tenant_id: ids.tenantA, p_permission_id: 'employees.manage',
+});
 const hr0101NoPermission = await noPermission.client.rpc('hris_activate_candidate_employee', {
   p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
   p_employee_number: `${hr0101EmployeeNumber}-DENY`, p_joining_date: '2020-01-01', p_details_verified: true,
@@ -8161,23 +8168,26 @@ const hr0101CrossTenant = await managerB.client.rpc('hris_activate_candidate_emp
   p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
   p_employee_number: `${hr0101EmployeeNumber}-CROSS`, p_joining_date: '2020-01-01', p_details_verified: true,
 });
-const hr0101Unverified = await managerA.client.rpc('hris_activate_candidate_employee', {
+const hr0101Unverified = await hr0101Manager.client.rpc('hris_activate_candidate_employee', {
   p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
   p_employee_number: `${hr0101EmployeeNumber}-UNVERIFIED`, p_joining_date: '2020-01-01', p_details_verified: false,
 });
-const hr0101FutureDate = await managerA.client.rpc('hris_activate_candidate_employee', {
+const hr0101FutureDate = await hr0101Manager.client.rpc('hris_activate_candidate_employee', {
   p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
   p_employee_number: `${hr0101EmployeeNumber}-FUTURE`, p_joining_date: '2099-01-01', p_details_verified: true,
 });
 record('HR01-01 activation denies users without employees.manage, cross-tenant HR, unverified details, and future joining dates',
-  hr0101NoPermission.error?.code === '42501'
+  hr0101ManagerPermission.data === true
+    && hr0101NoPermission.error?.code === '42501'
     && hr0101CrossTenant.error?.code === '42501'
     && hr0101Unverified.error?.code === '22023'
     && hr0101FutureDate.error?.code === '55000',
-  JSON.stringify({ noPermission: hr0101NoPermission.error?.code,
-    crossTenant: hr0101CrossTenant.error?.code,
-    unverified: hr0101Unverified.error?.code,
-    futureDate: hr0101FutureDate.error?.code }));
+  JSON.stringify({ managerHasPermission: hr0101ManagerPermission.data,
+    managerPermissionError: hr0101ManagerPermission.error?.message,
+    noPermission: { code: hr0101NoPermission.error?.code, message: hr0101NoPermission.error?.message },
+    crossTenant: { code: hr0101CrossTenant.error?.code, message: hr0101CrossTenant.error?.message },
+    unverified: { code: hr0101Unverified.error?.code, message: hr0101Unverified.error?.message },
+    futureDate: { code: hr0101FutureDate.error?.code, message: hr0101FutureDate.error?.message } }));
 
 let hr0101BrowserOutput = '';
 let hr0101BrowserError = '';
@@ -8212,7 +8222,7 @@ const hr0101Audit = queryAdmin(`SELECT jsonb_build_object('count',count(*)::inte
   FROM public.admin_audit_logs WHERE action='candidate.employee.activated'
     AND target_id=(SELECT e.id::text FROM public.employees e WHERE e.employee_number=${sqlLiteral(hr0101EmployeeNumber)}
       AND e.tenant_id=${sqlLiteral(ids.tenantA)}::uuid);`);
-const hr0101Retry = await managerA.client.rpc('hris_activate_candidate_employee', {
+const hr0101Retry = await hr0101Manager.client.rpc('hris_activate_candidate_employee', {
   p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
   p_employee_number: hr0101EmployeeNumber, p_joining_date: '2020-01-01', p_details_verified: true,
 });
