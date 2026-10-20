@@ -26,9 +26,9 @@ Status wording reflects the canonical audit overlay plus code and prior disposab
 | E02-02 | Update editable personal information | Blocked: no versioned/verified employee self-update API in the authoritative tree. A separate UI branch calls `employee_update_my_profile`, but no matching migration or Auth/RLS proof is present. WS02 must verify the deployed contract and allowed-field list. |
 | E02-03 | Request changes to protected HR-controlled fields | Implemented, not certified; `src/live/ProfileChangeRequests.tsx`, isolated profile-change browser evidence at `445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5`; run `39147470480`. |
 | E02-04 | Manage contact details | Blocked: the existing contact update RPC is `employees.manage`-scoped and edits a target employee; it is not an employee self-service contract. Do not expose sign-in email or protected fields through it. |
-| E02-05 | Manage present and permanent addresses | Blocked: `employee_get_my_addresses_v2()` is read-only. There is no approved employee address write contract in the authoritative migrations. |
+| E02-05 | Manage present and permanent addresses | Blocked for writes: the development source adds an own-row SELECT policy in `20261016151101_employee_addresses_self_read_policy.sql` and drops the temporary getter in `20261016151112_employee_get_my_addresses_cleanup.sql`; no employee address insert/update/delete path is present. WS02 confirmation of deployed state is pending. |
 | E02-06 | Manage emergency contacts | Blocked: emergency fields exist in the manager contact contract, which requires `employees.manage`; employee self-write authorization is not established. |
-| E02-07 | Manage dependent/family information | Blocked: the authoritative family migration grants authenticated users `SELECT` only. No self-service insert/update/delete contract is present. |
+| E02-07 | Manage dependent/family information | Blocked for writes and production parity: development migration `20261016171104_employee_family_tenant_scoped_read.sql` grants authenticated `SELECT` only, but WS02's read-only production recheck reports that migration absent at head `20261020044145`; production ACL still includes `REFERENCES`, `SELECT`, `TRIGGER`, and `TRUNCATE`, and its admin policy lacks a row-tenant predicate. Do not treat the development test as production certification. |
 | E02-08 | View employment information | Implemented, not certified; self-only identity projection and browser evidence at `6ff29e898aef54c2779e44cfdd5e465c79e6c11`; run `39371994771`. |
 | E02-09 | See designation, department, manager, location, grade, and employment type | Blocked for certification: current identity evidence covers employee number, designation, department, and status only; remaining fields lack an approved employee projection/evidence mapping. |
 | E02-10 | Add and update education records | Blocked for certification: no ID-level source evidence in the canonical overlay. Feature absence is not inferred. |
@@ -72,12 +72,20 @@ Status wording reflects the canonical audit overlay plus code and prior disposab
 
 Blocked and partial IDs have no safe employee-write or projection contract beyond the gates described in the checklist. The focused tests above are also included in the full contract run for the WS06 checkpoint below.
 
-## WS06 checkpoint verification
+## Latest WS06 checkpoint verification
 
-- Checkpoint commit: `85f8a395836c54947f6f16ee82a09ea0c38073c2`, based on `1714a08e24f47999618b0127fc818a3d19eb187a`.
-- Actions run `39389380686` passed: typecheck, full contracts, production build, standalone browser regressions, disposable Auth/RLS acceptance, Phase 04 parity checks, and disposable database security-advisory checks.
-- Actions run `39389380715` passed typecheck, full contracts, and production build, then failed the Pages parity check: the generated output used `app-C4oUgMGJ.js` / `app-GpVcVTBs.css`, while branch-served `index.html` references `app-2l-hdvDU.js` / `app-BWuIahKW.css`. The workflow skips browser smoke after that failure. WS06 changed no application asset; WS01/WS05 can reconcile the existing asset mismatch.
-- Local scoped Employee/privacy tests passed 49/49 and the added ownership test passed 2/2. Workflow YAML parsed and `git diff --check` passed.
+- Current branch head before this report-only update: `46040714c5d828de696950832c842752c39dde2f`; authoritative base remains `1714a08e24f47999618b0127fc818a3d19eb187a`.
+- Actions run `39390491713` passed typecheck, full contracts, production build, synthetic-session browser regressions, disposable Auth/RLS acceptance, Phase 04 parity, and disposable security-advisory checks.
+- Employee runtime evidence in run `39390491713`:
+  - E02-01 profile returned the linked employee's own identity and denied cross-tenant, global-only, and anonymous callers. E02-08 employment reads were self-scoped with cross-tenant denial.
+  - E03 document browser acceptance covered self-record reads, recovery, download, localization, and responsiveness; Auth/RLS denied mismatched tenant, foreign employee, manager, and anonymous access.
+  - E04 identity-card Auth/RLS denied wrong tenant, cross-employee identity, manager without employee link, and anonymous access. E04-02 opened, retried, and closed responsively.
+  - E37 directory tests covered tenant-scoped search, department/team filtering, page/export limits, privacy-limited CSV fields, mobile/desktop browser acceptance, and foreign-tenant/no-permission denials. Location remains absent from the approved projection.
+  - E02-03/E02-17 retain earlier isolated browser/Auth evidence in run `39147470480`, source commit `445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5`.
+- Local focused Employee Phase 05 contract command passed `48/48`; it includes profile, profile-change, skills, documents, identity card, directory, family privacy, and the WS06 ownership test.
+- Actions run `39390491588` passed TypeScript, full contract checks, and production bundle build, then failed the Pages parity step. Build output used `app-C4oUgMGJ.js` / `app-GpVcVTBs.css`, while base and WS06 branch `index.html` share blob SHA `d037342b643bae45f4adb040ec7e0c8d022e4d3a` and reference `app-2l-hdvDU.js` / `app-BWuIahKW.css`. The workflow stops before its browser-smoke step. PR #42 changes only workflow files, evidence, and contracts; it does not change app source or static assets. The mismatch is routed to WS01/WS05.
+- The WS02 contract request is posted in PR #39 comment `6286731239`. No response was present at the last recheck. WS02/WS05's latest production recheck (PR #39 comment `6286595825`) reports that the family read migration is absent from production and flags the deployed ACL/policy discrepancy above. This hosted finding is separate from passing synthetic development-source tests.
+- Workflow YAML parsed successfully; `git diff --check` passed. No hosted production certification is claimed.
 
 ## Implementation decision and required handoff
 
