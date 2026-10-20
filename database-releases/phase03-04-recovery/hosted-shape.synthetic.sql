@@ -12,6 +12,21 @@ CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT coales
 CREATE TABLE storage.objects(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),bucket_id text,name text,owner uuid);
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 CREATE FUNCTION storage.foldername(text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ SELECT (string_to_array($1,'/'))[1:array_length(string_to_array($1,'/'),1)-1] $$;
+SET check_function_bodies = off;
+CREATE OR REPLACE FUNCTION public.synesis_tenant_id()
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+  select id
+  from public.tenants
+  where slug = 'synesis-it'
+    and is_active = true
+  limit 1;
+$function$
+;
+SET check_function_bodies = on;
 CREATE TABLE public."admin_audit_logs" (
 id uuid NOT NULL DEFAULT gen_random_uuid(),
 actor_id uuid,
