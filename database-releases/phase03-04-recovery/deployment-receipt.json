@@ -1,0 +1,334 @@
+{
+  "project_id": "oslgwxaqfbteqtwqvdzs",
+  "organization_id": "qdcgrdntvspjsdszuzmy",
+  "connector": "link_6ac07a13790c81919fcc5f7af6dbcef9",
+  "route": "existing authenticated Supabase apply_migration",
+  "status": "DEPLOYED_NATIVE_HISTORY_VERIFIED",
+  "history_before": 114,
+  "history_after": 116,
+  "production_head": "20261020044145",
+  "ordered_migrations": [
+    {
+      "version": "20261020043721",
+      "name": "phase03_phase04_hosted_compatibility_recovery_20261020",
+      "bytes": 228160,
+      "sql_md5": "0dc7616842901820ebde629c3519cf60"
+    },
+    {
+      "version": "20261020044145",
+      "name": "phase03_learning_context_authenticated_acl_20261020",
+      "bytes": 1077,
+      "sql_md5": "add4d73bacabc008716109d22324319c"
+    }
+  ],
+  "schema_parity": [
+    {
+      "kind": "internal_trigger",
+      "object": "private.hris_record_employee_shift_change()",
+      "source_version": "20261017095321",
+      "passed": true,
+      "requirement": "exists, not executable by authenticated or anon"
+    },
+    {
+      "kind": "policy",
+      "object": "public.employee_profile_change_requests/employee_profile_change_read_own_or_authorized_review",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "tenant-scoped predicate; legacy notices guard absent where applicable"
+    },
+    {
+      "kind": "policy",
+      "object": "public.notices/hris_notices_membership_guard",
+      "source_version": "20261017030000",
+      "passed": true,
+      "requirement": "tenant-scoped predicate; legacy notices guard absent where applicable"
+    },
+    {
+      "kind": "prerequisite",
+      "object": "public.employee_shift_assignment_changes",
+      "source_version": "20261017095321",
+      "passed": true,
+      "requirement": "table exists"
+    },
+    {
+      "kind": "prerequisite",
+      "object": "public.has_tenant_permission(uuid,text)",
+      "source_version": "20261012091930",
+      "passed": true,
+      "requirement": "function exists"
+    },
+    {
+      "kind": "prerequisite",
+      "object": "public.hris_is_active_tenant_member(uuid)",
+      "source_version": "20261012230100",
+      "passed": true,
+      "requirement": "function exists"
+    },
+    {
+      "kind": "prerequisite",
+      "object": "public.roster_change_notifications",
+      "source_version": "20261016230201",
+      "passed": true,
+      "requirement": "table exists"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "private.hris_get_my_employee_documents(uuid)",
+      "source_version": "20261017010000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.admin_list_profile_change_requests(uuid)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.admin_review_profile_change_request(uuid,uuid,text,text)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.employee_get_my_profile_change_requests(uuid)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.employee_submit_profile_change_request(uuid,text,text,text)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_change_tenant_employee_shift(uuid,uuid,uuid,uuid)",
+      "source_version": "20261017095321",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_employee_submit_attendance_correction(uuid,jsonb)",
+      "source_version": "20261017074518",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_get_my_dashboard_data(uuid)",
+      "source_version": "20261017060001",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_get_my_employee_documents(uuid)",
+      "source_version": "20261017010000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_get_my_employee_identity_card(uuid)",
+      "source_version": "20261017020000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_get_my_pending_requests(uuid)",
+      "source_version": "20261017060000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_get_my_shift_changes(uuid,date,date)",
+      "source_version": "20261017095321",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_get_tenant_employee_directory_v2(uuid,text,uuid,uuid,text,integer,integer)",
+      "source_version": "20261017092147",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_notices_super_admin_tenant_member(uuid)",
+      "source_version": "20261017030000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "required_rpc",
+      "object": "public.hris_profile_change_active_member(uuid)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "exists, authenticated executable, anon not executable"
+    },
+    {
+      "kind": "retired_overload",
+      "object": "public.admin_list_profile_change_requests()",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "legacy tenant-implicit RPC absent"
+    },
+    {
+      "kind": "retired_overload",
+      "object": "public.admin_review_profile_change_request(uuid,text,text)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "legacy tenant-implicit RPC absent"
+    },
+    {
+      "kind": "retired_overload",
+      "object": "public.employee_get_my_profile_change_requests()",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "legacy tenant-implicit RPC absent"
+    },
+    {
+      "kind": "retired_overload",
+      "object": "public.employee_submit_profile_change_request(text,text,text)",
+      "source_version": "20261017130000",
+      "passed": true,
+      "requirement": "legacy tenant-implicit RPC absent"
+    }
+  ],
+  "security_assertions": [
+    {
+      "test": "exactly_two_reviewed_history_records",
+      "passed": true
+    },
+    {
+      "test": "fourteen_module_write_guards",
+      "passed": true
+    },
+    {
+      "test": "learning_context_anon_denied",
+      "passed": true
+    },
+    {
+      "test": "learning_context_authenticated_callable",
+      "passed": true
+    },
+    {
+      "test": "learning_context_definition_unchanged",
+      "passed": true
+    },
+    {
+      "test": "learning_helper_anon_denied",
+      "passed": true
+    },
+    {
+      "test": "learning_helper_authenticated_callable",
+      "passed": true
+    },
+    {
+      "test": "learning_null_tenant_denied",
+      "passed": true
+    },
+    {
+      "test": "legacy_notices_guard_retired",
+      "passed": true
+    },
+    {
+      "test": "legacy_role_45_preserved",
+      "passed": true
+    },
+    {
+      "test": "minimal_hr_admin_grant",
+      "passed": true
+    },
+    {
+      "test": "module_config_no_anonymous_table_access",
+      "passed": true
+    },
+    {
+      "test": "module_config_no_authenticated_table_access",
+      "passed": true
+    },
+    {
+      "test": "no_module_defaults_seeded",
+      "passed": true
+    },
+    {
+      "test": "one_active_membership",
+      "passed": true
+    },
+    {
+      "test": "platform_requires_live_session",
+      "passed": true
+    },
+    {
+      "test": "second_admin_unassigned",
+      "passed": true
+    },
+    {
+      "test": "six_new_tables_rls",
+      "passed": true
+    },
+    {
+      "test": "sole_super_admin",
+      "passed": true
+    },
+    {
+      "test": "three_restrictive_storage_guards",
+      "passed": true
+    }
+  ],
+  "negative_database_role_checks": {
+    "authenticated_without_session_denials": 5,
+    "anonymous_denials": 4,
+    "passed": 9,
+    "total": 9,
+    "transaction": "READ ONLY; ROLLBACK"
+  },
+  "source_function_names_present": 55,
+  "source_function_names_missing": 0,
+  "new_rls_tables": 6,
+  "sole_super_admin_preserved": true,
+  "second_administrator_unassigned": true,
+  "disposable_acceptance_run": 39369561233,
+  "first_install_and_acl_rehearsal_run": 39370837800,
+  "remaining_database_migrations_for_reviewed_package": [],
+  "production_signed_in_http_journeys": "NOT_EXECUTED",
+  "overall_phase03_phase04_acceptance": "NOT_DECLARED",
+  "advisor_summary": [
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "count": 27,
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+    },
+    {
+      "name": "anon_security_definer_function_executable",
+      "level": "WARN",
+      "count": 1,
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable"
+    },
+    {
+      "name": "authenticated_security_definer_function_executable",
+      "level": "WARN",
+      "count": 246,
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable"
+    },
+    {
+      "name": "auth_leaked_password_protection",
+      "level": "WARN",
+      "count": 1,
+      "remediation": "https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection"
+    }
+  ],
+  "advisor_notes": "No error-level findings. Public candidate job source is intentionally anonymous and pre-existed this migration. Protected RPC-only tables intentionally have RLS and no direct-table policies. Signed-in SECURITY DEFINER RPC warnings require their authorization predicates, not automatic revoke. Leaked-password-protection setting was not changed."
+}
