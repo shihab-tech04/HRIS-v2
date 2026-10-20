@@ -1,6 +1,6 @@
 # Phase 03/04 migration recovery — 20 October 2026
 
-**NOT DEPLOYED. Hosted acceptance NOT PASSED.** See release-status.md for final executed results.
+**DATABASE DEPLOYED at 20261020043721. Hosted catalog parity 26/26; hosted security 17/17; negative database-role checks 7/7.** Signed-in production HTTP journeys remain NOT EXECUTED; overall Phase 03/04 acceptance is not declared. See deployment-receipt.json and release-status.md.
 
 ## Target and ownership
 Project hrmis-saas: `oslgwxaqfbteqtwqvdzs`; organization `qdcgrdntvspjsdszuzmy`.
@@ -66,3 +66,7 @@ A transport error is not proof of rollback.
 After commit, use a reviewed forward corrective migration; preserve history and populated tables.
 No broad destructive reverse migration is authorized. Verified restorable pre-change definitions/recovery mechanism and first-install rehearsal remain release gates.
 Preserve the sole Super Admin, the unassigned second administrator, all audit history and tenant isolation.
+
+## Verified release update
+The single fresh apply_migration operation succeeded; no requestState error recurred. Native history now has 115 entries and the exact SQL size/MD5 matches the reviewed package. The server-generated migration is exported under supabase/migrations/20261020043721_phase03_phase04_hosted_compatibility_recovery_20261020.sql; its version was read from production, not invented.
+First-install, failed-transaction rollback, protected-topology rejection and replay passed in run 39370270132. All 55 package function names and six new RLS-enabled tables now exist. Sole Super Admin, minimal role and unassigned second administrator remain preserved. Pre-change definitions are retained. No further migration is pending for this reviewed package. Do not replay either the old staged compatibility SQL or the exported applied migration.
