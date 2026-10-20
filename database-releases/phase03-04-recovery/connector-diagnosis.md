@@ -1,10 +1,13 @@
+## Verified recovery outcome
+A single fresh reviewed apply_migration call succeeded through the existing HRIS connector and recorded native version 20261020043721. The earlier requestState error did not recur. The precise internal cause of the earlier failed resume remains unobserved; do not claim its signing, expiry or routing implementation was repaired. No sign-in, credentials transfer or alternate organization was used.
+
 # Connector submission diagnosis
 
 ## Verified observations
 - HRIS project oslgwxaqfbteqtwqvdzs, organization qdcgrdntvspjsdszuzmy: healthy.
 - Existing HRIS connector executes SQL reads as postgres.
 - Database/public CREATE and migration-history SELECT/INSERT/UPDATE confirmed.
-- apply_migration is exposed; no fresh production submission has yet been made in this recovery checkpoint.
+- apply_migration is exposed and a fresh real submission succeeded in this recovery checkpoint.
 - Earlier reported error: `Invalid or expired requestState`.
 - Existing CLI workflow run 39292936014 logs empty required credential values; it aborts before database connection. This is a separate failure, not evidence that connector authentication is missing.
 
