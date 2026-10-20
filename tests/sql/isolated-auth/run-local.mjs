@@ -479,10 +479,26 @@ for (const file of [
   // in the isolated schema as well as production before Phase 03/04 guards install.
   path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261020132112_revoke_client_administrative_table_privileges.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
   );
+  const clientAclMigration = file.endsWith('20261020132112_revoke_client_administrative_table_privileges.sql');
+  // Preserve the application's DML privileges while removing the four
+  // database-maintenance privileges that RLS does not adequately constrain.
+  const clientDmlAclQuery = `
+    SELECT coalesce(string_agg(
+      c.relname || '/' || r.rolname || '/' || p.privilege || '=' ||
+      has_table_privilege(r.rolname,c.oid,p.privilege)::text,
+      ',' ORDER BY c.relname,r.rolname,p.privilege), '')
+    FROM pg_class c
+    CROSS JOIN (VALUES ('anon'),('authenticated')) AS r(rolname)
+    CROSS JOIN (VALUES ('SELECT'),('INSERT'),('UPDATE'),('DELETE')) AS p(privilege)
+    WHERE c.relnamespace='public'::regnamespace AND c.relkind='r'
+      AND c.relname IN ('leave_requests','leave_types','candidate_job_alerts',
+                        'employee_addresses','employee_family_members');`;
+  const clientDmlBefore = clientAclMigration ? psqlSync(clientDmlAclQuery).trim() : null;
   const identityAuditSnapshotBefore = noticesPolicyMigration ? psqlSync(`
     SELECT jsonb_build_object(
       'admins', (SELECT jsonb_build_object(
@@ -495,6 +511,23 @@ for (const file of [
       ) FROM public.admin_audit_logs l)
     )::text;`).trim() : null;
   applySql(file);
+  if (clientAclMigration) {
+    const clientDmlAfter = psqlSync(clientDmlAclQuery).trim();
+    if (clientDmlBefore !== clientDmlAfter) {
+      throw new Error('The client privilege correction changed application DML privileges.');
+    }
+    const remainingElevatedGrants = Number(psqlSync(`
+      SELECT count(*) FROM pg_class c
+      CROSS JOIN (VALUES ('anon'),('authenticated')) AS r(rolname)
+      CROSS JOIN (VALUES ('TRUNCATE'),('REFERENCES'),('TRIGGER'),('MAINTAIN')) AS p(privilege)
+      WHERE c.relnamespace='public'::regnamespace AND c.relkind='r'
+        AND c.relname IN ('leave_requests','leave_types','candidate_job_alerts',
+                          'employee_addresses','employee_family_members')
+        AND has_table_privilege(r.rolname,c.oid,p.privilege);`).trim());
+    if (remainingElevatedGrants !== 0) {
+      throw new Error('Administrative client privileges remain after the correction.');
+    }
+  }
   if (noticesPolicyMigration) {
     const identityAuditSnapshotAfter = psqlSync(`
       SELECT jsonb_build_object(
