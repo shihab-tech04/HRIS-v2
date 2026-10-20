@@ -168,7 +168,19 @@
     "passed": 26,
     "total": 26
   },
-  "deployment_status": "APPLIED_NATIVE_HISTORY_VERIFIED",
-  "applied_version": "20261020043721",
-  "production_history_after": 115
+  "deployment_status": "BOTH_NATIVE_MIGRATIONS_APPLIED",
+  "applied_versions": [
+    "20261020043721",
+    "20261020044145"
+  ],
+  "current_production_head": "20261020044145",
+  "production_history_after": 116,
+  "hosted_security": {
+    "passed": 20,
+    "total": 20
+  },
+  "negative_database_role_tests": {
+    "passed": 9,
+    "total": 9
+  }
 }
