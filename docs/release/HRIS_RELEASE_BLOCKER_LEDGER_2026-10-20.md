@@ -10,22 +10,22 @@
 | HRIS-v2 | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 | 3f6ea22eb0b7f0e4b4424552694e92652116c196 | PR #38, 686eec7016ec831e9b679500f28f553b8f93b14f, draft |
 | HRIS-Candidate-v2 | 38174c7b607999f951c7eea47aefaa443735080e | e3cb9c178cbfb66eb611c640f885a13581b50f51 | PR #5, e3cb9c178cbfb66eb611c640f885a13581b50f51, draft |
 
-Main PR heads: #39 0309e4022dc9db4182900899d99c87d107634411; #40 ecd799a7937af3445e7ebc59eed9f9f5accdd1cf; #41 this ledger refresh; #42 340fb923bffadb1fff4ae2bf243f8843fee2ccb0; #43 779c8130e09281e60af94713de250edeca3703ea; #44 b0938065e4fe753cb545b569b2b8ab84c27968ae. PRs #38–#44 remain drafts. PR #42–#44 still target old development base 1714a08e24f47999618b0127fc818a3d19eb187a, behind current development 3f6ea22. Candidate PR #6 is 709760cc5bc91e6d5c62179f62dfe32e92a1fac6, based on current Candidate development e3cb9c1; it is a draft.
+Main PR heads: #39 0309e4022dc9db4182900899d99c87d107634411; #40 ecd799a7937af3445e7ebc59eed9f9f5accdd1cf; #41 this ledger refresh; #42 340fb923bffadb1fff4ae2bf243f8843fee2ccb0; #43 779c8130e09281e60af94713de250edeca3703ea; #44 d07c2ebedade943f39482cc6bc603c417d797c0c. PRs #38–#44 remain drafts. PR #42–#44 still target old development base 1714a08e24f47999618b0127fc818a3d19eb187a, behind current development 3f6ea22. Candidate PR #6 is 9c61a3c1a83ea0b2b2b13063c1adef7fcecd25d4, based on current Candidate development e3cb9c1; it is a draft.
 
 ## Exact-head CI and build evidence
 
 | Ref | Exact-head result | Release interpretation |
 |---|---|---|
-| Main development 3f6ea22 | Runner probe 39418704923 PASS; Phase 2A Auth/RLS 39418705013 PASS; disposable Auth/Postgres/browser 39418704906 was IN PROGRESS at last check | No completed full build/browser result on the current development head. |
+| Main development 3f6ea22 | Runner probe 39418704923 PASS; Phase 2A Auth/RLS 39418705013 PASS; disposable Auth/Postgres/browser 39418704906 FAIL (382/384; two HR01-01 cases failed: the denial matrix logs 42501 for each case, and verified-candidate activation returns HTTP 400) | No completed full build/browser result on the current development head. |
 | Main PR #38 686eec7 | Auth/RLS 39378140222 PASS; Phase 2A 39378140175 PASS; probe 39378140171 PASS; employee-family privacy 39379214697 PASS | No full build/browser run is recorded on this frozen release head; it lacks later Main development changes. |
 | Main PR #39 0309e40 | Build/browser 39417825181 PASS | Docs/evidence workflow only; the production API/security report remains PARTIAL / NOT ACCEPTED. Its source audit references Main b262cade, now behind current development 3f6ea22. |
 | Main PR #40 ecd799a | Build/browser 39396642999 PASS | CSV/inventory evidence is not independent certification and is unreconciled with the latest acceptance overlay. |
-| Main PR #41 | Build/browser 39418545661 PASS on the prior ledger head | This docs-only refresh creates a new exact head; its check must be verified after the commit. |
+| Main PR #41 | Build/browser 39419557222 PASS on exact ledger head 11c1bfa0eb408f034b58086543b62ab347b2d177 | Docs-only; this check does not exercise runtime Auth/RLS or close production gates. |
 | Main PR #42 340fb92 | Disposable Auth/Postgres/browser 39418189411 PASS; build/browser 39418189536 FAIL at “Verify the branch-served Pages entry matches the production build” | Generated assets app-C4oUgMGJ.js and app-GpVcVTBs.css do not match tracked app-2l-hdvDU.js and app-BWuIahKW.css. Rebase and resolve provenance before rerunning. |
 | Main PR #43 779c813 | No exact-head workflow | Stale base; local/source checks do not replace exact-head CI. |
 | Main PR #44 b093806 | No exact-head workflow | Stale base; no isolated Auth/Postgres result is claimed. |
 | Candidate PR #5 e3cb9c1 | Disposable acceptance 39025809497 PASS on this Candidate SHA | Historical isolated pass; it does not prove acceptance against current Main development or hosted production. |
-| Candidate PR #6 709760c | Disposable full-journey run 39418609374 FAIL | Auth/RLS 166/166 and local profile E2E 19/19 passed; CA10 5/5, CA12 4/4, CA13 5/5 passed. CA11-04 failed because the generated browser PDF did not contain the selected CV profile data. The run checked out Main development b262cade as its fixture source; current Main has since advanced to 3f6ea22. Fix, rebase/update fixture evidence, and rerun the full suite at an exact current dependency SHA. |
+| Candidate PR #6 9c61a3c | Disposable full-journey run 39419429848 IN PROGRESS. The preceding head 709760c failed CA11-04 because the browser PDF did not contain selected CV profile data; that run used Main fixture source b262cade. Current Main development is 3f6ea22. Record the exact Main dependency used by this run, then fix any remaining issue and rerun at a new exact head. |
 
 ## Hosted version and signed-in observations
 
@@ -62,9 +62,9 @@ Production project hrmis-saas has 116 migration rows through 20261020044145. Rea
 
 | Owner | Required next evidence |
 |---|---|
-| WS01 Main | Fix the live Employee View read-error/no-linked-profile state; reconcile HR01 contact RPC source/signatures/grants and migration 20261014171952 against current Main 3f6ea22; keep contact actions fail-closed; exact-head build/browser and HR01 tests. |
+| WS01 Main | Fix the live Employee View read-error/no-linked-profile state; investigate Main development run 39418704906 (382/384; two HR01-01 failures including verified-candidate activation HTTP 400); reconcile HR01 contact RPC source/signatures/grants and migration 20261014171952 against current Main 3f6ea22; keep contact actions fail-closed; rerun exact-head build/browser and HR01 tests. |
 | WS02 API/security | Reconcile hosted APIs/ACLs with current Main 3f6ea22; prove source parity and own/foreign/unlinked writes in disposable two-tenant Auth/Postgres; review excess anon DML grants and family/leave/alert policies; cover Candidate offer allow/deny; run safe anonymous HTTP and signed-in role acceptance without production writes. |
-| WS03 Candidate | Fix CA11-04 PDF content failure on PR #6, record/retest against current Main dependency 3f6ea22, and rerun full privacy/application/employee-transition acceptance at exact head. Keep production public-only and all unhosted HR actions gated. |
+| WS03 Candidate | Finish current PR #6 run 39419429848 on head 9c61a3c; fix any remaining CA11-04 PDF issue, record the exact Main fixture SHA (the preceding run used b262cade; current Main is 3f6ea22), and rerun full privacy/application/employee-transition acceptance at exact head. Keep production public-only and all unhosted HR actions gated. |
 | WS04 story/Figma certification | Reconcile the 1,047-row PR #40 CSV to the 3f6ea22 overlay without double-counting; recover the 82 legacy IDs or leave their overlap UNKNOWN; publish independent story-level Main+Candidate frame/route/role/state and desktop/mobile evidence plus accessibility results. |
 | WS06 Employee | Rebase PR #42 onto 3f6ea22; resolve generated/tracked Pages asset provenance with WS01; rerun exact-head build/browser and isolated Auth/RLS. Do not invent employee-write schema. |
 | WS07 HR Operations | Rebase PR #43 and run exact-head CI; keep HR03-01 blocked until legal-entity cardinality, fields, authorization, lifecycle, and history are approved; record missing Figma mapping explicitly. |
