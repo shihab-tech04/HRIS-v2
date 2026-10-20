@@ -119,7 +119,8 @@ The release source currently gates the five offer/interview controls under canMa
 | Production leave_types direct DML ACL | FAIL — least-privilege follow-up | Authenticated ACL allows DML but only SELECT RLS policies exist; writes currently denied by RLS. Proposal only; no change made. |
 | Candidate/interview hosted parity | FAIL for new release component | All seven signatures absent from hosted production; current main uses legacy path. |
 | Candidate/interview disposable source tests | PASS for six / BLOCKED for offer | Pipeline, stage, schedule, responses, notes, completion pass; offer issuance has no test in the current suite. |
-| System Administrator intended tenant access | BLOCKED | Product/role intent is unspecified; no approved least-privilege active membership exists for this user. |\n| Independent HR/Admin and employee production sessions | BLOCKED | No separately identified HR/Admin or employee session was open in the connected browser; the available acceptance tab shows the signed-in workspace. Production has no second active tenant membership. |
+| System Administrator intended tenant access | BLOCKED | Product/role intent is unspecified; no approved least-privilege active membership exists for this user. |
+| Independent HR/Admin and employee production sessions | BLOCKED | No separately identified HR/Admin or employee session was open in the connected browser; the available acceptance tab shows the signed-in workspace. Production has no second active tenant membership. |
 | Production positive/rejected cross-tenant API acceptance | BLOCKED | Production has one active tenant; synthetic two-tenant tests are isolated CI only. |
 | Production mutation safety | PASS | No DDL, DML, Auth-user, membership, role, tenant, migration-history, or setting changes were made. |
 
