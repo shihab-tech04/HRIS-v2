@@ -108,7 +108,7 @@ The release source currently gates the five offer/interview controls under canMa
 |---|---|---|
 | Deployed has_permission / tenant membership contract | PASS | Read-only pg_get_functiondef and role/membership aggregates; exact membership requirement described above. |
 | Sole Super Admin identity and current signed-in app session | PASS | One active Super Admin and one active tenant; connected app tab shows authenticated workspace and Sign out control; prior read-only HTTP request evidence remains valid. |
-| System Administrator legacy permission effective in tenant APIs | PASS-denied / intent BLOCKED | One legacy user, 45 legacy permissions, zero active memberships; has_permission does not read user_roles. |
+| System Administrator tenant permission result | PASS — expected denial | One legacy user, 45 legacy permissions, zero active memberships; has_permission does not read user_roles. |
 | HR01 contact RPCs hosted parity | FAIL | Both exact signatures and migration 20261014171952 absent in production. |
 | HR01 synthetic source API tenant/role tests | PASS | Run 39378140222/job 118480812801 positive and denied contact tests in disposable two-tenant Auth/Postgres. |
 | E02 self-update/address/family hosted signatures and grants | PASS | Read-only function catalog/definitions, no direct DML ACL, own-row SECURITY DEFINER guards. |
@@ -119,7 +119,7 @@ The release source currently gates the five offer/interview controls under canMa
 | Production leave_types direct DML ACL | FAIL — least-privilege follow-up | Authenticated ACL allows DML but only SELECT RLS policies exist; writes currently denied by RLS. Proposal only; no change made. |
 | Candidate/interview hosted parity | FAIL for new release component | All seven signatures absent from hosted production; current main uses legacy path. |
 | Candidate/interview disposable source tests | PASS for six / BLOCKED for offer | Pipeline, stage, schedule, responses, notes, completion pass; offer issuance has no test in the current suite. |
-| Independent HR/Admin and employee production sessions | BLOCKED | Connected browser exposes only the existing signed-in Super Admin app session; production has no second active tenant membership. |
+| System Administrator intended tenant access | BLOCKED | Product/role intent is unspecified; no approved least-privilege active membership exists for this user. |\n| Independent HR/Admin and employee production sessions | BLOCKED | No separately identified HR/Admin or employee session was open in the connected browser; the available acceptance tab shows the signed-in workspace. Production has no second active tenant membership. |
 | Production positive/rejected cross-tenant API acceptance | BLOCKED | Production has one active tenant; synthetic two-tenant tests are isolated CI only. |
 | Production mutation safety | PASS | No DDL, DML, Auth-user, membership, role, tenant, migration-history, or setting changes were made. |
 
