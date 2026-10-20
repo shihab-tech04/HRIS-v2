@@ -1908,6 +1908,9 @@ try {
 record('Real local Auth-to-Postgres learning and timesheet workflows persist with tenant scope, EN/BN state, and responsive recovery',
   learningBrowserOutput.includes('Local Auth-to-Postgres employee skill create/edit/delete with retry and refresh recovery, learning completion submit/return/resubmit/verify with private evidence and notifications, employee request, tenant-scoped manager approval, program/session administration, responsive roster retry, authorized session join link, enrollment, and cancellation passed; employee timesheet draft creation, full reload persistence, tenant-scoped save/submit RPCs, Bengali validation, and 375px/1280px layouts also passed.'),
   learningBrowserError);
+record('E02-12 employee skill browser marker confirms the persisted self-service skill profile journey',
+  learningBrowserOutput.includes('E02-12_SKILL_PROFILE_BROWSER_PASS'),
+  learningBrowserError);
 const dashboardTrainingEnrollmentBefore = queryAdmin(`SELECT jsonb_build_object(
   'enrolled_count',count(*) FILTER (WHERE status='enrolled')::integer,
   'cancelled_count',count(*) FILTER (WHERE status='cancelled')::integer)
@@ -3903,6 +3906,24 @@ const employeeSummaryA = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
 const employeeSummaryB = queryAs(employeeB,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantB}'::uuid)`);
+const dashboardCrossTenant = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantB });
+const dashboardGlobalOnly = await globalOnly.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+const dashboardAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+record('E02-01 employee profile shows its linked personal identity and denies cross-tenant, global-only, and anonymous access',
+  employeeSummaryA.employee?.full_name === 'Synthetic Employee A'
+    && employeeSummaryA.employee?.official_email === 'employee-a@hris.test'
+    && employeeSummaryA.employee?.official_phone === '+880 2 5550001'
+    && dashboardCrossTenant.error?.code === '42501'
+    && !JSON.stringify(dashboardCrossTenant.data || {}).includes('Synthetic Employee B')
+    && dashboardGlobalOnly.error?.code === '42501'
+    && Boolean(dashboardAnonymous.error),
+  JSON.stringify({ name: employeeSummaryA.employee?.full_name,
+    email: employeeSummaryA.employee?.official_email,
+    phone: employeeSummaryA.employee?.official_phone,
+    crossTenant: dashboardCrossTenant.error?.code,
+    globalOnly: dashboardGlobalOnly.error?.code,
+    anonymousDenied: Boolean(dashboardAnonymous.error) }));
 const dashboardLeaveBalance = employeeSummaryA.balances.find(row => row.leave_type_id === ids.leaveTypeA)?.available_days;
 if (Number(dashboardLeaveBalance) !== 15) throw new Error('The isolated employee dashboard leave balance fixture is not the verified 15-day record.');
 const employeeEvidenceRequest = employeeSummaryA.requests.find(row => row.id === evidenceRequestId);
@@ -7296,6 +7317,13 @@ record('Employee dashboard acceptance restores its overdue-goal fixture and remo
   JSON.stringify(employeeDashboardFixtureCleanup));
 record('Real employee dashboard month selector reads persisted Auth/Postgres attendance with retry, refresh, empty, and responsive states',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_ATTENDANCE_BROWSER_ACCEPTANCE=PASS'),
+  employeeAttendanceBrowserError);
+record('E02-08 employee views own employment information with cross-tenant access denied',
+  employeeAttendanceBrowserOutput.includes('E02-08_EMPLOYMENT_INFORMATION_BROWSER_PASS')
+    && !employeeIdentityCardA.error && employeeIdentityCard?.employee_number === 'QA-A-001',
+  employeeAttendanceBrowserError);
+record('E02-01 employee personal profile browser marker verifies own name and contact details',
+  employeeAttendanceBrowserOutput.includes('E02-01_PERSONAL_INFORMATION_BROWSER_PASS'),
   employeeAttendanceBrowserError);
 record('E01-01 partially verified: dashboard renders the employee’s persisted current attendance status and work mode',
   employeeAttendanceBrowserOutput.includes('EMPLOYEE_DASHBOARD_TODAY_STATUS_BROWSER_ACCEPTANCE=PASS'), employeeAttendanceBrowserError);

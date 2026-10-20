@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../../supabase/migrations/20261016233237_employee_dashboard_official_phone.sql');
+const identityMigration = read('../../supabase/migrations/20261017040000_hris_employee_dashboard_work_identity.sql');
 const teamMigration = read('../../supabase/migrations/20261017050000_hris_employee_dashboard_team_identity.sql');
 const component = read('../../src/live/LiveHrisWorkspace.tsx');
 const runner = read('../sql/isolated-auth/run-local.mjs');
@@ -54,4 +55,30 @@ test('employee dashboard upcoming training uses only future sessions confirmed b
     'As an employee, I want to see upcoming interviews, training, reviews, or company events relevant to me.');
   assert.equal(sourceStory?.source_locator.line, 16);
   assert.match(runner, /E01-06 training visibility is partially implemented/);
+});
+
+test('E02-01 links the canonical personal-information story to the authenticated own-profile view', () => {
+  const story = catalogue.stories.find(item => item.story_id === 'E02-01');
+  assert.ok(story);
+  assert.equal(story.module_id, 'E02');
+  assert.equal(story.role_name, 'Employee');
+  assert.equal(story.verbatim_requirement, 'As an employee, I want to view my personal information.');
+  assert.equal(story.source_locator.line, 26);
+  assert.equal(story.status, 'NOT TESTED');
+  assert.deepEqual(story.test_ids, []);
+
+  for (const field of [
+    'v_employee := public.hris_own_employee_for_tenant(p_tenant_id)',
+    "'full_name',e.full_name",
+    "'official_email',e.official_email",
+    "'official_phone',e.official_phone",
+    'e.id=v_employee AND e.tenant_id=p_tenant_id',
+  ]) assert.ok(identityMigration.includes(field), `Employee profile projection is missing ${field}.`);
+  assert.ok(component.includes('aria-labelledby="employee-profile-heading"'));
+  assert.ok(component.includes('employee?.official_email'));
+  assert.ok(component.includes('employee?.official_phone'));
+  assert.match(runner, /E02-01 employee profile shows its linked personal identity and denies cross-tenant, global-only, and anonymous access/);
+  assert.match(browser, /E02-01_PERSONAL_INFORMATION_BROWSER_PASS/);
+  assert.ok(browser.includes('Synthetic Employee A'));
+  assert.ok(browser.includes('employee-a@hris.test'));
 });

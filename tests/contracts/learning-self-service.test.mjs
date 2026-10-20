@@ -176,4 +176,5 @@ test('E02-12 maps the canonical employee skill-management story to isolated Auth
   assert.match(runner, /Skill profile RPC denies cross-tenant, anonymous, direct-table, and verified-skill mutations/);
   assert.match(runner, /Employees can remove their own unverified skill and the removal persists/);
   assert.match(browser, /E02-12_SKILL_PROFILE_BROWSER_PASS/);
+  assert.ok(runner.includes("record('E02-12 employee skill browser marker confirms the persisted self-service skill profile journey"));
 });

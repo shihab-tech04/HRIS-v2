@@ -324,7 +324,11 @@ try {
   await assertNoOverflow(page, 'Employee dashboard quick access desktop');
   await page.setViewportSize({ width: 375, height: 812 });
   console.log('EMPLOYEE_DASHBOARD_QUICK_ACCESS_BROWSER_ACCEPTANCE=PASS');
-  await page.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
+  const ownProfile = page.locator('section[aria-labelledby="employee-profile-heading"]');
+  await ownProfile.getByRole('heading', { name: 'Synthetic Employee A', exact: true }).waitFor({ state: 'visible' });
+  await ownProfile.getByText('employee-a@hris.test', { exact: true }).waitFor({ state: 'visible' });
+  await ownProfile.locator('[data-employee-contact="official-phone"]').getByText('+880 2 5550001', { exact: true }).waitFor({ state: 'visible' });
+  console.log('E02-01_PERSONAL_INFORMATION_BROWSER_PASS');
   await page.locator('[data-employee-profile="team"]').getByText(process.env.HRIS_LOCAL_DASHBOARD_TEAM_NAME, { exact: true }).waitFor({ state: 'visible' });
   const upcomingReviews = page.locator('section[aria-labelledby="employee-upcoming-reviews-heading"]');
   failNextDashboardReviewRead = true;

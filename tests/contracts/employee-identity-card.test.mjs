@@ -78,6 +78,7 @@ test('E02-08 employment information is read from the authenticated employee’s 
   assert.match(runner, /Employee identity card denies tenant mismatch, cross-tenant identity, manager without employee link, and anonymous access/);
   assert.match(browser, /for \(const value of \['QA-A-001', 'Synthetic Employee A', 'QA A designation', 'QA A department', 'Active'\]\)/);
   assert.match(browser, /E02-08_EMPLOYMENT_INFORMATION_BROWSER_PASS/);
+  assert.ok(runner.includes("record('E02-08 employee views own employment information with cross-tenant access denied"));
 });
 
 test('E04-01 through E04-04 link exact recovered requirements to isolated browser and database acceptance', () => {
