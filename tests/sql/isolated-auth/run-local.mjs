@@ -2389,6 +2389,28 @@ try {
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
   employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with tenant-scoped team filtering, filtered CSV, manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
+record('HR01-03 HR workforce search and department, status, and team filters stay inside the authorized tenant',
+  !employeeDirectoryFiltered.error
+    && employeeDirectoryFiltered.data?.total_count === 1
+    && employeeDirectoryFiltered.data.employees[0]?.full_name === 'Synthetic Employee A'
+    && !employeeDirectoryTeamFiltered.error
+    && employeeDirectoryTeamFiltered.data?.total_count === 1
+    && employeeDirectoryTeamFiltered.data.employees[0]?.full_name === 'Synthetic WFH Employee A'
+    && !employeeDirectoryPrivateSearch.error
+    && employeeDirectoryPrivateSearch.data?.total_count === 0
+    && employeeDirectoryNoPermission.error?.code === '42501'
+    && employeeDirectoryGlobalOnly.error?.code === '42501'
+    && employeeDirectoryCrossTenant.error?.code === '42501'
+    && employeeDirectoryBrowserOutput.includes('HR01-03_WORKFORCE_SEARCH_FILTER_BROWSER_PASS')
+    && !employeeDirectoryBrowserError,
+  JSON.stringify({ search: employeeDirectoryFiltered.data?.employees?.map(row => row.full_name),
+    departmentStatus: { count: employeeDirectoryFiltered.data?.total_count, status: 'active' },
+    team: employeeDirectoryTeamFiltered.data?.employees?.map(row => row.full_name),
+    privateContactSearchCount: employeeDirectoryPrivateSearch.data?.total_count,
+    noPermission: employeeDirectoryNoPermission.error?.code || null,
+    globalOnly: employeeDirectoryGlobalOnly.error?.code || null,
+    crossTenant: employeeDirectoryCrossTenant.error?.code || null,
+    browserMarker: employeeDirectoryBrowserOutput.includes('HR01-03_WORKFORCE_SEARCH_FILTER_BROWSER_PASS') }));
 let profileChangeBrowserOutput = '';
 let profileChangeBrowserError = '';
 try {

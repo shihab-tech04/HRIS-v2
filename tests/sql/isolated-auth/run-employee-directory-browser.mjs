@@ -328,6 +328,7 @@ try {
   if (await page.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') {
     throw new Error('Employee directory Bengali locale did not persist.');
   }
+  console.log('HR01-03_WORKFORCE_SEARCH_FILTER_BROWSER_PASS');
 
   const managerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let managerContactReadCalls = 0;
