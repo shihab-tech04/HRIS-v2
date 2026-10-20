@@ -6,7 +6,7 @@ import { readPhaseReadiness, phaseReadiness } from '../../scripts/phase-readines
 test('Phase 05 exact 57 source requirements retain evidence and blocker identities', () => {
   const result = readPhaseReadiness('05');
   assert.deepEqual(result.module_ids, ['E02', 'E03', 'E04', 'E37', 'HR01', 'HR03', 'SA06']);
-  assert.deepEqual(result.counts, { total: 57, disposable_evidenced: 18, blocked: 4, partial: 8, not_classified: 27 });
+  assert.deepEqual(result.counts, { total: 57, disposable_evidenced: 18, blocked: 4, partial: 9, not_classified: 26 });
   assert.equal(new Set(result.stories.map(row => row.story_id)).size, 57);
   assert.equal(result.stories.find(row => row.story_id === 'E02-17').status, 'DISPOSABLE_EVIDENCED');
   assert.equal(result.stories.find(row => row.story_id === 'E02-01').status, 'DISPOSABLE_EVIDENCED');
@@ -21,7 +21,7 @@ test('Phase 05 exact 57 source requirements retain evidence and blocker identiti
   assert.equal(result.stories.find(row => row.story_id === 'HR01-07').status, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.stories.find(row => row.story_id === 'HR01-08').status, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.stories.find(row => row.story_id === 'HR03-01').status, 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');
-  assert.equal(result.stories.find(row => row.story_id === 'HR01-01').status, 'NOT_CLASSIFIED');
+  assert.equal(result.stories.find(row => row.story_id === 'HR01-01').status, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.stories.find(row => row.story_id === 'HR01-05').status, 'NOT_CLASSIFIED');
   assert.ok(result.stories.every(row => row.hosted_accepted === false));
   assert.equal(result.legacy_verified_union, null);

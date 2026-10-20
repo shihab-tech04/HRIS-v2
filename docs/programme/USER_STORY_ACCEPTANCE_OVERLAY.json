@@ -267,6 +267,23 @@
       "meaning": "Explicit source-linked partial cases; the remaining historical partial-ID membership is not known."
     },
     {
+      "id": "hr01-employee-creation-candidate-activation-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-01"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "4cc26610c2bd8fc339990cb433d64a6e9c24e15a",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39420943283",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-hr01-01-employee-creation-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-01-candidate-activation-partial-20261020.md",
+      "runtime_marker": "HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS",
+      "runtime_record": "HR01-01 partial: the HR workspace activates a verified candidate into a tenant employee record with safe retry",
+      "meaning": "A disposable Auth/Postgres/browser journey verifies the accepted-offer, submitted and HR-verified candidate activation path, including employees.manage and tenant denial, completion checks, persisted employee/membership/audit state, and idempotent retry. This is partial HR01-01 coverage; a general manual HR employee-create journey and hosted acceptance remain unverified.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
       "id": "hr01-contact-only-update-partial-20261020",
       "classification": "PARTIAL_ACCEPTANCE",
       "story_ids": [
