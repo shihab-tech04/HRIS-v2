@@ -3,7 +3,7 @@ on:
   push:
     branches: [migration/phase03-04-recovery-20261020]
     paths:
-      - 'database-releases/phase03-04-recovery/**'
+      - 'database-releases/phase03-04-recovery/phase03_phase04_hosted_compatibility.sql'
       - 'tests/sql/hosted-parity/run-recovery.mjs'
       - '.github/workflows/migration-recovery-20261020.yml'
 
