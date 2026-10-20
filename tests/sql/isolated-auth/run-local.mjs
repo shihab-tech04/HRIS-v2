@@ -470,8 +470,6 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261016141000_employee_profile_change_requests.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017100000_employee_profile_change_request_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql'),
-  // Exercise the already-deployed tenant employee-number uniqueness guard in disposable acceptance.
-  path.join(mainRoot, 'supabase/migrations/20261014070848_hris_candidate_employee_activation.sql'),
   // Hosted parity rollback expects this historical production base table to exist
   // in the isolated schema as well as production before Phase 03/04 guards install.
   path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),

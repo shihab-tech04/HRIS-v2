@@ -244,6 +244,8 @@ CREATE TABLE public.employees (
   employment_status text NOT NULL DEFAULT 'active',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  -- Match the deployed tenant-scoped employee number and official email indexes.
+  UNIQUE (tenant_id, employee_number),
   UNIQUE (tenant_id, official_email)
 );
 
