@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "ux-agent/operational-v1",
+  "project": "REPLACE_WITH_PROJECT_IDENTIFIER",
+  "changeId": "REPLACE_WITH_APPROVED_CHANGE_REQUEST_ID",
+  "author": "REPLACE_WITH_SOURCE_CHANGE_AUTHOR",
+  "baseSHA": "0000000000000000000000000000000000000000",
+  "candidateSHA": "0000000000000000000000000000000000000000",
+  "authorities": [
+    {"id":"DS-001","source":"REPLACE_WITH_APPROVED_FIGMA_OR_SCREEN_REF","decision":"REPLACE_WITH_EXACT_APPROVED_REQUIREMENT","status":"CONFLICT_REQUIRES_DECISION"}
+  ],
+  "sourceExpectations": [
+    {"id":"ROUTE-01","requirementId":"DS-001","file":"src/App.tsx","reviewedSourceSHA":"0000000000000000000000000000000000000000","required":["APPROVED_SOURCE_PATTERN"],"forbidden":["UNAUTHORIZED_SOURCE_PATTERN"]}
+  ],
+  "scope": {
+    "allowedPaths": ["REPLACE_WITH_EXACT_CHANGED_SOURCE_FILE"],
+    "visibleElementChanges": [],
+    "forbiddenElements": [
+      {"id":"NO_UNREQUESTED_CONTROL","file":"src/App.tsx","pattern":"REMOVE_THIS_EXAMPLE_AND_ADD_REAL_NEGATIVE_ASSERTION"}
+    ]
+  },
+  "affectedStates": [
+    {
+      "id":"screen.desktop.en.open",
+      "route":"/route","role":"authenticated_officer","locale":"en","viewport":"1280x800","fixture":"APPROVED_FIXTURE_ID","interaction":"modal_open",
+      "baseline":{"role":"CURRENT_DEFECT","path":"approved-baselines/screen.png","sha256":"0000000000000000000000000000000000000000000000000000000000000000","reviewer":"","approvalEvidence":""},
+      "comparison":{"status":"NOT_VERIFIED","testRef":"","reviewer":"","approvalEvidence":"","reportPath":"test-results/visual-comparison.json","reportSHA256":"0000000000000000000000000000000000000000000000000000000000000000"},
+      "interactionQA":{"status":"NOT_VERIFIED","testRef":"","executionEvidence":""}
+    }
+  ],
+  "requirements": [{"id":"REQ-001","source":"APPROVED_REQUIREMENT_REFERENCE","expectation":"REPLACE_WITH_ACCEPTED_USER_TASK","status":"NOT_VERIFIED","testRef":"","evidence":""}],
+  "blockingDefects": [{"id":"P0-EXAMPLE","severity":"P0","status":"OPEN"}],
+  "releaseChecks": [{"name":"approved-browser-and-security-suite","status":"NOT_VERIFIED","evidence":"","sourceSHA":"0000000000000000000000000000000000000000"}],
+  "deployment": {"status":"NOT_VERIFIED","sourceSHA":"0000000000000000000000000000000000000000","url":"","readbackEvidence":""}
+}
