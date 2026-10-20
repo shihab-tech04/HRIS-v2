@@ -111,6 +111,8 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(page, 'HR01-01 activation result desktop');
   console.log('HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS');
+  console.log('X03-07_PARTIAL_HR_ONBOARDING_ACTIVATION_BROWSER_PASS');
+  console.log('X03-08_PARTIAL_CANDIDATE_DATA_REUSE_BROWSER_PASS');
 } finally {
   if (browser) await browser.close();
   server.kill('SIGTERM');

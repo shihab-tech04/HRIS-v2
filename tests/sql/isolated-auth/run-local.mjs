@@ -8257,6 +8257,39 @@ record('HR01-01 partial: the HR workspace activates a verified candidate into a 
     browserMarker: hr0101BrowserOutput.includes('HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS'),
     browserError: hr0101BrowserError }));
 
+const x0307BrowserPass = hr0101BrowserOutput.includes('X03-07_PARTIAL_HR_ONBOARDING_ACTIVATION_BROWSER_PASS');
+record('X03-07 partial: HR activates the accepted-offer candidate as an active employee through the existing onboarding handoff',
+  x0307BrowserPass
+    && Boolean(hr0101Employee?.id)
+    && hr0101Employee?.user_id === hr0101Application?.candidate_user_id
+    && hr0101Employee?.employment_status === 'active'
+    && hr0101Application?.stage === 'hired'
+    && hr0101Handoff?.status === 'completed'
+    && hr0101Retry.data?.idempotent === true
+    && hr0101Retry.data?.employee_id === hr0101Employee.id,
+  JSON.stringify({ employeeId: hr0101Employee?.id,
+    employeeUserId: hr0101Employee?.user_id,
+    applicationCandidateUserId: hr0101Application?.candidate_user_id,
+    employeeStatus: hr0101Employee?.employment_status,
+    applicationStage: hr0101Application?.stage,
+    handoffStatus: hr0101Handoff?.status,
+    retry: hr0101Retry.data,
+    browserMarker: x0307BrowserPass }));
+
+const x0308BrowserPass = hr0101BrowserOutput.includes('X03-08_PARTIAL_CANDIDATE_DATA_REUSE_BROWSER_PASS');
+record('X03-08 partial: HR activation reuses the candidate name, email, and Auth identity in the employee record',
+  x0308BrowserPass
+    && hr0101Employee?.full_name === hr0101Application?.full_name
+    && hr0101Employee?.official_email === hr0101Application?.email
+    && hr0101Employee?.user_id === hr0101Application?.candidate_user_id,
+  JSON.stringify({ employeeName: hr0101Employee?.full_name,
+    candidateName: hr0101Application?.full_name,
+    employeeOfficialEmail: hr0101Employee?.official_email,
+    candidateEmail: hr0101Application?.email,
+    employeeUserId: hr0101Employee?.user_id,
+    candidateUserId: hr0101Application?.candidate_user_id,
+    browserMarker: x0308BrowserPass }));
+
 const failed = results.filter((result) => !result.ok);
 console.log(`\nLocal Auth/RLS acceptance: ${results.length - failed.length}/${results.length} passed; ${failed.length} failed.`);
 console.log('Tenant-isolation failures are release blockers; this test uses only a disposable local database.');
