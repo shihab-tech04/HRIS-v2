@@ -6,9 +6,10 @@ import { readPhaseReadiness, phaseReadiness } from '../../scripts/phase-readines
 test('Phase 05 exact 57 source requirements retain evidence and blocker identities', () => {
   const result = readPhaseReadiness('05');
   assert.deepEqual(result.module_ids, ['E02', 'E03', 'E04', 'E37', 'HR01', 'HR03', 'SA06']);
-  assert.deepEqual(result.counts, { total: 57, disposable_evidenced: 15, blocked: 3, partial: 4, not_classified: 35 });
+  assert.deepEqual(result.counts, { total: 57, disposable_evidenced: 16, blocked: 3, partial: 4, not_classified: 34 });
   assert.equal(new Set(result.stories.map(row => row.story_id)).size, 57);
   assert.equal(result.stories.find(row => row.story_id === 'E02-17').status, 'DISPOSABLE_EVIDENCED');
+  assert.equal(result.stories.find(row => row.story_id === 'E02-01').status, 'DISPOSABLE_EVIDENCED');
   assert.equal(result.stories.find(row => row.story_id === 'E02-08').status, 'DISPOSABLE_EVIDENCED');
   assert.equal(result.stories.find(row => row.story_id === 'E02-12').status, 'DISPOSABLE_EVIDENCED');
   assert.equal(result.stories.find(row => row.story_id === 'E03-02').status, 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');

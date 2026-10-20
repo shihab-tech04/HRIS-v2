@@ -151,14 +151,30 @@
       "hosted_cross_system_acceptance": "NOT_VERIFIED"
     },
     {
+      "id": "employee-e02-personal-information-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-01"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "6ff29e898aef54c2779e44cfdd5e465c79e6c11c",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs",
+      "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
+      "runtime_marker": "E02-01_PERSONAL_INFORMATION_BROWSER_PASS",
+      "evidence_scope": "Authenticated self-only employee profile exposes the linked employee's name, official email and phone; direct cross-tenant, global-only and anonymous requests are denied. The existing profile card is checked in Chromium on the synthetic Auth/Postgres tenant fixture.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
       "id": "employee-e02-employment-information-20261020",
       "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
       "story_ids": [
         "E02-08"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "012f3a999ac9ec288dd37837db1487a88e014fc6",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39369899972",
+      "commit": "6ff29e898aef54c2779e44cfdd5e465c79e6c11c",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs",
       "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
@@ -173,8 +189,8 @@
         "E02-12"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "012f3a999ac9ec288dd37837db1487a88e014fc6",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39369899972",
+      "commit": "6ff29e898aef54c2779e44cfdd5e465c79e6c11c",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-learning-browser.mjs",
       "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
@@ -220,9 +236,9 @@
     }
   ],
   "reconciliation": {
-    "individual_verified_ids_recorded": 36,
+    "individual_verified_ids_recorded": 37,
     "legacy_verified_overlap": "UNKNOWN",
     "deduplicated_verified_total": null,
-    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 36 individually recorded story IDs are not an addition to the 82 historical aggregate."
+    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 37 individually recorded story IDs are not an addition to the 82 historical aggregate."
   }
 }
