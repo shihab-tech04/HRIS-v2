@@ -1,5 +1,16 @@
 # Synesis HRIS 360° — Master Phase Ledger
 
+## Independent application checkpoint — 20 October 2026 (latest)
+
+- Canonical Main is `shihab-tech04/HRIS-v2`, branch `development/hris-checkpoints`, at `2c33a9b2e3bc89adfc75df9083d4d322770de3bd`. Candidate remains at `e3cb9c178cbfb66eb611c640f885a13581b50f51`.
+- Runtime checkpoint `6ff29e898aef54c2779e44cfdd5e465c79e6c11c` passed disposable Auth/Postgres/Storage/RLS/API/browser run [39371994771](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771) and Phase 2A tenant/Auth/RLS/browser run [39371994786](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994786). The complete source/evidence reconciliation at `2c33a9b` passed the full disposable suite [39372788963](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39372788963), Phase 2A [39372788893](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39372788893), and runner probe [39372788882](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39372788882).
+- E02-01 personal-information, E02-08 employment-information, and E02-12 skill-profile evidence now maps to the exact canonical source rows. Phase 05 is **16/57** individually evidenced in disposable journeys, **3 blocked**, **4 partial**, **34 unclassified**, and **0/57 hosted accepted**. The overlay records **37 unique story IDs**; **1,010** have no individual acceptance evidence, including blocked/partial stories, and **993** are unclassified. The historical 82 verified IDs remain unreconciled; no deduplicated total is claimed. The immutable 1,047-story/153-module source hash remains unchanged.
+- This update changed only app-source tests, evidence/readiness documentation and the story overlay. It made no production DB/Auth/RLS/migration-history/permission changes and no public deployment. Preserve the approved layouts, Material components, Poppins font, and `#085587` brand.
+- Phase 03/04 hosted acceptance remains owned by the separate migration stream. Its current read-only checkpoint is `c676f481db5630e29e2e959c5eba32afdbbb20bf`: the target project and preflight are confirmed, target migration is absent with no partial DDL/history, the supported migration write returns `Invalid or expired requestState`, CLI deployment fails closed at credential presence, and browser handoff was interrupted. Shihab remains the sole Super Admin; the second admin stays unassigned with 45 global grants and 60 audit rows preserved. Do not perform migrations or publish the Phase 03 release from this app stream.
+- **Exact next application operation:** verify canonical `HR01-03` (HR workforce search/filter) against the existing permission-scoped employee-directory SQL, Auth/RLS fixture and mobile/desktop browser journey; add a story-specific runtime marker and acceptance mapping only if the complete HR-authorized journey passes. Continue other policy-neutral stories while hosted dependencies remain pending.
+
+---
+
 ## Independent application-development update — 20 October 2026
 
 - Canonical Main is `shihab-tech04/HRIS-v2`, branch `development/hris-checkpoints`, now at `f55a44d0d622c7bf3351e719ed3299f4b11da1d2`. Candidate remains on its existing development checkpoint. This update changes only evidence and readiness documentation; it does not change runtime UI, schema, permissions, production data, or deployment.
