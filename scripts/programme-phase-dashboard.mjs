@@ -11,7 +11,7 @@ export const operationalPhaseGates = Object.freeze({
   '02': { title: 'Design foundation', state: 'FOUNDATION_GATE_PASSED', note: 'Tokens and reference anchors checked; complete Figma/role/mobile parity outstanding.' },
   '03': { title: 'SaaS platform and tenant lifecycle', state: 'STAGED_TESTED_RELEASE_BLOCKED', note: 'Production migration baseline is applied; seven platform RPCs remain staged and tenant lifecycle/API release acceptance is pending.' },
   '04': { title: 'Authentication, authorization and RLS', state: 'HOSTED_API_ACCEPTANCE_PENDING', note: 'Production migration head and hosted schema/security gates are verified; signed-in API and tenant-isolation acceptance remains pending.' },
-  '05': { title: 'People master and organization', state: 'STORY_ACCEPTANCE_OPEN', note: 'Document upload/replacement/reminders require HR-approved categories and lifecycle rules.' },
+  '05': { title: 'People master and organization', state: 'STORY_ACCEPTANCE_OPEN', note: 'HR01-04 is individually evidenced; document upload/replacement/reminders still require HR-approved categories and lifecycle rules.' },
   '06': { title: 'Recruitment and Candidate integration', state: 'STORY_ACCEPTANCE_OPEN', note: 'Requested-document source recovered; whole Candidate-to-HRIS live acceptance remains open.' },
   '07': { title: 'Onboarding and employee conversion', state: 'STORY_ACCEPTANCE_OPEN', note: 'Previously tested journey exists; exact canonical requirement evidence and hosted gate pending.' },
   '08': { title: 'Attendance, roster and time', state: 'STORY_ACCEPTANCE_OPEN', note: 'Previously tested journeys exist; incomplete policy and canonical acceptance remain.' },
@@ -49,7 +49,7 @@ export function programmePhaseDashboard(getPhase = readPhaseReadiness) {
     throw new Error('Programme coverage does not reconcile with the 1,047-story/153-module canonical matrix.');
   }
   return {
-    scope: 'Operational checkpoint, not production certification. Only source/scope, blueprint, and design-foundation gates have passed.',
+    scope: 'Operational checkpoint, not production certification. Source/scope, blueprint, design-foundation, and Phase 03/04 hosted migration prerequisite gates have passed; signed-in production app acceptance remains pending.',
     totals: { phases: rows.length, modules, stories: total, individually_disposable_evidenced: evidenced, blocked, partial, unclassified, hosted_story_accepted: 0 },
     phases: rows,
   };

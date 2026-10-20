@@ -213,6 +213,22 @@
       "runtime_marker": "HR01-03_WORKFORCE_SEARCH_FILTER_BROWSER_PASS",
       "evidence_scope": "Synthetic Auth/Postgres/RLS acceptance for an active tenant member using employees.view: workforce search by name, department and active status plus team filtering; no-permission, global-only and cross-tenant denial; EN/BN browser acceptance at mobile and desktop widths. Hosted acceptance remains separate.",
       "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-hr01-status-visibility-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "HR01-04"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "d22de6793784bf55b67f34fe00253289dc624772",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39377300851",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-employment-status-visibility-20261020.md",
+      "runtime_marker": "HR01-04_EMPLOYMENT_STATUS_VISIBILITY_BROWSER_PASS",
+      "evidence_scope": "Synthetic Auth/Postgres/RLS acceptance for the employees.view directory: all six tenant A configured statuses are returned as tenant-specific options and individually filter to one matching employee; tenant B's unique status is absent; no-permission, global-only, cross-tenant, and anonymous requests are denied; Chromium verifies EN/BN mobile and desktop behavior. Hosted signed-in acceptance remains separate.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
     }
   ],
   "open_story_evidence": [
@@ -257,19 +273,19 @@
         "HR01-06"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "a920281911b3d61ea116dc951bca900aeb3b4958",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39375324961",
+      "commit": "686eec7016ec831e9b679500f28f553b8f93b14f",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39378140222",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
       "evidence_document": "docs/evidence/hr01-sensitive-change-audit-partial-20261020.md",
       "runtime_marker": "HR01-06_CONTACT_AUDIT_BROWSER_PASS",
-      "meaning": "Disposable Auth/Postgres/browser evidence covers a redacted HR contact-change audit for official_email and emergency_contact_phone only. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
+      "meaning": "Disposable Auth/Postgres/browser evidence covers redacted changed-field audit names and excludes changed values for all nine employee contact fields supported by the current RPC. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
     }
   ],
   "reconciliation": {
-    "individual_verified_ids_recorded": 38,
+    "individual_verified_ids_recorded": 39,
     "legacy_verified_overlap": "UNKNOWN",
     "deduplicated_verified_total": null,
-    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 38 individually recorded story IDs are not an addition to the 82 historical aggregate."
+    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 39 individually recorded story IDs are not an addition to the 82 historical aggregate."
   }
 }

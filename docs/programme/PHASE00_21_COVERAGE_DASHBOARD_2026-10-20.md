@@ -14,9 +14,9 @@ node scripts/programme-phase-dashboard.mjs --json
 | 00 | Scope and canonical inventory | — | — | — | Source/scope gate passed |
 | 01 | Source integration architecture | — | — | — | Blueprint gate passed; live parity open |
 | 02 | Design tokens and foundation | — | — | — | Foundation gate passed; app-wide visual parity open |
-| 03 | Tenant platform | 2 | 7 | 7 | Source Auth/Postgres/browser evidence passed; hosted rollout blocked |
-| 04 | Auth, permissions, RLS | 6 | 32 | 0 | Hosted Gate B 0/25 blocked |
-| 05 | People and organization | 7 | 57 | 17 | Story acceptance open; 5 partial and three employee-document business contracts absent |
+| 03 | Tenant platform | 2 | 7 | 7 | Production migration gates passed; signed-in tenant/API acceptance pending |
+| 04 | Auth, permissions, RLS | 6 | 32 | 0 | Hosted migrations 26/26; API and tenant-isolation acceptance pending |
+| 05 | People and organization | 7 | 57 | 18 | Story acceptance open; 5 partial and three employee-document business contracts absent |
 | 06 | Recruiting and Candidate | 33 | 226 | 12 | Candidate document RPC source recovered; full journey still open |
 | 07 | Onboarding and conversion | 6 | 46 | 0 | Historic tested journey, individual acceptance open |
 | 08 | Attendance and time | 16 | 115 | 2 | Further policy/acceptance open |
@@ -33,15 +33,15 @@ node scripts/programme-phase-dashboard.mjs --json
 | 19 | Cross-system migration/security | 1 | 5 | 0 | Hosted provenance and security certification blocked |
 | 20 | Story-by-story acceptance | — | — | — | Full exact-ID recertification open |
 | 21 | Final backup, GitHub and dual deployment | — | — | — | Release not authorized |
-| **Total** | **22 phases** | **153** | **1,047** | **38** | **0 hosted story acceptances certified** |
+| **Total** | **22 phases** | **153** | **1,047** | **39** | **0 hosted story acceptances certified** |
 
-**Important accounting:** the 38 are specific IDs connected to passing disposable tests; they are not release certifications. A separate historical checkpoint claimed 82 verified, but did **not preserve all their IDs**, so the exact, deduplicated intersection is unknown and **38 + 82 is not a valid progress figure**. Currently there are 13 exact blocked requirements, 5 partial and 991 not individually classified. `NOT_CLASSIFIED` is **not** a finding that the feature is absent; it means acceptance traceability is insufficient.
+**Important accounting:** the 39 are specific IDs connected to passing disposable tests; they are not release certifications. A separate historical checkpoint claimed 82 verified, but did **not preserve all their IDs**, so the exact, deduplicated intersection is unknown and **39 + 82 is not a valid progress figure**. Currently there are 13 exact blocked requirements, 5 partial and 990 not individually classified. `NOT_CLASSIFIED` is **not** a finding that the feature is absent; it means acceptance traceability is insufficient.
 
 Phases 00, 01, 02, 18, 20 and 21 are programme/cross-cutting work, therefore no exclusive source modules were assigned to them; **zero stories in their column does not mean zero work or approval**. The source's own phase fields remain untouched.
 
 ## Blockers that cannot be declared solved by code inventory
 
-1. **Phase 03/04 production migration prerequisite:** complete on Supabase project `oslgwxaqfbteqtwqvdzs` in organization `qdcgrdntvspjsdszuzmy`; the live ledger now ends at `20261020044145`. The migration workstream reports hosted schema parity **26/26**, security checks **20/20**, and database-role rejection **9/9**; the application stream independently reran the read-only 26-check catalog probe and confirmed **26/26**. No migrations were reapplied by this application stream.
+1. **Phase 03/04 production migration prerequisite:** complete on Supabase project `oslgwxaqfbteqtwqvdzs` in organization `qdcgrdntvspjsdszuzmy`; the live ledger ends at `20261020044145`. The migration workstream reports hosted schema parity **26/26**, security checks **20/20**, and database-role rejection **9/9**; the application stream independently reran the read-only 26-check catalog probe and confirmed **26/26**. No migrations were reapplied by this application stream.
 2. **Signed-in production API and tenant-isolation acceptance:** still pending. The live HRIS app currently presents its sign-in form in the connected browser, with no authorized QA session available to execute real Auth-to-PostgREST requests. No production test user or data was created or modified. The app release remains blocked until this acceptance is completed.
 3. **Seven platform-only staged RPCs:** tenant provisioning source is still intentionally staged. Passing disposable tests and the hosted migration baseline do not authorize tenant activation or release of those RPCs.
 4. **Missing product policy:** E03-02/E03-03/E03-06 require the HR-allowed document classes, replacement/verification/version behavior, and reminder schedule; payroll calculation/pay-run authority and expense approval tiers also require their owners' decisions. We will not silently invent HR, compensation or finance policy.
