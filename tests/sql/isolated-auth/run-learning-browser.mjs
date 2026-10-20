@@ -322,6 +322,7 @@ try {
   await Promise.all([desktopSkillRefresh, desktopSkillJoinRefresh]);
   if (await page.locator(`[data-learning-skill="${savedSkill.id}"]`).count()) throw new Error('Removed skill reappeared after a server-backed refresh.');
   await assertNoOverflow(page, 'Skill profile persistence desktop');
+  console.log('E02-12_SKILL_PROFILE_BROWSER_PASS');
   await page.setViewportSize({ width: 375, height: 812 });
 
   await directProgram.getByLabel('Choose session for QA A Direct Learning').selectOption('91000000-0000-4000-8000-000000000001');
