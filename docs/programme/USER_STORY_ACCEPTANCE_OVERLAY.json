@@ -273,13 +273,50 @@
         "HR01-06"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "686eec7016ec831e9b679500f28f553b8f93b14f",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39378140222",
+      "commit": "7080be47683b9e578174c010bdbe68ba04eedfca",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
       "evidence_document": "docs/evidence/hr01-sensitive-change-audit-partial-20261020.md",
       "runtime_marker": "HR01-06_CONTACT_AUDIT_BROWSER_PASS",
-      "meaning": "Disposable Auth/Postgres/browser evidence covers redacted changed-field audit names and excludes changed values for all nine employee contact fields supported by the current RPC. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
+      "meaning": "Disposable Auth/Postgres/browser evidence covers redacted changed-field audit names and excludes changed values for all nine employee contact fields supported by the contact RPC and all nine fields in the protected profile-request path; approved profile changes persist. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
+    },
+    {
+      "id": "hr01-safe-bulk-export-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-07"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "7080be47683b9e578174c010bdbe68ba04eedfca",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-07-safe-bulk-export-partial-20261020.md",
+      "runtime_marker": "HR01-07_SAFE_BULK_EXPORT_BROWSER_PASS",
+      "meaning": "The existing read-only employee directory export includes only the current authorized page and six approved non-contact columns; the synthetic tenant-B row and contact values are absent. Bulk writes and other bulk operations are not evidenced."
+    },
+    {
+      "id": "hr01-duplicate-guard-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-08"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "7080be47683b9e578174c010bdbe68ba04eedfca",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/hr01-08-duplicate-guard-partial-20261020.md",
+      "meaning": "Disposable Postgres rejects duplicate tenant employee numbers and official emails with 23505, while the same official email in another tenant is accepted and cleaned up. Duplicate-person matching and create-flow warnings remain unverified."
+    },
+    {
+      "id": "hr03-01-legal-entity-contract-gap-20261020",
+      "classification": "BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT",
+      "story_ids": [
+        "HR03-01"
+      ],
+      "evidence_document": "docs/evidence/hr03-01-legal-entity-contract-gap-20261020.md",
+      "meaning": "The deployed schema has no legal-entity relation or field and no live legal-entity API; cardinality, fields, authority, and employee-history behavior are unspecified. Production schema changes are outside this workstream."
     }
   ],
   "reconciliation": {
