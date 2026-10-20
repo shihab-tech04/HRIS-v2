@@ -6,13 +6,14 @@
 
 ## Exact implementation and runtime evidence
 
-- Main repository checkpoint: `4cc26610c2bd8fc339990cb433d64a6e9c24e15a` on `development/hris-checkpoints`.
-- Full isolated acceptance workflow: [run 39420943283](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39420943283).
-- Full run passed **348/348 contract tests, 56/56 standalone browser regressions, 384/384 local Auth/RLS assertions, and Phase 04 parity 26/26**, with a successful production build and no disposable database security advisor findings.
+- Latest Main repository checkpoint: `1f0bec2fc40f27e600685661a83c6815dd43cf08` on `development/hris-checkpoints` (the activation fix was introduced in `4cc26610c2bd8fc339990cb433d64a6e9c24e15a`).
+- Full isolated acceptance workflow: [run 39425355049](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049).
+- Full run passed **350/350 contract tests, 56/56 standalone browser regressions, 386/386 local Auth/RLS assertions, and Phase 04 parity 26/26**, with a successful production build and no disposable database security advisor findings.
 - Forward fix: `supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql` replaces the activation RPC without rewriting the earlier migration and explicitly supplies `gen_random_uuid()` for the employee primary key.
 - Auth/RLS runtime record: `HR01-01 partial: the HR workspace activates a verified candidate into a tenant employee record with safe retry` in `tests/sql/isolated-auth/run-local.mjs`.
 - Browser marker: `HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS` from `tests/sql/isolated-auth/run-hr01-01-employee-creation-browser.mjs`.
 - Source migration compatibility record for **HR01-02/HR01-06**: `HR01-02/06 contact RPC source migration reapplies after current authorization schema with the expected signatures, ACL, and search path`. The runner reapplies `20261014171952_employee_contact_details_editing.sql` only inside this disposable database, after later authorization and employee-table migrations.
+- Cross-system integration is separately recorded as partial **X03-07** and **X03-08** at `docs/evidence/x03-07-08-candidate-employee-activation-partial-20261020.md`, with exact runtime records in the same workflow.
 
 ## Verified path
 

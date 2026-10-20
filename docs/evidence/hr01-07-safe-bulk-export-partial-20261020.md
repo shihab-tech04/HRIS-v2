@@ -4,8 +4,8 @@
 
 ## Evidence
 
-- Main application commit: `f02ae03da438c88fc796163be7dc0880826b54e3`.
-- Full disposable Auth/Postgres/Storage/browser workflow: [GitHub Actions run 39396457586](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457586), passed on 20 October 2026.
+- Latest Main runtime commit: `1f0bec2fc40f27e600685661a83c6815dd43cf08`.
+- Full disposable Auth/Postgres/Storage/browser workflow: [GitHub Actions run 39425355049](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049), passed on 20 October 2026.
 - Runtime tests: `tests/sql/isolated-auth/run-local.mjs` and `tests/sql/isolated-auth/run-employee-directory-browser.mjs`.
 - Contract test: `tests/contracts/hr01-safe-bulk-export.test.mjs`.
 - Browser marker: `HR01-07_SAFE_BULK_EXPORT_BROWSER_PASS`.

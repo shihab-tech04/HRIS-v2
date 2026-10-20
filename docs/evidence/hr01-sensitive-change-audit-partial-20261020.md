@@ -1,12 +1,12 @@
 # HR01-06 — sensitive-change audit evidence (partial)
 
-**Status: PARTIAL.** At application commit `f02ae03da438c88fc796163be7dc0880826b54e3`, the disposable suite checks all nine employee contact fields supported by the contact-update RPC and all nine profile fields supported by the protected profile-request path. It also verifies safe failure when either deployed contact RPC is missing. This does not certify every sensitive employee-data category or hosted behavior.
+**Status: PARTIAL.** At Main runtime commit `1f0bec2fc40f27e600685661a83c6815dd43cf08`, the disposable suite checks all nine employee contact fields supported by the contact-update RPC and all nine profile fields supported by the protected profile-request path. It also verifies safe failure when either deployed contact RPC is missing. This does not certify every sensitive employee-data category or hosted behavior.
 
 ## Evidence
 
-- Full disposable Auth/Postgres/Storage/browser workflow: [GitHub Actions run 39396457586](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457586), passed on 20 October 2026.
+- Latest full disposable Auth/Postgres/Storage/browser workflow: [GitHub Actions run 39425355049](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049), passed on 20 October 2026.
 - Phase 2A/2B tenant/Auth/RLS/browser workflow: [GitHub Actions run 39396457535](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457535), passed with **PASS=89 FAIL=0**.
-- Full-run checks: TypeScript, **347/347 contract tests**, production build, **56/56** standalone browser regressions, **381/381** disposable local Auth/RLS assertions, Phase 04 SQL/API parity **26/26**, and disposable security advisor with no issues.
+- Full-run checks: TypeScript, **350/350 contract tests**, production build, **56/56** standalone browser regressions, **386/386** disposable local Auth/RLS assertions, Phase 04 SQL/API parity **26/26**, and disposable security advisor with no issues.
 - Runner availability probe: [GitHub Actions run 39396457633](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457633), passed.
 - Runtime test: `tests/sql/isolated-auth/run-local.mjs`.
 - Browser test: `tests/sql/isolated-auth/run-employee-directory-browser.mjs`.
