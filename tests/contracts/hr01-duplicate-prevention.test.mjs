@@ -13,7 +13,7 @@ test('HR01-08 partial evidence proves tenant-scoped uniqueness while leaving dup
   assert.equal(story?.verbatim_requirement, 'As HR, I want duplicate employee records prevented or flagged.');
   assert.equal(story?.status, 'NOT TESTED', 'canonical source story fields must remain unchanged');
   assert.match(activationSql, /CREATE UNIQUE INDEX IF NOT EXISTS hris_employees_tenant_employee_number_uq\s+ON public\.employees \(tenant_id, employee_number\)/);
-  assert.match(localFixture, /UNIQUE \\(tenant_id, employee_number\\)/,
+  assert.match(localFixture, /UNIQUE \(tenant_id, employee_number\)/,
     'the disposable employee table must match the deployed employee-number index');
   assert.match(localFixture, /UNIQUE \(tenant_id, official_email\)/);
   assert.match(runner, /attemptEmployeeDuplicateProbe/);
