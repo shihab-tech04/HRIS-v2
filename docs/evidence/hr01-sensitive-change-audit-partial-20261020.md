@@ -17,4 +17,4 @@ The E02-17 profile-change approval journey also verifies that the audit record c
 
 ## Limit of this result
 
-The expanded HR01-06 test covers the current contact RPC and related employee profile-request path; it does not establish a complete inventory of sensitive employee data or all write/audit paths. Production does not currently expose the contact-update RPC, and no signed-in production API session was exercised. HR01-06 therefore remains **partial**. Production Auth, data, schema, permissions, and deployment were not changed.
+The expanded HR01-06 test covers the current contact RPC and related employee profile-request path; it does not establish a complete inventory of sensitive employee data or all write/audit paths. Production does not currently expose either contact-detail RPC or the source migration version; no signed-in production HR/Admin API session was exercised. HR01-06 therefore remains **partial**. Production Auth, data, schema, permissions, migration history, and deployment were not changed.

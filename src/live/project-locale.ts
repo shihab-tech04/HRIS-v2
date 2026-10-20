@@ -328,6 +328,7 @@ const bengali: Record<string, string> = {
   'Contact details updated.': 'যোগাযোগের তথ্য হালনাগাদ হয়েছে।',
   'Unable to load contact details. Check your employee-management access and retry.': 'যোগাযোগের তথ্য লোড করা যায়নি। কর্মচারী ব্যবস্থাপনার অনুমতি যাচাই করে আবার চেষ্টা করুন।',
   'Contact update failed. Check your employee-management access and retry.': 'যোগাযোগের তথ্য হালনাগাদ করা যায়নি। কর্মচারী ব্যবস্থাপনার অনুমতি যাচাই করে আবার চেষ্টা করুন।',
+  'Contact editing is currently unavailable. Contact your administrator.': 'যোগাযোগের তথ্য সম্পাদনা বর্তমানে উপলভ্য নয়। প্রশাসকের সঙ্গে যোগাযোগ করুন।',
   'Enter a valid official email and a valid personal email when provided.': 'সঠিক অফিসিয়াল ইমেইল লিখুন এবং ব্যক্তিগত ইমেইল দিলে সেটিও সঠিক হতে হবে।',
   'One or more contact fields exceed the allowed length.': 'এক বা একাধিক যোগাযোগের তথ্য অনুমোদিত দৈর্ঘ্যের চেয়ে বেশি।',
   'That official email is already used in this organization.': 'এই অফিসিয়াল ইমেইলটি এই প্রতিষ্ঠানে আগে থেকেই ব্যবহৃত হচ্ছে।',

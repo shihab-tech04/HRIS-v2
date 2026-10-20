@@ -122,7 +122,13 @@ test('every individual evidence record maps to a real and uniquely evidenced can
   const blockedSets = overlay.open_story_evidence.filter(set => set.classification === 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');
   assert.equal(blockedSets.flatMap(set => set.story_ids).length, 14);
   const partialSets = overlay.open_story_evidence.filter(set => set.classification === 'PARTIAL_ACCEPTANCE');
-  assert.equal(partialSets.flatMap(set => set.story_ids).length, 7);
+  assert.equal(partialSets.flatMap(set => set.story_ids).length, 8);
+  const hr0102 = partialSets.find(set => set.id === 'hr01-contact-only-update-partial-20261020');
+  assert.deepEqual(hr0102.story_ids, ['HR01-02']);
+  assert.equal(hr0102.runtime_marker, 'HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS');
+  const hr0102Report = readFileSync(new URL(`../../${hr0102.evidence_document}`, import.meta.url), 'utf8');
+  assert.ok(hr0102Report.includes('HR01-02 remains partial'));
+  assert.ok(readFileSync(new URL(`../../${hr0102.runtime_browser_test_path}`, import.meta.url), 'utf8').includes(hr0102.runtime_marker));
   const hr0106 = partialSets.find(set => set.id === 'hr01-sensitive-change-audit-partial-20261020');
   assert.deepEqual(hr0106.story_ids, ['HR01-06']);
   assert.equal(hr0106.commit, '7080be47683b9e578174c010bdbe68ba04eedfca');

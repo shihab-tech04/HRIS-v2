@@ -267,6 +267,19 @@
       "meaning": "Explicit source-linked partial cases; the remaining historical partial-ID membership is not known."
     },
     {
+      "id": "hr01-contact-only-update-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-02"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-production-contact-contract-gap-20261020.md",
+      "runtime_marker": "HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS",
+      "meaning": "The live employee directory updates only the nine allowlisted contact fields through an employees.manage RPC; direct authenticated table/lifecycle updates remain denied. This is partial employee-record update coverage, and the hosted RPC is absent."
+    },
+    {
       "id": "hr01-sensitive-change-audit-partial-20261020",
       "classification": "PARTIAL_ACCEPTANCE",
       "story_ids": [
