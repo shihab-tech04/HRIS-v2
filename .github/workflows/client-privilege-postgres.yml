@@ -1,0 +1,44 @@
+name: HRIS client table-privilege isolation
+on:
+  pull_request:
+    branches: [development/hris-checkpoints]
+    paths:
+      - 'supabase/migrations/*_revoke_client_administrative_table_privileges.sql'
+      - 'tests/sql/client-privileges/**'
+      - '.github/workflows/client-privilege-postgres.yml'
+permissions:
+  contents: read
+jobs:
+  client-privilege-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_synthetic_acl
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d hris_synthetic_acl"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Reproduce and fix client maintenance grants in isolated PostgreSQL
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: test_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: hris_synthetic_acl
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/client-privileges/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261020132112_revoke_client_administrative_table_privileges.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/client-privileges/assert.sql
