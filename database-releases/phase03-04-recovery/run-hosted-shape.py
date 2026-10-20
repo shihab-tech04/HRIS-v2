@@ -55,3 +55,20 @@ assert sql("SELECT count(*) FROM public.admin_users WHERE active AND is_super_ad
 assert sql("SELECT count(*) FROM public.tenant_memberships m JOIN public.admin_users a ON a.user_id=m.user_id WHERE a.active AND NOT a.is_super_admin AND lower(m.status)='active';").stdout.strip() == '0'
 print('PASS replay retains 26/26 parity, sole Super Admin and unassigned second administrator')
 print('Synthetic schema rehearsal only; hosted production acceptance NOT EXECUTED by this job.')
+
+# Rehearse the source-backed ACL follow-up independently of the applied package.
+acl = (root/'learning_context_acl.sql').read_text()
+definition_before = sql("SELECT md5(pg_get_functiondef('public.hris_get_my_learning_context(uuid)'::regprocedure));").stdout.strip()
+acl_before = sql("SELECT proacl::text FROM pg_proc WHERE oid='public.hris_get_my_learning_context(uuid)'::regprocedure;").stdout.strip()
+acl_lines = acl.splitlines()
+a_start = next(i for i,x in enumerate(acl_lines) if x.strip() == 'BEGIN;')
+a_end = max(i for i,x in enumerate(acl_lines) if x.strip() == 'COMMIT;')
+acl_body = '\n'.join(acl_lines[a_start+1:a_end])
+sql('BEGIN;\n'+acl_body+'\nROLLBACK;')
+assert sql("SELECT proacl::text FROM pg_proc WHERE oid='public.hris_get_my_learning_context(uuid)'::regprocedure;").stdout.strip() == acl_before
+sql(acl)
+assert sql("SELECT md5(pg_get_functiondef('public.hris_get_my_learning_context(uuid)'::regprocedure));").stdout.strip() == definition_before
+assert sql("SELECT has_function_privilege('anon','public.hris_get_my_learning_context(uuid)','EXECUTE');").stdout.strip() == 'f'
+assert sql("SELECT has_function_privilege('authenticated','public.hris_get_my_learning_context(uuid)','EXECUTE') AND has_function_privilege('service_role','public.hris_get_my_learning_context(uuid)','EXECUTE');").stdout.strip() == 't'
+sql(acl)
+print('PASS learning-context ACL follow-up: rollback, apply, replay, definition preservation, anonymous denial and authenticated/service access')
