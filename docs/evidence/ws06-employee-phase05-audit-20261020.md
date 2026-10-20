@@ -80,17 +80,24 @@ The same recheck reports no employee-self contact routine, no emergency-contact 
 
 ## Latest WS06 checkpoint verification
 
-- This report refresh is based on WS06 head `2c0a48c9e6e43cda9893e34665c1ffef85d410f2`; the verified authoritative base remains `1714a08e24f47999618b0127fc818a3d19eb187a`.
-- Exact-head Actions run `39393639383` passed typecheck, full contracts, production build, synthetic-session browser regressions, disposable Auth/RLS acceptance, Phase 04 parity, and disposable security-advisory checks. It is isolated evidence, not hosted acceptance.
-- Employee runtime evidence in run `39393639383`:
+- This report refresh was based on WS06 head `3384a77750c92499d9ea8e5069cda33e7f5d0683`; at that checkpoint the verified authoritative base was `1714a08e24f47999618b0127fc818a3d19eb187a`.
+- Exact-head Actions run `39395475832` passed typecheck, full contracts, production build, synthetic-session browser regressions, disposable Auth/RLS acceptance, Phase 04 parity, and disposable security-advisory checks. It is isolated evidence, not hosted acceptance.
+- Employee runtime evidence in run `39395475832`:
   - E02-01 profile returned the linked employee's own identity and denied cross-tenant, global-only, and anonymous callers. E02-08 employment reads were self-scoped with cross-tenant denial.
   - E03 document browser acceptance covered self-record reads, recovery, download, localization, and responsiveness; Auth/RLS denied mismatched tenant, foreign employee, manager, and anonymous access.
   - E04 identity-card Auth/RLS denied wrong tenant, cross-employee identity, manager without employee link, and anonymous access. E04-02 opened, retried, and closed responsively.
   - E37 directory tests covered tenant-scoped search, department/team filtering, page/export limits, privacy-limited CSV fields, mobile/desktop browser acceptance, and foreign-tenant/no-permission denials. Location remains absent from the approved projection.
   - E02-03/E02-17 retain earlier isolated browser/Auth evidence in run `39147470480`, source commit `445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5`.
-- The focused local Phase 05 Employee contracts passed `48/48` at the report's parent head `2c0a48c9e6e43cda9893e34665c1ffef85d410f2`; `git diff --check` passed. This command covers profile/contact projections, profile-change requests, skills, documents, identity card, directory, family privacy, and WS06 ownership.
-- Exact-head Actions run `39393639381` passed TypeScript, full contracts, and production bundle build, then failed only `Verify the branch-served Pages entry matches the production build`. Generated assets were `app-C4oUgMGJ.js` / `app-GpVcVTBs.css`; unchanged base and WS06 `index.html` share blob SHA `d037342b643bae45f4adb040ec7e0c8d022e4d3a` and reference `app-2l-hdvDU.js` / `app-BWuIahKW.css`. The workflow skipped its browser-smoke step. PR #42 changes workflow wiring, evidence, and contracts only; app source and assets are unchanged. The mismatch is routed to WS01/WS05.
+- The focused local Phase 05 Employee contracts passed `48/48` at the report's code tree (same as head `3384a77750c92499d9ea8e5069cda33e7f5d0683`); `git diff --check` passed. This command covers profile/contact projections, profile-change requests, skills, documents, identity card, directory, family privacy, and WS06 ownership.
+- Exact-head Actions run `39395475728` passed TypeScript, full contract checks, and production bundle build, then failed only `Verify the branch-served Pages entry matches the production build`. Generated assets were `app-C4oUgMGJ.js` / `app-GpVcVTBs.css`; unchanged base and WS06 `index.html` share blob SHA `d037342b643bae45f4adb040ec7e0c8d022e4d3a` and reference `app-2l-hdvDU.js` / `app-BWuIahKW.css`. The workflow skipped its browser-smoke step. PR #42 changes workflow wiring, evidence, and contracts only; app source and assets are unchanged. The mismatch is routed to WS01/WS05.
 - WS02 contract request and follow-up are posted on PR #39 as comments `6286731239` and `6287017158`. Latest WS05 read-only catalog findings are recorded in comment `6286977559`; exact function source/allowlist/grant parity and two-tenant tests are still pending. No hosted Employee role/tenant certification is claimed.
+
+## Live base branch advance after the WS06 checkpoint
+
+- Direct GitHub branch/ref lookup and `git ls-remote` verified that `development/hris-checkpoints` advanced to `f02ae03da438c88fc796163be7dc0880826b54e3` at 2026-10-20 08:51 UTC. It moved from `1714a08e24f47999618b0127fc818a3d19eb187a` through `ecdd61c7cb22596e091f938ff00ce5cd0d0e110a` and `f02ae03da438c88fc796163be7dc0880826b54e3`.
+- WS06 head at this recheck remained `3384a77750c92499d9ea8e5069cda33e7f5d0683`, with merge-base `1714a08e24f47999618b0127fc818a3d19eb187a`. Diffing the live base against WS06 head still lists only the six WS06 workflow/evidence/contract files; there are no changed-path overlaps. No HR01 file was edited by WS06.
+- The base advance changes `src/live/OrganizationEmployeeDirectory.tsx` only to show a fail-closed unavailable message when manager contact RPCs return `PGRST202`; its added browser/Auth evidence covers the manager contact flow. This is WS01-owned HR01 contact behavior, not an employee-self contact contract and not an E37-03 self-contact grant.
+- Current base checks at 2026-10-20 08:56 UTC: runner probe `39396457633` **PASS**; Phase 2A tenant-provisioning Auth/RLS/browser run `39396457535` **PASS**; disposable Auth/Postgres/browser run `39396457586` **in progress**. The WS06 exact-head runs above are separate and do not include the later base commits.
 
 ## Implementation decision and required handoff
 
