@@ -2309,17 +2309,6 @@ record('Employee contact save validates input, rejects non-contact keys and dupl
     anonymousUpdateDenied: Boolean(contactUpdateAnon.error),
     updateCode: contactUpdate.error?.code, auditCount: contactAudit.count }));
 
-record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event',
-  contactAudit.count === 1
-    && contactAudit.details.includes('official_email')
-    && contactAudit.details.includes('emergency_contact_phone')
-    && !contactAudit.details.includes('employee-a-updated@hris.test')
-    && employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS'),
-  JSON.stringify({ auditCount: contactAudit.count,
-    auditedFieldNames: ['official_email', 'emergency_contact_phone'],
-    changedValuesExcluded: !contactAudit.details.includes('employee-a-updated@hris.test'),
-    browserMarker: employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS') }));
-
 psqlSync("UPDATE public.employees SET official_email='employee-a@hris.test',personal_email='personal-a@hris.test',phone='+880 1700 000001',official_phone='+880 2 5550001',address='QA A home address',mailing_address='QA A mailing address',emergency_contact_name='QA A emergency contact',emergency_contact_phone='+880 1700 000101',emergency_contact_relation='Parent' WHERE id='55555555-5555-4555-8555-555555555555'::uuid;");
 
 psqlSync("UPDATE public.tenant_memberships SET status='inactive' WHERE user_id=" + sqlLiteral(managerA.userId) + "::uuid AND tenant_id=" + sqlLiteral(ids.tenantA) + "::uuid;");
@@ -2400,6 +2389,17 @@ try {
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
   employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with tenant-scoped team filtering, filtered CSV, manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
+record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event',
+  contactAudit.count === 1
+    && contactAudit.details.includes('official_email')
+    && contactAudit.details.includes('emergency_contact_phone')
+    && !contactAudit.details.includes('employee-a-updated@hris.test')
+    && employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS'),
+  JSON.stringify({ auditCount: contactAudit.count,
+    auditedFieldNames: ['official_email', 'emergency_contact_phone'],
+    changedValuesExcluded: !contactAudit.details.includes('employee-a-updated@hris.test'),
+    browserMarker: employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS') }));
+
 record('HR01-03 HR workforce search and department, status, and team filters stay inside the authorized tenant',
   !employeeDirectoryFiltered.error
     && employeeDirectoryFiltered.data?.total_count === 1
