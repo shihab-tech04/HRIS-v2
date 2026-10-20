@@ -1,5 +1,7 @@
 # Phases 03–04 — Tenant lifecycle and Auth/RLS security readiness
 
+> **20 October post-migration status:** the prior findings in this document are a historical 18 October snapshot and are superseded for production migration status by [`HOSTED_MIGRATION_STATUS_2026-10-20.md`](HOSTED_MIGRATION_STATUS_2026-10-20.md). The live migration ledger now ends at `20261020044145`; the migration workstream reports schema parity 26/26, security 20/20 and database-role rejection 9/9, and this stream independently reran the read-only 26/26 catalog probe. Signed-in production API and tenant-isolation acceptance remains pending, so the application release is not certified.
+
 > **19 October addendum:** The narrowly scoped legacy `public.notices` restrictive guard is now **live** as hosted migration `20261019013043` (`hris_notices_legacy_security_guard_20261019`). It restricts the old `notices_read` policy while preserving projected legacy administrator access; see [the live deployment record](PHASE04_LIVE_NOTICES_GUARD_2026-10-19.md). The full missing membership helper chain, all 25 parity checks and the Phase 03–04 acceptance gates remain **open**. The 18 October findings below remain a historical pre-repair snapshot.
 
 **Phase 03 staged engineering: previously Auth/Postgres/browser tested; not released. Phase 04 source regression: PASS; hosted security certification: BLOCKED.** These are explicit checkpoints, **not completed release phases**.

@@ -249,6 +249,21 @@
       "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
       "additional_evidence_document": "docs/evidence/employee-identity-card-E04-20261017.md",
       "meaning": "Explicit source-linked partial cases; the remaining historical partial-ID membership is not known."
+    },
+    {
+      "id": "hr01-sensitive-change-audit-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-06"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "a920281911b3d61ea116dc951bca900aeb3b4958",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39375324961",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-sensitive-change-audit-partial-20261020.md",
+      "runtime_marker": "HR01-06_CONTACT_AUDIT_BROWSER_PASS",
+      "meaning": "Disposable Auth/Postgres/browser evidence covers a redacted HR contact-change audit for official_email and emergency_contact_phone only. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
     }
   ],
   "reconciliation": {

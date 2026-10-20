@@ -22,7 +22,7 @@ test('Phase 00 inventories every original story without inflating the legacy acc
   assert.equal(result.individually_evidenced_in_disposable_journeys, 38);
   assert.equal(result.individually_not_yet_evidenced, 1009);
   assert.equal(result.explicitly_blocked_story_count, 13);
-  assert.equal(result.explicitly_partial_story_count, 4);
+  assert.equal(result.explicitly_partial_story_count, 5);
   assert.equal(result.legacy_verified_aggregate, 82);
   assert.equal(result.deduplicated_verified_total, null);
   assert.equal(result.test_referenced_story_count, 3);
@@ -37,6 +37,7 @@ test('Phase 00 inventories every original story without inflating the legacy acc
   assert.equal(result.entries.find(row => row.story_id === 'E02-17').acceptance_evidence.scope, 'DISPOSABLE_ONLY');
   assert.equal(result.entries.find(row => row.story_id === 'E03-02').open_evidence.classification, 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');
   assert.equal(result.entries.find(row => row.story_id === 'E04-05').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
+  assert.equal(result.entries.find(row => row.story_id === 'HR01-06').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.entries.find(row => row.story_id === 'E01-01').acceptance_evidence, null);
   assert.equal(result.entries.find(row => row.story_id === 'E01-01').implementation_classification, 'NOT_YET_DETERMINED');
   assert.equal(result.entries.find(row => row.story_id === 'E01-01').verbatim_requirement, source.stories[0].verbatim_requirement);

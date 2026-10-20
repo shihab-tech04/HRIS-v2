@@ -108,7 +108,18 @@ test('every individual evidence record maps to a real and uniquely evidenced can
   assert.equal(new Set(openEvidence).size, openEvidence.length);
   assert.ok(openEvidence.every(id => sourceIds.has(id) && !evidenceIds.includes(id)), 'No open story is also counted as individually verified.');
   assert.equal(overlay.open_story_evidence.find(set => set.classification === 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT').story_ids.length, 13);
-  assert.equal(overlay.open_story_evidence.find(set => set.classification === 'PARTIAL_ACCEPTANCE').story_ids.length, 4);
+  const partialSets = overlay.open_story_evidence.filter(set => set.classification === 'PARTIAL_ACCEPTANCE');
+  assert.equal(partialSets.flatMap(set => set.story_ids).length, 5);
+  const hr0106 = partialSets.find(set => set.id === 'hr01-sensitive-change-audit-partial-20261020');
+  assert.deepEqual(hr0106.story_ids, ['HR01-06']);
+  assert.equal(hr0106.commit, 'a920281911b3d61ea116dc951bca900aeb3b4958');
+  assert.ok(hr0106.workflow_run.endsWith('/actions/runs/39375324961'));
+  assert.equal(hr0106.runtime_marker, 'HR01-06_CONTACT_AUDIT_BROWSER_PASS');
+  const hr0106Report = readFileSync(new URL(`../../${hr0106.evidence_document}`, import.meta.url), 'utf8');
+  assert.ok(hr0106Report.includes('HR01-06'));
+  assert.ok(hr0106Report.includes('PARTIAL'));
+  assert.ok(readFileSync(new URL(`../../${hr0106.runtime_test_path}`, import.meta.url), 'utf8').includes("record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event'"));
+  assert.ok(readFileSync(new URL(`../../${hr0106.runtime_browser_test_path}`, import.meta.url), 'utf8').includes(hr0106.runtime_marker));
 });
 
 test('historical aggregate is conserved without adding any individually evidenced IDs', () => {

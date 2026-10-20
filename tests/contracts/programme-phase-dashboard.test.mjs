@@ -9,8 +9,8 @@ test('all 22 operational phases reconcile exactly to 1,047 canonical stories and
   assert.equal(snapshot.totals.stories, 1047);
   assert.equal(snapshot.totals.individually_disposable_evidenced, 38);
   assert.equal(snapshot.totals.blocked, 13);
-  assert.equal(snapshot.totals.partial, 4);
-  assert.equal(snapshot.totals.unclassified, 992);
+  assert.equal(snapshot.totals.partial, 5);
+  assert.equal(snapshot.totals.unclassified, 991);
   assert.equal(snapshot.totals.hosted_story_accepted, 0);
   assert.deepEqual(snapshot.phases.map(row => row.phase), [...Array(22)].map((_, index) => String(index).padStart(2, '0')));
   assert.equal(new Set(snapshot.phases.map(row => row.title)).size, 22);
@@ -26,8 +26,8 @@ test('cross-cutting acceptance phases have no exclusive source stories and no un
     blocked: phase03.blocked, partial: phase03.partial, not_classified: phase03.not_classified },
   { total: 7, disposable_evidenced: 7, blocked: 0, partial: 0, not_classified: 0 });
   assert.equal(operationalPhaseGates['03'].state, 'STAGED_TESTED_RELEASE_BLOCKED');
-  assert.equal(operationalPhaseGates['04'].state, 'HOSTED_SECURITY_GATE_BLOCKED');
-  assert.equal(operationalPhaseGates['19'].state, 'HOSTED_SECURITY_GATE_BLOCKED');
+  assert.equal(operationalPhaseGates['04'].state, 'HOSTED_API_ACCEPTANCE_PENDING');
+  assert.equal(operationalPhaseGates['19'].state, 'HOSTED_API_ACCEPTANCE_PENDING');
   assert.equal(operationalPhaseGates['21'].state, 'RELEASE_BLOCKED');
   assert.ok(snapshot.phases.filter(row => row.state.endsWith('_GATE_PASSED')).length === 3);
 });
