@@ -66,7 +66,7 @@ The current main LiveApp.tsx calls employee_update_my_profile({p_payload}), empl
 
 The function itself validates active membership and ownership; the client must use the active tenant from the authenticated context, not a guessed/local default. No runtime employee session was available to observe the mismatch over production HTTP.
 
-**Test boundary:** the disposable 39378140222 and latest WS06 39393639383 runners exercise profile-change requests (E02-03/E02-17), but their Auth/RLS script contains no calls to employee_update_my_profile, employee_save_my_addresses_v2, or employee_save_my_family_members_v2. The separate employee-family workflow tests read isolation, not these write RPCs. Thus these deployed function definitions and UI request shapes are verified, but E02-02 and E02-04 through E02-07 are not certified and their synthetic positive/negative write tests remain outstanding.
+**Test boundary:** the comprehensive source run 39378140222 includes profile-change request/review assertions for E02-03/E02-17. Latest WS06 runs 39393639383 and 39395475832 do not call employee_update_my_profile, employee_save_my_addresses_v2, or employee_save_my_family_members_v2; their dedicated Auth/RLS step covers travel, reporting, learning, and timesheets. The separate employee-family workflow tests read isolation, not these write RPCs. Thus E02-02 and E02-04 through E02-07 are not certified and their synthetic positive/negative write tests remain outstanding.
 
 **Runnable disposable acceptance proposal:** in the existing local-only Auth/RLS harness, use its employeeA and employeeB sessions and tenant A/B fixtures; do not point it at a cloud project.
 
@@ -76,7 +76,7 @@ The function itself validates active membership and ownership; the client must u
 4. Repeat for employee_save_my_family_members_v2 with a synthetic own family row and employeeB’s row ID; assert own success, foreign ID 42501, invalid key/omission 22023, and direct table writes denied.
 5. Call both profile-change RPCs with p_tenant_id=tenantA as employeeA and assert success/read of own request; use tenantB, inactive membership, and an unlinked caller for 42501; confirm review without self_service.manage is denied.
 
-These cases are proposed, not run. The current disposable CI passed 375/375 other Auth/RLS assertions; that aggregate is not a result for the five unrun E02 write cases above.
+Cases 1-4 are proposed and were not run in the available CI. Case 5 is partially exercised by run 39378140222: its E02-03/E02-17 synthetic request/review assertions passed, including inactive-membership, cross-tenant, duplicate-request, and duplicate-review denials. That does not fix the frontend signature mismatch or provide production employee-session evidence. The 375/375 aggregate from run 39378140222 and 378/378 aggregate from WS06 run 39395475832 are not results for cases 1-4.
 
 ### HR03 legal entities and WS08 SA06 master data
 
