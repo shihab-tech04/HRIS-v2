@@ -81,7 +81,20 @@ test('every individual evidence record maps to a real and uniquely evidenced can
     const runtime = readFileSync(new URL(`../../${set.runtime_browser_test_path}`, import.meta.url), 'utf8');
     assert.ok(runtime.includes(marker), `E02 browser marker missing ${marker}`);
   }
-  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 37);
+  const hr01 = overlay.evidence_sets.find(set => set.id === 'employee-hr01-workforce-search-20261020');
+  assert.deepEqual(hr01.story_ids, ['HR01-03']);
+  assert.equal(hr01.classification, 'VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY');
+  assert.equal(hr01.commit, '81eb677847fc19007cfb790dfc8cf7126c4c759d');
+  assert.ok(hr01.workflow_run.endsWith('/actions/runs/39373694520'));
+  assert.equal(hr01.hosted_cross_system_acceptance, 'NOT_VERIFIED');
+  assert.equal(hr01.runtime_marker, 'HR01-03_WORKFORCE_SEARCH_FILTER_BROWSER_PASS');
+  const hr01Report = readFileSync(new URL(`../../${hr01.evidence_document}`, import.meta.url), 'utf8');
+  assert.ok(hr01Report.includes('HR01-03'));
+  const hr01Runtime = readFileSync(new URL(`../../${hr01.runtime_browser_test_path}`, import.meta.url), 'utf8');
+  assert.ok(hr01Runtime.includes(hr01.runtime_marker));
+  const hr01Runner = readFileSync(new URL('../../tests/sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
+  assert.ok(hr01Runner.includes("record('HR01-03 HR workforce search and department, status, and team filters stay inside the authorized tenant'"));
+  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 38);
   const phase03 = overlay.evidence_sets.find(set => set.id === 'phase03-saas-tenant-modules-20261019');
   assert.deepEqual(phase03.story_ids, ['SA01-01', 'SA01-02', 'SA01-03', 'SA01-04', 'SA12-01', 'SA12-02', 'SA12-03']);
   assert.equal(phase03.classification, 'VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY');

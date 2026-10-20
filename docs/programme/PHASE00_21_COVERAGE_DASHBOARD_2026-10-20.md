@@ -33,9 +33,9 @@ node scripts/programme-phase-dashboard.mjs --json
 | 19 | Cross-system migration/security | 1 | 5 | 0 | Hosted provenance and security certification blocked |
 | 20 | Story-by-story acceptance | — | — | — | Full exact-ID recertification open |
 | 21 | Final backup, GitHub and dual deployment | — | — | — | Release not authorized |
-| **Total** | **22 phases** | **153** | **1,047** | **37** | **0 hosted story acceptances certified** |
+| **Total** | **22 phases** | **153** | **1,047** | **38** | **0 hosted story acceptances certified** |
 
-**Important accounting:** the 37 are specific IDs connected to passing disposable tests; they are not release certifications. A separate historical checkpoint claimed 82 verified, but did **not preserve all their IDs**, so the exact, deduplicated intersection is unknown and **37 + 82 is not a valid progress figure**. Currently there are 13 exact blocked requirements, 4 partial and 993 not individually classified. `NOT_CLASSIFIED` is **not** a finding that the feature is absent; it means acceptance traceability is insufficient.
+**Important accounting:** the 38 are specific IDs connected to passing disposable tests; they are not release certifications. A separate historical checkpoint claimed 82 verified, but did **not preserve all their IDs**, so the exact, deduplicated intersection is unknown and **38 + 82 is not a valid progress figure**. Currently there are 13 exact blocked requirements, 4 partial and 992 not individually classified. `NOT_CLASSIFIED` is **not** a finding that the feature is absent; it means acceptance traceability is insufficient.
 
 Phases 00, 01, 02, 18, 20 and 21 are programme/cross-cutting work, therefore no exclusive source modules were assigned to them; **zero stories in their column does not mean zero work or approval**. The source's own phase fields remain untouched.
 
