@@ -16,3 +16,9 @@ test('the GitHub Pages branch entry references the compiled app and checked-in a
     assert.ok(statSync(file).size > 0, `branch-served asset is empty: ${file}`);
   }
 });
+
+test('Tailwind does not scan generated Pages bundles as utility sources', () => {
+  const css = readFileSync('src/index.css', 'utf8');
+  assert.match(css, /@source\s+not\s+["']\.\.\/assets["']/);
+  assert.match(css, /@source\s+not\s+["']\.\.\/dist["']/);
+});
