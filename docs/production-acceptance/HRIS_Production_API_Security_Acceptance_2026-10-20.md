@@ -48,7 +48,35 @@ Both require an active tenant plus has_tenant_permission(p_tenant_id, 'employees
 
 ### WS06 E02 self-service contracts
 
-Hosted production has the following authenticated-callable SECURITY DEFINER functions. For all five employee/profile RPCs, has_function_privilege reports authenticated EXECUTE=true, service_role EXECUTE=true, and anon EXECUTE=false. Employees, employee_addresses, and employee_family_members have RLS enabled. Authenticated direct UPDATE/INSERT/DELETE privileges are false for these tables, so writes must use the RPCs.
+Hosted production has the following authenticated-callable SECURITY DEFINER functions. For all five employee/profile RPCs, has_function_privilege reports authenticated EXECUTE=true, service_role EXECUTE=true, and anon EXECUTE=false. Employees, employee_addresses, and employee_family_members have RLS enabled.
+
+**Additional hosted RLS/ACL finding for E02-05/E02-07:** the production SELECT policy employee_addresses_admin_read uses only has_permission('employees.view') OR has_permission('employees.manage'); employee_family_admin_read uses the same expression. Neither policy joins employee_id to public.employees and verifies that the parent employee's tenant matches the caller's active membership. The separate self-read policies are identity-bound through employee_for_auth_user(), but they do not constrain the manager/admin path. Because both child tables lack tenant_id, the manager path is not row-tenant-scoped. This is a static tenant-isolation FAIL; an actual foreign-tenant request remains BLOCKED because production has one active tenant.
+
+Authenticated currently has REFERENCES, SELECT, TRIGGER, and TRUNCATE on both child tables; direct INSERT, UPDATE, and DELETE are false. RLS does not make REFERENCES/TRIGGER/TRUNCATE necessary for the user-facing read path. The smallest address-policy proposal, with the existing separate self-read policy retained, is:
+
+    ALTER POLICY employee_addresses_admin_read
+      ON public.employee_addresses
+      USING (
+        EXISTS (
+          SELECT 1
+          FROM public.employees e
+          WHERE e.id = employee_addresses.employee_id
+            AND (
+              public.has_tenant_permission(e.tenant_id, 'employees.view')
+              OR public.has_tenant_permission(e.tenant_id, 'employees.manage')
+            )
+        )
+      );
+
+The development source already has a tenant-aware family policy repair in supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql. It uses an employee-row parent join plus active tenant membership and role_permissions, adds a restrictive tenant guard, and revokes broad table privileges before granting SELECT. That migration is absent from hosted production. Synthetic PostgreSQL workflow 39379214697/job 118484195303 exercised tenant-one/tenant-two HR, employee viewer, inactive session/membership, global-only and own-row cases and logged PASS; the workflow explicitly labels it source-only and not production Auth/RLS certification.
+
+Proposal only for the remaining direct table ACLs, preserving SELECT for RLS-filtered clients and SECURITY DEFINER RPC use:
+
+    REVOKE REFERENCES, TRIGGER, TRUNCATE
+      ON TABLE public.employee_addresses, public.employee_family_members
+      FROM authenticated;
+
+Do not apply these SQL proposals in WS02. Route a reviewed policy/ACL change through the owning migration workflow and rerun the same two-tenant reads against real synthetic Auth sessions. Authenticated direct UPDATE/INSERT/DELETE privileges are false for these tables, so writes must use the RPCs.
 
 | Story scope | Deployed RPC | Current server authorization and row boundary |
 |---|---|---|
@@ -75,6 +103,7 @@ The function itself validates active membership and ownership; the client must u
 3. employeeA inserts and updates one own address through employee_save_my_addresses_v2; repeat with an address ID owned by employeeB and assert 42501. Assert unknown keys and omitted existing IDs return 22023; direct authenticated table writes remain denied.
 4. Repeat for employee_save_my_family_members_v2 with a synthetic own family row and employeeB’s row ID; assert own success, foreign ID 42501, invalid key/omission 22023, and direct table writes denied.
 5. Call both profile-change RPCs with p_tenant_id=tenantA as employeeA and assert success/read of own request; use tenantB, inactive membership, and an unlinked caller for 42501; confirm review without self_service.manage is denied.
+6. With real synthetic managerA and managerB sessions, directly SELECT addresses and family rows through PostgREST. Assert managerA sees only rows whose parent employee belongs to tenantA, managerB only tenantB, foreign employee IDs return no rows, and no-permission/global-only/inactive/anonymous callers see none. Exercise both existing admin-read policies, not only the development repair.
 
 Cases 1-4 are proposed and were not run in the available CI. Case 5 is partially exercised by run 39378140222: its E02-03/E02-17 synthetic request/review assertions passed, including inactive-membership, cross-tenant, duplicate-request, and duplicate-review denials. That does not fix the frontend signature mismatch or provide production employee-session evidence. The 375/375 aggregate from run 39378140222 and 378/378 aggregate from WS06 run 39395475832 are not results for cases 1-4.
 
@@ -113,6 +142,9 @@ The release source currently gates the five offer/interview controls under canMa
 | HR01 synthetic source API tenant/role tests | PASS | Run 39378140222/job 118480812801 positive and denied contact tests in disposable two-tenant Auth/Postgres. |
 | E02 self-update/address/family hosted signatures and grants | PASS | Read-only function catalog/definitions, no direct DML ACL, own-row SECURITY DEFINER guards. |
 | E02 self-update/address/family synthetic writes | BLOCKED | Existing isolated runners do not call the three functions; no employee signed-in production session. Runnable cases are above. |
+| Employee address/family admin-read tenant RLS | FAIL — policy is not row-tenant-scoped | Hosted admin-read policies check only has_permission(employees.view/manage); no employee-parent tenant predicate. Runtime cross-tenant proof is BLOCKED by the single active production tenant. |
+| Employee address/family extra authenticated table ACL | FAIL — excess privileges | Authenticated has REFERENCES, TRIGGER, and TRUNCATE; direct INSERT/UPDATE/DELETE are false. Proposal-only revoke is above. |
+| Synthetic two-tenant family read-policy repair | PASS — source only | Workflow 39379214697/job 118484195303 passed tenant A/B HR, employee-view, inactive/global and own-row cases on disposable PostgreSQL 17 using migration 20261016171104. It is not hosted or real Auth acceptance. |
 | E02 profile-change request UI signature | FAIL | Main source omits required p_tenant_id in get and submit calls; no production employee session available for HTTP reproduction. |
 | HR03 legal entities | BLOCKED | No production table/API; product model and lifecycle are unspecified. |
 | SA06 master-data API | BLOCKED | Scope/catalog/API unspecified and no platform master-data writer is deployed. |
