@@ -48,7 +48,7 @@ Both require an active tenant plus has_tenant_permission(p_tenant_id, 'employees
 
 ### WS06 E02 self-service contracts
 
-Hosted production has the following authenticated-only SECURITY DEFINER functions; anon EXECUTE is false. Employees, employee_addresses, and employee_family_members have RLS enabled. Authenticated direct UPDATE/INSERT/DELETE privileges are false for these tables, so writes must use the RPCs.
+Hosted production has the following authenticated-callable SECURITY DEFINER functions. For all five employee/profile RPCs, has_function_privilege reports authenticated EXECUTE=true, service_role EXECUTE=true, and anon EXECUTE=false. Employees, employee_addresses, and employee_family_members have RLS enabled. Authenticated direct UPDATE/INSERT/DELETE privileges are false for these tables, so writes must use the RPCs.
 
 | Story scope | Deployed RPC | Current server authorization and row boundary |
 |---|---|---|
