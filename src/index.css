@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Compiled Pages bundles are build outputs, never Tailwind class sources. */
+@source not "../assets";
+@source not "../dist";
 
 @layer base {
   :root {
