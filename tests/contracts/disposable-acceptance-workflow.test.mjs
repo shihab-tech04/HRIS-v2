@@ -30,6 +30,7 @@ test('disposable Auth/Postgres/browser acceptance uses trusted standard runners 
   assert.doesNotMatch(checks, /resetPasswordForEmail|supabase\.co|production Supabase/i);
   assert.match(checks, /branches: \[release\/hris-stable-20261017, work\/ws06-employee-phase05-20261020\]/);
   assert.match(checks, /github\.ref == 'refs\/heads\/work\/ws06-employee-phase05-20261020'/);
+  assert.match(checks, /Checkout trusted Candidate development source for WS06 cross-repository contracts[\s\S]*?--branch development\/hris-checkpoints/);
   assert.match(workflow, /github\.ref == 'refs\/heads\/work\/ws06-employee-phase05-20261020'/);
   assert.match(checks, /runs-on: ubuntu-24\.04/);
 });
