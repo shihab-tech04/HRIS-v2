@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+const catalogueBytes = readFileSync(new URL('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json', import.meta.url));
+const catalogue = JSON.parse(catalogueBytes.toString('utf8'));
+const skillMigration = readFileSync(new URL('../../supabase/migrations/20261014120100_employee_skill_self_service.sql', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261013153500_hris_learning_employee_self_service.sql', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../../src/live/MyLearning.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
@@ -152,4 +156,24 @@ test('local Auth suite proves manager denials, one-time decisions, capacity race
   assert.match(browser, /Approved from the manager queue/);
   assert.match(browser, /Learning manager queue mobile/);
   assert.match(browser, /Learning manager queue desktop/);
+});
+
+
+test('E02-12 maps the canonical employee skill-management story to isolated Auth/Postgres/browser acceptance', () => {
+  assert.equal(createHash('sha256').update(catalogueBytes).digest('hex'), 'c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520');
+  const story = catalogue.stories.find(item => item.story_id === 'E02-12');
+  assert.ok(story);
+  assert.equal(story.module_id, 'E02');
+  assert.equal(story.role_name, 'Employee');
+  assert.equal(story.verbatim_requirement, 'As an employee, I want to manage skills.');
+  assert.equal(story.source_locator.line, 37);
+  assert.equal(story.status, 'NOT TESTED');
+  assert.deepEqual(story.test_ids, []);
+  assert.match(skillMigration, /public\.hris_own_employee_for_tenant\(p_tenant_id\)/);
+  assert.match(skillMigration, /v_skill\.verified IS TRUE/);
+  assert.match(skillMigration, /s\.verified IS FALSE/);
+  assert.match(runner, /Employees create and edit their own tenant-linked skill profile with self-reported unverified data/);
+  assert.match(runner, /Skill profile RPC denies cross-tenant, anonymous, direct-table, and verified-skill mutations/);
+  assert.match(runner, /Employees can remove their own unverified skill and the removal persists/);
+  assert.match(browser, /E02-12_SKILL_PROFILE_BROWSER_PASS/);
 });
