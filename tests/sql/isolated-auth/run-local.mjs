@@ -2452,6 +2452,9 @@ try {
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
   employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with tenant-scoped team filtering, filtered CSV, manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
   employeeDirectoryBrowserError);
+record('HR01-07 partial: current-page employee export contains only permitted tenant rows and fields',
+  employeeDirectoryBrowserOutput.includes('HR01-07_SAFE_BULK_EXPORT_BROWSER_PASS'),
+  employeeDirectoryBrowserError);
 record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event',
   contactAudit.count === 1
     && contactAuditHasEveryFieldName

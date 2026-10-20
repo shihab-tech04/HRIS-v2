@@ -300,6 +300,31 @@ try {
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await restoreAllStatusesResponse;
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  const safeBulkExportWait = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export current page' }).click();
+  const safeBulkExport = await safeBulkExportWait;
+  const safeBulkExportStream = await safeBulkExport.createReadStream();
+  const safeBulkExportChunks = [];
+  for await (const chunk of safeBulkExportStream) safeBulkExportChunks.push(chunk);
+  const safeBulkExportCsv = Buffer.concat(safeBulkExportChunks).toString('utf8');
+  const safeBulkExportLines = safeBulkExportCsv.split(/\r?\n/).filter(Boolean);
+  const allowedBulkExportHeader = '"Employee","Employee number","Department","Designation","Team","Employment status"';
+  const expectedBulkExportEmployees = statusCases.map(item => item.employee);
+  const privateBulkExportValues = [
+    'employee-a@hris.test', 'employee-b@hris.test', 'personal-a@hris.test',
+    'QA A home address', 'QA A emergency contact', 'Synthetic Employee B',
+  ];
+  if (safeBulkExportLines[0] !== allowedBulkExportHeader || safeBulkExportLines.length !== expectedBulkExportEmployees.length + 1
+    || expectedBulkExportEmployees.some(name => !safeBulkExportCsv.includes(`"${name}"`))
+    || privateBulkExportValues.some(value => safeBulkExportCsv.includes(value))) {
+    throw new Error(`HR01-07 safe employee export exceeded its permitted current page: ${JSON.stringify({
+      header: safeBulkExportLines[0], rowCount: safeBulkExportLines.length - 1,
+      expectedRowCount: expectedBulkExportEmployees.length,
+      missingEmployees: expectedBulkExportEmployees.filter(name => !safeBulkExportCsv.includes(`"${name}"`)),
+      leakedPrivateValues: privateBulkExportValues.filter(value => safeBulkExportCsv.includes(value)),
+    })}.`);
+  }
+  console.log('HR01-07_SAFE_BULK_EXPORT_BROWSER_PASS');
 
   await page.getByLabel('Search employees').fill('No matching employee in this fixture');
   const emptyResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
