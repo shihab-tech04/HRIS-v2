@@ -149,6 +149,38 @@
       "runtime_marker": "Phase 03 tenant provisioning and optional module source acceptance passed on the exact tested Main checkpoint.",
       "evidence_scope": "Fresh disposable Supabase Auth, PostgreSQL, Storage, synthetic tenants/users, desktop/mobile browser journeys, tenant isolation, audit and historical-row preservation.",
       "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e02-employment-information-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-08"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "012f3a999ac9ec288dd37837db1487a88e014fc6",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39369899972",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs",
+      "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
+      "runtime_marker": "E02-08_EMPLOYMENT_INFORMATION_BROWSER_PASS",
+      "evidence_scope": "Authenticated self-only employment information from the tenant-checked employee identity-card RPC: employee number, designation, department and employment status; direct-access, cross-tenant, anonymous and browser behavior were exercised in the disposable Auth/Postgres journey.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
+    },
+    {
+      "id": "employee-e02-skill-profile-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-12"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "012f3a999ac9ec288dd37837db1487a88e014fc6",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39369899972",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-learning-browser.mjs",
+      "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
+      "runtime_marker": "E02-12_SKILL_PROFILE_BROWSER_PASS",
+      "evidence_scope": "Employee-owned skill create/edit/delete persistence, duplicate rejection, cross-tenant and unauthenticated denials, and protection of verified skills were exercised with disposable Auth/Postgres and responsive browser journeys.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED"
     }
   ],
   "open_story_evidence": [
@@ -188,9 +220,9 @@
     }
   ],
   "reconciliation": {
-    "individual_verified_ids_recorded": 34,
+    "individual_verified_ids_recorded": 36,
     "legacy_verified_overlap": "UNKNOWN",
     "deduplicated_verified_total": null,
-    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 34 individually recorded story IDs are not an addition to the 82 historical aggregate."
+    "required_next_action": "Recover the exact 82 legacy verified story IDs; form a set union with evidence_sets[].story_ids; record individual acceptance status and evidence for every remaining canonical ID before changing the aggregate. The 36 individually recorded story IDs are not an addition to the 82 historical aggregate."
   }
 }
