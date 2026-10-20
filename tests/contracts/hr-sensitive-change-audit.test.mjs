@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const catalogue = JSON.parse(read('../../docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json'));
 const contactSql = read('../../supabase/migrations/20261014171952_employee_contact_details_editing.sql');
+const profileChangeSql = read('../../supabase/migrations/20261017130000_employee_profile_change_schema_contract.sql');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const browser = read('../sql/isolated-auth/run-employee-directory-browser.mjs');
 
@@ -32,4 +33,15 @@ test('HR01-06 records a partial boundary and verifies redacted auditing for all 
   assert.ok(runner.includes("record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event'"));
   assert.ok(runner.includes("employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS')"));
   assert.ok(browser.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS'));
+
+  const protectedProfileFields = [
+    'full_name', 'official_email', 'personal_email', 'official_phone', 'address', 'mailing_address',
+    'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+  ];
+  for (const field of protectedProfileFields) {
+    assert.ok(profileChangeSql.includes(`'${field}'`), `Deployed profile contract does not support ${field}.`);
+    assert.ok(runner.includes(`'${field}'`), `Runtime redaction test does not cover ${field}.`);
+  }
+  assert.ok(profileChangeSql.includes("jsonb_build_object('employee_id', r.employee_id, 'field_key', r.field_key)"));
+  assert.ok(runner.includes("record('HR01-06 partial: all nine supported protected profile fields persist with field-only audit events'"));
 });

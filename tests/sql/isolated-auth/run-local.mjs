@@ -7971,6 +7971,87 @@ record('Revoked Auth session cannot use previously issued leave or attendance to
   && tableRow('attendance_corrections', ids.attendanceRevoked).status === 'pending',
   revokedCall.ok || revokedAttendanceCall.ok ? 'unexpectedly accepted' : 'denied');
 
+const hr0106ProfileAuditFields = [
+  'full_name', 'official_email', 'personal_email', 'official_phone', 'address', 'mailing_address',
+  'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+];
+const managerAForProfileAudit = await signIn(emails[0]);
+const hr0106ProfileBaseline = await adminAuth.from('employees')
+  .select(hr0106ProfileAuditFields.join(','))
+  .eq('id', '55555555-5555-4555-8555-555555555555').single();
+const hr0106ProfileAuditResults = [];
+if (!hr0106ProfileBaseline.error) {
+  try {
+    for (const field of hr0106ProfileAuditFields) {
+      const suffix = randomUUID();
+      const value = field.endsWith('email')
+        ? `hr0106-${suffix}@example.test`
+        : `HR01-06 synthetic ${field} ${suffix}`;
+      const submitted = await employeeA.client.rpc('employee_submit_profile_change_request', {
+        p_tenant_id: ids.tenantA,
+        p_field_key: field,
+        p_requested_value: value,
+        p_reason: 'Synthetic HR01-06 field-level audit acceptance.',
+      });
+      if (submitted.error || typeof submitted.data !== 'string') {
+        hr0106ProfileAuditResults.push({ field, submitted: submitted.error?.code || 'missing_id', passed: false });
+        continue;
+      }
+      const reviewed = await managerAForProfileAudit.client.rpc('admin_review_profile_change_request', {
+        p_tenant_id: ids.tenantA,
+        p_id: submitted.data,
+        p_decision: 'approved',
+        p_note: 'Synthetic field-level audit verification.',
+      });
+      const persisted = await adminAuth.from('employees').select(field)
+        .eq('id', '55555555-5555-4555-8555-555555555555').single();
+      const audit = queryAdmin(`SELECT jsonb_build_object(
+          'count', count(*)::integer,
+          'actor_matches', bool_and(actor_id=${sqlLiteral(managerAForProfileAudit.userId)}::uuid),
+          'details', max(details::text)
+        ) FROM public.admin_audit_logs
+        WHERE target_id=${sqlLiteral(submitted.data)}
+          AND action='self_service.profile_change.approved'`);
+      const detailsText = String(audit.details || '');
+      let details = {};
+      try { details = JSON.parse(detailsText); } catch { /* invalid audit JSON fails below */ }
+      hr0106ProfileAuditResults.push({
+        field,
+        submitted: 'ok',
+        reviewed: reviewed.data?.status || reviewed.error?.code || 'missing_status',
+        persisted: !persisted.error && persisted.data?.[field] === value,
+        auditCount: audit.count,
+        fieldKey: details.field_key,
+        redacted: !Object.hasOwn(details, 'requested_value') && !detailsText.includes(value),
+        actorMatches: audit.actor_matches,
+        passed: !reviewed.error && reviewed.data?.status === 'approved'
+          && !persisted.error && persisted.data?.[field] === value
+          && audit.count === 1 && audit.actor_matches === true
+          && details.field_key === field
+          && !Object.hasOwn(details, 'requested_value') && !detailsText.includes(value),
+      });
+    }
+  } finally {
+    const restoreAssignments = hr0106ProfileAuditFields.map((field) => {
+      const originalValue = hr0106ProfileBaseline.data[field];
+      return `${field}=${originalValue === null ? 'NULL' : sqlLiteral(originalValue)}`;
+    }).join(', ');
+    psqlSync(`UPDATE public.employees SET ${restoreAssignments}
+      WHERE id='55555555-5555-4555-8555-555555555555'::uuid
+        AND tenant_id='${ids.tenantA}'::uuid;`);
+  }
+}
+record('HR01-06 partial: all nine supported protected profile fields persist with field-only audit events',
+  !hr0106ProfileBaseline.error
+    && hr0106ProfileAuditResults.length === hr0106ProfileAuditFields.length
+    && hr0106ProfileAuditResults.every(result => result.passed),
+  JSON.stringify({
+    baselineRead: !hr0106ProfileBaseline.error,
+    testedFieldCount: hr0106ProfileAuditResults.length,
+    passedFieldCount: hr0106ProfileAuditResults.filter(result => result.passed).length,
+    fields: hr0106ProfileAuditResults.map(({ field, passed }) => ({ field, passed })),
+  }));
+
 const failed = results.filter((result) => !result.ok);
 console.log(`\nLocal Auth/RLS acceptance: ${results.length - failed.length}/${results.length} passed; ${failed.length} failed.`);
 console.log('Tenant-isolation failures are release blockers; this test uses only a disposable local database.');
