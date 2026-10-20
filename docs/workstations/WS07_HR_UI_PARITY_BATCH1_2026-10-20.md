@@ -29,7 +29,7 @@ The captured node is 487 × 227 px and shows a department-selection list. It is 
 
 ## Screenshot and verification limits
 
-The Figma candidate screenshot above was captured. Implementation desktop/mobile screenshots were not produced: the local Playwright Chromium executable is absent in this workspace, and no signed-in production browser session was used. Therefore this batch has no runtime visual comparison or responsive screenshot evidence. No screenshot result is presented as hosted acceptance.
+The Figma candidate screenshot above was captured. At first audit, no implementation desktop/mobile screenshots were produced because the local Playwright Chromium executable was absent. During the 2026-10-20 continuation, the connected workspace browser supplied safe route-only captures at desktop 1300 × 953 and mobile 390 × 844; the crops show the Teams route header and omit account and record details. See the [next-story and parity recheck](WS07_HR_NEXT_STORY_AND_PARITY_RECHECK_2026-10-20.md). These captures are runtime context only: no approved Figma target frame or visual comparison exists, and the screenshots are not hosted acceptance evidence.
 
 Focused checks run from the current WS07 checkout:
 
