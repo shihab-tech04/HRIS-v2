@@ -54,6 +54,31 @@ test('Phase 05 HR03 allocation preserves its nine exact source requirements and 
   for (const [id, requirement] of expected) assert.ok(allocation.includes(`**${id}** — ${requirement}`));
 });
 
+test('HR03 organization proposal stays review-only, exact, and DDL-free', () => {
+  const proposal = read('../../docs/workstations/WS07_HR03_ORGANIZATION_CONTRACT_PROPOSAL_2026-10-20.md');
+  assert.match(proposal, /\*\*Status:\*\* PROPOSAL FOR WS02 API\/security and WS01 integration review\. Not approved/);
+  assert.match(proposal, /No DDL, column list, migration, or employee foreign key is proposed/);
+  assert.match(proposal, /HR03-01 stays blocked/);
+
+  const storyRows = [...proposal.matchAll(/^\| (HR03-\d{2}) \| (As HR, I want .*?) \|$/gm)]
+    .map(([, id, requirement]) => [id, requirement]);
+  assert.deepEqual(storyRows, [
+    ['HR03-01', 'As HR, I want to manage legal entities.'],
+    ['HR03-02', 'As HR, I want to manage offices/branches.'],
+    ['HR03-03', 'As HR, I want to manage departments.'],
+    ['HR03-04', 'As HR, I want to manage units.'],
+    ['HR03-05', 'As HR, I want to manage teams.'],
+    ['HR03-06', 'As HR, I want to manage designations.'],
+    ['HR03-07', 'As HR, I want to manage grades/bands.'],
+    ['HR03-08', 'As HR, I want to maintain reporting relationships.'],
+    ['HR03-09', 'As HR, I want effective dating so structural changes do not destroy history.'],
+  ]);
+  assert.deepEqual([...proposal.matchAll(/^\| TEN-(\d{2}) \|/gm)].map(([, id]) => id), [
+    '01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
+  ]);
+  assert.doesNotMatch(proposal, /^\s*(?:CREATE TABLE|ALTER TABLE|CREATE POLICY|CREATE FUNCTION|CREATE OR REPLACE FUNCTION)\b/im);
+});
+
 test('HR03-01 remains stopped at its absent legal-entity contract', () => {
   const readiness = readPhaseReadiness('05');
   assert.equal(readiness.stories.find(story => story.story_id === 'HR03-01')?.status, 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');
