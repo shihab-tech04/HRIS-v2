@@ -1,0 +1,41 @@
+name: Migration recovery hosted-shape PostgreSQL 17
+on:
+  push:
+    branches: [migration/phase03-04-recovery-20261020]
+    paths:
+      - 'database-releases/phase03-04-recovery/phase03_phase04_hosted_compatibility.sql'
+      - 'database-releases/phase03-04-recovery/hosted-shape.synthetic.sql'
+      - 'database-releases/phase03-04-recovery/run-hosted-shape.py'
+      - '.github/workflows/migration-recovery-hosted-shape.yml'
+permissions:
+  contents: read
+concurrency:
+  group: hris-recovery-hosted-shape
+  cancel-in-progress: false
+jobs:
+  hosted-shape:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_recovery_synthetic
+          POSTGRES_USER: isolated_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U isolated_runner -d hris_recovery_synthetic"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: isolated_runner
+      PGPASSWORD: synthetic_test_only
+      PGDATABASE: hris_recovery_synthetic
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Rehearse first install, failed transaction, fail-closed topology and replay
+        run: python3 database-releases/phase03-04-recovery/run-hosted-shape.py
