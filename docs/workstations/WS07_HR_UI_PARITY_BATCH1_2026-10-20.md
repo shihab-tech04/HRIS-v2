@@ -2,7 +2,7 @@
 
 **Status:** Partial audit; no visual mismatch confirmed. This batch does not establish 100% parity.
 
-**Scope:** HR03 organization screens only, within WS07’s HR02–HR33 ownership. HR01 remains excluded. The HR03 acceptance rows and their disposition were checked against the canonical register at commit [`dcdd89ba140cd92ace71130b4eab439525e07594`](https://github.com/shihab-tech04/HRIS-v2/blob/dcdd89ba140cd92ace71130b4eab439525e07594/docs/audit/HRIS_1047_Story_Classification_Register_2026-10-20.csv). PR [#43](https://github.com/shihab-tech04/HRIS-v2/pull/43) was rechecked at head `c6f912dec4f892de96a4bf9376c3428bc210890e`; its base and the live `development/hris-checkpoints` head remain `1714a08e24f47999618b0127fc818a3d19eb187a`.
+**Scope:** HR03 organization screens only, within WS07’s HR02–HR33 ownership. HR01 remains excluded. The HR03 acceptance rows and their disposition were checked against the canonical register at commit [`dcdd89ba140cd92ace71130b4eab439525e07594`](https://github.com/shihab-tech04/HRIS-v2/blob/dcdd89ba140cd92ace71130b4eab439525e07594/docs/audit/HRIS_1047_Story_Classification_Register_2026-10-20.csv). At audit start, PR [#43](https://github.com/shihab-tech04/HRIS-v2/pull/43) was open and draft at head `c6f912dec4f892de96a4bf9376c3428bc210890e`; its base and the live `development/hris-checkpoints` head were `1714a08e24f47999618b0127fc818a3d19eb187a`. This docs-only audit update is on the PR branch at `97bbb693c40773fc0e50989c533a12219b6c3ecd`. The implementation source and focused tests were inspected/run from local checkout `d5fbaa0b421b6fd9282dc66697280160d12d4db0`.
 
 ## Screen inventory and disposition
 
@@ -33,7 +33,7 @@ The Figma candidate screenshot above was captured. Implementation desktop/mobile
 
 Focused checks run from the current WS07 checkout:
 
-- `node --test tests/contracts/live-workspace.test.mjs tests/contracts/ws07-hr03-readiness.test.mjs` — **21/21 passed**. This verifies existing route/permission and HR03 blocker contracts; it is not a visual-parity test.
+- `node --test tests/contracts/live-workspace.test.mjs tests/contracts/ws07-hr03-readiness.test.mjs` at source checkout `d5fbaa0b421b6fd9282dc66697280160d12d4db0` — **21/21 passed**. This verifies existing route/permission and HR03 blocker contracts; it is not a visual-parity test.
 
 No presentation defect was confirmed because no approved screen mapping exists. No application source, shared shell, HR01 file, schema, API, migration, Auth/RLS policy, production record, or solved design was changed. This report records a first batch only; unreviewed HR02–HR33 screens remain unaudited.
 
