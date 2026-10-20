@@ -277,7 +277,9 @@
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
       "evidence_document": "docs/evidence/hr01-production-contact-contract-gap-20261020.md",
       "runtime_marker": "HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS",
-      "meaning": "The live employee directory updates only the nine allowlisted contact fields through an employees.manage RPC; direct authenticated table/lifecycle updates remain denied. This is partial employee-record update coverage, and the hosted RPC is absent."
+      "meaning": "The live employee directory updates only the nine allowlisted contact fields through an employees.manage RPC; direct authenticated table/lifecycle updates remain denied. This is partial employee-record update coverage, and the hosted RPC is absent.",
+      "commit": "f02ae03da438c88fc796163be7dc0880826b54e3",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457586"
     },
     {
       "id": "hr01-sensitive-change-audit-partial-20261020",
@@ -286,13 +288,13 @@
         "HR01-06"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "7080be47683b9e578174c010bdbe68ba04eedfca",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264",
+      "commit": "f02ae03da438c88fc796163be7dc0880826b54e3",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457586",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
       "evidence_document": "docs/evidence/hr01-sensitive-change-audit-partial-20261020.md",
       "runtime_marker": "HR01-06_CONTACT_AUDIT_BROWSER_PASS",
-      "meaning": "Disposable Auth/Postgres/browser evidence covers redacted changed-field audit names and excludes changed values for all nine employee contact fields supported by the contact RPC and all nine fields in the protected profile-request path; approved profile changes persist. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
+      "meaning": "Disposable Auth/Postgres/browser evidence covers redacted changed-field audit names and excludes changed values for all nine employee contact fields supported by the contact RPC and all nine fields in the protected profile-request path. Local PGRST202 checks prove that a missing contact-read RPC exposes no edit action and a missing contact-update RPC preserves the draft without false success. Broader sensitive-data categories and hosted signed-in API behavior remain unverified."
     },
     {
       "id": "hr01-safe-bulk-export-partial-20261020",
@@ -301,8 +303,8 @@
         "HR01-07"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "7080be47683b9e578174c010bdbe68ba04eedfca",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264",
+      "commit": "f02ae03da438c88fc796163be7dc0880826b54e3",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457586",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
       "evidence_document": "docs/evidence/hr01-07-safe-bulk-export-partial-20261020.md",
@@ -316,8 +318,8 @@
         "HR01-08"
       ],
       "repository": "shihab-tech04/HRIS-v2",
-      "commit": "7080be47683b9e578174c010bdbe68ba04eedfca",
-      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264",
+      "commit": "f02ae03da438c88fc796163be7dc0880826b54e3",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39396457586",
       "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
       "evidence_document": "docs/evidence/hr01-08-duplicate-guard-partial-20261020.md",
       "meaning": "Disposable Postgres rejects duplicate tenant employee numbers and official emails with 23505, while the same official email in another tenant is accepted and cleaned up. Duplicate-person matching and create-flow warnings remain unverified."

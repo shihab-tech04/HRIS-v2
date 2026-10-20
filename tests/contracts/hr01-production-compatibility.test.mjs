@@ -43,6 +43,7 @@ test('HR01-02 is partial because the live record editor updates contact fields o
   assert.match(page, /isContactApiUnavailable\(cause\)/);
   assert.match(browser, /HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS/);
   assert.match(runner, /run-employee-directory-browser\.mjs/);
+  assert.match(runner, /employeeDirectoryBrowserOutput\.includes\('HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS'\)/);
   assert.match(ledger, /HR01-02 remains \*\*partial\*\*/);
 });
 
@@ -56,6 +57,8 @@ test('HR01-06 deployed contact RPC absence is readable, localized, and fails clo
   assert.match(browser, /missingContactWriteApi = true/);
   assert.match(browser, /HR01-06_PGRST202_CONTACT_READ_SAFE_BROWSER_PASS/);
   assert.match(browser, /HR01-06_PGRST202_CONTACT_UPDATE_SAFE_BROWSER_PASS/);
+  assert.match(runner, /employeeDirectoryBrowserOutput\.includes\('HR01-06_PGRST202_CONTACT_READ_SAFE_BROWSER_PASS'\)/);
+  assert.match(runner, /employeeDirectoryBrowserOutput\.includes\('HR01-06_PGRST202_CONTACT_UPDATE_SAFE_BROWSER_PASS'\)/);
   assert.match(runner, /run-employee-directory-browser\.mjs/);
   assert.match(hostedEvidence, /contact_read_rpc_present=false/);
   assert.match(hostedEvidence, /contact_update_rpc_present=false/);
