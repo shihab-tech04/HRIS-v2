@@ -8055,6 +8055,40 @@ record('HR01-06 partial: all nine supported protected profile fields persist wit
     fields: hr0106ProfileAuditResults.map(({ field, passed }) => ({ field, passed })),
   }));
 
+async function attemptEmployeeDuplicateProbe(row) {
+  const inserted = await adminAuth.from('employees').insert(row);
+  if (inserted.error) return { errorCode: inserted.error.code || 'unknown', cleanupPassed: true };
+  const removed = await adminAuth.from('employees').delete()
+    .eq('tenant_id', row.tenant_id).eq('id', row.id).select('id');
+  return { errorCode: null, cleanupPassed: !removed.error && removed.data?.length === 1 };
+}
+
+const duplicateEmployeeNumberProbe = await attemptEmployeeDuplicateProbe({
+  id: randomUUID(), tenant_id: ids.tenantA, employee_number: 'QA-A-001',
+  full_name: 'HR01-08 synthetic duplicate number probe',
+  official_email: `hr01-08-number-${randomUUID()}@example.test`, joining_date: '2026-01-01',
+});
+const duplicateOfficialEmailProbe = await attemptEmployeeDuplicateProbe({
+  id: randomUUID(), tenant_id: ids.tenantA, employee_number: `HR01-08-${randomUUID()}`,
+  full_name: 'HR01-08 synthetic duplicate email probe',
+  official_email: 'employee-a@hris.test', joining_date: '2026-01-01',
+});
+const sameEmailOtherTenantProbe = await attemptEmployeeDuplicateProbe({
+  id: randomUUID(), tenant_id: ids.tenantB, employee_number: `HR01-08-${randomUUID()}`,
+  full_name: 'HR01-08 synthetic isolated tenant control',
+  official_email: 'employee-a@hris.test', joining_date: '2026-01-01',
+});
+record('HR01-08 partial: tenant employee-number and email duplicates are rejected without cross-tenant collision',
+  duplicateEmployeeNumberProbe.errorCode === '23505'
+    && duplicateOfficialEmailProbe.errorCode === '23505'
+    && duplicateEmployeeNumberProbe.cleanupPassed
+    && duplicateOfficialEmailProbe.cleanupPassed
+    && sameEmailOtherTenantProbe.errorCode === null
+    && sameEmailOtherTenantProbe.cleanupPassed,
+  JSON.stringify({ employeeNumberDuplicate: duplicateEmployeeNumberProbe,
+    sameTenantEmailDuplicate: duplicateOfficialEmailProbe,
+    sameEmailInOtherTenant: sameEmailOtherTenantProbe }));
+
 const failed = results.filter((result) => !result.ok);
 console.log(`\nLocal Auth/RLS acceptance: ${results.length - failed.length}/${results.length} passed; ${failed.length} failed.`);
 console.log('Tenant-isolation failures are release blockers; this test uses only a disposable local database.');
