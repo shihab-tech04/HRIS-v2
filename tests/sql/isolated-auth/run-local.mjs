@@ -2064,6 +2064,35 @@ record('Published session capacity cannot be reduced below enrolled employees',
   JSON.stringify({ secondEnrollment: secondPublishedEnrollment.error?.code || secondPublishedEnrollment.data?.status,
     editCode: overbookedSessionEdit.error?.code, session: publishedSessionAfterRejectedCapacity }));
 
+const employeeDirectoryStatusCases = [
+  { id: '55555555-5555-4555-8555-555555555555', name: 'Synthetic Employee A', status: 'active' },
+  { id: '55555555-5555-4555-8555-555555555556', name: 'Synthetic Absent Employee A', status: 'inactive' },
+  { id: '55555555-5555-4555-8555-555555555557', name: 'Synthetic Late Employee A', status: 'probation' },
+  { id: '55555555-5555-4555-8555-555555555558', name: 'Synthetic Leave Employee A', status: 'notice' },
+  { id: '55555555-5555-4555-8555-555555555559', name: 'Synthetic WFH Employee A', status: 'exited' },
+  { id: '55555555-5555-4555-8555-555555555560', name: 'Synthetic Clock Employee', status: 'custom_configured' },
+];
+const employeeDirectoryStatusBaseline = queryAdmin(`SELECT jsonb_build_object(
+  'rows',COALESCE(jsonb_agg(jsonb_build_object('id',e.id::text,'status',e.employment_status) ORDER BY e.id),'[]'::jsonb))
+  FROM public.employees e WHERE e.tenant_id='${ids.tenantA}'::uuid
+    AND e.id IN (${employeeDirectoryStatusCases.map(item => sqlLiteral(item.id) + '::uuid').join(',')})`);
+if (employeeDirectoryStatusBaseline.rows?.length !== employeeDirectoryStatusCases.length) {
+  throw new Error('The isolated HR01-04 employee-status fixture is incomplete.');
+}
+const employeeDirectoryTenantBStatusBaseline = queryAdmin(`SELECT jsonb_build_object(
+  'status',e.employment_status) FROM public.employees e
+  WHERE e.tenant_id='${ids.tenantB}'::uuid AND e.id='66666666-6666-4666-8666-666666666666'::uuid`);
+if (typeof employeeDirectoryTenantBStatusBaseline.status !== 'string') {
+  throw new Error('The isolated HR01-04 tenant B employee-status fixture is incomplete.');
+}
+const employeeDirectoryStatusAssignments = employeeDirectoryStatusCases
+  .map(item => `WHEN ${sqlLiteral(item.id)}::uuid THEN ${sqlLiteral(item.status)}`).join('\n');
+psqlSync(`UPDATE public.employees SET employment_status=CASE id ${employeeDirectoryStatusAssignments}
+  ELSE employment_status END WHERE tenant_id='${ids.tenantA}'::uuid
+    AND id IN (${employeeDirectoryStatusCases.map(item => sqlLiteral(item.id) + '::uuid').join(',')});`);
+psqlSync(`UPDATE public.employees SET employment_status='tenant_b_only'
+  WHERE tenant_id='${ids.tenantB}'::uuid AND id='66666666-6666-4666-8666-666666666666'::uuid;`);
+
 const employeeDirectoryA = await employeesViewer.client.rpc('hris_get_tenant_employee_directory', {
   p_tenant_id: ids.tenantA,
 });
@@ -2097,6 +2126,12 @@ const employeeDirectoryV2NoPermission = await noPermission.client.rpc('hris_get_
 const employeeDirectoryV2TenantB = await managerB.client.rpc('hris_get_tenant_employee_directory_v2', {
   p_tenant_id: ids.tenantB,
 });
+const employeeDirectoryStatusFilters = await Promise.all(employeeDirectoryStatusCases.map(async item => ({
+  ...item,
+  result: await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
+    p_tenant_id: ids.tenantA, p_status: item.status,
+  }),
+})));
 const employeeDirectoryV2CrossTenant = await employeesViewer.client.rpc('hris_get_tenant_employee_directory_v2', {
   p_tenant_id: ids.tenantB,
 });
@@ -2168,6 +2203,24 @@ record('Employee directory team options and filtering are tenant-scoped and inte
     noPermission: employeeDirectoryV2NoPermission.error?.code || null,
     tenantB: employeeDirectoryV2TenantB.data?.employees?.map(row => row.full_name),
     crossTenant: employeeDirectoryV2CrossTenant.error?.code || null, acl: employeeDirectoryV2Acl }));
+record('HR01-04 configured employment statuses are visible, individually filterable, and tenant-scoped',
+  !employeeDirectoryTeamOptions.error
+    && JSON.stringify(employeeDirectoryTeamOptions.data.available_statuses) === JSON.stringify(['active','custom_configured','exited','inactive','notice','probation'])
+    && !employeeDirectoryV2TenantB.error
+    && JSON.stringify(employeeDirectoryV2TenantB.data.available_statuses) === JSON.stringify(['tenant_b_only'])
+    && !employeeDirectoryTeamOptions.data.available_statuses.includes('tenant_b_only')
+    && employeeDirectoryStatusFilters.every(({ id, name, status, result }) => !result.error
+      && result.data?.available_statuses?.includes(status)
+      && result.data?.total_count === 1
+      && result.data?.employees?.length === 1
+      && result.data.employees[0]?.employee_id === id
+      && result.data.employees[0]?.full_name === name
+      && result.data.employees[0]?.employment_status === status),
+  JSON.stringify({ tenantAStatuses: employeeDirectoryTeamOptions.data?.available_statuses,
+    tenantBStatuses: employeeDirectoryV2TenantB.data?.available_statuses,
+    filtered: employeeDirectoryStatusFilters.map(({ status, result }) => ({ status,
+      count: result.data?.total_count, employee: result.data?.employees?.[0]?.employee_id,
+      error: result.error?.code || null })) }));
 record('E37-02 department and team filters stay within the authorized tenant; location is not exposed without an approved directory contract',
   !employeeDirectoryTeamFiltered.error && employeeDirectoryTeamFiltered.data.total_count === 1
     && employeeDirectoryTeamFiltered.data.employees[0]?.team_name === 'QA A Other Team'
@@ -2385,6 +2438,13 @@ try {
 } finally {
   psqlSync(`UPDATE public.employees SET team_id='dddddddd-0000-4000-8000-000000000001'::uuid
     WHERE id='55555555-5555-4555-8555-555555555559'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+  const restoreStatuses = employeeDirectoryStatusBaseline.rows
+    .map(row => `WHEN ${sqlLiteral(row.id)}::uuid THEN ${sqlLiteral(row.status)}`).join('\n');
+  psqlSync(`UPDATE public.employees SET employment_status=CASE id ${restoreStatuses}
+    ELSE employment_status END WHERE tenant_id='${ids.tenantA}'::uuid
+      AND id IN (${employeeDirectoryStatusCases.map(item => sqlLiteral(item.id) + '::uuid').join(',')});`);
+  psqlSync(`UPDATE public.employees SET employment_status=${sqlLiteral(employeeDirectoryTenantBStatusBaseline.status)}
+    WHERE tenant_id='${ids.tenantB}'::uuid AND id='66666666-6666-4666-8666-666666666666'::uuid;`);
 }
 record('Real local Auth-to-Postgres employee directory journey passes on mobile and desktop with retry recovery',
   employeeDirectoryBrowserOutput.includes('Local Auth-to-Postgres employee directory and contact-editing journey passed with tenant-scoped team filtering, filtered CSV, manager-only contact access, save/cancel/error recovery, persisted refresh, EN/BN parity, and 375px mobile/1280px desktop layouts.'),
@@ -2399,6 +2459,19 @@ record('HR01-06 partial: authorized HR contact changes emit a redacted changed-f
     auditedFieldNames: ['official_email', 'emergency_contact_phone'],
     changedValuesExcluded: !contactAudit.details.includes('employee-a-updated@hris.test'),
     browserMarker: employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS') }));
+
+record('HR01-04 HR sees and filters each configured employment status within the current tenant',
+  !employeeDirectoryTeamOptions.error
+    && JSON.stringify(employeeDirectoryTeamOptions.data?.available_statuses) === JSON.stringify(['active','custom_configured','exited','inactive','notice','probation'])
+    && !employeeDirectoryTeamOptions.data?.available_statuses?.includes('tenant_b_only')
+    && employeeDirectoryStatusFilters.length === 6
+    && employeeDirectoryStatusFilters.every(({ result, id, status }) => !result.error
+      && result.data?.total_count === 1 && result.data.employees?.[0]?.employee_id === id
+      && result.data.employees[0]?.employment_status === status)
+    && employeeDirectoryBrowserOutput.includes('HR01-04_EMPLOYMENT_STATUS_VISIBILITY_BROWSER_PASS'),
+  JSON.stringify({ statuses: employeeDirectoryTeamOptions.data?.available_statuses,
+    statusFilterCount: employeeDirectoryStatusFilters.length,
+    browserMarker: employeeDirectoryBrowserOutput.includes('HR01-04_EMPLOYMENT_STATUS_VISIBILITY_BROWSER_PASS') }));
 
 record('HR01-03 HR workforce search and department, status, and team filters stay inside the authorized tenant',
   !employeeDirectoryFiltered.error

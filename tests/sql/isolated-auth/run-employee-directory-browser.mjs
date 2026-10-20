@@ -235,6 +235,7 @@ try {
   await filterResponse;
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
   await page.getByLabel('Search employees').fill('');
+  await page.getByLabel('Filter employees by employment status').selectOption('');
   await page.getByLabel('Filter employees by team').selectOption('dddddddd-0000-4000-8000-000000000001');
   const firstTeamResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
@@ -259,6 +260,47 @@ try {
   }
   await assertNoOverflow(page, 'Employee directory filtered mobile');
 
+  const statusFilter = page.getByLabel('Filter employees by employment status');
+  const statusCases = [
+    { value: 'active', label: 'Active', employee: 'Synthetic Employee A' },
+    { value: 'inactive', label: 'Inactive', employee: 'Synthetic Absent Employee A' },
+    { value: 'probation', label: 'Probation', employee: 'Synthetic Late Employee A' },
+    { value: 'notice', label: 'Notice', employee: 'Synthetic Leave Employee A' },
+    { value: 'exited', label: 'Exited', employee: 'Synthetic WFH Employee A' },
+    { value: 'custom_configured', label: 'Custom Configured', employee: 'Synthetic Clock Employee' },
+  ];
+  const availableStatusOptions = await statusFilter.locator('option').evaluateAll(options =>
+    options.map(option => ({ value: option.value, label: option.textContent?.trim() || '' })));
+  if (availableStatusOptions.some(option => option.value === 'tenant_b_only')) {
+    throw new Error('The employee directory exposed an employment status configured only in tenant B.');
+  }
+  for (const statusCase of statusCases) {
+    if (!availableStatusOptions.some(option => option.value === statusCase.value && option.label === statusCase.label)) {
+      throw new Error(`Tenant status ${statusCase.value} was not presented as ${statusCase.label}.`);
+    }
+  }
+  await page.getByLabel('Filter employees by department').selectOption('');
+  await page.getByLabel('Filter employees by team').selectOption('');
+  for (const statusCase of statusCases) {
+    await statusFilter.selectOption(statusCase.value);
+    const statusResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+    await page.getByRole('button', { name: 'Apply filters' }).click();
+    await statusResponse;
+    await (await employeeInCurrentLayout(page, statusCase.employee)).waitFor({ state: 'visible' });
+    for (const otherCase of statusCases.filter(item => item.employee !== statusCase.employee)) {
+      await (await employeeInCurrentLayout(page, otherCase.employee)).waitFor({ state: 'detached' });
+    }
+    if (!rpcPayloads.some(payload => payload?.p_tenant_id === process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID
+      && payload?.p_status === statusCase.value)) {
+      throw new Error(`Directory API request did not carry the tenant and status filter for ${statusCase.value}.`);
+    }
+  }
+  await statusFilter.selectOption('');
+  const restoreAllStatusesResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await restoreAllStatusesResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+
   await page.getByLabel('Search employees').fill('No matching employee in this fixture');
   const emptyResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
   await page.getByRole('button', { name: 'Apply filters' }).click();
@@ -275,6 +317,21 @@ try {
   await page.getByRole('button', { name: 'Refresh employee directory' }).click();
   await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
   await assertNoOverflow(page, 'Employee directory desktop');
+  await page.getByLabel('Search employees').fill('');
+  await statusFilter.selectOption('notice');
+  const desktopStatusResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await desktopStatusResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic Leave Employee A')).waitFor({ state: 'visible' });
+  const desktopStatusRow = page.getByRole('table', { name: 'Organization employee directory' })
+    .getByRole('row').filter({ hasText: 'Synthetic Leave Employee A' });
+  await desktopStatusRow.getByText('Notice', { exact: true }).waitFor({ state: 'visible' });
+  await statusFilter.selectOption('');
+  const restoreDesktopStatusesResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await restoreDesktopStatusesResponse;
+  await (await employeeInCurrentLayout(page, 'Synthetic Employee A')).waitFor({ state: 'visible' });
+  console.log('HR01-04_EMPLOYMENT_STATUS_VISIBILITY_BROWSER_PASS');
   await page.getByLabel('Search employees').fill('');
   await page.getByLabel('Filter employees by team').selectOption('dddddddd-0000-4000-8000-000000000003');
   const desktopTeamResponse = page.waitForResponse(response => response.url().includes('/rest/v1/rpc/hris_get_tenant_employee_directory_v2'));
