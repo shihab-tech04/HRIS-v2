@@ -1,5 +1,17 @@
 # Synesis HRIS 360° — Master Phase Ledger
 
+## Independent application-development update — 20 October 2026
+
+- Canonical Main is `shihab-tech04/HRIS-v2`, branch `development/hris-checkpoints`, now at `f55a44d0d622c7bf3351e719ed3299f4b11da1d2`. Candidate remains on its existing development checkpoint. This update changes only evidence and readiness documentation; it does not change runtime UI, schema, permissions, production data, or deployment.
+- The exact runtime source checkpoint `012f3a999ac9ec288dd37837db1487a88e014fc6` passed full disposable Auth/Postgres/browser run [39369899972](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39369899972) and Phase 2A/Auth run [39369899997](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39369899997). The evidence-only commit `f55a44d` subsequently triggered full run [39370889663](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39370889663) and Phase 2A run [39370889692](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39370889692); both were still in progress when this ledger update was recorded. The runner probe [39370889652](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39370889652) passed.
+- Phase 05 now has disposable source-linked evidence for **15/57** exact stories, with **3 blocked** on unresolved document rules, **4 partial**, **35 unclassified**, and **0/57 hosted**. The overlay records **36 unique story IDs** across phases. The historical aggregate's 82 story IDs remain unreconciled, so no deduplicated total is claimed. The canonical 1,047-story / 153-module catalogue is unchanged.
+- Current E02-08 employment-information and E02-12 skill-profile evidence is recorded in `docs/evidence/employee-self-service-E02-20261020.md`. Figma parity and broader Phase 05 acceptance remain open; preserve the approved Poppins, `#085587`, Material components and existing layouts.
+- Phase 03/04 hosted schema and API acceptance remains pending the separate migration workstream. Its latest read-only status is on `checkpoint/phase03-hosted-cli-20261019` at `c676f481db5630e29e2e959c5eba32afdbbb20bf`, documented [here](https://github.com/shihab-tech04/HRIS-v2/blob/checkpoint/phase03-hosted-cli-20261019/docs/programme/EXECUTION_CHECKPOINT_PHASE03_REQUESTSTATE_2026-10-20.md). That checkpoint records the connector migration-write `requestState` failure, CLI credential-presence gate failure, interrupted browser handoff, no partial production DDL/history, and the instruction not to retry browser sign-in automatically. This application-development stream makes no database or migration-history writes. Shihab remains the sole platform Super Admin; the second administrator remains unassigned.
+- Phase 03 is not accepted and no release is deployed. Hosted migration history, Auth, RLS, API and application checks are pending the owner workstream; release stays gated on its recorded acceptance and the hosted verification gates.
+- **Exact next application operation:** inspect canonical E02-01 ("view my personal information") against the current authenticated profile UI/RPC and isolated tests; record the requirement-level gap before making source changes. Continue policy-neutral work while hosted dependencies remain pending.
+
+---
+
 ## Latest verified execution checkpoint — 20 October 2026
 
 - Current Main development head is `eef995cb6300f97f0e819d698fde6bdc3fc733b5`; checkpoint branch remains `checkpoint/phase03-hosted-transition-20261019`. No local repository was assumed.
