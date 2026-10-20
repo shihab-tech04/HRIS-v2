@@ -62,7 +62,25 @@ test('every individual evidence record maps to a real and uniquely evidenced can
   const e02Browser = readFileSync(new URL('../../tests/sql/isolated-auth/run-profile-change-browser.mjs', import.meta.url), 'utf8');
   for (const id of e02.story_ids) assert.ok(e02Runner.includes(`${id} `) || e02Runner.includes(`${id}/`), `Missing ${id} real-Auth runtime record`);
   assert.ok(e02Browser.includes(e02.runtime_marker), 'Profile-change browser acceptance marker is not present');
-  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 34);
+  const currentE02 = overlay.evidence_sets.filter(set =>
+    ['employee-e02-employment-information-20261020', 'employee-e02-skill-profile-20261020'].includes(set.id));
+  assert.deepEqual(currentE02.map(set => set.story_ids[0]), ['E02-08', 'E02-12']);
+  for (const [index, marker] of [
+    [0, 'E02-08_EMPLOYMENT_INFORMATION_BROWSER_PASS'],
+    [1, 'E02-12_SKILL_PROFILE_BROWSER_PASS'],
+  ]) {
+    const set = currentE02[index];
+    assert.equal(set.classification, 'VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY');
+    assert.ok(set.workflow_run.endsWith('/actions/runs/39369899972'));
+    assert.equal(set.commit, '012f3a999ac9ec288dd37837db1487a88e014fc6');
+    assert.equal(set.hosted_cross_system_acceptance, 'NOT_VERIFIED');
+    assert.ok(set.runtime_marker.includes(marker));
+    const report = readFileSync(new URL(`../../${set.evidence_document}`, import.meta.url), 'utf8');
+    assert.ok(report.includes(set.story_ids[0]), `E02 report missing ${set.story_ids[0]}`);
+    const runtime = readFileSync(new URL(`../../${set.runtime_browser_test_path}`, import.meta.url), 'utf8');
+    assert.ok(runtime.includes(marker), `E02 browser marker missing ${marker}`);
+  }
+  assert.equal(overlay.reconciliation.individual_verified_ids_recorded, 36);
   const phase03 = overlay.evidence_sets.find(set => set.id === 'phase03-saas-tenant-modules-20261019');
   assert.deepEqual(phase03.story_ids, ['SA01-01', 'SA01-02', 'SA01-03', 'SA01-04', 'SA12-01', 'SA12-02', 'SA12-03']);
   assert.equal(phase03.classification, 'VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY');
