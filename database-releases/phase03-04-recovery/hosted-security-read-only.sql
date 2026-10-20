@@ -15,5 +15,8 @@ UNION ALL SELECT 'learning_helper_anon_denied',NOT has_function_privilege('anon'
 UNION ALL SELECT 'learning_helper_authenticated_callable',has_function_privilege('authenticated','public.hris_can_read_learning_catalog(uuid)','EXECUTE')
 UNION ALL SELECT 'learning_null_tenant_denied',public.hris_can_read_learning_catalog(NULL::uuid)=false
 UNION ALL SELECT 'platform_requires_live_session',public.platform_hris_is_super_admin()=false
-UNION ALL SELECT 'only_one_new_history_record',(SELECT count(*)=1 FROM supabase_migrations.schema_migrations WHERE version>'20261019100443')
+UNION ALL SELECT 'exactly_two_reviewed_history_records',(SELECT count(*)=2 AND bool_and(name IN ('phase03_phase04_hosted_compatibility_recovery_20261020','phase03_learning_context_authenticated_acl_20261020')) FROM supabase_migrations.schema_migrations WHERE version>'20261019100443')
+UNION ALL SELECT 'learning_context_anon_denied',NOT has_function_privilege('anon','public.hris_get_my_learning_context(uuid)','EXECUTE')
+UNION ALL SELECT 'learning_context_authenticated_callable',has_function_privilege('authenticated','public.hris_get_my_learning_context(uuid)','EXECUTE')
+UNION ALL SELECT 'learning_context_definition_unchanged',md5(pg_get_functiondef('public.hris_get_my_learning_context(uuid)'::regprocedure))='70d2c4f54af868a412f6e1c1c33c2091'
 ) SELECT * FROM checks ORDER BY test;
