@@ -811,6 +811,7 @@ try {
   await ownDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_NAME, { exact: true }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTED_NAME, { exact: true }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText('Correction required', { exact: true }).waitFor({ state: 'visible' });
   await ownDocumentCard.getByText('Verified', { exact: true }).waitFor({ state: 'visible' });
   await refreshedEmployee.unroute('**/rest/v1/rpc/hris_get_my_employee_documents');
   await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
@@ -821,6 +822,7 @@ try {
   await refreshedEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await refreshedEmployee.getByRole('heading', { name: 'আমার নথি' }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText('সংশোধনের কারণ', { exact: false }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText('সংশোধন প্রয়োজন', { exact: true }).waitFor({ state: 'visible' });
   await assertNoHorizontalOverflow(refreshedEmployee, 'Employee documents Bengali mobile');
   await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
   const documentDownload = refreshedEmployee.waitForEvent('download');
@@ -835,6 +837,7 @@ try {
 
   console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves and rejects, refreshed employee history and owner-only decision notifications persist, Bengali and English notification actions return to the matching request on mobile and desktop.');
   console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
+  console.log('E03-04_DOCUMENT_VERIFICATION_STATUS_BROWSER_PASS');
   console.log('EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS');
 } finally {
   if (browser) await browser.close();
