@@ -450,6 +450,7 @@ try {
   await managerDetails.getByRole('status').getByText('Contact details updated.', { exact: true }).waitFor({ state: 'visible' });
   await managerDetails.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Saved employee contact details on mobile');
+  console.log('HR01-06_CONTACT_AUDIT_BROWSER_PASS');
   const allowedContactFields = Object.keys(editedContact).sort().join(',');
   const readsWrongTenant = managerContactReadPayloads.some(payload => payload.p_tenant_id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID);
   const writesWrongTenant = managerContactPayloads.some(payload => payload.p_tenant_id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID);
