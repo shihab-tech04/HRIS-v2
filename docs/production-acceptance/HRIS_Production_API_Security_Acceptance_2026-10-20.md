@@ -4,18 +4,41 @@
 
 This addendum supersedes any earlier statement in this report or the WS06 audit that employee self-write RPCs are absent. It separates hosted catalog facts, source contracts, isolated test results, and production session limits. No story is marked certified here without independent story-ID acceptance evidence.
 
+### Coordinated blocker-resolution recheck — read-only, 2026-10-20
+
+The latest production migration listing and read-only database catalog query still report head `20261020044145`. No DDL, DML, Auth, membership, role, tenant, or migration-history change was made.
+
+**Permission contract verified from hosted definitions:** `has_permission(p_permission_id text)` is SECURITY DEFINER with an empty search path and delegates to `has_tenant_permission(synesis_tenant_id(), p_permission_id)`. `has_tenant_permission(p_tenant_id uuid, p_permission_id text)` requires non-null arguments, `is_live_session()`, an active tenant, an active `tenant_memberships` row for `auth.uid()`, an active role, and the exact `role_permissions.permission_id`. It does not consult `user_roles`. The lone active membership still belongs to the sole Super Admin and grants only `organization.manage`. The System Administrator’s 45 legacy role permissions and zero active memberships therefore produce the expected denial; this is not a reason to add a fallback or activate a broad role.
+
+**Hosted self-write catalog contract:** `employee_update_my_profile(p_payload jsonb) RETURNS uuid`, `employee_save_my_addresses_v2(p_rows jsonb) RETURNS integer`, and `employee_save_my_family_members_v2(p_rows jsonb) RETURNS integer` are SECURITY DEFINER. All three have EXECUTE for `authenticated` and `service_role`, not `anon`. Their active-session guard is `is_live_session()` plus `employee_for_auth_user()`; that helper requires an active `admin_users` row and binds `auth.uid()` to the employee row in active tenant slug `synesis-it`, excluding resigned/terminated employees. These APIs have no employee or tenant argument and do not check tenant membership. This is an identity-bound default-tenant contract, not a generic active-tenant contract.
+
+The profile RPC writes only the verified self-field set listed below; extra keys do not update protected columns. It audits input field names (excluding `avatar_url`), not values. Address and family RPCs accept up to 100 records, reject unknown keys and duplicate supplied IDs, reject IDs not owned by the linked employee with SQLSTATE `42501`, and reject omitted existing rows with `22023`; they cannot delete rows by omission. Address keys are `id,address_type,district,thana,post_code,city_village,road_block_house`. Family keys are `id,name,phone,nid_number,date_of_birth,relationship,present_address,permanent_address,is_nominee,working_in_synesis,occupation,academic_qualification,blood_group,gender`. No direct authenticated INSERT/UPDATE/DELETE is granted on either child table.
+
+**Additional hosted ACL evidence:** `employee_addresses` and `employee_family_members` have RLS enabled, but authenticated table ACLs include SELECT, TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN (ACL letters `rDxtm`); authenticated INSERT/UPDATE/DELETE are absent. Their admin-read policies still use only `has_permission('employees.view'|'employees.manage')` and do not join each child row to its parent employee tenant. This remains a static tenant-isolation FAIL; a production foreign-tenant request is BLOCKED because only one tenant is active.
+
+Production `leave_types` has RLS enabled and every current policy is SELECT-only, but its ACL grants the full table privilege set `arwdDxtm` to both `anon` and `authenticated` (including INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN). This is a least-privilege FAIL from catalog evidence. The read-only boundary means no hosted mutation request was sent; the catalog result is not represented as a runtime write test. The exact review-only proposal is to revoke all table privileges from `PUBLIC, anon, authenticated`, then grant SELECT only to `authenticated`, preserving service_role ownership/ACL. No SQL was executed.
+
+**Disposable test boundary:** Existing free CI run [39378140222, job 118480812801](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39378140222/job/118480812801) ran the isolated GoTrue/Postgres/Storage stack at the frozen release commit and stopped it. The command log shows the explicit `supabase init`, `supabase start`, `node tests/sql/isolated-auth/run-local.mjs`, `node tests/sql/hosted-parity/run-local.mjs`, and `supabase stop` sequence. It logs HR01 contact positive/denied/cross-tenant cases and six Candidate/interview RPC paths; offer issuance is absent. The later exact WS06 run [39395475832, job 118537037192](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39395475832/job/118537037192) reports 378/378 but contains no employee self-write RPC calls. Therefore those aggregate checks do not certify E02-02/E02-04..07 self-write behavior. The current WS02 executor has no Docker, Supabase CLI, or psql binary, so no new local harness was available here; the runnable cases and command sequence are recorded below and the self-write test result remains BLOCKED.
+
+**Legal-entity and SA06 boundaries remain unspecified:** production has no `public.legal_entities` relation, no legal-entity RPC, and no platform-global master-data writer. HR03 still lacks approved cardinality, fields, lifecycle, employee linkage, and effective-date/history rules. SA06 still lacks the catalog, fields, owner scope, duplicate/lifecycle behavior, and writer contract. Existing tenant organization reads and tenant leave-type functions are not substitutes. No schema, grant fallback, or endpoint was invented.
+
+**Current source/release refs:** live `main` is `cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7`; the live development checkpoint has advanced to `b262cade4175fc98cac56af05f88c3d16e68dc53`. PR #38 remains open draft at `686eec7016ec831e9b679500f28f553b8f93b14f`; PR #42 is `4a7656325b9e8cc3a99e47535d937dc7ff1feba9`, PR #43 is `97bbb693c40773fc0e50989c533a12219b6c3ecd`, and PR #44 is `f4c44bf52c4041232d591746651ee409ccf8c120`. PRs #42–44 still target the older development base `1714a08e24f47999618b0127fc818a3d19eb187a`; rebase/review remains with their owners and Workstation 5. PR #39 was at `e5f489e332ccf37d521cbd1f5da07cc2efd94667` immediately before this documentation commit.
+
+**Signed-in session availability:** the prior production evidence remains one legitimate signed-in Super Admin session with the documented read-only API outcomes. The current available CUA browser inventory exposes only a Chrome `about:blank` tab; no independent HR/Admin or employee session is available in that browser surface. No sign-in secrets were accessed or requested.
+
+
 ### Rechecked repository heads
 
 | Item | Current ref |
 |---|---|
 | Production main | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 |
-| Development checkpoint | 1714a08e24f47999618b0127fc818a3d19eb187a |
-| PR #39 evidence | c92838b9d7ea9f5ec680393dae545b07afa7967c |
+| Development checkpoint (live) | b262cade4175fc98cac56af05f88c3d16e68dc53 |
+| PR #39 evidence | This update advances the evidence branch; pre-update head was e5f489e332ccf37d521cbd1f5da07cc2efd94667 |
 | PR #38 release candidate / source under review | 686eec7016ec831e9b679500f28f553b8f93b14f |
-| PR #42 WS06 | 2c0a48c9e6e43cda9893e34665c1ffef85d410f2 |
-| PR #43 WS07 | c6f912dec4f892de96a4bf9376c3428bc210890e |
+| PR #42 WS06 | 4a7656325b9e8cc3a99e47535d937dc7ff1feba9 |
+| PR #43 WS07 | 97bbb693c40773fc0e50989c533a12219b6c3ecd |
 | PR #44 WS08 | f4c44bf52c4041232d591746651ee409ccf8c120 |
-| Stable release branch | 567e10f889ca82f6a90e3b20e7cfdb8514b5c37e |
+
 
 ### Permission root cause and narrow remedy
 
@@ -52,7 +75,7 @@ Hosted production has the following authenticated-callable SECURITY DEFINER func
 
 **Additional hosted RLS/ACL finding for E02-05/E02-07:** the production SELECT policy employee_addresses_admin_read uses only has_permission('employees.view') OR has_permission('employees.manage'); employee_family_admin_read uses the same expression. Neither policy joins employee_id to public.employees and verifies that the parent employee's tenant matches the caller's active membership. The separate self-read policies are identity-bound through employee_for_auth_user(), but they do not constrain the manager/admin path. Because both child tables lack tenant_id, the manager path is not row-tenant-scoped. This is a static tenant-isolation FAIL; an actual foreign-tenant request remains BLOCKED because production has one active tenant.
 
-Authenticated currently has REFERENCES, SELECT, TRIGGER, and TRUNCATE on both child tables; direct INSERT, UPDATE, and DELETE are false. RLS does not make REFERENCES/TRIGGER/TRUNCATE necessary for the user-facing read path. The smallest address-policy proposal, with the existing separate self-read policy retained, is:
+Authenticated currently has SELECT, TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN on both child tables (ACL letters `rDxtm`); direct INSERT, UPDATE, and DELETE are false. RLS does not make REFERENCES/TRIGGER/TRUNCATE necessary for the user-facing read path. The smallest address-policy proposal, with the existing separate self-read policy retained, is:
 
     ALTER POLICY employee_addresses_admin_read
       ON public.employee_addresses
@@ -72,9 +95,12 @@ The development source already has a tenant-aware family policy repair in supaba
 
 Proposal only for the remaining direct table ACLs, preserving SELECT for RLS-filtered clients and SECURITY DEFINER RPC use:
 
-    REVOKE REFERENCES, TRIGGER, TRUNCATE
+    REVOKE ALL PRIVILEGES
       ON TABLE public.employee_addresses, public.employee_family_members
-      FROM authenticated;
+      FROM PUBLIC, anon, authenticated;
+    GRANT SELECT
+      ON TABLE public.employee_addresses, public.employee_family_members
+      TO authenticated;
 
 Do not apply these SQL proposals in WS02. Route a reviewed policy/ACL change through the owning migration workflow and rerun the same two-tenant reads against real synthetic Auth sessions. Authenticated direct UPDATE/INSERT/DELETE privileges are false for these tables, so writes must use the RPCs.
 
@@ -84,6 +110,24 @@ Do not apply these SQL proposals in WS02. Route a reviewed policy/ACL change thr
 | E02-05 present/permanent addresses | employee_save_my_addresses_v2(p_rows jsonb) RETURNS integer | Requires a live session and linked own employee via employee_for_auth_user(). Allows up to 100 objects with id, address_type, district, thana, post_code, city_village, and road_block_house. A supplied ID must belong to the current employee. Unknown keys, invalid type, duplicate IDs, and omitted existing rows are rejected. |
 | E02-07 family/dependents | employee_save_my_family_members_v2(p_rows jsonb) RETURNS integer | Requires a live session and linked own employee via employee_for_auth_user(). Allows up to 100 objects with id, name, phone, nid_number, date_of_birth, relationship, present_address, permanent_address, is_nominee, working_in_synesis, occupation, academic_qualification, blood_group, and gender. A supplied ID must belong to the current employee. Unknown keys, invalid values, duplicate IDs, and omitted existing rows are rejected. |
 | E02-03/E02-17 protected-field requests and status | employee_submit_profile_change_request(p_tenant_id uuid, p_field_key text, p_requested_value text, p_reason text) RETURNS uuid; employee_get_my_profile_change_requests(p_tenant_id uuid) RETURNS table | Both require hris_profile_change_active_member(p_tenant_id) and the linked employee for that tenant. They need an active tenant membership. The submitted field key is allowlisted; review requires self_service.manage. |
+
+#### E02-02/E02-04..07 disposable self-write acceptance cases — NOT YET RUN
+
+The two available Auth/Postgres workflow logs do not invoke `employee_update_my_profile`, `employee_save_my_addresses_v2`, or `employee_save_my_family_members_v2`; the 378/378 total must not be counted as coverage. Run these cases only after the local stack has the hosted self-write definitions and synthetic fixture rows. Reuse the isolated commands documented under Supporting isolated two-tenant API/RLS acceptance; the current runner setup guards the workdir and loopback ports.
+
+| Principal / request | Expected result |
+|---|---|
+| Live Auth employee A linked to an active employee in tenant slug `synesis-it`: `rpc('employee_update_my_profile',{p_payload:{phone:'QA-A-phone',personal_email:'qa-a@example.test'}})` | Returns A’s employee UUID; only the caller’s linked employee changes. Verify both fields from the fixture/admin observer and verify the audit contains field names but no values. |
+| Same employee A includes protected keys such as `employee_id`, `tenant_id`, `employment_status`, or `role` in `p_payload` | Function does not write those columns. Existing verified behavior ignores unsupported keys for column updates; it records key names in audit (except `avatar_url`). |
+| Employee B linked only to the synthetic second tenant, or a live manager/no-permission user with no linked employee row in `synesis-it`, calls the same profile RPC | SQLSTATE `42501`; no row changes. The function has no tenant/employee argument, and the helper resolves only active tenant slug `synesis-it`. This tests the current default-tenant contract; it is not proof of a future multi-tenant active-context design. |
+| Employee A calls `rpc('employee_save_my_addresses_v2',{p_rows:[{address_type:'Present',district:'QA'}]})`, then updates the returned own row ID | Insert/update accepted; return value is the saved row count. |
+| Employee A supplies an address ID owned by B, unknown address key, duplicate ID, invalid address type, or omits an existing address | Foreign ID: `42501`; unknown key/duplicate ID/invalid type/omitted existing row: `22023`; no cross-employee change. |
+| Employee A calls `rpc('employee_save_my_family_members_v2',{p_rows:[{name:'QA dependent',relationship:'child'}]})`, then updates the returned own row ID | Insert/update accepted; return value is the saved row count. |
+| Employee A supplies a family ID owned by B, unknown family key, duplicate ID, invalid payload, or omits an existing family row | Foreign ID: `42501`; validation/duplicate/omitted row: `22023`; no cross-employee change. |
+| Anonymous caller or direct authenticated table INSERT/UPDATE/DELETE on either child table | Anonymous EXECUTE false; direct DML privilege false. Record API/SQLSTATE only from disposable test calls; do not send write probes to production. |
+| Same cases with employee A’s Auth session after membership is inactive but `admin_users.active` and its linked employee remain active | Current RPC contract is expected to remain own-row identity-bound because these three functions do not call `has_tenant_permission` or check `tenant_memberships`. Product owner must confirm this lifecycle rule before E02 certification. |
+
+These tests must seed tenant A/B and all synthetic identities only in the disposable fixture, sign in each user through local GoTrue, and assert persisted state from an independent fixture/admin observer. The profile-change request RPCs are a separate contract: both require explicit `p_tenant_id` and active membership. The current main UI must send `{p_tenant_id:tenantId}` to `employee_get_my_profile_change_requests` and include `p_tenant_id:tenantId` in `employee_submit_profile_change_request`.
 
 The first three self-write RPCs are identity-scoped, not tenant-membership-scoped: employee_for_auth_user() requires an active linked employee account but fixes the tenant to synesis_tenant_id(); it does not accept a client-supplied employee or tenant ID. This prevents a caller from selecting another employee through these signatures, but it is not evidence that the intended future multi-tenant membership policy has been approved. The protected profile-change request RPCs have a separate, explicit active-membership contract.
 
@@ -113,7 +157,12 @@ HR03-01 remains blocked because production has no public.legal_entities relation
 
 SA06-01 through SA06-04 specify master-data intents but not the catalog list, fields, ownership scope, duplicate rules, lifecycle, or API. Production has no platform-global master-data writer. platform_hris_is_super_admin() and platform_hris_list_tenants() do not authorize arbitrary master-data access. The tenant-scoped organization reader is not an SA06 API. The source-only hris_save_leave_type path is a tenant leave.manage operation, not SA06, and its migration 20261016142000 is absent in production.
 
-Separate least-privilege discrepancy: authenticated has direct INSERT/UPDATE/DELETE table ACLs on production leave_types, while RLS policies are SELECT-only, so the current write paths are rejected by RLS. Proposal only, if the owner confirms there is no approved direct-table writer: add a reviewed ACL revocation of INSERT, UPDATE, DELETE on public.leave_types from PUBLIC, anon, and authenticated; do not add a grant fallback or execute a production change in WS02.
+Separate least-privilege discrepancy, freshly rechecked: production `leave_types` has RLS enabled and its policies are SELECT-only, but the table ACL grants the full `arwdDxtm` set to both `anon` and `authenticated` (DELETE, INSERT, SELECT, UPDATE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN). No hosted mutation request was sent under the read-only acceptance boundary. Proposal only, if the owner confirms there is no approved direct-table writer:
+
+    REVOKE ALL PRIVILEGES ON TABLE public.leave_types FROM PUBLIC, anon, authenticated;
+    GRANT SELECT ON TABLE public.leave_types TO authenticated;
+
+This preserves the authenticated RLS-filtered read path and service_role ACL. Do not execute a production change in WS02.
 
 ### WS03 Candidate/interview RPC contract and release gate
 
@@ -141,14 +190,14 @@ The release source currently gates the five offer/interview controls under canMa
 | HR01 contact RPCs hosted parity | FAIL | Both exact signatures and migration 20261014171952 absent in production. |
 | HR01 synthetic source API tenant/role tests | PASS | Run 39378140222/job 118480812801 positive and denied contact tests in disposable two-tenant Auth/Postgres. |
 | E02 self-update/address/family hosted signatures and grants | PASS | Read-only function catalog/definitions, no direct DML ACL, own-row SECURITY DEFINER guards. |
-| E02 self-update/address/family synthetic writes | BLOCKED | Existing isolated runners do not call the three functions; no employee signed-in production session. Runnable cases are above. |
+| E02 self-update/address/family synthetic writes | BLOCKED — targeted calls not in CI | Logs for runs 39378140222 and 39395475832 contain no calls to the three self-write RPCs; aggregate totals are not story evidence. Exact disposable cases and SQLSTATEs are listed above. |
 | Employee address/family admin-read tenant RLS | FAIL — policy is not row-tenant-scoped | Hosted admin-read policies check only has_permission(employees.view/manage); no employee-parent tenant predicate. Runtime cross-tenant proof is BLOCKED by the single active production tenant. |
-| Employee address/family extra authenticated table ACL | FAIL — excess privileges | Authenticated has REFERENCES, TRIGGER, and TRUNCATE; direct INSERT/UPDATE/DELETE are false. Proposal-only revoke is above. |
+| Employee address/family extra authenticated table ACL | FAIL — excess privileges | Authenticated has SELECT, TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN (`rDxtm`); direct INSERT/UPDATE/DELETE are false. Proposal-only `REVOKE ALL` then `GRANT SELECT` is above. |
 | Synthetic two-tenant family read-policy repair | PASS — source only | Workflow 39379214697/job 118484195303 passed tenant A/B HR, employee-view, inactive/global and own-row cases on disposable PostgreSQL 17 using migration 20261016171104. It is not hosted or real Auth acceptance. |
 | E02 profile-change request UI signature | FAIL | Main source omits required p_tenant_id in get and submit calls; no production employee session available for HTTP reproduction. |
 | HR03 legal entities | BLOCKED | No production table/API; product model and lifecycle are unspecified. |
 | SA06 master-data API | BLOCKED | Scope/catalog/API unspecified and no platform master-data writer is deployed. |
-| Production leave_types direct DML ACL | FAIL — least-privilege follow-up | Authenticated ACL allows DML but only SELECT RLS policies exist; writes currently denied by RLS. Proposal only; no change made. |
+| Production leave_types table ACL | FAIL — overbroad table privileges | RLS is enabled and policies are SELECT-only, but anon and authenticated each have full `arwdDxtm`; no mutation probe was sent to hosted production. Proposal-only `REVOKE ALL` plus authenticated `SELECT`. |
 | Candidate/interview hosted parity | FAIL for new release component | All seven signatures absent from hosted production; current main uses legacy path. |
 | Candidate/interview disposable source tests | PASS for six / BLOCKED for offer | Pipeline, stage, schedule, responses, notes, completion pass; offer issuance has no test in the current suite. |
 | System Administrator intended tenant access | BLOCKED | Product/role intent is unspecified; no approved least-privilege active membership exists for this user. |
