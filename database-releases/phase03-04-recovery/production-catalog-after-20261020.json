@@ -13401,7 +13401,7 @@
       ],
       "schema": "public",
       "returns": "jsonb",
-      "anon_execute": true,
+      "anon_execute": false,
       "definition_md5": "70d2c4f54af868a412f6e1c1c33c2091",
       "security_definer": true,
       "authenticated_execute": true
@@ -15315,9 +15315,13 @@
     {
       "name": "phase03_phase04_hosted_compatibility_recovery_20261020",
       "version": "20261020043721"
+    },
+    {
+      "name": "phase03_learning_context_authenticated_acl_20261020",
+      "version": "20261020044145"
     }
   ],
-  "captured_at": "2026-10-20T04:39:05.984304+00:00",
+  "captured_at": "2026-10-20T04:44:02.199902+00:00",
   "constraints": [
     {
       "name": "admin_audit_logs_actor_id_fkey",
