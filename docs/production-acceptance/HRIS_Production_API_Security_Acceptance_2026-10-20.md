@@ -1,5 +1,139 @@
 # HRIS Production API and Security Acceptance — 2026-10-20
 
+## Live API/security recheck — authoritative addendum (2026-10-20)
+
+This addendum supersedes any earlier statement in this report or the WS06 audit that employee self-write RPCs are absent. It separates hosted catalog facts, source contracts, isolated test results, and production session limits. No story is marked certified here without independent story-ID acceptance evidence.
+
+### Rechecked repository heads
+
+| Item | Current ref |
+|---|---|
+| Production main | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 |
+| Development checkpoint | 1714a08e24f47999618b0127fc818a3d19eb187a |
+| PR #39 evidence | c92838b9d7ea9f5ec680393dae545b07afa7967c |
+| PR #38 release candidate / source under review | 686eec7016ec831e9b679500f28f553b8f93b14f |
+| PR #42 WS06 | 2c0a48c9e6e43cda9893e34665c1ffef85d410f2 |
+| PR #43 WS07 | c6f912dec4f892de96a4bf9376c3428bc210890e |
+| PR #44 WS08 | f4c44bf52c4041232d591746651ee409ccf8c120 |
+| Stable release branch | 567e10f889ca82f6a90e3b20e7cfdb8514b5c37e |
+
+### Permission root cause and narrow remedy
+
+The deployed contract is internally consistent:
+
+- public.has_permission(p_permission_id text) is SECURITY DEFINER with an empty search_path and returns public.has_tenant_permission(public.synesis_tenant_id(), p_permission_id).
+- public.has_tenant_permission(p_tenant_id uuid, p_permission_id text) requires a live Auth session, non-null IDs, an active tenant, an active tenant_memberships row for auth.uid(), an active role, and the exact role_permissions.permission_id. It does not read user_roles.
+- The separate public.platform_hris_is_super_admin() checks admin_users.active and admin_users.is_super_admin plus live/valid Auth status. That platform identity does not grant tenant permissions by itself.
+
+The live aggregate recheck found one active tenant, one active tenant-membership row, one active Super Admin, and that membership belongs to that Super Admin. The membership role is Tenant HR administrator and its only permission is organization.manage. The separate System Administrator has one legacy user_roles assignment and 45 role_permissions, but zero active tenant memberships. Therefore has_permission('employees.manage') and has_permission('recruitment.manage') are false for that account because the membership join fails before the legacy role can matter. This is the exact reason a System Administrator with legacy permissions is rejected by tenant APIs.
+
+**Proposal only:** keep the current rejection unless the product owner confirms that this specific System Administrator should act within a named tenant. If confirmed, grant one explicit membership for that tenant through the reviewed owner-controlled path and use a role limited to the approved existing permission IDs needed for the job. Do not make user_roles a fallback, activate the 45-permission legacy role for tenant APIs, or broaden the sole Super Admin. The deployed roles do not currently offer a least-privilege employees.manage or recruitment.manage role, so there is no safe membership row to add without owner role approval.
+
+### HR01 contact RPCs
+
+Hosted production does not contain either contact RPC. The history query reports migration 20261014171952 absent, and to_regprocedure is false for both signatures. The separate broad admin_save_employee endpoint is not equivalent to this narrow contact contract.
+
+The development source contract is:
+
+| RPC | Signature and behavior | Source ACL |
+|---|---|---|
+| hris_get_tenant_employee_contact_details | (p_tenant_id uuid, p_employee_id uuid) RETURNS jsonb | SECURITY DEFINER; revoke PUBLIC, anon, service_role; grant EXECUTE to authenticated only |
+| hris_update_tenant_employee_contact_details | (p_tenant_id uuid, p_employee_id uuid, p_contact_details jsonb) RETURNS jsonb | SECURITY DEFINER; revoke PUBLIC, anon, service_role; grant EXECUTE to authenticated only |
+
+Both require an active tenant plus has_tenant_permission(p_tenant_id, 'employees.manage') and constrain the employee lookup/update by both employee ID and tenant ID. The update payload accepts only official_email, personal_email, phone, official_phone, address, mailing_address, emergency_contact_name, emergency_contact_phone, and emergency_contact_relation; rejects non-string/non-null values and unknown keys; validates lengths and email; rejects duplicate same-tenant official email; and audits changed field names without contact values. The development OrganizationEmployeeDirectory call sites pass p_tenant_id and the selected p_employee_id. These are source facts, not deployed parity.
+
+**Isolated test result:** workflow 39378140222, job 118480812801 ran the local Auth/RLS harness with synthetic tenant A/B users. Its logs show the contact read/save positive path and denials for viewer, no-permission, global-only, inactive membership, foreign tenant, anonymous, invalid fields, duplicate email, and direct table updates. The log records SQLSTATE 42501 for authorization denials, 22023 for invalid payloads, and 23505 for duplicate email. The HR01 contact source contract passes in the disposable environment; hosted parity fails because both functions are absent in production.
+
+**Workstation 1 proposal:** keep any UI path that calls these source-only functions disabled until the reviewed migration is delivered through the release process and hosted parity is rechecked. Do not substitute direct employee table writes or the broad employee-save RPC.
+
+### WS06 E02 self-service contracts
+
+Hosted production has the following authenticated-only SECURITY DEFINER functions; anon EXECUTE is false. Employees, employee_addresses, and employee_family_members have RLS enabled. Authenticated direct UPDATE/INSERT/DELETE privileges are false for these tables, so writes must use the RPCs.
+
+| Story scope | Deployed RPC | Current server authorization and row boundary |
+|---|---|---|
+| E02-02 editable profile; E02-04 contact; E02-06 emergency contact | employee_update_my_profile(p_payload jsonb) RETURNS uuid | Requires is_live_session() and employee_for_auth_user(). The helper maps auth.uid() through an active admin_users row to the caller’s own non-resigned/non-terminated employee in synesis_tenant_id(). The RPC writes only its hard-coded own-row column set: preferred_name, phone, gender, date_of_birth, address, mailing_address, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, father_name, mother_name, birthplace, blood_group, religion, nationality, marital_status, and personal_email. It accepts no target employee or tenant argument. Extra keys do not change protected columns; audit details record keys, not values. No tenant_memberships check is performed by this self-write path. |
+| E02-05 present/permanent addresses | employee_save_my_addresses_v2(p_rows jsonb) RETURNS integer | Requires a live session and linked own employee via employee_for_auth_user(). Allows up to 100 objects with id, address_type, district, thana, post_code, city_village, and road_block_house. A supplied ID must belong to the current employee. Unknown keys, invalid type, duplicate IDs, and omitted existing rows are rejected. |
+| E02-07 family/dependents | employee_save_my_family_members_v2(p_rows jsonb) RETURNS integer | Requires a live session and linked own employee via employee_for_auth_user(). Allows up to 100 objects with id, name, phone, nid_number, date_of_birth, relationship, present_address, permanent_address, is_nominee, working_in_synesis, occupation, academic_qualification, blood_group, and gender. A supplied ID must belong to the current employee. Unknown keys, invalid values, duplicate IDs, and omitted existing rows are rejected. |
+| E02-03/E02-17 protected-field requests and status | employee_submit_profile_change_request(p_tenant_id uuid, p_field_key text, p_requested_value text, p_reason text) RETURNS uuid; employee_get_my_profile_change_requests(p_tenant_id uuid) RETURNS table | Both require hris_profile_change_active_member(p_tenant_id) and the linked employee for that tenant. They need an active tenant membership. The submitted field key is allowlisted; review requires self_service.manage. |
+
+The first three self-write RPCs are identity-scoped, not tenant-membership-scoped: employee_for_auth_user() requires an active linked employee account but fixes the tenant to synesis_tenant_id(); it does not accept a client-supplied employee or tenant ID. This prevents a caller from selecting another employee through these signatures, but it is not evidence that the intended future multi-tenant membership policy has been approved. The protected profile-change request RPCs have a separate, explicit active-membership contract.
+
+The current main LiveApp.tsx calls employee_update_my_profile({p_payload}), employee_save_my_addresses_v2({p_rows}), and employee_save_my_family_members_v2({p_rows}) with matching signatures. Its profile-change calls do not match the deployed signatures: it invokes employee_get_my_profile_change_requests() with no arguments and omits p_tenant_id from employee_submit_profile_change_request. That is a frontend/API signature mismatch. The narrow frontend proposal is:
+
+- Call employee_get_my_profile_change_requests with { p_tenant_id: tenantId }.
+- Add p_tenant_id: tenantId to employee_submit_profile_change_request alongside p_field_key, p_requested_value, and p_reason.
+
+The function itself validates active membership and ownership; the client must use the active tenant from the authenticated context, not a guessed/local default. No runtime employee session was available to observe the mismatch over production HTTP.
+
+**Test boundary:** the disposable 39378140222 and latest WS06 39393639383 runners exercise profile-change requests (E02-03/E02-17), but their Auth/RLS script contains no calls to employee_update_my_profile, employee_save_my_addresses_v2, or employee_save_my_family_members_v2. The separate employee-family workflow tests read isolation, not these write RPCs. Thus these deployed function definitions and UI request shapes are verified, but E02-02 and E02-04 through E02-07 are not certified and their synthetic positive/negative write tests remain outstanding.
+
+**Runnable disposable acceptance proposal:** in the existing local-only Auth/RLS harness, use its employeeA and employeeB sessions and tenant A/B fixtures; do not point it at a cloud project.
+
+1. employeeA calls employee_update_my_profile with a changed preferred_name/phone and extra employee_id, tenant_id, official_email, and employment_status keys. Assert success for employeeA’s own ID, only allowlisted profile columns change, and official_email/employment_status/user_id/tenant_id remain unchanged.
+2. employeeB (tenant B) and managerA (unlinked employee account) call the same profile RPC. Assert SQLSTATE 42501. Attempt direct authenticated UPDATE on employees and assert privilege/authorization denial.
+3. employeeA inserts and updates one own address through employee_save_my_addresses_v2; repeat with an address ID owned by employeeB and assert 42501. Assert unknown keys and omitted existing IDs return 22023; direct authenticated table writes remain denied.
+4. Repeat for employee_save_my_family_members_v2 with a synthetic own family row and employeeB’s row ID; assert own success, foreign ID 42501, invalid key/omission 22023, and direct table writes denied.
+5. Call both profile-change RPCs with p_tenant_id=tenantA as employeeA and assert success/read of own request; use tenantB, inactive membership, and an unlinked caller for 42501; confirm review without self_service.manage is denied.
+
+These cases are proposed, not run. The current disposable CI passed 375/375 other Auth/RLS assertions; that aggregate is not a result for the five unrun E02 write cases above.
+
+### HR03 legal entities and WS08 SA06 master data
+
+HR03-01 remains blocked because production has no public.legal_entities relation and no legal-entity API. The nine HR03 requirements do not yet specify cardinality, identity fields, lifecycle/archive rules, legal-entity-to-employee linkage, or historical/effective-date behavior. Production admin_get_organization_masters() is a SECURITY DEFINER read-only tenant API requiring organization.view or organization.manage; it returns existing organization arrays and does not implement legal entities. Do not adopt speculative DDL or API names. WS07’s PR #43 proposal correctly leaves the physical contract to product/WS01/WS02 decisions.
+
+SA06-01 through SA06-04 specify master-data intents but not the catalog list, fields, ownership scope, duplicate rules, lifecycle, or API. Production has no platform-global master-data writer. platform_hris_is_super_admin() and platform_hris_list_tenants() do not authorize arbitrary master-data access. The tenant-scoped organization reader is not an SA06 API. The source-only hris_save_leave_type path is a tenant leave.manage operation, not SA06, and its migration 20261016142000 is absent in production.
+
+Separate least-privilege discrepancy: authenticated has direct INSERT/UPDATE/DELETE table ACLs on production leave_types, while RLS policies are SELECT-only, so the current write paths are rejected by RLS. Proposal only, if the owner confirms there is no approved direct-table writer: add a reviewed ACL revocation of INSERT, UPDATE, DELETE on public.leave_types from PUBLIC, anon, and authenticated; do not add a grant fallback or execute a production change in WS02.
+
+### WS03 Candidate/interview RPC contract and release gate
+
+All seven source RPCs below are absent from hosted production. They are in the release source at 686eec7016ec831e9b679500f28f553b8f93b14f. Every SECURITY DEFINER body requires active tenant/session/role checks and tenant-equality joins or filters; mutation APIs require recruitment.manage, while pipeline read permits recruitment.view or recruitment.manage.
+
+| RPC signature | Source execute grant | Call site and release criticality | Isolated CI |
+|---|---|---|---|
+| hris_get_recruitment_pipeline(p_tenant_id uuid, p_search text DEFAULT NULL, p_stage text DEFAULT NULL, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0) RETURNS jsonb | Revoke PUBLIC/anon; authenticated and service_role | RecruitmentPipeline.tsx:528 read on page load. Release-critical if the new pipeline page is mounted. | PASS: tenant A/B managers see only own tenant; foreign tenant, global-only, inactive membership, anon, and no-permission denied. |
+| hris_update_candidate_application_stage(p_tenant_id uuid, p_application_id uuid, p_stage text) RETURNS jsonb | Revoke PUBLIC/anon; authenticated and service_role | RecruitmentPipeline.tsx:443. Release-critical for any exposed stage-change action; gated by canManageApplicationStages. | PASS: valid stage path plus view-only/no-permission/foreign tenant/invalid transition denials. |
+| hris_issue_candidate_offer(p_tenant_id uuid, p_application_id uuid, p_salary_amount numeric, p_salary_currency text, p_pay_period text, p_proposed_joining_date date, p_response_deadline date, p_terms text) RETURNS jsonb | Revoke PUBLIC/anon; authenticated and service_role | RecruitmentPipeline.tsx:60, gated by canManageOffers. Later-gated if offers remain disabled. | BLOCKED: current suite does not call this function. |
+| hris_schedule_candidate_interview(p_tenant_id uuid, p_application_id uuid, p_round_name text, p_format text, p_scheduled_at timestamp without time zone, p_duration_minutes integer, p_location_or_link text DEFAULT NULL, p_panel_members text[] DEFAULT '{}', p_instructions text DEFAULT NULL) RETURNS jsonb | Revoke PUBLIC/anon; authenticated only | RecruitmentPipeline.tsx:159, gated by canManageOffers. Later-gated with interview controls. | PASS: authorized schedule and cross-tenant/unprivileged denials. |
+| hris_get_candidate_interview_responses(p_tenant_id uuid) RETURNS jsonb | Final grant authenticated only; revoke PUBLIC, anon, and service_role | RecruitmentPipeline.tsx:333, response list mounted under canManageOffers. Later-gated. | PASS: same-tenant responses and foreign/unprivileged privacy denials. |
+| hris_save_candidate_interview_panel_notes(p_tenant_id uuid, p_interview_id uuid, p_panel_notes text) RETURNS jsonb | Final grant authenticated only; revoke PUBLIC, anon, and service_role | RecruitmentPipeline.tsx:286, panel-note save under canManageOffers. Later-gated. | PASS: same-tenant write, foreign/unprivileged and oversize denials; direct table access denied. |
+| hris_complete_candidate_interview(p_tenant_id uuid, p_interview_id uuid) RETURNS jsonb | Final grant authenticated only; revoke PUBLIC, anon, and service_role | RecruitmentPipeline.tsx:310, scheduled/confirmed state action under canManageOffers. Later-gated. | PASS: valid completion/idempotency plus wrong role, tenant, anonymous and invalid-state denials. |
+
+The release source currently gates the five offer/interview controls under canManageOffers. They can remain disabled while the pipeline read and stage action are released only after their two APIs are hosted and independently accepted. Production main still uses its existing admin_get_recruitment_data() path and does not call the seven new RPCs; the new release component would fail API parity if enabled against the current hosted schema. Do not replay development migrations from WS02.
+
+### Updated acceptance matrix
+
+| Acceptance item | Result | Evidence |
+|---|---|---|
+| Deployed has_permission / tenant membership contract | PASS | Read-only pg_get_functiondef and role/membership aggregates; exact membership requirement described above. |
+| Sole Super Admin identity and current signed-in app session | PASS | One active Super Admin and one active tenant; connected app tab shows authenticated workspace and Sign out control; prior read-only HTTP request evidence remains valid. |
+| System Administrator legacy permission effective in tenant APIs | PASS-denied / intent BLOCKED | One legacy user, 45 legacy permissions, zero active memberships; has_permission does not read user_roles. |
+| HR01 contact RPCs hosted parity | FAIL | Both exact signatures and migration 20261014171952 absent in production. |
+| HR01 synthetic source API tenant/role tests | PASS | Run 39378140222/job 118480812801 positive and denied contact tests in disposable two-tenant Auth/Postgres. |
+| E02 self-update/address/family hosted signatures and grants | PASS | Read-only function catalog/definitions, no direct DML ACL, own-row SECURITY DEFINER guards. |
+| E02 self-update/address/family synthetic writes | BLOCKED | Existing isolated runners do not call the three functions; no employee signed-in production session. Runnable cases are above. |
+| E02 profile-change request UI signature | FAIL | Main source omits required p_tenant_id in get and submit calls; no production employee session available for HTTP reproduction. |
+| HR03 legal entities | BLOCKED | No production table/API; product model and lifecycle are unspecified. |
+| SA06 master-data API | BLOCKED | Scope/catalog/API unspecified and no platform master-data writer is deployed. |
+| Production leave_types direct DML ACL | FAIL — least-privilege follow-up | Authenticated ACL allows DML but only SELECT RLS policies exist; writes currently denied by RLS. Proposal only; no change made. |
+| Candidate/interview hosted parity | FAIL for new release component | All seven signatures absent from hosted production; current main uses legacy path. |
+| Candidate/interview disposable source tests | PASS for six / BLOCKED for offer | Pipeline, stage, schedule, responses, notes, completion pass; offer issuance has no test in the current suite. |
+| Independent HR/Admin and employee production sessions | BLOCKED | Connected browser exposes only the existing signed-in Super Admin app session; production has no second active tenant membership. |
+| Production positive/rejected cross-tenant API acceptance | BLOCKED | Production has one active tenant; synthetic two-tenant tests are isolated CI only. |
+| Production mutation safety | PASS | No DDL, DML, Auth-user, membership, role, tenant, migration-history, or setting changes were made. |
+
+### Owner handoffs and story certification
+
+- WS01: fix the two profile-change RPC argument objects in main as specified above; preserve the existing self-only RPC argument shapes; do not surface the HR01 source UI until the exact tenant-scoped contact APIs are in a reviewed release. Add the targeted two-tenant E02 cases before marking E02-02/E02-04/E02-05/E02-06/E02-07 accepted.
+- WS06: refresh PR #42 because the current source/deployed catalog contradicts its prior “no employee self-update API” statement. The hosted contract exists; story certification and independent synthetic write evidence remain outstanding.
+- WS07: keep HR03-01 blocked until product approves cardinality, fields, lifecycle, employee linkage, and effective-date/history semantics.
+- WS08: keep SA06 blocked until the catalog and authorization scope are approved; do not treat tenant leave types or platform tenant listing as the SA06 master-data API.
+- WS03/WS05: do not enable the release Candidate page until pipeline read/stage parity and separate offer/interview gates have matching hosted contracts. Workstation 5 remains the release controller.
+
+No E02, HR03, SA06, or WS03 story is certified by this addendum. PR #39 remains draft and no code was merged or deployed.
+
+
 **Result: PARTIAL / NOT ACCEPTED as a full production release gate.** The connected production browser verifies one authorized Super Admin session and its read-only API outcomes. I also reused a free, disposable two-tenant Auth/Postgres CI stack: workflow run [39378140222](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39378140222), job [118480812801](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39378140222/job/118480812801), passed 342/342 contract checks and 375/375 local Auth/RLS checks. That isolated evidence covers synthetic HR/Admin, employee, platform Super Admin, no-permission and global-only callers, including cross-tenant denials. It does not replace production acceptance. Production still has one tenant and one active tenant membership, so independent HR/Admin, linked employee, and production cross-tenant tests remain blocked. All seven candidate/interview RPCs remain absent from hosted production.
 
 ## Scope and safety
