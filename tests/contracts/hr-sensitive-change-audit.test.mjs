@@ -23,7 +23,11 @@ test('HR01-06 records a verified partial boundary for sensitive contact-change a
   assert.ok(runner.includes('contactAudit.count === 1'));
   assert.ok(runner.includes("contactAudit.details.includes('official_email')"));
   assert.ok(runner.includes("contactAudit.details.includes('emergency_contact_phone')"));
-  assert.ok(runner.includes("!contactAudit.details.includes('employee-a-updated@hris.test')"));
+  assert.ok(runner.includes('const contactAuditRedactionComplete = contactAudit.count === 1'));
+  assert.ok(runner.includes('contactAuditPayload.tenant_id === ids.tenantA'));
+  assert.ok(runner.includes('Object.keys(contactUpdatePayload).sort()'));
+  assert.ok(runner.includes('Object.values(contactUpdatePayload).some'));
+  assert.ok(runner.includes('&& contactAuditRedactionComplete'));
   assert.ok(runner.includes("record('HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event'"));
   assert.ok(runner.includes("employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS')"));
   assert.ok(browser.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS'));
