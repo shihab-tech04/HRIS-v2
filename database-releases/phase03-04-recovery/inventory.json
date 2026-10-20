@@ -165,8 +165,10 @@
   ],
   "unresolved_public_private_call_names": [],
   "hosted_gate_b": {
-    "passed": 0,
+    "passed": 26,
     "total": 26
   },
-  "deployment_status": "NOT_APPLIED"
+  "deployment_status": "APPLIED_NATIVE_HISTORY_VERIFIED",
+  "applied_version": "20261020043721",
+  "production_history_after": 115
 }
