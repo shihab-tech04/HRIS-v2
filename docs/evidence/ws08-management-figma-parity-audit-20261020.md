@@ -4,8 +4,8 @@
 
 ## Audited heads and sources
 
-- PR #44: `work/ws08-management-phase05-20261020` at `f4c44bf52c4041232d591746651ee409ccf8c120`.
-- Current PR base: `development/hris-checkpoints` at `b262cad` (advanced from the PR's original base `1714a08e24f47999618b0127fc818a3d19eb187a`). The 16 intervening base files do not include the audited Manager screen source or its browser tests.
+- PR #44 audit source code: `work/ws08-management-phase05-20261020` at `f4c44bf52c4041232d591746651ee409ccf8c120`; the report is a docs-only follow-up on the same branch.
+- Live target ref fetched with `git ls-remote`: `development/hris-checkpoints` at `b262cade4175fc98cac56af05f88c3d16e68dc53`. The GitHub PR snapshot still reports base SHA `1714a08e24f47999618b0127fc818a3d19eb187a`; its target branch is unchanged. The intervening development commits changed 16 file paths, but not `src/live/LiveHrisWorkspace.tsx` or the three audited browser test files. No rebase or merge was performed.
 - Canonical register: [`HRIS_1047_Story_Classification_Register_2026-10-20.csv`](https://github.com/shihab-tech04/HRIS-v2/blob/dcdd89ba140cd92ace71130b4eab439525e07594/docs/audit/HRIS_1047_Story_Classification_Register_2026-10-20.csv), pinned at `dcdd89ba140cd92ace71130b4eab439525e07594`.
 - Approved design file: [Synesis HRIS Figma](https://www.figma.com/design/XEXLe9J1oATlITS9I5u1P9).
 
