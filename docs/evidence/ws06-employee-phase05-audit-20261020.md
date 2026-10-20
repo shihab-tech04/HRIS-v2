@@ -65,7 +65,7 @@ Status wording reflects the canonical audit overlay plus code and prior disposab
 | --- | --- | --- | --- |
 | E02-01, E02-08 | `src/live/LiveHrisWorkspace.tsx` | `tests/contracts/employee-dashboard-profile-contact.test.mjs` | Run `39371994771`, source commit `6ff29e898aef54c2779e44cfdd5e465c79e6c11` |
 | E02-03, E02-17 | `src/live/ProfileChangeRequests.tsx` | `tests/contracts/profile-change-requests.test.mjs` | Run `39147470480`, source commit `445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5` |
-| E02-12 | `src/live/MyLearning.tsx` | `tests/contracts/learning-self-service.test.mjs` | Run `39371994771`, source commit `6ff29e898aef54c2779e44cfdd5e465c79e6c11` |
+| E02-12 (skills) | `src/live/MyLearning.tsx` | `tests/contracts/learning-self-service.test.mjs` | Run `39371994771`, source commit `6ff29e898aef54c2779e44cfdd5e465c79e6c11` |
 | E03-01, E03-04, E03-05, E03-07, E03-08 | `src/live/EmployeeDocumentVault.tsx` | `tests/contracts/employee-document-self-service.test.mjs`, `tests/contracts/employee-documents-tenant-read.test.mjs` | Run `39018685182`, source commit `426527fd45a983e6958a0ca5ef063305d69bd48a` |
 | E04-01, E04-02, E04-03, E04-04 | `src/live/EmployeeIdentityCard.tsx` | `tests/contracts/employee-identity-card.test.mjs` | Run `39018685182`, source commit `426527fd45a983e6958a0ca5ef063305d69bd48a` |
 | E37-01 through E37-05 | `src/live/OrganizationEmployeeDirectory.tsx` | `tests/contracts/employee-directory.test.mjs`, `tests/contracts/employee-directory-story-reconciliation.test.mjs` | Run `39025622956`, source commit `01b20934a9a63e0f220eb30c9a65d55daf4010b4` |
