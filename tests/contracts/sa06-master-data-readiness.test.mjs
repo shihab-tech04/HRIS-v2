@@ -11,6 +11,7 @@ const workspace = read('../../src/live/LiveHrisWorkspace.tsx');
 const teams = read('../../src/live/OrganizationTeams.tsx');
 const leavePolicy = read('../../src/live/LeaveTypePolicyManager.tsx');
 const leaveContract = read('../../supabase/migrations/20261016142000_hris_leave_type_policy_management.sql');
+const reviewContract = read('../../docs/evidence/sa06-master-data-contract-review-20261020.md');
 
 test('SA06 coverage stays anchored to its four exact canonical requirements', () => {
   assert.deepEqual(stories.map(story => story.story_id), ['SA06-01', 'SA06-02', 'SA06-03', 'SA06-04']);
@@ -50,4 +51,14 @@ test('current Phase 05 readiness does not certify or silently classify SA06', ()
   const assigned = readiness.stories.filter(story => story.module_id === 'SA06');
   assert.deepEqual(assigned.map(story => story.story_id), ['SA06-01', 'SA06-02', 'SA06-03', 'SA06-04']);
   assert.ok(assigned.every(story => story.status === 'NOT_CLASSIFIED' && story.hosted_accepted === false));
+});
+
+test('the WS01/WS02 contract remains a review proposal and cannot advance SA06 readiness', () => {
+  assert.match(reviewContract, /Status: REVIEW PROPOSAL — NOT APPROVED OR IMPLEMENTED/);
+  assert.match(reviewContract, /Transport path, method\/RPC name, request\/response field names, operation set, and error vocabulary remain undecided/);
+  assert.match(reviewContract, /SA06 stories remain blocked\/unclassified pending review/);
+
+  const readiness = readPhaseReadiness('05');
+  assert.ok(readiness.stories.filter(story => story.module_id === 'SA06')
+    .every(story => story.status === 'NOT_CLASSIFIED' && story.hosted_accepted === false));
 });
