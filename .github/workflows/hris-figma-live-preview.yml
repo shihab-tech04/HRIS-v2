@@ -77,6 +77,8 @@ jobs:
             # The Vite build rewrites tracked input files in this disposable runner.
             # Only preview-dist was committed. Restore those temporary edits before rebasing.
             git reset --hard HEAD
+            # Remove untracked output from the disposable runner before rebasing.
+            git clean -fd --exclude=preview-dist/
             git fetch origin work/hris-figma-ui-live-preview-20261021
             git rebase origin/work/hris-figma-ui-live-preview-20261021
             git push origin HEAD:work/hris-figma-ui-live-preview-20261021
