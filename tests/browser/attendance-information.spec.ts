@@ -209,6 +209,14 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.evaluate(() => { window.location.hash = 'attendance-correction-requests'; });
   await expect(page.locator('#attendance-correction-requests')).toBeVisible();
   const correctionCard = page.locator('#attendance-correction-requests');
+  const ensureCorrectionStatusFilterOpen = async () => {
+    const filtersButton = correctionCard.getByRole('button', { name: 'Filters', exact: true });
+    if (await filtersButton.getAttribute('aria-expanded') !== 'true') await filtersButton.click();
+    await expect(filtersButton).toHaveAttribute('aria-expanded', 'true');
+    const statusFilter = correctionCard.getByLabel('Filter by status', { exact: true });
+    await expect(statusFilter).toBeVisible();
+    return statusFilter;
+  };
   const openAttendanceRequests = async () => {
     await page.getByRole('button', { name: 'Attendance', exact: true }).click();
     await page.evaluate(() => { window.location.hash = ''; });
@@ -282,8 +290,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
     expect(await page.evaluate(() => Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'))).toBe(true);
     await openAttendanceRequests();
-    await correctionCard.getByRole('button', { name: 'Filters', exact: true }).click();
-    await page.getByLabel('Filter by status', { exact: true }).selectOption(status);
+    await ensureCorrectionStatusFilterOpen();
+    await (await ensureCorrectionStatusFilterOpen()).selectOption(status);
     await expect(correctionCard.getByRole('row')).toHaveCount(9);
     expect(await correctionCard.getByRole('columnheader').allTextContents()).toEqual([
       'Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Status',
@@ -306,18 +314,19 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
   await expect(approvalRow).toContainText('09:15');
   await expect(approvalRow).toContainText('13-10-2026');
-  await correctionCard.getByRole('button', { name: 'Filters' }).click();
+  await ensureCorrectionStatusFilterOpen();
   await approvalRow.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Attendance correction approved.', { exact: true })).toBeVisible();
-  await page.getByLabel('Filter by status', { exact: true }).selectOption('approved');
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('approved');
   await expect(correctionCard.getByRole('button', { name: 'Attendance Requests' })).toBeVisible();
   await expect(correctionCard.getByLabel('Select all pending attendance corrections')).toHaveCount(0);
   const approvedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
   await expect(approvedRow).toContainText('Approved');
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-approved-action-1920x1080.png'), fullPage: true });
   await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
-  await correctionCard.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByLabel('Filter by status', { exact: true }).selectOption('pending');
+  await expect(correctionCard.getByRole('heading', { name: 'Attendance Requests', exact: true })).toBeVisible();
+  const pendingStatusFilter = await ensureCorrectionStatusFilterOpen();
+  await pendingStatusFilter.selectOption('pending');
   const rejectionRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
   await page.setViewportSize({ width: 375, height: 812 });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
@@ -347,26 +356,26 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
-  await page.getByLabel('Filter by status', { exact: true }).selectOption('rejected');
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('rejected');
   const rejectedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
   await expect(rejectedRow).toContainText('Rejected');
   await expect(rejectedRow).toContainText('Decision note: Please include the missing punch time.');
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-rejected-action-1920x1080.png'), fullPage: true });
   await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
-  await correctionCard.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByLabel('Filter by status', { exact: true }).selectOption('approved');
+  await ensureCorrectionStatusFilterOpen();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('approved');
   await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toBeVisible();
   await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toHaveCount(0);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-filtered-approved-action-1920x1080.png'), fullPage: true });
   await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
-  await correctionCard.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByLabel('Filter by status', { exact: true }).selectOption('rejected');
+  await ensureCorrectionStatusFilterOpen();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('rejected');
   await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toBeVisible();
   await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toHaveCount(0);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-filtered-rejected-action-1920x1080.png'), fullPage: true });
   await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
-  await correctionCard.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByLabel('Filter by status', { exact: true }).selectOption('all');
+  await ensureCorrectionStatusFilterOpen();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('all');
   expect(correctionDecisions).toEqual([
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
     { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },

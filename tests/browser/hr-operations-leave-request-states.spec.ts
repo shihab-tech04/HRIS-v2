@@ -254,14 +254,38 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await page.getByLabel('Search requests', { exact: true }).fill('');
   await expect(table.locator('tbody tr')).toHaveCount(8);
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await expect(page.getByLabel('অবস্থা অনুযায়ী ফিল্টার', { exact: true })).toBeVisible();
+  const bengaliFilterToggle = page.getByRole('button', { name: 'ফিল্টার', exact: true });
+  await bengaliFilterToggle.click();
+  await expect(bengaliFilterToggle).toHaveAttribute('aria-expanded', 'true');
+  const bengaliFilters = page.locator('#leave-request-filters');
+  const bengaliStatusFilter = page.getByLabel('অবস্থা অনুযায়ী ফিল্টার', { exact: true });
+  const bengaliFromDate = bengaliFilters.getByLabel('শুরুর তারিখ', { exact: true });
+  const bengaliToDate = bengaliFilters.getByLabel('শেষ তারিখ', { exact: true });
+  await expect(bengaliFilters).toBeVisible();
+  await expect(bengaliStatusFilter).toBeVisible();
+  await expect(bengaliFromDate).toBeVisible();
+  await expect(bengaliToDate).toBeVisible();
   const bengaliTable = page.getByRole('table', { name: 'ছুটির আবেদন' });
   await expect(bengaliTable.getByRole('columnheader', { name: 'মন্তব্য', exact: true })).toBeVisible();
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
     await captureLeaveResponsiveWidth(width, 'BN normal');
+    await expect(bengaliFromDate).toBeVisible();
+    await expect(bengaliToDate).toBeVisible();
+    const bengaliDateBounds = await page.evaluate(() => ['leave-request-from', 'leave-request-to'].map(id => {
+      const input = document.getElementById(id);
+      const bounds = input?.getBoundingClientRect();
+      return { id, left: bounds?.left ?? -1, right: bounds?.right ?? Number.POSITIVE_INFINITY };
+    }));
+    expect(bengaliDateBounds).toHaveLength(2);
+    for (const bounds of bengaliDateBounds) {
+      expect(bounds.left, `${bounds.id} left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+      expect(bounds.right, `${bounds.id} right edge at ${width}px`).toBeLessThanOrEqual(width + 1);
+    }
     await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-normal-bn-${width}-20261021.png`), fullPage: true });
   }
+  await bengaliFilterToggle.click();
+  await expect(bengaliFilters).toBeHidden();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await page.setViewportSize({ width: 1920, height: 1080 });
 
