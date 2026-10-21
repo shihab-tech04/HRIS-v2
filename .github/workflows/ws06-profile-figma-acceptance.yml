@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - work/ws06-employee-profile-figma-20261021
+      - work/hris-employee-profile-parity-20261021
   workflow_dispatch:
 permissions:
   contents: read

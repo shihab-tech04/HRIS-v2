@@ -52,6 +52,17 @@ test('all five profile panels render in EN/BN at the requested widths without vi
             expect(avatar).not.toBeNull();
             expect([Math.round(avatar!.x), Math.round(avatar!.y), Math.round(avatar!.width), Math.round(avatar!.height)])
               .toEqual([326, 102, 203, 203]);
+            const firstTab = await page.getByRole('tab', { name: tabs[0] }).boundingBox();
+            expect(firstTab).not.toBeNull();
+            expect([Math.round(firstTab!.x), Math.round(firstTab!.y), Math.round(firstTab!.width), Math.round(firstTab!.height)])
+              .toEqual([326, 329, 313, 56]);
+            const personalPanel = await page.locator('[role="tabpanel"][data-figma-node="66:72042"]').boundingBox();
+            expect(personalPanel).not.toBeNull();
+            expect(Math.abs(personalPanel!.y - 408)).toBeLessThanOrEqual(2);
+            const detailsCard = await page.locator('[data-figma-node="109:40969"]').boundingBox();
+            expect(detailsCard).not.toBeNull();
+            expect(Math.abs(detailsCard!.y - 520)).toBeLessThanOrEqual(2);
+            await expect(page.getByText('Official Phone Number', { exact: true })).toBeVisible();
           }
         }
       }
