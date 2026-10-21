@@ -36,9 +36,11 @@ jobs:
           assert.match(workspace,/page === 'my-profile' && isEmployee/);
           assert.match(workspace,/id: 'my-profile', label: 'My Profile'/);
           assert.match(src,/hris_get_my_dashboard_data/);
+          assert.match(src,/response\.tenant_id !== tenantId/);
           assert.match(src,/profile\.tenant_id !== tenantId/);
-          assert.match(src,/loaded\?\.tenantId === tenantId/);
+          assert.match(src,/loadedTenantId === tenantId/);
           assert.match(src,/return \(\) => \{ current = false; \}/);
+          assert.match(src,/disabled title=\{unavailable\}/);
           assert.doesNotMatch(src,/\.from\(|supabase\.auth\.|supabase\.rpc\('hris_update_/);
           assert.doesNotMatch(src,/www\.figma\.com\/api\/mcp\/asset/);
           assert.doesNotMatch(src,/Nadia Sultana|nadia@synesis/);
@@ -47,3 +49,15 @@ jobs:
           }
           console.log('Employee Figma read-only route/privacy/source-asset contract passed');
           NODE
+      - name: Install Chromium for Employee visual acceptance
+        run: npx playwright install --with-deps chromium
+      - name: Test Employee Profile in EN/BN at desktop and mobile widths
+        run: WS06_CAPTURE_PROFILE_SCREENSHOTS=1 WS06_CAPTURE_DIRECTORY=${RUNNER_TEMP}/ws06-profile-figma npm run test:e2e -- tests/browser/employee-profile-figma.spec.ts
+      - name: Upload exact-head Employee screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws06-employee-profile-figma-${{ github.sha }}
+          path: ${{ runner.temp }}/ws06-profile-figma/*.png
+          if-no-files-found: error
+          retention-days: 14
