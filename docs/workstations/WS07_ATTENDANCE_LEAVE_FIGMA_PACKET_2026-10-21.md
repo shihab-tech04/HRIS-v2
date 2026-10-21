@@ -1,6 +1,6 @@
 # WS07 Attendance and Leave Figma packet
 
-**Status:** Source-backed implementation and focused acceptance evidence. Full shell and tab parity remains with WS01; visual signoff remains with WS04/WS05.
+**Status:** Source-backed Attendance and Leave implementation; exact-head browser acceptance and WS04 parity signoff remain open. Full shell and tab ownership remains with WS01.
 
 ## Scope and approved frames
 
@@ -31,10 +31,12 @@ This packet covers the HR Operations Attendance Information, Attendance Requests
 
 - Attendance status selection supports single and multiple source statuses. Multi-status filtering fetches the tenant-authorized detail set and filters the returned rows in the UI; it does not invent a server contract.
 - Request tables now follow the Figma fields and action presentation. Pending rows show row-level decisions; resolved rows show approved/rejected text. Selection is available, while unsupported bulk decisions stay disabled.
+- Approved and rejected tables use a `Status` header; pending and selected tables retain `Action`. Attendance filtered status results use the Figma `Date` header, and the Attendance Information status summary uses the approved quote style.
+- Request rows use the observed 80px geometry, 6px row gap, and 48px avatar. The browser suite captures clean full-page request states and verifies the table geometry.
 - Leave day count, decision note, and evidence download remain available in the request detail cells to preserve existing behavior.
 - English and Bengali labels were added for the new HR Operations controls and request fields.
 - WS01 was notified on PR #49 that Attendance Information and Attendance Requests are separate Figma tabs. WS07 exposes `#attendance-correction-requests` and leaves shared tab routing with WS01.
-- Captures use synthetic local browser fixtures. Attendance request images are table crops from the 1920×1080 browser viewport because separate-tab routing is part of WS01's shell work. They are implementation evidence, not a full-shell pixel certification.
+- Captures use synthetic browser fixtures and full-page screenshots at the exact source SHA. GitHub Actions uploads Attendance Information and Attendance Requests English/Bengali evidence at 375/768/1280/1920, plus normal/selected/approved/rejected state captures and Leave/Manager evidence. These artifacts support WS04 review; they do not replace its independent signoff.
 
 ## Screenshot evidence
 
@@ -42,31 +44,26 @@ This packet covers the HR Operations Attendance Information, Attendance Requests
 | --- | --- |
 | Attendance Information desktop | [`attendance-information-desktop-20261021.png`](../evidence/attendance-information-desktop-20261021.png) |
 | Attendance Information mobile | [`attendance-information-mobile-20261021.png`](../evidence/attendance-information-mobile-20261021.png) |
-| Attendance Information normal table crop | [`ws07-attendance-information-normal-table-crop-20261021.png`](../evidence/ws07-attendance-information-normal-table-crop-20261021.png) |
-| Attendance Information filtered table crop | [`ws07-attendance-information-filtered-table-crop-20261021.png`](../evidence/ws07-attendance-information-filtered-table-crop-20261021.png) |
-| Attendance Requests normal | [`ws07-attendance-requests-normal-table-crop-20261021.png`](../evidence/ws07-attendance-requests-normal-table-crop-20261021.png) |
-| Attendance Requests selected | [`ws07-attendance-requests-selected-table-crop-20261021.png`](../evidence/ws07-attendance-requests-selected-table-crop-20261021.png) |
-| Attendance Requests approved | [`ws07-attendance-requests-approved-table-crop-20261021.png`](../evidence/ws07-attendance-requests-approved-table-crop-20261021.png) |
-| Attendance Requests rejected | [`ws07-attendance-requests-rejected-table-crop-20261021.png`](../evidence/ws07-attendance-requests-rejected-table-crop-20261021.png) |
-| Attendance Requests filtered by approved status | [`ws07-attendance-requests-filtered-approved-table-crop-20261021.png`](../evidence/ws07-attendance-requests-filtered-approved-table-crop-20261021.png) |
-| Attendance Requests filtered by rejected status | [`ws07-attendance-requests-filtered-rejected-table-crop-20261021.png`](../evidence/ws07-attendance-requests-filtered-rejected-table-crop-20261021.png) |
-| Leave Requests normal, selected, approved, rejected | [`normal`](../evidence/ws07-leave-requests-normal-1920x1080.png) · [`selected`](../evidence/ws07-leave-requests-selected-1920x1080.png) · [`approved`](../evidence/ws07-leave-requests-approved-1920x1080.png) · [`rejected`](../evidence/ws07-leave-requests-rejected-1920x1080.png) |
-| Leave Requests mobile | [`ws07-leave-requests-mobile-375x812.png`](../evidence/ws07-leave-requests-mobile-375x812.png) |
+| Attendance Information normal and filtered | Full-page captures in the exact-head `ws07-hr-frame-evidence-<SHA>` Actions artifact |
+| Attendance Requests normal, selected, approved, rejected | Full-page 1920×1080 captures in the same exact-head artifact |
+| Attendance Requests EN/BN responsive states | 375/768/1280/1920 captures in the same exact-head artifact |
+| Leave Requests normal, selected, approved, rejected and mobile | Captures in the same exact-head artifact |
 
 ## Verification
 
 - `npm run lint` — passed.
 - `node --test tests/contracts/attendance-report.test.mjs tests/contracts/leave-absence-calendar.test.mjs` — 16/16 passed.
-- Focused Chromium browser run for `attendance-information.spec.ts`, `hr-operations-leave-request-states.spec.ts`, and `manager-leave.spec.ts` — 3/3 passed. This covers normal, selected, approved, rejected, status-filtered, English/Bengali, loading/error/retry, existing manager decisions, and mobile overflow.
+- A prior checkpoint reported 3/3 Chromium journeys passed; those results do not cover this follow-up patch.
 - `npx vite build` — passed. Vite reports the existing client bundle exceeds its 500 kB warning threshold.
-- Playwright used the local cached Chromium 140 build because the requested browser download returned an empty archive; no dependency or lockfile changes were made.
+- Current local `npm run lint`, the 16 focused Attendance/Leave contract tests, and `npx vite build` — passed after the latest changes.
+- Local Playwright remains unavailable because this environment has no usable Chromium executable. No local browser pass is claimed; the exact-head GitHub Actions run and screenshots are required before WS04 review.
 
 ## Next canonical work
 
 Figma metadata review found no approved story-level mapping for the next HR03 organization frames. The canonical next story remains HR03-01, blocked on Product's legal-entity decisions and WS02's schema/API/permission contract. HR02 stories remain unclassified in the readiness overlay, and Candidate conversion remains outside this task's scope. No unsupported organization, employee, Candidate, or Management action was added.
 
-## Reverification packet started from PR head `f466102`
+## Reverification packet started from PR head `fe82ed7`
 
 This follow-up tightens the Attendance Information field sequence and separates the Attendance Requests module route, aligns the Leave Requests table with the approved field order and resolved states, and adds retry behavior for attendance-correction read errors. The prior “3/3 local Chromium” result above refers to the earlier checkpoint and does not verify this follow-up patch.
 
-On the follow-up worktree, TypeScript lint, 16 focused Attendance/Leave contracts, and `npx vite build` pass. Local Playwright could not launch because this environment had no Chromium binary and the browser download returned a corrupt empty archive. Exact-head GitHub Actions and WS04 visual acceptance are pending. See the [frame-state register](WS07_ATTENDANCE_LEAVE_FRAME_STATE_REGISTER_2026-10-21.md) for the required state matrix, story mapping, and remaining blockers. Do not treat Attendance or Leave as complete until those gates pass.
+The follow-up adds exact resolved-state headers, full-screen eight-row Attendance Requests frames, the filtered Attendance Information header, and row geometry checks. Local TypeScript lint, 16 focused Attendance/Leave contracts, and `npx vite build` pass. Local Playwright could not launch because this environment has no usable Chromium binary. Exact-head GitHub Actions and WS04 visual acceptance remain pending. See the [frame-state register](WS07_ATTENDANCE_LEAVE_FRAME_STATE_REGISTER_2026-10-21.md) for story mapping and blockers. Do not treat Attendance or Leave as complete until both gates pass.

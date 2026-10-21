@@ -42,7 +42,7 @@ import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
-  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
+  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, Check, CheckCircle2, FileText, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -941,7 +941,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   const aggregateOnly = canReport && !showDetails;
 
   useEffect(() => {
-    const syncAttendanceView = () => setCorrectionRequestsPage(window.location.hash === '#attendance-correction-requests');
+    const syncAttendanceView = () => {
+      const nextCorrectionRequestsPage = window.location.hash === '#attendance-correction-requests';
+      setCorrectionRequestsPage(nextCorrectionRequestsPage);
+      if (!nextCorrectionRequestsPage) setActionMessage('');
+    };
     window.addEventListener('hashchange', syncAttendanceView);
     return () => window.removeEventListener('hashchange', syncAttendanceView);
   }, []);
@@ -1140,7 +1144,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     return label ? tx(label) : tx('Not recorded');
   };
 
-  return <section aria-labelledby={correctionRequestsPage ? 'attendance-correction-requests-heading' : 'attendance-report-heading'} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
+  return <section aria-labelledby={correctionRequestsPage ? 'attendance-correction-requests-heading' : 'attendance-report-heading'} style={{ maxWidth: `min(${correctionRequestsPage ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
     {!correctionRequestsPage && <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx('Attendance Report')}</h2>
       </div>
@@ -1153,9 +1157,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
         <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-[14px] text-sm text-[#86929E] disabled:opacity-50 lg:w-[184px]">
           <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> {tx('Download Report')}
         </button>
-        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label={tx('Filters')}>
+        {(selectedStatuses.length === 0 || filtersOpen) && <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label={tx('Filters')}>
           <img src={attendanceFilterIcon} alt="" /><span className="sr-only">{tx('Filters')}</span>
-        </button>
+        </button>}
       </form>}
     </div>}
     {!correctionRequestsPage && <div id="attendance-filters" hidden={!filtersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1188,10 +1192,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
         : <p className="self-end pb-2 text-xs text-slate-500">{tx('Date and status filters apply automatically.')}</p>}
     </div>}
       {!correctionRequestsPage && error && currentTenantReady && !rejectingCorrection && <StatusMessage error={error} onRetry={() => void load()} />}
-    {!correctionRequestsPage && actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
+    {actionMessage && currentTenantReady && !rejectingCorrection && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
     {!correctionRequestsPage && showDetails && selectedStatuses.length > 0 && <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-[#D4E5EA] bg-white px-4 py-3 text-sm text-slate-700">
       <span>{tx('Now showing result for')}</span>
-      <span className="font-medium">{selectedStatuses.map(value => `‘${statusLabel(value)}’`).join(' + ')}</span>
+      <span className="font-medium">{selectedStatuses.map(value => `“${statusLabel(value)}”`).join(' + ')}</span>
       <button type="button" onClick={() => setSelectedStatuses([])} className="ml-auto min-h-9 rounded-md px-3 font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx('Clear result')}</button>
     </div>}
     {correctionRequestsPage && showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="space-y-3">
@@ -1210,30 +1214,32 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
           <span className="sr-only" role="status">{selectedPendingCorrectionIds.length} {tx('selected')}</span>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <label className="sr-only" htmlFor="attendance-correction-search">{tx('Search attendance requests')}</label>
-          <input id="attendance-correction-search" type="search" value={correctionSearch} onChange={event => setCorrectionSearch(event.target.value)}
-            placeholder={tx('Search....')} className="min-h-11 w-[min(100%,334px)] rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm placeholder:text-[#86929E]" />
-          <button type="button" aria-expanded={correctionFiltersOpen} aria-controls="attendance-correction-filters" onClick={() => setCorrectionFiltersOpen(value => !value)} aria-label={tx('Filters')}
-            className="inline-flex min-h-11 w-12 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50">
-            <img src={attendanceFilterIcon} alt="" /><span className="sr-only">{tx('Filters')}</span>
-          </button>
+          {!['approved', 'rejected'].includes(correctionStatusFilter) && selectedPendingCorrectionIds.length === 0 && <>
+            <label className="sr-only" htmlFor="attendance-correction-search">{tx('Search attendance requests')}</label>
+            <input id="attendance-correction-search" type="search" value={correctionSearch} onChange={event => setCorrectionSearch(event.target.value)}
+              placeholder={tx('Search....')} className="min-h-11 w-[min(100%,334px)] rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm placeholder:text-[#86929E]" />
+            <button type="button" aria-expanded={correctionFiltersOpen} aria-controls="attendance-correction-filters" onClick={() => setCorrectionFiltersOpen(value => !value)} aria-label={tx('Filters')}
+              className="inline-flex min-h-11 w-12 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50">
+              <img src={attendanceFilterIcon} alt="" /><span className="sr-only">{tx('Filters')}</span>
+            </button>
+          </>}
           {canManage && selectedPendingCorrectionIds.length > 0 && <>
             <button type="button" disabled title={tx('Bulk attendance decisions are unavailable until the approval service supports them.')}
               aria-label={tx('Approve selected attendance corrections (unavailable)')}
               className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70">
-              <CheckCircle2 className="h-6 w-6" />
+              <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#00874D] text-white"><Check className="h-4 w-4" strokeWidth={3} /></span>
             </button>
             <button type="button" disabled title={tx('Bulk attendance decisions are unavailable until the approval service supports them.')}
               aria-label={tx('Reject selected attendance corrections (unavailable)')}
               className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:cursor-not-allowed disabled:opacity-70">
-              <XCircle className="h-6 w-6" />
+              <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#FF0000] text-white"><X className="h-4 w-4" strokeWidth={3} /></span>
             </button>
           </>}
         </div>
       </div>
-      <div id="attendance-correction-filters" hidden={!correctionFiltersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+      <div id="attendance-correction-filters" hidden={!correctionFiltersOpen || ['approved', 'rejected'].includes(correctionStatusFilter)} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
         {canManage && <div><label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="attendance-correction-status">{tx('Filter by status')}</label>
-          <select id="attendance-correction-status" value={correctionStatusFilter} onChange={event => { setCorrectionStatusFilter(event.target.value); setSelectedCorrectionIds([]); }}
+          <select id="attendance-correction-status" value={correctionStatusFilter} onChange={event => { setCorrectionStatusFilter(event.target.value); setSelectedCorrectionIds([]); setActionMessage(''); }}
             className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm">
             <option value="all">{tx('All statuses')}</option>
             {correctionStatusOptions.map(value => <option key={value} value={value.toLowerCase()}>{statusLabel(value)}</option>)}
@@ -1243,10 +1249,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
         : error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-rose-50 p-4 text-sm text-rose-800"><p>{tx('Attendance correction requests are unavailable while attendance data is in error.')}</p><button type="button" onClick={() => void load()} className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium text-rose-800">{tx('Retry')}</button></div>
           : !currentCorrections.length ? <p className="rounded-lg bg-[#F8FAFA] p-4 text-sm text-slate-600">{tx('No attendance correction requests were returned for this date range.')}</p>
             : !filteredCorrections.length ? <p className="rounded-lg bg-[#F8FAFA] p-4 text-sm text-slate-600">{tx('No attendance correction requests match this status.')}</p>
-              : <div className="overflow-x-auto" role="region" aria-label={tx('Attendance correction request results')} tabIndex={0}>
+              : <div className="w-full min-w-0 max-w-full overflow-x-auto" role="region" aria-label={tx('Attendance correction request results')} tabIndex={0}>
           <table className="w-full min-w-[1386px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm">
-            <thead className="text-[14px] text-[#9E9E9E]"><tr>
-              {['Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Action'].map(label =>
+          <thead className="text-[14px] text-[#9E9E9E]"><tr>
+              {['Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', ['approved', 'rejected'].includes(correctionStatusFilter) ? 'Status' : 'Action'].map(label =>
                 <th key={label} scope="col" className="h-14 bg-white px-4 font-normal first:rounded-l-lg last:rounded-r-lg">{tx(label)}</th>)}
             </tr></thead>
             <tbody>{filteredCorrections.map((item, index) => {
@@ -1281,12 +1287,12 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
                     <button type="button" disabled={Boolean(resolvingCorrectionId)} aria-label={tx('Approve')} title={tx('Approve')}
                       onClick={() => void resolveCorrection(String(item.id), 'approved')}
                       className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:opacity-50">
-                      <CheckCircle2 className="h-6 w-6" />
+                      <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#00874D] text-white"><Check className="h-4 w-4" strokeWidth={3} /></span>
                     </button>
                     <button type="button" disabled={Boolean(resolvingCorrectionId)} aria-label={tx('Reject')} title={tx('Reject')}
                       onClick={event => { rejectionTriggerRef.current = event.currentTarget; setCorrectionResolutionNote(''); setError(''); setActionMessage(''); setRejectingCorrection(item); }}
                       className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:opacity-50">
-                      <XCircle className="h-6 w-6" />
+                      <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#FF0000] text-white"><X className="h-4 w-4" strokeWidth={3} /></span>
                     </button>
                   </div> : <span className={`font-semibold capitalize ${status === 'approved' ? 'text-emerald-700' : status === 'rejected' ? 'text-rose-600' : 'text-slate-500'}`}>{statusLabel(item.status)}</span>}
                 </td>
@@ -1323,7 +1329,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">{tx('Loading attendance data…')}</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? tx('No attendance report rows match the selected team.') : tx('No attendance records were returned for this date range.')}</p> : <div role="region" aria-label={tx('Scrollable attendance report table')} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
           <table aria-label={aggregateOnly ? tx('Attendance summary by employee') : tx('Attendance information')} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1386px] border-spacing-x-0 border-spacing-y-[6px]'}`}>
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-14 bg-white px-4 font-normal">
+            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', selectedStatuses.length > 0 ? 'Date' : 'From date', 'Work Location', 'In Time', 'Out Time', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-14 bg-white px-4 font-normal">
               {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">
                 <span>{tx(label)}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
@@ -1963,7 +1969,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 
   const preserveOverviewSections = leaveView === 'requests' && (typeof window === 'undefined' || window.location.hash !== '#leave-requests');
 
-  return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
+  return <section aria-labelledby="leave-workspace-heading" style={{ maxWidth: `min(${leaveView === 'requests' && !preserveOverviewSections ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-h-12 items-center gap-3">
         {leaveView === 'requests' && ['approved', 'rejected'].includes(statusFilter)
@@ -1978,26 +1984,28 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </>}
       </div>
       <div className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
-        {leaveView === 'requests' && <form id="leave-request-controls" aria-label="Leave request controls" onSubmit={applyRequestDateRange} className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-none">
+        {leaveView === 'requests' && !['approved', 'rejected'].includes(statusFilter) && <form id="leave-request-controls" aria-label="Leave request controls" onSubmit={applyRequestDateRange} className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-none">
+          {selectedPendingRequestIds.length === 0 && <>
           <div className="relative min-w-[220px] flex-1 sm:flex-none sm:w-[334px]"><label htmlFor="leave-request-search" className="sr-only">{tx('Search requests')}</label>
             <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
               placeholder={tx('Search....')} className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm placeholder:text-[#86929E]" />
           </div>
-          <button type="button" aria-expanded={requestFiltersOpen} aria-controls="leave-request-filters" onClick={() => setRequestFiltersOpen(value => !value)} aria-label={tx('Filters')}
+          <button type="button" aria-expanded={requestFiltersOpen || preserveOverviewSections} aria-controls="leave-request-filters" onClick={() => setRequestFiltersOpen(value => !value)} aria-label={tx('Filters')}
             className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white hover:bg-slate-50">
             <img src={attendanceFilterIcon} alt="" /><span className="sr-only">{tx('Filters')}</span>
           </button>
+          </>}
           {canManage && selectedPendingRequestIds.length > 0 && <>
             <span className="sr-only" role="status">{selectedPendingRequestIds.length} {tx('selected')}</span>
             <button type="button" disabled title={tx('Bulk leave decisions are unavailable until the approval service supports them.')}
               aria-label={tx('Approve selected leave requests (unavailable)')}
               className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70">
-              <CheckCircle2 className="h-6 w-6" />
+              <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#00874D] text-white"><Check className="h-4 w-4" strokeWidth={3} /></span>
             </button>
             <button type="button" disabled title={tx('Bulk leave decisions are unavailable until the approval service supports them.')}
               aria-label={tx('Reject selected leave requests (unavailable)')}
               className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:cursor-not-allowed disabled:opacity-70">
-              <XCircle className="h-6 w-6" />
+              <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#FF0000] text-white"><X className="h-4 w-4" strokeWidth={3} /></span>
             </button>
           </>}
         </form>}
@@ -2006,7 +2014,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </button>
       </div>
     </div>
-    {leaveView === 'requests' && <div id="leave-request-filters" hidden={!requestFiltersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+    {leaveView === 'requests' && <div id="leave-request-filters" hidden={(!requestFiltersOpen && !preserveOverviewSections) || ['approved', 'rejected'].includes(statusFilter)} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
         <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </div>
@@ -2014,7 +2022,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         <input id="leave-request-to" type="date" value={requestToDate} onChange={event => setRequestToDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
       </div>
       <div><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Filter by status')}</label>
-        <select id="leave-request-status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setSelectedRequestIds([]); }}
+        <select id="leave-request-status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setSelectedRequestIds([]); setActionMessage(''); }}
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
           <option value="all">{tx('All statuses')}</option>
           {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{requestStatusLabel(status)}</option>)}
@@ -2032,10 +2040,10 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized leave records…')}</p> : visibleData && <>
       {leaveView === 'requests' && <p className="sr-only" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>}
       {leaveView === 'requests' && (!visibleData.requests.length ? <p className="rounded-lg bg-[#F8FAFA] p-4 text-sm text-slate-600">{tx('No leave requests were returned for this tenant.')}</p> : !filteredRequests.length
-          ? <p className="p-5 text-sm text-slate-600">{tx('No requests match these filters.')}</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
-          <table className="w-full min-w-[1386px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label={tx('Leave requests')}>
+          ? <p className="p-5 text-sm text-slate-600">{tx('No requests match these filters.')}</p> : <div className="w-full min-w-0 max-w-full overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
+          <table className="w-full min-w-[1376px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label={tx('Leave requests')}>
             <thead className="text-[14px] text-[#9E9E9E]"><tr>
-              {['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', 'Action']
+              {['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', ['approved', 'rejected'].includes(statusFilter) ? 'Status' : 'Action']
                 .map(label => <th key={label} scope="col" className="h-14 bg-white px-4 font-normal first:rounded-l-lg last:rounded-r-lg">{tx(label)}</th>)}
             </tr></thead>
             <tbody>{filteredRequests.map((row, index) => {
@@ -2079,12 +2087,12 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
                     <button type="button" disabled={Boolean(resolvingRequestId)} aria-label={tx('Approve')} title={tx('Approve')}
                       onClick={() => void resolveRequest(String(row.id), 'approved')}
                       className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:opacity-50">
-                      <CheckCircle2 className="h-6 w-6" />
+                      <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#00874D] text-white"><Check className="h-4 w-4" strokeWidth={3} /></span>
                     </button>
                     <button type="button" disabled={Boolean(resolvingRequestId)} aria-label={tx('Reject')} title={tx('Reject')}
                       onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}
                       className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:opacity-50">
-                      <XCircle className="h-6 w-6" />
+                      <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#FF0000] text-white"><X className="h-4 w-4" strokeWidth={3} /></span>
                     </button>
                   </div> : <span className={`font-semibold capitalize ${status === 'approved' ? 'text-emerald-700' : status === 'rejected' ? 'text-rose-600' : 'text-slate-500'}`}>{requestStatusLabel(row.status)}</span>}
                 </td>
