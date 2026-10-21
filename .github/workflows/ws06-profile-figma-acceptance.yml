@@ -19,6 +19,11 @@ jobs:
         run: npm install --include=optional --no-audit --no-fund
       - name: Restore missing optional Linux TypeScript executable from Mac-authored lockfile
         run: npm install --no-save --no-package-lock --include=optional --no-audit --no-fund @typescript/typescript-linux-x64@7.0.2
+      - name: Restore sibling Candidate source for cross-repo contract tests
+        run: |
+          git clone --quiet --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git ../HRIS-Candidate-v2
+          test -f ../HRIS-Candidate-v2/src/pages/TasksPage.tsx
+          test -f ../HRIS-Candidate-v2/src/lib/api.ts
       - name: Type, contract and build verification
         run: npm run check
       - name: Assert secure Employee-only UI route and existing RPC contract
