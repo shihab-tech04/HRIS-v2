@@ -1,0 +1,46 @@
+name: HRIS isolated off-GitHub recovery backup and restore verification
+on:
+  push:
+    branches: ['work/hris-offgithub-recovery-backup-20261021']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  git-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Capture every current remote branch and verify restorable Git history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          mkdir -p backup-output
+          git for-each-ref --sort=refname --format='%(refname) %(objectname)' refs/remotes/origin > backup-output/REFS.txt
+          test -s backup-output/REFS.txt
+          git bundle create backup-output/HRIS-v2-complete-git-history.bundle --all
+          git bundle verify backup-output/HRIS-v2-complete-git-history.bundle
+          RESTORE="$(mktemp -d)/hris-restored.git"
+          git init --bare -q "$RESTORE"
+          git --git-dir="$RESTORE" fetch -q "$PWD/backup-output/HRIS-v2-complete-git-history.bundle" '+refs/remotes/origin/*:refs/remotes/origin/*'
+          for branch in main work/hris-figma-ui-live-preview-20261021 work/ws08-management-phase05-20261020 work/ws07-hr-org-phase05-20261020; do
+            expected="$(git rev-parse "refs/remotes/origin/$branch")"
+            actual="$(git --git-dir="$RESTORE" rev-parse "refs/remotes/origin/$branch")"
+            test "$expected" = "$actual" || { echo "RESTORE FAILED for $branch" >&2; exit 1; }
+            echo "RESTORE PASS $branch $actual"
+          done
+          git archive --format=tar refs/remotes/origin/work/hris-figma-ui-live-preview-20261021 | gzip -9 > backup-output/HRIS-v2-figma-source.tar.gz
+          printf 'Source: shihab-tech04/HRIS-v2\nSnapshot: all remote branches and tags\nSource tar: work/hris-figma-ui-live-preview-20261021\n' > backup-output/README.txt
+          (cd backup-output && sha256sum *.bundle *.tar.gz > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+      - name: Save verified archive for off-GitHub transfer
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-20261021-complete-git-history-offgithub-transfer
+          path: backup-output/
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
