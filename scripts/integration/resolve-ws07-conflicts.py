@@ -33,7 +33,15 @@ ws07 = git_source(WS07, UI)
 merged = Path(UI).read_text()
 imports = re.search(r"<<<<<<< HEAD\n(  Activity,[^\n]+)\n=======\n(  Activity,[^\n]+)\n>>>>>>> [^\n]+\n", merged)
 assert imports is not None, "Icon import conflict shape changed"
-new_imports = "  Activity, ArrowLeft, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, Check, CheckCircle2, FileText, Info, Megaphone,\n"
+# Union the pinned owner imports rather than dropping new approved WS08 icon usage.
+icons_pattern = re.compile(r"import \\{([^}]+)\\} from 'lucide-react';", re.S)
+ws08_icons = icons_pattern.search(ws08)
+ws07_icons = icons_pattern.search(ws07)
+assert ws08_icons and ws07_icons, "Upstream lucide import shape changed"
+icons = sorted(set(piece.strip() for body in (ws08_icons.group(1), ws07_icons.group(1))
+                   for piece in body.split(",") if piece.strip()))
+assert {"CalendarCheck", "ArrowLeft", "ArrowUpRight", "Info"}.issubset(icons)
+new_imports = "  " + ", ".join(icons) + ",\\n"
 merged = merged[:imports.start()] + new_imports + merged[imports.end():]
 
 attendance_manager = component(ws08, "AttendanceReport", "ShiftRoster")
