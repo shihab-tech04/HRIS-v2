@@ -37,9 +37,9 @@ jobs:
           if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 9d7cf862e060babc259d94bbbbf5daa13536b015 > integration-evidence/ws07-merge.log 2>&1; then
             git diff --name-only --diff-filter=U > integration-evidence/ws07-conflicts.txt
             git diff > integration-evidence/ws07-conflict-diff.txt || true
-            cp src/live/LiveHrisWorkspace.tsx integration-evidence/LiveHrisWorkspace.unmerged.tsx
-            cp tests/browser/attendance-information.spec.ts integration-evidence/attendance-information.unmerged.spec.ts
-            cp tests/contracts/attendance-report.test.mjs integration-evidence/attendance-report.unmerged.test.mjs
+            cp src/live/LiveHrisWorkspace.tsx integration-evidence/LiveHrisWorkspace.unmerged.txt
+            cp tests/browser/attendance-information.spec.ts integration-evidence/attendance-information.unmerged.txt
+            cp tests/contracts/attendance-report.test.mjs integration-evidence/attendance-report.unmerged.txt
             cat integration-evidence/ws07-conflicts.txt
             python3 scripts/integration/resolve-ws07-conflicts.py
             git add src/live/LiveHrisWorkspace.tsx tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs
