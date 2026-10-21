@@ -206,7 +206,10 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
     expect(Math.abs(geometry.toolbar.height - 48), JSON.stringify(geometry)).toBeLessThan(0.5);
     expect(Math.abs(geometry.gapAfterToolbar - 8), JSON.stringify(geometry)).toBeLessThan(0.5);
     expect(Math.abs(geometry.regionTopFromToolbarTop - 56), JSON.stringify(geometry)).toBeLessThan(0.5);
-    expect(await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox()).toMatchObject({ height: 59 });
+    const toolbarBounds = await toolbar.boundingBox();
+    const visibleHeaderBounds = await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox();
+    expect(Math.abs((visibleHeaderBounds?.y ?? 0) - (toolbarBounds?.y ?? 0) - 56), JSON.stringify({ toolbarBounds, visibleHeaderBounds })).toBeLessThan(0.5);
+    expect(visibleHeaderBounds).toMatchObject({ height: 59 });
     expect(await row.boundingBox()).toMatchObject({ height: 80 });
   }
 
@@ -308,6 +311,18 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   expect(Math.abs((downloadBounds?.x ?? 0) - ((searchBounds?.x ?? 0) + (searchBounds?.width ?? 0)) - 9)).toBeLessThan(0.5);
   expect(Math.abs((filterBounds?.x ?? 0) - ((downloadBounds?.x ?? 0) + (downloadBounds?.width ?? 0)) - 9)).toBeLessThan(0.5);
   expect(Math.abs((tableFrameBounds?.y ?? 0) - ((await toolbar.boundingBox())?.y ?? 0) - 48 - 18)).toBeLessThan(0.5);
+
+  const aggregateRows = report.locator('tbody > tr:not([aria-hidden="true"])');
+  for (const viewport of [{ width: 1920, height: 1080 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    const headerBounds = await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox();
+    const firstRowBounds = await aggregateRows.nth(0).boundingBox();
+    const secondRowBounds = await aggregateRows.nth(1).boundingBox();
+    expect(Math.abs((firstRowBounds?.y ?? 0) - ((headerBounds?.y ?? 0) + (headerBounds?.height ?? 0)) - 16),
+      JSON.stringify({ viewport, headerBounds, firstRowBounds })).toBeLessThan(0.5);
+    expect(Math.abs((secondRowBounds?.y ?? 0) - ((firstRowBounds?.y ?? 0) + (firstRowBounds?.height ?? 0)) - 6),
+      JSON.stringify({ viewport, firstRowBounds, secondRowBounds })).toBeLessThan(0.5);
+  }
 
   const evidence = path.resolve(process.cwd(), 'docs/evidence/ws08');
   await mkdir(evidence, { recursive: true });

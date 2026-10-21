@@ -44,7 +44,7 @@ import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
-  Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
+  Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Info, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -282,6 +282,15 @@ function displayAttendanceDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return display(value);
   const [, year, month, day] = value.match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
   return `${day}-${month}-${year}`;
+}
+
+function displayDashboardDate(value: unknown, locale: Locale): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+  const date = new Date(`${value}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return '';
+  return new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-US', {
+    month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  }).format(date);
 }
 
 function displayAttendanceTime(value: unknown): string {
@@ -623,6 +632,13 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   }, [summary, summaryTenantId, tenantId]);
 
   const currentSummary = summaryTenantId === tenantId ? summary : null;
+  const dashboardDate = displayDashboardDate(currentSummary?.dashboard_date, locale);
+  const lastUpdatedTime = refreshedAt?.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US', {
+    month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  const lastUpdatedLabel = lastUpdatedTime
+    ? tx('Last Updated at {time}').replace('{time}', lastUpdatedTime)
+    : '';
   const metrics: Array<{ label: string; value: unknown; icon?: ReactNode; page?: PageId; emphasized?: boolean }> = [
     { label: 'Team Members', value: currentSummary?.team_members ?? currentSummary?.employees, emphasized: true },
     { label: 'Present', value: currentSummary?.present_today, page: 'attendance' as PageId, emphasized: true },
@@ -766,7 +782,29 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     ], rows);
   }
 
-  return <section aria-labelledby="live-dashboard-heading" className="mx-auto w-full max-w-[1396px] space-y-4">
+  return <>
+    <section aria-label={tx('Dashboard')} className="-mx-4 -mt-5 border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
+      <div className="flex min-h-[85px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-6">
+        <div>
+          <h1 className="text-2xl font-normal text-[#49454F]">{tx('Dashboard')}</h1>
+          <p className="mt-0.5 text-sm text-[#999]">{dashboardDate || '—'}</p>
+        </div>
+        {lastUpdatedLabel && <div role="status" aria-label={tx('Dashboard last update')}
+          className="inline-flex min-h-[54px] items-center gap-3 rounded-lg bg-[#E3F2FD] px-6 text-base text-[#08558B]">
+          <Info className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <span>{lastUpdatedLabel}</span>
+        </div>}
+      </div>
+    </section>
+    <nav aria-label={tx('Dashboard views')} className="-mx-4 flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
+      <button type="button" disabled className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F]">
+        {tx('Personal Dashboard')}
+      </button>
+      <button type="button" aria-current="page" className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-[#08558B] px-6 text-base text-[#49454F]">
+        {tx('Managerial Dashboard')}
+      </button>
+    </nav>
+    <section aria-labelledby="live-dashboard-heading" className="mx-auto flex w-full max-w-[1396px] flex-col gap-4 pt-6">
     <header id="manager-dashboard-header" className="flex min-h-[67px] flex-col gap-3 bg-[#EFF7F8] py-[9px] sm:flex-row sm:items-center sm:justify-between">
       <h2 id="live-dashboard-heading" className="text-lg font-bold text-[#353535]">{tx('Managerial Dashboard')}</h2>
       <div role="group" aria-label={tx('Managerial dashboard actions')} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[596px] xl:grid-cols-[334px_184px_64px] xl:gap-[7px]">
@@ -807,7 +845,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
             onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
         </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No dashboard metrics match')} “{search}”.</p>}
       </section>
-      <section className="relative min-h-[360px] overflow-hidden rounded-[15px] bg-white xl:min-h-[553px]" aria-labelledby="attendance-trend-heading">
+      <section className="relative mt-2 min-h-[360px] overflow-hidden rounded-[15px] bg-white xl:min-h-[553px]" aria-labelledby="attendance-trend-heading">
         <div className="mx-5 mt-6 flex h-10 items-start justify-between border-b border-[#E5E5EF] xl:mx-[50px] xl:mt-[36px]">
           <h3 id="attendance-trend-heading" className="text-base font-normal text-[#252C58]">{tx('Daily Attendance Chart')}</h3>
           <button type="button" disabled={loading} onClick={() => void load()} aria-label={tx('Refresh')}
@@ -943,7 +981,8 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.
       </p>
     </>}
-  </section>;
+    </section>
+  </>;
 }
 
 function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canManage, locale, view }: { tenantId: string; tenantTimeZone: string | null; canView: boolean; canReport: boolean; canManage: boolean; locale: Locale; view: 'information' | 'requests' }) {
@@ -1273,7 +1312,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
       ? managerReportView ? 'attendance-report__detail-table-offset' : 'lg:-mt-2'
       : ''}`}>
       {loading || !currentTenantReady ? <p role="status" className="rounded-xl bg-white p-5 text-sm">Loading attendance data…</p> : error ? null : !rows.length ? <p className="rounded-xl bg-white p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={attendanceTableLabel} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'}`}>
+          <table aria-label={attendanceTableLabel} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'} ${managerDetail ? 'attendance-report__detail-table' : ''}`}>
           {!aggregateOnly && <colgroup><col style={{ width: '258px' }} /><col style={{ width: '113px' }} /><col style={{ width: '155px' }} /><col style={{ width: '188px' }} /><col style={{ width: '143px' }} /><col style={{ width: '166px' }} /><col style={{ width: '125px' }} /><col style={{ width: '123px' }} /><col style={{ width: '112px' }} /></colgroup>}
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
             {attendanceHeaders.map(header => <th key={header} scope="col" aria-label={aggregateOnly && header === 'Team Name' ? projectText(locale, header) : undefined} aria-sort={header === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
@@ -1289,7 +1328,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
               </div> : projectText(locale, header)}
             </th>)}
           </tr></thead>
-          <tbody>{rows.map((row, index) => {
+          <tbody>{aggregateOnly && <tr aria-hidden="true" className="h-1"><td colSpan={attendanceHeaders.length} className="h-1 border-0 p-0 text-[0px] leading-none" /></tr>}{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
             const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
@@ -4013,7 +4052,7 @@ export function LiveHrisWorkspace({
                 )}
               </nav>
             </section>
-          ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
+          ) : current && page !== 'dashboard' && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} tenantTimeZone={tenantTimeZone} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView}

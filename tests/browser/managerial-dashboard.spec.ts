@@ -122,6 +122,7 @@ async function signInSyntheticManager(
         return { date, records: index + 1 };
       });
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        dashboard_date: '2026-10-21',
         team_members: tenantB ? 11 : 8, employees: tenantB ? 11 : 8, attendance_today: tenantB ? 7 : 6,
         present_today: tenantB ? 4 : 3, absent_today: 1, wfo_today: 2, wfh_today: 1,
         client_meeting_today: 1, on_leave_today: 1, late_today: 0,
@@ -212,6 +213,12 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   await page.setViewportSize({ width: 1920, height: 1080 });
   const reportState = await signInSyntheticManager(page);
 
+  await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+  await expect(page.getByText('October 21, 2026', { exact: true })).toBeVisible();
+  const dashboardViews = page.getByRole('navigation', { name: 'Dashboard views' });
+  await expect(dashboardViews.getByRole('button', { name: 'Personal Dashboard', exact: true })).toBeDisabled();
+  await expect(dashboardViews.getByRole('button', { name: 'Managerial Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('status', { name: 'Dashboard last update' })).toContainText(/^Last Updated at /);
   await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Present 3' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Absent 1' })).toBeVisible();
@@ -373,6 +380,11 @@ test('Team Report retries, opens tenant-scoped details, and stays localized and 
   await expect(totalsRegion).toBeFocused();
 
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড', exact: true })).toBeVisible();
+  const bengaliDashboardViews = page.getByRole('navigation', { name: 'ড্যাশবোর্ডের দৃশ্য' });
+  await expect(bengaliDashboardViews.getByRole('button', { name: 'ব্যক্তিগত ড্যাশবোর্ড', exact: true })).toBeDisabled();
+  await expect(bengaliDashboardViews.getByRole('button', { name: 'ব্যবস্থাপক ড্যাশবোর্ড', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('status', { name: 'ড্যাশবোর্ডের সর্বশেষ হালনাগাদ' })).toContainText(/^সর্বশেষ হালনাগাদ:/);
   await expect(page.getByRole('heading', { name: 'ব্যবস্থাপক ড্যাশবোর্ড' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'আজকের উপস্থিতির সারসংক্ষেপ' })).toBeVisible();
   await expect(page.getByText('দলের সদস্য', { exact: true })).toBeVisible();

@@ -4,6 +4,9 @@
   font-family: "Inter", var(--font-sans), sans-serif;
 }
 
-/* At desktop widths, the 8px layout gap naturally places the table
-   exactly 56px below the 48px controls as in Figma 17:28694.
-   Do not counteract that layout gap with a transform. */
+/* Keep the manager detail wrapper at toolbar +56px while moving the
+   separated table's 6px outer spacing above the wrapper edge, so the
+   visible header surface starts at the approved Figma coordinate. */
+.attendance-report .attendance-report__detail-table {
+  margin-top: -6px;
+}
