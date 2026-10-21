@@ -8,6 +8,7 @@ const localRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', i
 
 test('disposable Auth/Postgres/browser acceptance uses trusted standard runners and no deploy or production credentials', () => {
   assert.match(workflow, /branches: \[development\/hris-checkpoints, release\/hris-stable-20261017, work\/ws02-production-view-security-20261021\]/);
+  assert.match(workflow, /push:[\s\S]*?paths-ignore:\s*\n\s*- 'docs\/\*\*'/);
   assert.match(workflow, /candidate_ref:[\s\S]*?default: development\/hris-checkpoints/);
   assert.match(workflow, /github\.event_name == 'push' && github\.ref == 'refs\/heads\/release\/hris-stable-20261017'/);
   assert.match(workflow, /HRIS_CANDIDATE_REF: \$\{\{ github\.ref == 'refs\/heads\/release\/hris-stable-20261017' && 'release\/candidate-stable-20261017' \|\| inputs\.candidate_ref \|\| 'development\/hris-checkpoints' \}\}/);

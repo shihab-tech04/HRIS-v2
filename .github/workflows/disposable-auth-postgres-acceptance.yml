@@ -2,6 +2,8 @@ name: Disposable Auth, Postgres and browser acceptance (no deployment)
 on:
   push:
     branches: [development/hris-checkpoints, release/hris-stable-20261017, work/ws02-production-view-security-20261021]
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
     inputs:
       candidate_ref:
