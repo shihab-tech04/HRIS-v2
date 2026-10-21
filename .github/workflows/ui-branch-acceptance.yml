@@ -43,5 +43,6 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            docs/evidence/attendance-*.png
           if-no-files-found: ignore
           retention-days: 7
