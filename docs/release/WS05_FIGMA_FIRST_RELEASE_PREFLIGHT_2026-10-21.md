@@ -75,3 +75,7 @@ The sign-in/recovery screen smoke passed in an isolated browser. It does not pro
 5. Establish an authorized protected integration/rollback path and obtain required reviews on the release and source PRs.
 
 No merge or deployment is authorized by this preflight.
+
+## New WS02 source since this preflight was prepared
+
+Main PR #50, head 89dccad45c35eaee1f9a84f40ce3ec4acc124e80, proposes a tenant-scoped employee-address read policy and restrictive parent-employee guard. Its disposable PostgreSQL 17 check passed on code commit 15b2284312d99c6e524cd36df3d43839b250874b in workflow_dispatch run 39554393758. The evidence-only follow-up is on the latest PR head. PR #50 is still a draft, based on development, and has no review submissions or Main integration. This source check does not establish the policy in hosted production or cross-tenant session acceptance; those remain release blockers.
