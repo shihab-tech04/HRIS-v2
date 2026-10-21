@@ -145,7 +145,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
   await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
-  expect(await attendanceTable.getByRole('columnheader').allTextContents()).toEqual([
+  expect((await attendanceTable.getByRole('columnheader').allTextContents()).map(text => text.trim())).toEqual([
     'Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status',
   ]);
   const attendanceTeamHeader = attendanceTable.getByRole('columnheader', { name: /Team Name/ });
