@@ -1,4 +1,5 @@
 name: HRIS isolated off-GitHub recovery backup and restore verification
+# Refresh snapshot after WS07 #43 exact-head PASS cbcbe6c9 on 2026-10-21.
 on:
   push:
     branches: ['work/hris-offgithub-recovery-backup-20261021']
