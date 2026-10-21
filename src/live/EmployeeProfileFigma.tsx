@@ -125,7 +125,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     </div>;
   }
 
-  return <main data-employee-figma-profile className="min-w-0 space-y-5" aria-labelledby="employee-figma-profile-heading">
+  return <section data-employee-figma-profile className="min-w-0 space-y-5" aria-labelledby="employee-figma-profile-heading">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 id="employee-figma-profile-heading" className="text-2xl font-medium text-[#49454F]">{words.heading}</h2>
@@ -203,5 +203,5 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         </section>}
       </div>)}
     </>}
-  </main>;
+  </section>;
 }
