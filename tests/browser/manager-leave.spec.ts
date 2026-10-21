@@ -129,22 +129,34 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
-  await page.getByRole('button', { name: 'Leave', exact: true }).click();
+  await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
+  await page.getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
   const leaveTable = page.getByRole('table', { name: 'Leave requests' });
   await expect(leaveTable).toBeVisible();
-  await leaveTable.scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   const shellEvidenceDir = path.resolve(process.cwd(), 'docs/evidence/ws01-shell');
   await mkdir(shellEvidenceDir, { recursive: true });
   for (const width of [1920, 1280, 768, 375]) {
     await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await page.evaluate(() => window.scrollTo(0, 0));
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
     await page.screenshot({ path: path.join(shellEvidenceDir, `leave-en-${width}.png`), fullPage: false });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'ছুটির আবেদনসমূহ' })).toBeVisible();
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.join(shellEvidenceDir, `leave-bn-${width}.png`), fullPage: false });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
 
   const calendarMonth = page.getByLabel('Month', { exact: true });
   await calendarMonth.fill('2026-11');
@@ -172,6 +184,14 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
   await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.join(shellEvidenceDir, `leave-bn-${width}.png`), fullPage: false });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   failAbsenceUntilRetry = true;
   await page.locator('#leave-absence-month').fill('2026-12');
   const bengaliCalendarError = page.getByRole('alert').filter({ hasText: 'অনুপস্থিতির ক্যালেন্ডার লোড করা যায়নি।' });

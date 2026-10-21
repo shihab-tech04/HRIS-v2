@@ -60,27 +60,28 @@ test('Figma Team Name sort order is accessible and shared by table and CSV', () 
   assert.match(teamSortAsset, /<svg[^>]*width="14" height="11\.5957" viewBox="0 0 14 11\.5957"/);
   assert.doesNotMatch(workspace, /figma\.com\/api\/mcp\/asset/);
   assert.match(workspace, /setTeamSortDirection\(value => value === 'asc' \? 'desc' : 'asc'\)/);
-  assert.match(workspace, /aria-sort=\{aggregateOnly && label === 'Team Name'/);
+  assert.match(workspace, /aria-sort=\{header === 'Team Name'/);
   assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);
   assert.match(browser, /Sort by Team Name ascending/);
   assert.match(browser, /Sort by Team Name descending/);
 });
 
 test('Figma report toolbar uses exact local icons, order, and component dimensions', () => {
-  const start = workspace.indexOf('<form aria-label="Attendance report controls"');
+  const start = workspace.indexOf("<form aria-label={projectText(locale, 'Attendance report controls')}");
   const end = workspace.indexOf('</form>', start);
   assert.ok(start >= 0 && end > start);
   const toolbar = workspace.slice(start, end);
-  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf('aria-label="Filters"'));
+  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf("aria-label={projectText(locale, 'Filters')}"));
   assert.match(toolbar, /lg:w-\[334px\]/);
-  assert.match(toolbar, /lg:w-\[184px\]/);
-  assert.match(toolbar, /w-16/);
+  assert.match(toolbar, /aggregateOnly \? 'lg:w-\[184px\]' : 'lg:w-\[170px\]'/);
+  assert.match(toolbar, /aggregateOnly \? 'w-16' : 'w-\[62px\]'/);
   assert.match(toolbar, /attendanceSearchIcon/);
   assert.match(toolbar, /attendanceDownloadIcon/);
   assert.match(toolbar, /attendanceFilterIcon/);
   assert.match(searchAsset, /width="12\.4444" height="12\.4444"/);
   assert.match(filterAsset, /width="18" height="18"/);
   assert.deepEqual([...downloadAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.match(browser, /expect\(controlWidths\)\.toEqual\(\[334, 170, 62\]\)/);
   assert.match(browser, /controlBounds/);
 });
 
