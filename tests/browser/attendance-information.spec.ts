@@ -357,7 +357,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(mobileAttendanceResultsBounds.left).toBeGreaterThanOrEqual(0);
   expect(mobileAttendanceResultsBounds.right).toBeLessThanOrEqual(376);
   expect(mobileAttendanceResultsBounds.scrollWidth).toBeGreaterThan(mobileAttendanceResultsBounds.clientWidth);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  const mobileAttendanceDocumentWidth = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+    htmlOverflowX: getComputedStyle(document.documentElement).overflowX,
+    bodyOverflowX: getComputedStyle(document.body).overflowX,
+  }));
+  expect(mobileAttendanceDocumentWidth.documentWidth, JSON.stringify(mobileAttendanceDocumentWidth)).toBeLessThanOrEqual(376);
   await rejectionDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(rejectionDialog).toBeHidden();
   expect(correctionDecisions).toHaveLength(1);

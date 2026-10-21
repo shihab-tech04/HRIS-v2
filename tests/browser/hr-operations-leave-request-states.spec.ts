@@ -372,7 +372,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   expect(leaveCalls.every(call => call.p_tenant_id === tenantId)).toBe(true);
   await page.evaluate(() => { window.location.hash = 'leave-calendar'; });
   await expect(page.getByRole('heading', { level: 2, name: 'Absence calendar' })).toBeVisible();
-  await expect(page.getByRole('region', { name: /Absence calendar/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: /^Absence calendar .+ 2026$/ })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Leave requests' })).toHaveCount(0);
   await page.evaluate(() => { window.location.hash = 'leave-policy'; });
   await expect(page.getByRole('heading', { level: 2, name: 'Leave policy' })).toBeVisible();
