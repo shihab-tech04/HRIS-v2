@@ -174,7 +174,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await requestTo.fill('2026-10-01');
   await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
   await expect(table.locator('tbody tr')).toHaveCount(1);
-  await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('approved');
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('Approved');
   expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-01' });
 
   await requestFrom.fill('2026-10-22');
