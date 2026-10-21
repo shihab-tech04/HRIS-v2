@@ -461,7 +461,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         {tabs.map((tab, index) => <button key={tab.id} ref={node => { tabRefs.current[index] = node; }} type="button" role="tab"
           id={`employee-figma-tab-${tab.id}`} aria-selected={panel === tab.id} aria-controls={`employee-figma-panel-${tab.id}`}
           tabIndex={panel === tab.id ? 0 : -1} onClick={() => setPanel(tab.id)} onKeyDown={event => moveTab(event, index)}
-          className={`inline-flex h-[54px] min-h-[54px] shrink-0 items-center justify-center rounded-lg px-4 py-0 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] ${panel === tab.id ? 'bg-[#085587] text-white' : 'bg-white text-[#49454F] hover:bg-[#EFF7F8]'}`}>
+          className={`inline-flex h-[54px] min-h-[54px] shrink-0 items-center justify-center rounded-lg px-4 py-0 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] ${index === 0 ? 'lg:w-[313px] lg:min-w-[313px]' : ''} ${panel === tab.id ? 'bg-[#085587] text-white' : 'bg-white text-[#49454F] hover:bg-[#EFF7F8]'}`}>
           {tab.text}
         </button>)}
       </div>
