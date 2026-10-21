@@ -26,7 +26,7 @@ def replace_exact(source: str, before: str, after: str) -> str:
 
 pending = set(subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"],
                              check=True, capture_output=True, text=True).stdout.splitlines())
-assert pending == {UI, BROWSER, CONTRACT}, f"Unexpected source conflicts: {pending}"
+assert pending == {UI, BROWSER, CONTRACT, "tests/browser/manager-leave.spec.ts"}, f"Unexpected source conflicts: {pending}"
 
 ws08 = git_source(WS08, UI)
 ws07 = git_source(WS07, UI)
@@ -158,7 +158,11 @@ hr_leave_test = hr_leave_test.replace(
 hr_leave_test_path.write_text(hr_leave_test)
 # The Manager status API returns its lower-case canonical enum; do not mutate product data.
 manager_leave_test = Path("tests/browser/manager-leave.spec.ts")
-manager_leave_src = manager_leave_test.read_text()
+manager_leave_src = git_source(WS08, "tests/browser/manager-leave.spec.ts")
+# Preserve the independently tested HR Operations manager-leave viewport suite separately.
+Path("tests/browser/ws07-manager-leave.spec.ts").write_text(
+    git_source(WS07, "tests/browser/manager-leave.spec.ts")
+)
 manager_leave_src = manager_leave_src.replace(
     ".toContainText('Approved')", ".toContainText('approved')"
 ).replace(
