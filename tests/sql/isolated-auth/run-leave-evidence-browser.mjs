@@ -826,6 +826,13 @@ try {
   await refreshedEmployee.getByRole('heading', { name: 'আমার নথি' }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText('সংশোধনের কারণ', { exact: false }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText('সংশোধন প্রয়োজন', { exact: true }).waitFor({ state: 'visible' });
+  // E03-07: the same owner-authorized private document remains downloadable in Bengali.
+  // Reuse the real Storage-backed fixture; do not mock permissions or mutate database rows.
+  const bengaliDocumentDownload = refreshedEmployee.waitForEvent('download');
+  await ownDocumentCard.getByRole('button', { name: 'ডাউনলোড', exact: true }).click();
+  await assertDownloadedEvidence(refreshedEmployee, await bengaliDocumentDownload,
+    'Synthetic Employee A document', 'synthetic employee document');
+  await refreshedEmployee.getByRole('status').filter({ hasText: 'ডাউনলোড শুরু হয়েছে' }).waitFor({ state: 'visible' });
   await assertNoHorizontalOverflow(refreshedEmployee, 'Employee documents Bengali mobile');
   await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
   const documentDownload = refreshedEmployee.waitForEvent('download');
