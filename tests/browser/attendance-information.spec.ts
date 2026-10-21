@@ -35,15 +35,21 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     full_name: 'Synthetic Late Employee', employee_number: 'ATT-002', status: 'late', work_hours: 8.3,
     team_name: 'Synthetic Design Team',
   };
-  const allAttendance = [syntheticAttendance, syntheticLateAttendance];
+  const syntheticEarlyAttendance = {
+    ...syntheticAttendance, id: 'e9999999-9999-4999-8999-999999999999', employee_id: 'eaaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    full_name: 'Synthetic Early Employee', employee_number: 'ATT-003', status: 'early', work_hours: 8.75,
+    team_name: 'Synthetic Research Team',
+  };
+  const allAttendance = [syntheticAttendance, syntheticLateAttendance, syntheticEarlyAttendance];
   const correctionRequests: Record<string, unknown>[] = [
     { id: 'e7777777-7777-4777-8777-777777777777', employee_id: syntheticAttendance.employee_id,
       employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-12',
       requested_check_in: '2026-10-12T03:15:00.000Z', requested_check_out: null, requested_work_mode: null,
-      reason: 'Synthetic missed punch approval', status: 'pending' },
+      requested_at: '2026-10-13T03:00:00.000Z', reason: 'Synthetic missed punch approval', status: 'pending' },
     { id: 'e8888888-8888-4888-8888-888888888888', employee_id: syntheticAttendance.employee_id,
       employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-11',
       requested_check_in: null, requested_check_out: '2026-10-11T11:30:00.000Z', requested_work_mode: null,
+      requested_at: '2026-10-14T03:00:00.000Z',
       reason: 'Synthetic missed punch rejection', status: 'pending' },
   ];
   const correctionDecisions: Record<string, unknown>[] = [];
@@ -136,7 +142,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
   await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
+  const bengaliAttendanceTable = page.getByRole('table', { name: 'উপস্থিতির তথ্য' });
+  await expect(bengaliAttendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
   await expect(row).toContainText('ATT-001');
@@ -147,12 +154,35 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(row).toContainText('Office');
   await expect(row).toContainText('8.56');
   await expect(page.getByText('Aggregate Report Employee')).toHaveCount(0);
-  const correctionCard = page.getByRole('heading', { name: 'Attendance correction requests' }).locator('xpath=..');
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  await page.locator('section[aria-labelledby="attendance-report-heading"]').screenshot({
+    path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-normal-table-crop-20261021.png'),
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const correctionCard = page.locator('#attendance-correction-requests');
+  await expect(correctionCard.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('columnheader', { name: 'In Time', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('columnheader', { name: 'Out Time', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('columnheader', { name: 'Applying Date', exact: true })).toBeVisible();
+  await correctionCard.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-normal-table-crop-20261021.png') });
+  const approveSelected = correctionCard.getByRole('button', { name: 'Approve selected attendance corrections (unavailable)' });
+  const rejectSelected = correctionCard.getByRole('button', { name: 'Reject selected attendance corrections (unavailable)' });
+  await expect(approveSelected).toBeDisabled();
+  await expect(rejectSelected).toBeDisabled();
+  await correctionCard.getByLabel('Select all pending attendance corrections').check();
+  await expect(correctionCard.getByText('2 selected', { exact: true })).toBeVisible();
+  await correctionCard.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-selected-table-crop-20261021.png') });
+  expect(correctionDecisions).toHaveLength(0);
   const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
   await expect(approvalRow).toContainText('09:15');
+  await expect(approvalRow).toContainText('13-10-2026');
   await approvalRow.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Attendance correction approved.', { exact: true })).toBeVisible();
-  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toContainText('approved');
+  await page.getByLabel('Filter by status', { exact: true }).selectOption('approved');
+  const approvedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
+  await expect(approvedRow).toContainText('approved');
+  await correctionCard.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-approved-table-crop-20261021.png') });
+  await page.getByLabel('Filter by status', { exact: true }).selectOption('pending');
   const rejectionRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const rejectionDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
@@ -173,16 +203,28 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
+  await page.getByLabel('Filter by status', { exact: true }).selectOption('rejected');
   const rejectedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
   await expect(rejectedRow).toContainText('rejected');
   await expect(rejectedRow).toContainText('Decision note: Please include the missing punch time.');
+  await correctionCard.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-rejected-table-crop-20261021.png') });
+  await page.getByLabel('Filter by status', { exact: true }).selectOption('approved');
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toBeVisible();
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toHaveCount(0);
+  await correctionCard.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-filtered-approved-table-crop-20261021.png') });
+  await page.getByLabel('Filter by status', { exact: true }).selectOption('rejected');
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toBeVisible();
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toHaveCount(0);
+  await correctionCard.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-filtered-rejected-table-crop-20261021.png') });
+  await page.getByLabel('Filter by status', { exact: true }).selectOption('all');
   expect(correctionDecisions).toEqual([
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
     { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },
   ]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261016.png'), fullPage: true });
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261021.png'), fullPage: true });
 
   await page.getByLabel('Search employees').fill('Synthetic');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
@@ -191,10 +233,22 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(page.getByLabel('From date')).toBeVisible();
   await page.getByLabel('From date').fill('2026-10-05');
   await expect.poll(() => attendanceCalls.some(call => call.p_start === '2026-10-05')).toBe(true);
-  await page.getByLabel('Status').selectOption('late');
+  await page.getByRole('checkbox', { name: 'Late', exact: true }).check();
   await expect.poll(() => attendanceCalls.some(call => call.p_status === 'late')).toBe(true);
   await expect(page.getByRole('row', { name: /Synthetic Late Employee/ })).toBeVisible();
-  await expect(page.getByLabel('Status').locator('option')).toHaveText(['All visible statuses', 'late', 'present']);
+  await expect(page.getByRole('row', { name: /Synthetic Early Employee/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'All statuses', exact: true }).click();
+  const beforeMultiStatusFilter = attendanceCalls.length;
+  await page.getByRole('checkbox', { name: 'Early', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Late', exact: true }).check();
+  await expect.poll(() => attendanceCalls.slice(beforeMultiStatusFilter).some(call => call.p_report === false && call.p_status === null)).toBe(true);
+  await expect(page.getByRole('status').filter({ hasText: 'Now showing result for' })).toContainText('‘Early’ + ‘Late’');
+  await expect(page.getByRole('row', { name: /Synthetic Early Employee/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Synthetic Late Employee/ })).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  await page.locator('section[aria-labelledby="attendance-report-heading"]').screenshot({
+    path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-filtered-table-crop-20261021.png'),
+  });
   const downloadWaiter = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download report' }).click();
   const download = await downloadWaiter;
@@ -210,7 +264,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
   await expect(tableRegion).toBeVisible();
   expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261021.png'), fullPage: true });
 
   reportOnly = true;
   await page.setViewportSize({ width: 1920, height: 1117 });
@@ -290,7 +344,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(reportHeaderStyle).toEqual({ fontSize: '14px', fontWeight: '400', color: 'rgb(158, 158, 158)' });
   await expect(positiveRow).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261021.png'), fullPage: true });
 
   const teamNameHeader = reportTable.getByRole('columnheader', { name: /Team Name/ });
   await expect(teamNameHeader).toHaveAttribute('aria-sort', 'none');
@@ -356,7 +410,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   expect(await page.getByRole('region', { name: 'Scrollable attendance report table' }).evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261021.png'), fullPage: true });
   await page.getByLabel('Search employees').fill('Formula');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Formula')).toBe(true);

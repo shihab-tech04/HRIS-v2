@@ -241,6 +241,16 @@ function displayTime(value: unknown): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatRequestDate(value: unknown, locale: Locale): string {
+  if (typeof value !== 'string' || !value.trim()) return display(value);
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = new Date(dateOnly ? `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}T12:00:00.000Z` : value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC',
+  }).format(date).replaceAll('/', '-');
+}
+
 function displayShortDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return display(value);
   return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -893,6 +903,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
 }
 
 function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: { tenantId: string; canView: boolean; canReport: boolean; canManage: boolean; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -907,9 +918,12 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('');
   const [appliedTeamFilter, setAppliedTeamFilter] = useState('');
   const [teamSortDirection, setTeamSortDirection] = useState<'asc' | 'desc' | null>(null);
-  const [status, setStatus] = useState('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
+  const [correctionStatusFilter, setCorrectionStatusFilter] = useState('pending');
+  const [correctionSearch, setCorrectionSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedCorrectionIds, setSelectedCorrectionIds] = useState<string[]>([]);
   const [resolvingCorrectionId, setResolvingCorrectionId] = useState('');
   const [rejectingCorrection, setRejectingCorrection] = useState<AttendanceRecord | null>(null);
   const [correctionResolutionNote, setCorrectionResolutionNote] = useState('');
@@ -938,7 +952,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       const [detailResult, reportResult] = await Promise.all([
         needsDetails
           ? supabase.rpc('hris_get_tenant_attendance_data', {
-            ...parameters, p_status: status === 'all' ? null : status, p_report: false,
+            ...parameters, p_status: selectedStatuses.length === 1 ? selectedStatuses[0] : null, p_report: false,
           })
           : Promise.resolve({ data: null, error: null }),
         canReport
@@ -959,9 +973,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       setRecords(showDetails ? detailRows : asRows(reportResult.data));
       setCorrections(asRows(detailData?.corrections));
       if (showDetails) {
-        const availableStatuses = Array.from(new Set(detailRows.map(row => String(row.status || '')).filter(Boolean))).sort();
-        setStatusOptions(status === 'all' ? availableStatuses
-          : previous => Array.from(new Set([...previous, ...availableStatuses, status])).sort());
+        const availableStatuses = Array.from(new Set(detailRows.map(row => String(row.status || '').trim()).filter(Boolean))).sort();
+        setStatusOptions(selectedStatuses.length === 1
+          ? previous => Array.from(new Set([...previous, ...availableStatuses])).sort()
+          : availableStatuses);
       } else setStatusOptions([]);
       setDataTenantId(tenantId);
     } catch (cause) {
@@ -975,10 +990,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   useEffect(() => {
     void load();
     return () => { requestSequence.current += 1; };
-  }, [tenantId, from, to, submittedSearch, status, canReport, canView, canManage]);
+  }, [tenantId, from, to, submittedSearch, selectedStatuses, canReport, canView, canManage]);
 
   useEffect(() => {
     setResolvingCorrectionId(''); setRejectingCorrection(null); setCorrectionResolutionNote(''); setActionMessage('');
+    setSelectedCorrectionIds([]); setCorrectionStatusFilter('pending'); setCorrectionSearch('');
   }, [tenantId]);
 
   useEffect(() => {
@@ -1081,9 +1097,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     return options;
   }, [aggregateOnly, currentRecords, selectedTeamFilter]);
   const filteredRows = useMemo(() => {
-    const matchingRows = !aggregateOnly || !appliedTeamFilter ? currentRecords : currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
+    const teamRows = !aggregateOnly || !appliedTeamFilter ? currentRecords : currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
       ? !String(row.team_name ?? '').trim()
       : String(row.team_name ?? '').trim() === appliedTeamFilter);
+    const matchingRows = aggregateOnly || selectedStatuses.length === 0 ? teamRows
+      : teamRows.filter(row => selectedStatuses.includes(String(row.status || '').trim()));
     if (!aggregateOnly || !teamSortDirection) return matchingRows;
     const direction = teamSortDirection === 'asc' ? 1 : -1;
     return matchingRows.map((row, index) => ({ row, index })).sort((left, right) => {
@@ -1093,135 +1111,220 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       if (leftTeam && !rightTeam) return -1;
       return leftTeam.localeCompare(rightTeam, undefined, { sensitivity: 'base' }) * direction || left.index - right.index;
     }).map(item => item.row);
-  }, [aggregateOnly, appliedTeamFilter, currentRecords, teamSortDirection]);
+  }, [aggregateOnly, appliedTeamFilter, currentRecords, selectedStatuses, teamSortDirection]);
   const rows = filteredRows;
+  const correctionStatusOptions = Array.from(new Set(currentCorrections.map(item => String(item.status || '').trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+  const filteredCorrections = currentCorrections.filter(item => {
+    const statusMatches = correctionStatusFilter === 'all'
+      || String(item.status || '').toLowerCase() === correctionStatusFilter;
+    const query = correctionSearch.trim().toLocaleLowerCase();
+    const searchMatches = !query || [item.full_name, item.employee_number, item.attendance_date, item.requested_at,
+      item.requested_check_in, item.requested_check_out, item.requested_work_mode, item.reason, item.status]
+      .some(value => String(value || '').toLocaleLowerCase().includes(query));
+    return statusMatches && searchMatches;
+  });
+  const pendingCorrections = filteredCorrections.filter(item => String(item.status || '').toLowerCase() === 'pending');
+  const selectedPendingCorrectionIds = selectedCorrectionIds.filter(id => pendingCorrections.some(item => String(item.id) === id));
+  const allPendingCorrectionsSelected = pendingCorrections.length > 0 && selectedPendingCorrectionIds.length === pendingCorrections.length;
+  const statusLabel = (value: unknown) => {
+    const label = String(value || '').trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    return label ? tx(label) : tx('Not recorded');
+  };
 
   return <section aria-labelledby="attendance-report-heading" className={`space-y-4 ${aggregateOnly ? 'mx-auto w-full max-w-[1386px]' : ''}`}>
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
-      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
-        {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
+      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx('Attendance Report')}</h2>
+        {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">{tx('Attendance for your current organization and date range')}</p>}</div>
       {aggregateOnly && <form aria-label="Attendance report controls" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
-        <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
+        <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">{tx('Search employees')}</label>
           <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2" />
-          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search...." className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-3 text-sm placeholder:text-[#86929E]" />
-          <button type="submit" className="sr-only">Search employees</button>
+          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={tx('Search....')} className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-3 text-sm placeholder:text-[#86929E]" />
+          <button type="submit" className="sr-only">{tx('Search employees')}</button>
         </div>
         <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-[14px] text-sm text-[#86929E] disabled:opacity-50 lg:w-[184px]">
-          <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> Download Report
+          <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> {tx('Download Report')}
         </button>
-        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label="Filters">
-          <img src={attendanceFilterIcon} alt="" /><span className="sr-only">Filters</span>
+        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label={tx('Filters')}>
+          <img src={attendanceFilterIcon} alt="" /><span className="sr-only">{tx('Filters')}</span>
         </button>
       </form>}
     </div>
     {!aggregateOnly && <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-      <div className="min-w-[190px] flex-1"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
+      <div className="min-w-[190px] flex-1"><label htmlFor="attendance-search" className="sr-only">{tx('Search employees')}</label>
         <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input id="attendance-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employees…" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" />
+          <input id="attendance-search" value={search} onChange={event => setSearch(event.target.value)} placeholder={tx('Search employees…')} className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" />
         </div></div>
-      <button type="submit" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white"><Search className="h-4 w-4" /> Search</button>
+      <button type="submit" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#08558B] px-4 text-sm font-medium text-white"><Search className="h-4 w-4" /> {tx('Search')}</button>
       <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">
-        <SlidersHorizontal className="h-4 w-4" /> Filters
+        <SlidersHorizontal className="h-4 w-4" /> {tx('Filters')}
       </button>
       <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
-        <Download className="h-4 w-4" /> Download report
+        <Download className="h-4 w-4" /> {tx('Download report')}
       </button>
     </form>}
     <div id="attendance-filters" hidden={!filtersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
-      <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">From date</label>
+      <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
         <input id="attendance-from" type="date" value={aggregateOnly ? draftFrom : from} onChange={event => aggregateOnly ? setDraftFrom(event.target.value) : setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-      <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">To date</label>
+      <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">{tx('To date')}</label>
         <input id="attendance-to" type="date" value={aggregateOnly ? draftTo : to} onChange={event => aggregateOnly ? setDraftTo(event.target.value) : setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
       {aggregateOnly && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">Select Team</label>
-        <select id="attendance-team" value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
+        <select id="attendance-team" aria-label={tx('Select Team')} value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-          <option value="">All teams</option>
+          <option value="">{tx('All teams')}</option>
           {teamOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select></div>}
-      {showDetails && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">Status</label>
-        <select id="attendance-status" value={status} onChange={event => setStatus(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
-          <option value="all">All visible statuses</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
-        </select></div>}
+      {showDetails && <fieldset className="min-w-0 rounded-lg border border-slate-200 p-3">
+        <legend className="px-1 text-xs font-medium text-slate-600">{tx('Status')}</legend>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <button type="button" aria-pressed={selectedStatuses.length === 0} onClick={() => setSelectedStatuses([])}
+            className={`min-h-9 rounded-md px-2 text-sm ${selectedStatuses.length === 0 ? 'bg-[#EFF7F8] font-medium text-[#085587]' : 'text-slate-600 hover:bg-slate-50'}`}>{tx('All statuses')}</button>
+          {statusOptions.map(value => <label key={value} className="inline-flex min-h-9 items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={selectedStatuses.includes(value)} onChange={event => setSelectedStatuses(previous => event.target.checked
+              ? [...previous, value] : previous.filter(item => item !== value))}
+              className="h-4 w-4 rounded border-slate-300 text-[#085587] focus:ring-[#085587]" />
+            <span>{statusLabel(value)}</span>
+          </label>)}
+        </div>
+      </fieldset>}
       {aggregateOnly
         ? <button type="button" onClick={applyReportFilters}
-          className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">Apply Filter</button>
-        : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
+          className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">{tx('Apply Filter')}</button>
+        : <p className="self-end pb-2 text-xs text-slate-500">{tx('Date and status filters apply automatically.')}</p>}
     </div>
     {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
-    {currentCorrections.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="font-medium">Attendance correction requests</h3>
-      <p className="mt-1 text-sm text-slate-600">{currentCorrections.filter(item => item.status === 'pending').length} pending in this date range.</p>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-            {['Employee', 'Date', 'Requested change', 'Reason', 'Status', ...(canManage ? ['Actions'] : [])].map(label =>
-              <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
-          </tr></thead>
-          <tbody className="divide-y divide-slate-100">{currentCorrections.map((item, index) => <tr key={String(item.id || index)}>
-            <td className="px-3 py-3">{display(item.full_name)}</td>
-            <td className="px-3 py-3">{display(item.attendance_date)}</td>
-            <td className="px-3 py-3">{[
-              item.requested_check_in ? `In ${displayTime(item.requested_check_in)}` : '',
-              item.requested_check_out ? `Out ${displayTime(item.requested_check_out)}` : '',
-              item.requested_work_mode ? `Mode ${String(item.requested_work_mode)}` : '',
-            ].filter(Boolean).join(' · ') || '—'}</td>
-            <td className="px-3 py-3">{display(item.reason)}</td>
-            <td className="px-3 py-3 capitalize"><span>{display(item.status)}</span>
-              {Boolean(item.resolution_note) && <span className="mt-1 block normal-case whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(item.resolution_note)}</span>}
-            </td>
-            {canManage && <td className="px-3 py-3">
-              {item.status === 'pending' ? <div className="flex gap-2">
-                <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(item.id), 'approved')}
-                  className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
-                  {resolvingCorrectionId === item.id ? 'Saving…' : 'Approve'}
-                </button>
-                <button type="button" disabled={Boolean(resolvingCorrectionId)}
-                  className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
-                  onClick={event => { rejectionTriggerRef.current = event.currentTarget; setCorrectionResolutionNote(''); setError(''); setActionMessage(''); setRejectingCorrection(item); }}>Reject</button>
-              </div> : '—'}
-            </td>}
-          </tr>)}</tbody>
-        </table>
+    {showDetails && selectedStatuses.length > 0 && <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-[#D4E5EA] bg-white px-4 py-3 text-sm text-slate-700">
+      <span>{tx('Now showing result for')}</span>
+      <span className="font-medium">{selectedStatuses.map(value => `‘${statusLabel(value)}’`).join(' + ')}</span>
+      <button type="button" onClick={() => setSelectedStatuses([])} className="ml-auto min-h-9 rounded-md px-3 font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx('Clear result')}</button>
+    </div>}
+    {showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {canManage && <input type="checkbox" aria-label={tx('Select all pending attendance corrections')}
+            checked={allPendingCorrectionsSelected} onChange={event => setSelectedCorrectionIds(event.target.checked ? pendingCorrections.map(item => String(item.id)) : [])}
+            disabled={!pendingCorrections.length} className="h-5 w-5 rounded border-slate-300 text-[#085587] focus:ring-[#085587]" />}
+          <h3 id="attendance-correction-requests-heading" className="text-xl font-normal text-[#3D3D3D]">{tx('Attendance Requests')}</h3>
+          <span className="sr-only" role="status">{selectedPendingCorrectionIds.length} {tx('selected')}</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="sr-only" htmlFor="attendance-correction-search">{tx('Search attendance requests')}</label>
+          <input id="attendance-correction-search" type="search" value={correctionSearch} onChange={event => setCorrectionSearch(event.target.value)}
+            placeholder={tx('Search....')} className="min-h-11 w-[min(100%,334px)] rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm placeholder:text-[#86929E]" />
+          {canManage && <>
+            <label className="sr-only" htmlFor="attendance-correction-status">{tx('Filter by status')}</label>
+            <select id="attendance-correction-status" value={correctionStatusFilter} onChange={event => setCorrectionStatusFilter(event.target.value)}
+              className="min-h-11 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm">
+              <option value="all">{tx('All statuses')}</option>
+              {correctionStatusOptions.map(value => <option key={value} value={value.toLowerCase()}>{statusLabel(value)}</option>)}
+            </select>
+            <button type="button" disabled title={tx('Bulk attendance decisions are unavailable until the approval service supports them.')}
+              aria-label={tx('Approve selected attendance corrections (unavailable)')}
+              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70">
+              <CheckCircle2 className="h-6 w-6" />
+            </button>
+            <button type="button" disabled title={tx('Bulk attendance decisions are unavailable until the approval service supports them.')}
+              aria-label={tx('Reject selected attendance corrections (unavailable)')}
+              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:cursor-not-allowed disabled:opacity-70">
+              <XCircle className="h-6 w-6" />
+            </button>
+          </>}
+        </div>
       </div>
+      {!currentTenantReady || loading ? <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('Loading attendance correction requests…')}</p>
+        : error ? <p role="alert" className="rounded-lg bg-rose-50 p-4 text-sm text-rose-800">{tx('Attendance correction requests are unavailable while attendance data is in error.')}</p>
+          : !currentCorrections.length ? <p className="rounded-lg bg-[#F8FAFA] p-4 text-sm text-slate-600">{tx('No attendance correction requests were returned for this date range.')}</p>
+            : !filteredCorrections.length ? <p className="rounded-lg bg-[#F8FAFA] p-4 text-sm text-slate-600">{tx('No attendance correction requests match this status.')}</p>
+              : <div className="overflow-x-auto" role="region" aria-label={tx('Attendance correction request results')} tabIndex={0}>
+          <table className="w-full min-w-[1040px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm">
+            <thead className="text-[14px] text-[#9E9E9E]"><tr>
+              {['Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Action'].map(label =>
+                <th key={label} scope="col" className="h-14 bg-white px-3 font-normal first:rounded-l-lg last:rounded-r-lg">{tx(label)}</th>)}
+            </tr></thead>
+            <tbody>{filteredCorrections.map((item, index) => {
+              const status = String(item.status || '').toLowerCase();
+              const name = display(item.full_name);
+              const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+              return <tr key={String(item.id || index)}>
+                <td className="bg-white px-3 py-4 first:rounded-l-lg">
+                  <div className="flex items-center gap-3">
+                    {canManage && <input type="checkbox" aria-label={`${tx('Select request for')} ${name} · ${formatRequestDate(item.attendance_date, locale)}`}
+                      checked={selectedPendingCorrectionIds.includes(String(item.id))}
+                      disabled={status !== 'pending'}
+                      onChange={event => setSelectedCorrectionIds(previous => event.target.checked
+                        ? Array.from(new Set([...previous, String(item.id)])) : previous.filter(id => id !== String(item.id)))}
+                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#085587] focus:ring-[#085587] disabled:opacity-40" />}
+                    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D8EBF1] text-xs font-medium text-[#085587]">{initials || '—'}</span>
+                    <span>{name}<span className="sr-only"> {display(item.employee_number)}</span></span>
+                  </div>
+                </td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{formatRequestDate(item.attendance_date, locale)}</td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{displayTime(item.requested_check_in)}</td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{displayTime(item.requested_check_out)}</td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{formatRequestDate(item.requested_at, locale)}</td>
+                <td className="max-w-[260px] whitespace-normal bg-white px-3 py-4">
+                  <span>{display(item.reason)}</span>
+                  {Boolean(item.requested_work_mode) && <span className="mt-1 block text-xs text-slate-500">{tx('Requested work mode')}: {displayWorkMode(item.requested_work_mode)}</span>}
+                  {Boolean(item.resolution_note) && <span className="mt-1 block text-xs text-slate-600">{tx('Decision note')}: {display(item.resolution_note)}</span>}
+                </td>
+                <td className="whitespace-nowrap bg-white px-3 py-4 last:rounded-r-lg">
+                  {status === 'pending' && canManage ? <div className="flex items-center gap-2">
+                    <span className="sr-only">{display(item.status)}</span>
+                    <button type="button" disabled={Boolean(resolvingCorrectionId)} aria-label={tx('Approve')} title={tx('Approve')}
+                      onClick={() => void resolveCorrection(String(item.id), 'approved')}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:opacity-50">
+                      <CheckCircle2 className="h-6 w-6" />
+                    </button>
+                    <button type="button" disabled={Boolean(resolvingCorrectionId)} aria-label={tx('Reject')} title={tx('Reject')}
+                      onClick={event => { rejectionTriggerRef.current = event.currentTarget; setCorrectionResolutionNote(''); setError(''); setActionMessage(''); setRejectingCorrection(item); }}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:opacity-50">
+                      <XCircle className="h-6 w-6" />
+                    </button>
+                  </div> : <span className={`font-semibold capitalize ${status === 'approved' ? 'text-emerald-700' : status === 'rejected' ? 'text-rose-600' : 'text-slate-500'}`}>{locale === 'bn' ? statusLabel(item.status) : display(item.status)}</span>}
+                </td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>}
     </section>}
     {currentTenantReady && rejectingCorrection && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
       onMouseDown={event => { if (event.target === event.currentTarget && !resolvingCorrectionId) { setRejectingCorrection(null); setCorrectionResolutionNote(''); } }}>
       <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-rejection-heading" aria-describedby="attendance-rejection-description"
         className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 id="attendance-rejection-heading" className="font-semibold text-slate-900">Reject attendance correction</h3>
-          <p id="attendance-rejection-description" className="mt-1 text-sm text-slate-600">{display(rejectingCorrection.full_name)} · {display(rejectingCorrection.attendance_date)}</p>
+          <h3 id="attendance-rejection-heading" className="font-semibold text-slate-900">{tx('Reject attendance correction')}</h3>
+          <p id="attendance-rejection-description" className="mt-1 text-sm text-slate-600">{display(rejectingCorrection.full_name)} · {formatRequestDate(rejectingCorrection.attendance_date, locale)}</p>
           <p className="mt-1 text-xs text-slate-500">{display(rejectingCorrection.reason)}</p>
         </div>
         <div className="space-y-3 p-5">
           {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
-          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">Decision note <span className="font-normal text-slate-500">(optional)</span></label>
+          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">{tx('Decision note (optional)')}</label>
           <textarea id="attendance-rejection-note" rows={4} value={correctionResolutionNote} onChange={event => setCorrectionResolutionNote(event.target.value)} disabled={Boolean(resolvingCorrectionId)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-60" />
-          <p className="text-xs text-slate-500">The employee can see this note with the decision in their correction history.</p>
+          <p className="text-xs text-slate-500">{tx('The employee can see this note with the decision in their correction history.')}</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
           <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => { setRejectingCorrection(null); setCorrectionResolutionNote(''); }}
-            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">Cancel</button>
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Cancel')}</button>
           <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(rejectingCorrection.id), 'rejected', correctionResolutionNote)}
-            className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{resolvingCorrectionId ? 'Saving…' : 'Reject correction'}</button>
+            className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{resolvingCorrectionId ? tx('Saving…') : tx('Reject correction')}</button>
         </div>
       </div>
     </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1280px] border-spacing-0'}`}>
+      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">{tx('Loading attendance data…')}</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? tx('No attendance report rows match the selected team.') : tx('No attendance records were returned for this date range.')}</p> : <div role="region" aria-label={tx('Scrollable attendance report table')} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
+          <table aria-label={aggregateOnly ? tx('Attendance summary by employee') : tx('Attendance information')} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1280px] border-spacing-0'}`}>
           <thead className={`bg-white ${aggregateOnly ? 'text-[14px] text-[#9E9E9E]' : 'text-xs text-slate-500'}`}><tr>
             {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className={`border-b border-slate-200 px-4 py-4 ${aggregateOnly ? 'font-normal' : 'font-medium'}`}>
               {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">
-                <span>{label}</span>
+                <span>{tx(label)}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
                   aria-label={`Sort by Team Name ${teamSortDirection === 'asc' ? 'descending' : 'ascending'}`}
                   className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
                   <img src={attendanceTeamSortIcon} alt="" />
                 </button>
-              </div> : label}
+              </div> : tx(label)}
             </th>)}
           </tr></thead>
           <tbody>{rows.map((row, index) => {
@@ -1230,7 +1333,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
             const statusTone = normalizedStatus === 'late' ? 'bg-amber-50 text-amber-800'
               : normalizedStatus === 'absent' ? 'bg-rose-50 text-rose-800'
-                : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'bg-emerald-50 text-emerald-800'
+                : normalizedStatus === 'present' || normalizedStatus === 'on time' || normalizedStatus === 'early' ? 'bg-emerald-50 text-emerald-800'
                   : 'bg-slate-100 text-slate-600';
             const deviationValue = row.deviation === null || row.deviation === undefined || row.deviation === '' ? Number.NaN : Number(row.deviation);
             const deviationText = Number.isFinite(deviationValue) ? `${deviationValue > 0 ? '+' : ''}${deviationValue.toFixed(2)}` : display(row.deviation);
@@ -1257,11 +1360,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
                 <td className={`${cellClass} rounded-r-lg border-r tabular-nums`}><span className={`font-semibold ${deviationTone}`}>{deviationText}</span></td>
               </> : <>
                 <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayAttendanceDate(row.attendance_date)}</td>
-                <td className="border-b border-slate-100 px-4 py-3">{displayWorkMode(row.work_mode)}</td>
+                <td className="border-b border-slate-100 px-4 py-3">{tx(displayWorkMode(row.work_mode))}</td>
                 <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayTime(row.check_in)}</td>
                 <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayTime(row.check_out)}</td>
                 <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{display(row.work_hours)}</td>
-                <td className="border-b border-slate-100 px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusTone}`}>{display(row.status)}</span></td>
+                <td className="border-b border-slate-100 px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone}`}>{statusLabel(row.status)}</span></td>
               </>}
             </tr>;
           })}</tbody>
@@ -1583,6 +1686,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
   const [requestFromDate, setRequestFromDate] = useState('');
   const [requestToDate, setRequestToDate] = useState('');
   const [appliedRequestRange, setAppliedRequestRange] = useState({ from: '', to: '' });
@@ -1660,7 +1764,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     setData(null); dataTenantId.current = '';
     setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
     setDownloadingEvidenceId(''); setEvidenceMessage(''); setEvidenceError('');
-    setSearch(''); setStatusFilter('all'); setFilterError('');
+    setSearch(''); setStatusFilter('all'); setSelectedRequestIds([]); setFilterError('');
     void load(appliedRequestRange);
     return () => { requestSequence.current += 1; };
   }, [tenantId, appliedRequestRange]);
@@ -1732,7 +1836,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     return (visibleData?.requests || []).filter(item => {
       const matchesStatus = statusFilter === 'all' || String(item.status || '').toLocaleLowerCase() === statusFilter;
       const searchText = [item.full_name, item.employee_number, item.leave_type_name, item.leave_type_code,
-        item.from_date, item.to_date, item.status].map(value => String(value ?? '')).join(' ').toLocaleLowerCase();
+        item.from_date, item.to_date, item.submitted_at, item.reason, item.status].map(value => String(value ?? '')).join(' ').toLocaleLowerCase();
       return matchesStatus && (!needle || searchText.includes(needle));
     });
   }, [visibleData, search, statusFilter]);
@@ -1828,12 +1932,23 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     }
   }
 
-  const hasEvidence = Boolean(visibleData?.requests.some(item => String(item.attachment_url || '').trim()));
+  const pendingFilteredRequests = filteredRequests.filter(item => String(item.status || '').toLowerCase() === 'pending');
+  const selectedPendingRequestIds = selectedRequestIds.filter(id => pendingFilteredRequests.some(item => String(item.id) === id));
+  const allPendingRequestsSelected = pendingFilteredRequests.length > 0 && selectedPendingRequestIds.length === pendingFilteredRequests.length;
+  const requestStatusLabel = (value: unknown) => {
+    const label = String(value || '').trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    return label ? tx(label) : tx('Not recorded');
+  };
 
   return <section aria-labelledby="leave-workspace-heading" className="space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Leave Requests</h2>
-        <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
+      <div className="flex items-start gap-3">
+        {canManage && visibleData && <input type="checkbox" aria-label={tx('Select all pending leave requests')}
+          checked={allPendingRequestsSelected} onChange={event => setSelectedRequestIds(event.target.checked ? pendingFilteredRequests.map(item => String(item.id)) : [])}
+          disabled={!pendingFilteredRequests.length} className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-[#085587] focus:ring-[#085587]" />}
+        <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx('Leave Requests')}</h2>
+        <p className="mt-1 text-sm text-slate-500">{tx('Tenant leave records returned by the authorized HRIS service')}</p></div>
+      </div>
       <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
       </button>
@@ -1842,7 +1957,111 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
     {evidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{evidenceError}</p>}
     {evidenceMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{evidenceMessage}</p>}
-    {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : visibleData && <>
+    {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized leave records…')}</p> : visibleData && <>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
+          <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
+            <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
+              placeholder={tx('Employee, leave type, date, remarks…')} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
+            <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-to" className="mb-1 block text-xs font-medium text-slate-600">{tx('To date')}</label>
+            <input id="leave-request-to" type="date" value={requestToDate} onChange={event => setRequestToDate(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Filter by status')}</label>
+            <select id="leave-request-status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+              <option value="all">{tx('All statuses')}</option>
+              {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{requestStatusLabel(status)}</option>)}
+            </select>
+          </div>
+          <button type="submit" className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770]">{tx('Apply date range')}</button>
+          <button type="button" onClick={clearRequestDateRange} disabled={!requestFromDate && !requestToDate && !appliedRequestRange.from && !appliedRequestRange.to}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Clear dates')}</button>
+          {filterError && <p className="text-sm text-rose-700 sm:col-span-2 xl:col-span-6" role="alert">{filterError}</p>}
+          <p className="text-xs text-slate-500 sm:col-span-2 xl:col-span-6" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>
+        </form>
+        {canManage && <div className="flex flex-wrap items-center justify-end gap-2 border-b border-slate-200 bg-[#F8FAFA] px-4 py-3">
+          {selectedPendingRequestIds.length > 0 && <span className="text-sm text-slate-600">{selectedPendingRequestIds.length} {tx('selected')}</span>}
+          <span className="mr-auto text-xs text-slate-500">{tx('Bulk leave decisions are unavailable until the approval service supports them.')}</span>
+          <button type="button" disabled title={tx('Bulk leave decisions are unavailable until the approval service supports them.')}
+            aria-label={tx('Approve selected leave requests (unavailable)')}
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-100 px-3 text-xs font-medium text-slate-500 disabled:cursor-not-allowed">
+            <CheckCircle2 className="h-4 w-4" />{tx('Approve selected')}
+          </button>
+          <button type="button" disabled title={tx('Bulk leave decisions are unavailable until the approval service supports them.')}
+            aria-label={tx('Reject selected leave requests (unavailable)')}
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-100 px-3 text-xs font-medium text-slate-500 disabled:cursor-not-allowed">
+            <XCircle className="h-4 w-4" />{tx('Reject selected')}
+          </button>
+        </div>}
+        {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">{tx('No leave requests were returned for this tenant.')}</p> : !filteredRequests.length
+          ? <p className="p-5 text-sm text-slate-600">{tx('No requests match these filters.')}</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
+          <table className="w-full min-w-[1120px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label={tx('Leave requests')}>
+            <thead className="text-[14px] text-[#9E9E9E]"><tr>
+              {['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', 'Action']
+                .map(label => <th key={label} scope="col" className="h-14 bg-white px-3 font-normal first:rounded-l-lg last:rounded-r-lg">{tx(label)}</th>)}
+            </tr></thead>
+            <tbody>{filteredRequests.map((row, index) => {
+              const status = String(row.status || '').toLowerCase();
+              const name = display(row.full_name);
+              const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+              return <tr key={String(row.id || index)}>
+                <td className="bg-white px-3 py-4 first:rounded-l-lg">
+                  <div className="flex items-center gap-3">
+                    {canManage && <input type="checkbox" aria-label={`${tx('Select request for')} ${name} · ${display(row.leave_type_name)}`}
+                      checked={selectedPendingRequestIds.includes(String(row.id))}
+                      disabled={status !== 'pending'}
+                      onChange={event => setSelectedRequestIds(previous => event.target.checked
+                        ? Array.from(new Set([...previous, String(row.id)])) : previous.filter(id => id !== String(row.id)))}
+                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#085587] focus:ring-[#085587] disabled:opacity-40" />}
+                    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D8EBF1] text-xs font-medium text-[#085587]">{initials || '—'}</span>
+                    <span className="font-medium">{name}<span className="sr-only"> {display(row.employee_number)}</span></span>
+                  </div>
+                </td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{formatRequestDate(row.from_date, locale)}</td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{formatRequestDate(row.to_date, locale)}
+                  <span className="mt-1 block text-xs text-slate-500">{displayLocalizedNumber(row.requested_days, locale)} {tx('days')}</span>
+                </td>
+                <td className="bg-white px-3 py-4">{display(row.leave_type_name)}</td>
+                <td className="whitespace-nowrap bg-white px-3 py-4">{formatRequestDate(row.submitted_at, locale)}</td>
+                <td className="max-w-[280px] whitespace-normal bg-white px-3 py-4 text-slate-700">
+                  {canManage ? <>
+                    <span>{display(row.reason)}</span>
+                    {Boolean(row.resolution_note) && <span className="mt-1 block text-xs text-slate-600">{tx('Decision note')}: {display(row.resolution_note)}</span>}
+                    {String(row.attachment_url || '').trim() && <button type="button" disabled={Boolean(downloadingEvidenceId)}
+                      aria-label={`Download evidence for ${name}’s ${display(row.leave_type_name)} leave request`}
+                      onClick={() => void downloadEvidence(row)}
+                      className="mt-2 min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
+                      {downloadingEvidenceId === row.id ? tx('Downloading…') : tx('Download evidence')}
+                    </button>}
+                  </> : '—'}
+                </td>
+                <td className="whitespace-nowrap bg-white px-3 py-4 last:rounded-r-lg">
+                  {status === 'pending' && canManage ? <div className="flex items-center gap-2">
+                    <span className="sr-only">{display(row.status)}</span>
+                    <button type="button" disabled={Boolean(resolvingRequestId)} aria-label={tx('Approve')} title={tx('Approve')}
+                      onClick={() => void resolveRequest(String(row.id), 'approved')}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-emerald-700 disabled:opacity-50">
+                      <CheckCircle2 className="h-6 w-6" />
+                    </button>
+                    <button type="button" disabled={Boolean(resolvingRequestId)} aria-label={tx('Reject')} title={tx('Reject')}
+                      onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-rose-600 disabled:opacity-50">
+                      <XCircle className="h-6 w-6" />
+                    </button>
+                  </div> : <span className={`font-semibold capitalize ${status === 'approved' ? 'text-emerald-700' : status === 'rejected' ? 'text-rose-600' : 'text-slate-500'}`}>{locale === 'bn' ? requestStatusLabel(row.status) : display(row.status)}</span>}
+                </td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Pending requests</p><p className="mt-2 text-2xl font-semibold">{pending.length}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{visibleData.leave_types.length}</p></div>
@@ -1907,68 +2126,6 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </>}
       </section>
       {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
-          <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
-            <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
-              placeholder={tx('Employee, leave type, date…')} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          </div>
-          <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
-            <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)}
-              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          </div>
-          <div><label htmlFor="leave-request-to" className="mb-1 block text-xs font-medium text-slate-600">{tx('To date')}</label>
-            <input id="leave-request-to" type="date" value={requestToDate} onChange={event => setRequestToDate(event.target.value)}
-              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          </div>
-          <div><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Filter by status')}</label>
-            <select id="leave-request-status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}
-              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-              <option value="all">{tx('All statuses')}</option>
-              {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{status.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</option>)}
-            </select>
-          </div>
-          <button type="submit" className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770]">{tx('Apply date range')}</button>
-          <button type="button" onClick={clearRequestDateRange} disabled={!requestFromDate && !requestToDate && !appliedRequestRange.from && !appliedRequestRange.to}
-            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Clear dates')}</button>
-          {filterError && <p className="text-sm text-rose-700 sm:col-span-2 xl:col-span-6" role="alert">{filterError}</p>}
-          <p className="text-xs text-slate-500 sm:col-span-2 xl:col-span-6" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>
-        </form>
-        {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : !filteredRequests.length
-          ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
-          <table className="w-full min-w-[760px] text-left text-sm" aria-label="Leave requests">
-            <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
-            </tr></thead>
-            <tbody className="divide-y divide-slate-100">{filteredRequests.map((row, index) => <tr key={String(row.id || index)}>
-              <td className="px-3 py-3 font-medium">{display(row.full_name)}</td><td className="px-3 py-3">{display(row.leave_type_name)}</td>
-              <td className="px-3 py-3">{display(row.from_date)}</td><td className="px-3 py-3">{display(row.to_date)}</td>
-              <td className="px-3 py-3">{display(row.requested_days)}</td><td className="px-3 py-3 font-medium">
-                <span>{display(row.status)}</span>
-                {Boolean(row.resolution_note) && <span className="mt-1 block whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(row.resolution_note)}</span>}
-              </td>
-              {hasEvidence && <td className="px-3 py-3">{String(row.attachment_url || '').trim()
-                ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
-                    aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
-                    onClick={() => void downloadEvidence(row)}
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
-                    {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
-                  </button> : '—'}</td>}
-              {canManage && <td className="px-3 py-3">
-                {row.status === 'pending' ? <div className="flex gap-2">
-                  <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'approved')}
-                    className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
-                    {resolvingRequestId === row.id ? 'Saving…' : 'Approve'}
-                  </button>
-                  <button type="button" disabled={Boolean(resolvingRequestId)}
-                    className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
-                    onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}>Reject</button>
-                </div> : '—'}
-              </td>}
-            </tr>)}</tbody>
-          </table>
-        </div>}
-      </div>
       {rejectingRequest && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget && !resolvingRequestId) { setRejectingRequest(null); setResolutionNote(''); } }}>
         <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="leave-rejection-heading" aria-describedby="leave-rejection-description"
@@ -2875,7 +3032,7 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
             <button type="submit" disabled={actionBusy} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white shadow-[0_3px_0_#02395c] disabled:opacity-50">{actionBusy ? tx('Saving…') : tx(editingRejectedProject ? 'Save and resubmit project hours' : 'Save draft')}</button>
           </div>
         </form>
-      </section>}
+    </section>}
       <section aria-labelledby="timesheet-history-heading" className="space-y-3">
         <div><h3 id="timesheet-history-heading" className="font-semibold text-[#08263D]">{tx('Timesheet history')}</h3>
           <p className="mt-1 text-xs text-slate-500">{tx('Only timesheets linked to your employee profile are shown.')}</p></div>

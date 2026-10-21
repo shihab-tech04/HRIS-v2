@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const activationPolicy = readFileSync(new URL('../../supabase/migrations/20261016170000_hris_candidate_employee_activation_policy.sql', import.meta.url), 'utf8');
+const activationIdMigration = readFileSync(new URL('../../supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql', import.meta.url), 'utf8');
 const component = readFileSync(new URL('../../src/live/CandidatePreboardingQueue.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const pipeline = readFileSync(new URL('../../src/live/RecruitmentPipeline.tsx', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../../../HRIS-Candidate-v2/tests/candidate-application-local-e2e.mjs', import.meta.url), 'utf8');
+const mainRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 
 test('candidate activation uses the approved HR-only, explicitly verified, tenant-scoped RPC', () => {
   assert.match(activationPolicy, /hris_activate_candidate_employee\(\s*p_tenant_id uuid,\s*p_application_id uuid,\s*p_employee_number text,\s*p_joining_date date,\s*p_details_verified boolean/);
@@ -24,6 +26,16 @@ test('candidate activation uses the approved HR-only, explicitly verified, tenan
   assert.match(activationPolicy, /candidate\.employee\.activated'[\s\S]*'employee',v_employee_id::text[\s\S]*'application_id',p_application_id/);
   assert.match(activationPolicy, /tenant_memberships_role_id_fkey/);
   assert.match(activationPolicy, /GRANT EXECUTE ON FUNCTION public\.hris_activate_candidate_employee\(uuid,uuid,text,date,boolean\)\s+TO authenticated,service_role/);
+});
+
+test('HR01-01 activation follow-up explicitly supplies the employees primary key', () => {
+  assert.match(activationIdMigration, /CREATE OR REPLACE FUNCTION public\.hris_activate_candidate_employee/);
+  assert.match(activationIdMigration, /SECURITY DEFINER[\s\S]*SET search_path = ''/);
+  assert.match(activationIdMigration, /INSERT INTO public\.employees\s*\(\s*id,tenant_id,user_id,employee_number/);
+  assert.match(activationIdMigration, /VALUES\s*\(\s*gen_random_uuid\(\),p_tenant_id,v_candidate_user_id/);
+  assert.match(activationIdMigration, /GRANT EXECUTE ON FUNCTION public\.hris_activate_candidate_employee\(uuid,uuid,text,date,boolean\)\s+TO authenticated,service_role/);
+  assert.match(mainRunner, /20261020121500_hris_candidate_activation_employee_id\.sql/);
+  assert.match(mainRunner, /Boolean\(hr0101Employee\?\.id\)[\s\S]*hr0101Employee\?\.user_id === assessmentCandidateA\.userId/);
 });
 
 test('preboarding queue exposes activation controls only from the employees.manage screen', () => {

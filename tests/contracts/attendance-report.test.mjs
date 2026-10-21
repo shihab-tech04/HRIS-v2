@@ -71,7 +71,7 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
   const end = workspace.indexOf('</form>', start);
   assert.ok(start >= 0 && end > start);
   const toolbar = workspace.slice(start, end);
-  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf('aria-label="Filters"'));
+  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf("aria-label={tx('Filters')}"));
   assert.match(toolbar, /lg:w-\[334px\]/);
   assert.match(toolbar, /lg:w-\[184px\]/);
   assert.match(toolbar, /w-16/);

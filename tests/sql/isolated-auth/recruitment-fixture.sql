@@ -100,8 +100,26 @@ CREATE TABLE public.candidate_document_requests (
 CREATE TABLE public.job_offers (
   id uuid PRIMARY KEY,
   application_id uuid NOT NULL,
+  offered_title text,
+  salary_amount numeric,
+  salary_currency text,
+  proposed_joining_date date,
+  terms text,
+  status text NOT NULL DEFAULT 'issued',
   issued_by uuid,
-  issued_at timestamptz NOT NULL DEFAULT now()
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  response_deadline date,
+  pay_period text,
+  response_note text,
+  acceptance_signature text,
+  responded_at timestamptz
+);
+
+CREATE TABLE public.onboarding_handoffs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  application_id uuid NOT NULL UNIQUE,
+  status text NOT NULL DEFAULT 'in_progress',
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.interviews (

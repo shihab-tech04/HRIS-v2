@@ -75,6 +75,11 @@ function contactValidationError(draft: ContactDraft): string {
   return '';
 }
 
+function isContactApiUnavailable(cause: unknown): boolean {
+  return cause !== null && typeof cause === 'object' && 'code' in cause
+    && String(cause.code) === 'PGRST202';
+}
+
 const PAGE_SIZE = 50;
 
 function statusLabel(value: string, locale: Locale) {
@@ -276,10 +281,12 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       setContactDetails(details);
       setContactDraft(contactDraftFrom(details));
       setContactMode('view');
-    } catch {
+    } catch (cause) {
       if (requestId !== contactRequestSequence.current || activeTenantId.current !== requestTenant) return;
       setContactMode('idle');
-      setContactError('Unable to load contact details. Check your employee-management access and retry.');
+      setContactError(isContactApiUnavailable(cause)
+        ? 'Contact editing is currently unavailable. Contact your administrator.'
+        : 'Unable to load contact details. Check your employee-management access and retry.');
     }
   }
 
@@ -355,7 +362,9 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
         ? 'That official email is already used in this organization.'
         : code === '22023'
           ? 'Enter a valid official email and a valid personal email when provided.'
-          : 'Contact update failed. Check your employee-management access and retry.');
+          : isContactApiUnavailable(cause)
+            ? 'Contact editing is currently unavailable. Contact your administrator.'
+            : 'Contact update failed. Check your employee-management access and retry.');
     } finally {
       if (requestId === contactRequestSequence.current && activeTenantId.current === requestTenant) setContactSaving(false);
     }
