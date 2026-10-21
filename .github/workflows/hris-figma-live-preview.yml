@@ -74,6 +74,9 @@ jobs:
             git commit -m "build(preview): generated fixture-only static HRIS bundle"
             # Incorporate workflow-only commits that arrived while this build ran;
             # never force-push or overwrite another workstation branch.
+            # The Vite build rewrites tracked input files in this disposable runner.
+            # Only preview-dist was committed. Restore those temporary edits before rebasing.
+            git reset --hard HEAD
             git fetch origin work/hris-figma-ui-live-preview-20261021
             git rebase origin/work/hris-figma-ui-live-preview-20261021
             git push origin HEAD:work/hris-figma-ui-live-preview-20261021
