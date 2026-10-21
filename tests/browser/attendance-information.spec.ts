@@ -187,16 +187,19 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
         const frame = await page.locator('section[aria-labelledby="attendance-report-heading"]').boundingBox();
         expect(frame?.x).toBe(324);
         expect(frame?.width).toBe(1383);
-        expect((await attendanceTable.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox())?.height).toBe(59);
+        const nameHeader = locale === 'en' ? 'Name' : 'নাম';
+        expect((await attendanceTable.getByRole('columnheader', { name: nameHeader, exact: true }).boundingBox())?.height).toBe(59);
         expect((await attendanceTable.locator('tbody tr').first().boundingBox())?.height).toBe(80);
         const rows = attendanceTable.locator('tbody tr');
         const rowGap = await rows.evaluateAll(items => items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().bottom);
         expect(Math.abs(rowGap - 6)).toBeLessThan(0.5);
-        const controls = page.getByRole('form', { name: 'Attendance report controls' });
+        const controls = page.getByRole('form', {
+          name: locale === 'en' ? 'Attendance report controls' : 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ',
+        });
         const controlWidths = await Promise.all([
-          controls.getByLabel('Search employees'),
-          controls.getByRole('button', { name: 'Download Report', exact: true }),
-          controls.getByRole('button', { name: 'Filters', exact: true }),
+          controls.getByLabel(locale === 'en' ? 'Search employees' : 'কর্মচারী খুঁজুন'),
+          controls.getByRole('button', { name: locale === 'en' ? 'Download Report' : 'প্রতিবেদন ডাউনলোড করুন', exact: true }),
+          controls.getByRole('button', { name: locale === 'en' ? 'Filters' : 'ফিল্টার', exact: true }),
         ].map(locator => locator.evaluate(element => element.getBoundingClientRect().width)));
         expect(controlWidths).toEqual([334, 170, 62]);
       }
