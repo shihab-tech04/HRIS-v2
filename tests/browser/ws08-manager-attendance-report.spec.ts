@@ -149,14 +149,67 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
     await expect(control).toHaveCSS('height', '48px');
     expect(Math.abs(((await control.boundingBox())?.width ?? 0) - width)).toBeLessThan(0.5);
   }
-  const toolbarBounds = await toolbar.boundingBox();
   const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
-  const tableBounds = await tableRegion.boundingBox();
-  expect(Math.abs((tableBounds?.y ?? 0) - ((toolbarBounds?.y ?? 0) + 56))).toBeLessThan(0.5);
-  expect(await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox()).toMatchObject({ height: 59 });
-
   const evidence = path.resolve(process.cwd(), 'docs/evidence/ws08');
   await mkdir(evidence, { recursive: true });
+  for (const viewport of [
+    { width: 1920, height: 1117 },
+    { width: 1280, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(async () => {
+      window.scrollTo(0, 0);
+      await document.fonts.ready;
+    });
+    const geometry = await page.evaluate(() => {
+      const toolbarElement = document.querySelector<HTMLElement>('[aria-label="Attendance report controls"]');
+      const regionElement = document.querySelector<HTMLElement>('[aria-label="Scrollable attendance report table"]');
+      if (!toolbarElement || !regionElement) throw new Error('Manager attendance toolbar or table region is missing.');
+      const inspect = (element: HTMLElement) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          className: element.className,
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          bottom: rect.bottom,
+          marginTop: style.marginTop,
+          marginBottom: style.marginBottom,
+          paddingTop: style.paddingTop,
+          transform: style.transform,
+          position: style.position,
+          display: style.display,
+          gap: style.gap,
+          rowGap: style.rowGap,
+          columnGap: style.columnGap,
+        };
+      };
+      const toolbar = inspect(toolbarElement);
+      const region = inspect(regionElement);
+      const wrapper = regionElement.parentElement instanceof HTMLElement ? inspect(regionElement.parentElement) : null;
+      const sectionElement = regionElement.closest('section.attendance-report');
+      const section = sectionElement instanceof HTMLElement ? inspect(sectionElement) : null;
+      return {
+        viewportWidth: window.innerWidth,
+        desktopBreakpoint: window.matchMedia('(min-width: 64rem)').matches,
+        toolbar,
+        region,
+        wrapper,
+        section,
+        regionTopFromToolbarTop: region.y - toolbar.y,
+        gapAfterToolbar: region.y - toolbar.bottom,
+      };
+    });
+    console.log(`[ws08-manager-detail-geometry] ${JSON.stringify(geometry)}`);
+    expect(Math.abs(geometry.toolbar.height - 48), JSON.stringify(geometry)).toBeLessThan(0.5);
+    expect(Math.abs(geometry.gapAfterToolbar - 8), JSON.stringify(geometry)).toBeLessThan(0.5);
+    expect(Math.abs(geometry.regionTopFromToolbarTop - 56), JSON.stringify(geometry)).toBeLessThan(0.5);
+    expect(await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox()).toMatchObject({ height: 59 });
+    expect(await row.boundingBox()).toMatchObject({ height: 80 });
+  }
+
   for (const viewport of [
     { width: 1920, height: 1117 },
     { width: 1280, height: 900 },
