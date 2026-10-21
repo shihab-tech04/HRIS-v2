@@ -3,13 +3,13 @@
 **Figma file:** [Synesis HRIS](https://www.figma.com/design/XEXLe9J1oATlITS9I5u1P9)
 
 **Figma page:** Page 1, node `0:1`
-**Current checkpoint:** PR #44, Manager daily Attendance Information and the separate report-only aggregate variant.
+**Current checkpoint:** PR #44, Managerial Dashboard plus daily Attendance Information and the separate report-only aggregate variant. The latest tested runtime implementation is `bafda05579a3144f455620e635bec6e093b160c1`.
 
 ## Manager states
 
 | State | Approved Figma node | Current app route and gate | WS08 status |
 | --- | --- | --- | --- |
-| Managerial Dashboard | `9:22640`; chart `9:22784` | `dashboard`; existing `dashboard.view` permission and tenant dashboard data | Previously implemented in PR #44 |
+| Managerial Dashboard | `9:22640`; summary `9:22722`; chart `9:22784` | `dashboard`; existing `dashboard.view` permission and tenant dashboard data | Updated in this checkpoint; independent visual review pending |
 | Attendance Information (visible daily-detail state) | Root `17:28320`; content frame `17:28694`; header `17:28696`; rows `17:28722` | `attendance`; daily detail requires `attendance.view` or `attendance.manage` and uses the tenant-scoped detail reader | Implemented in this checkpoint; independent visual acceptance pending |
 | Attendance Report (aggregate-only variant) | `17:28321`; nested table header `17:28324`, rows `17:28349` | `attendance`; requires `reports.view` and uses the tenant-scoped aggregate reader | Preserved as a distinct variant; do not treat it as the visible daily-detail state |
 | Attendance Information — status filter | `17:31530` | `attendance`; status filtering stays on the authorized detail path | Mapped; visual acceptance pending |
@@ -29,6 +29,12 @@ The Attendance Requests Figma root `17:29937` shows a search/title row, a seven-
 
 The separate aggregate variant reads `hris_get_tenant_attendance_data` with `p_report=true`; it shows returned employee, team, department, date-range, office-hour, work-hour, and deviation fields. It does not add a denominator or substitute sample counts. This variant retains its 9-column summary, team filter/sort, and CSV behavior.
 
+## Managerial Dashboard implementation notes
+
+Frame `9:22640` includes the Dashboard/date header, last-updated banner, Personal/Managerial tabs, Today’s Attendance Summary, and Daily Attendance Chart. The summary values use the tenant-scoped dashboard response; the date comes from its `dashboard_date`, and “Last Updated” uses the client timestamp of a successful refresh. The extra “Needs attention” panel was removed from this Manager view because it is absent from the approved frame. The existing source-backed Team Report remains a separate supported section below the dashboard frame.
+
+Figma chart `9:22784` shows a 0–100% scale, while the verified backend supplies daily attendance `records` counts and no approved denominator or percentage contract. This checkpoint deliberately preserves the daily count chart and keeps percentage/denominator semantics blocked. Figma sample values are not copied into production UI.
+
 ## HOD, Admin, CEO, and Super Admin references
 
 | Role | Exact Figma evidence found | Current route mapping |
@@ -42,9 +48,10 @@ The HOD/CEO labels are inside the Figma Requisition and Referral sections, not a
 
 ## Verification record
 
-- Exact-head PR #44 run [39636801387](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39636801387) passed on source head `299b0c9c2e29617e2cce0fda0d78a04799625812`. Its `ui-check` completed TypeScript/source contracts, build, source-drift reporting, browser smoke, and responsive regression steps successfully.
-- Run artifact `12363310528`, SHA-256 `5feb3614898f4dede500d0c401d66db47a878ba684628af36ac3deafdce3c617`, contains Manager dashboard and attendance/report screenshots at 1920, 1280, 768, and 375 widths, plus Bengali attendance/report filters at 768 and 375 and Bengali leave filters at 768 and 375. They are hosted browser evidence; independent WS04 visual acceptance remains pending.
-- The strict Manager Attendance Information geometry assertion passed in that run: 48px control row, 8px gap, 59px table header, and 80px data rows. The report chart remains source-backed daily record counts; denominator and 0–100% semantics remain blocked pending design approval.
-- Focused local attendance/report/workspace/SA06 contracts passed 31/31. The hosted exact-head run is authoritative for the current base-synchronized browser/build check; local Playwright has no Chromium binary.
-- PR #44 is draft, open, and mergeable, based on WS01 #49 head `be78824462bbe212948615006ebed165af3944ec`. WS01 run [39634656721](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634656721) passed 57/57 browser tests on that base; artifact `12361495549`, SHA-256 `e4be8ef05f8d6f91d5ccd1a5ff72e2c4bdd693473ce7c038533a621ebca49da2`. The inherited HR01 source and Team Name assertion remain WS01-owned and unedited by WS08.
-- This verification note is a documentation-only update after the passing source head; its new exact-head Actions run must also pass before treating the current PR head as verified. WS04 independent visual acceptance and WS02 two-tenant permission verification remain pending.
+- Latest tested implementation head `bafda05579a3144f455620e635bec6e093b160c1`: exact-head Actions run [39644594475](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39644594475) passed TypeScript/source contracts, build, source-drift reporting, and browser acceptance (64/64 browser tests).
+- Hosted evidence artifact [12365998882](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39644594475/artifacts/12365998882), SHA-256 `fb5f9547457bd0efb46cecc110b490ed0cc0416f361b3dcd619f2c959b4cbeec`, contains refreshed WS08 screenshots: dashboard at 1920/1280/768/375 plus 375 full-page, Manager attendance/detail and aggregate report at 1920/1280/768/375, and Bengali attendance/report/leave filter views at 768/375.
+- Manager Attendance Information geometry passed: 48px toolbar, 8px gap, visible table header top at toolbar top +56px with 59px height, and 80px data rows. Aggregate geometry passed at 1920/1280: 16px header-to-first-row gap and 6px data-row gap.
+- Manager leave status preservation, overlap results, role denials, responsive navigation, EN/BN checks, and Bengali Manager date-filter visibility passed in the same browser run.
+- Local `npm run lint`, Vite build, and focused management/workspace/attendance/SA06 contracts passed (39/39). The full local contract command reported 344/351 because seven existing Candidate checks require the absent sibling `HRIS-Candidate-v2` checkout; hosted Actions checked it out and its full contract step passed.
+- WS01 #49 remains the base at `be78824462bbe212948615006ebed165af3944ec`; its shared HR01 source and Team Name assertion were not changed by WS08.
+- WS04 independent visual acceptance and WS02 two-tenant permission verification remain pending. Keep PR #44 draft; release status remains HOLD.
