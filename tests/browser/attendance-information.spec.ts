@@ -189,6 +189,15 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
         expect(frame?.width).toBe(1383);
         const nameHeader = locale === 'en' ? 'Name' : 'নাম';
         expect((await attendanceTable.getByRole('columnheader', { name: nameHeader, exact: true }).boundingBox())?.height).toBe(59);
+        if (locale === 'en') {
+          const teamNameHeader = attendanceTable.getByRole('columnheader', { name: /Team Name/ });
+          const teamNameLines = await teamNameHeader.locator('span').first().evaluate(element => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return range.getClientRects().length;
+          });
+          expect(teamNameLines, 'Team Name remains on one line in the approved 1920px Figma frame').toBe(1);
+        }
         expect((await attendanceTable.locator('tbody tr').first().boundingBox())?.height).toBe(80);
         const rows = attendanceTable.locator('tbody tr');
         const rowGap = await rows.evaluateAll(items => items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().bottom);
