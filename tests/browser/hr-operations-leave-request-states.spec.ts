@@ -118,6 +118,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await expect(page.getByText('Loading authorized leave records…')).toBeVisible();
+  await page.evaluate(() => { window.location.hash = 'leave-requests'; });
   await expect.poll(() => initialQueueHeld).toBe(true);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-loading-1920x1080.png'), fullPage: true });
   releaseInitialQueueLoad();

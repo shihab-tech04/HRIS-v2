@@ -1140,7 +1140,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     return label ? tx(label) : tx('Not recorded');
   };
 
-  return <section aria-labelledby={correctionRequestsPage ? 'attendance-correction-requests-heading' : 'attendance-report-heading'} className="mx-auto w-full max-w-[1386px] space-y-4">
+  return <section aria-labelledby={correctionRequestsPage ? 'attendance-correction-requests-heading' : 'attendance-report-heading'} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
     {!correctionRequestsPage && <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx('Attendance Report')}</h2>
       </div>
@@ -1319,7 +1319,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
         </div>
       </div>
     </div>}
-    {!correctionRequestsPage && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {!correctionRequestsPage && <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">{tx('Loading attendance data…')}</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? tx('No attendance report rows match the selected team.') : tx('No attendance records were returned for this date range.')}</p> : <div role="region" aria-label={tx('Scrollable attendance report table')} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
           <table aria-label={aggregateOnly ? tx('Attendance summary by employee') : tx('Attendance information')} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1386px] border-spacing-x-0 border-spacing-y-[6px]'}`}>
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
@@ -1961,7 +1961,9 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     return () => window.removeEventListener('hashchange', syncLeaveView);
   }, []);
 
-  return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full max-w-[1386px] space-y-4">
+  const preserveOverviewSections = leaveView === 'requests' && (typeof window === 'undefined' || window.location.hash !== '#leave-requests');
+
+  return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-h-12 items-center gap-3">
         {leaveView === 'requests' && ['approved', 'rejected'].includes(statusFilter)
@@ -2091,7 +2093,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </table>
         </div>)}
 
-      {leaveView === 'calendar' && <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      {(leaveView === 'calendar' || preserveOverviewSections) && <section aria-labelledby="leave-absence-calendar-heading" className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h3 id="leave-absence-calendar-heading" className="font-semibold text-[#08263D]">{tx('Absence calendar')}</h3>
             <p className="mt-1 text-xs text-slate-600">{tx('Only approved leave requests appear here. Pending requests remain in the review queue.')}</p></div>
@@ -2149,7 +2151,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </div>
         </>}
       </section>}
-      {leaveView === 'policy' && (canManage ? <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />
+      {(leaveView === 'policy' || preserveOverviewSections) && (canManage ? <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />
         : <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{tx('You do not have permission to manage leave policy.')}</p>)}
       {leaveView === 'requests' && rejectingRequest && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget && !resolvingRequestId) { setRejectingRequest(null); setResolutionNote(''); } }}>
@@ -2174,7 +2176,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </div>
         </div>
       </div>}
-      {leaveView === 'calendar' && <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {(leaveView === 'calendar' || preserveOverviewSections) && <section aria-labelledby="organization-holidays-heading" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-4"><h3 id="organization-holidays-heading" className="font-semibold text-slate-900">Organization holidays</h3>
           <p className="mt-1 text-xs text-slate-500">Holiday dates returned by this organization’s leave service</p></div>
         {!visibleData.holidays.length ? <p className="p-5 text-sm text-slate-600">No holidays were returned for this organization.</p> :

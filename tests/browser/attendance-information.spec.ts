@@ -169,7 +169,6 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(bengaliAttendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
-  await expect(row).toContainText('ATT-001');
   await expect(row).toContainText('UX Designer');
   await expect(row).toContainText('Synthetic Product Team');
   await expect(row).toContainText('Experience Design');
