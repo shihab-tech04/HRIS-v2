@@ -393,7 +393,8 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   managerPermissionEnabled = false;
   await page.evaluate(() => { window.location.hash = ''; });
   await page.reload();
-  await page.evaluate(() => { window.location.hash = 'leave-requests'; });
+  await page.getByRole('button', { name: 'Open navigation menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByLabel('Filter by status', { exact: true }).selectOption('all');
   await expect(page.getByRole('table', { name: 'Leave requests' })).toBeVisible();
