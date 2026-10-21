@@ -131,10 +131,10 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         <h2 id="employee-figma-profile-heading" className="text-2xl font-medium text-[#49454F]">{words.heading}</h2>
         <p className="mt-1 text-sm text-slate-600">{words.intro}</p>
       </div>
-      <button type="button" onClick={() => setRevision(value => value + 1)} disabled={loading}
+      {failed && <button type="button" onClick={() => setRevision(value => value + 1)} disabled={loading}
         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm text-[#085587] hover:bg-[#EFF7F8] focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-50">
         <RefreshCw aria-hidden="true" className="h-4 w-4" />{words.retry}
-      </button>
+      </button>}
     </header>
 
     {(loading || !employee) && !failed && <p role="status" className="rounded-lg bg-white p-5 text-sm text-slate-600">{words.loading}</p>}
