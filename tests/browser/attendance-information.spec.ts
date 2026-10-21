@@ -131,6 +131,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  // The Figma application-management strip is a view-only layer over existing
+  // server-authorized routes, not an invented bulk-approval workflow.
+  await expect(page.getByRole('heading', { name: 'Attendance & Leave Application Management' })).toBeVisible();
+  const designSections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+  await expect(designSections.getByRole('button', { name: 'Attendance Information' })).toHaveAttribute('aria-current', 'page');
+  await expect(designSections.getByText('Attendance Requests')).toHaveAttribute('aria-disabled', 'true');
+  await expect(designSections.getByRole('button', { name: 'Leave Requests' })).toBeEnabled();
   await expect(page.getByRole('heading', { name: 'Attendance Report' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
