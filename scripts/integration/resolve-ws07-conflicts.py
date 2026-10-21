@@ -84,12 +84,14 @@ Path(UI).write_text(merged)
 # Preserve both exact-source acceptance suites under distinct test names.
 Path(BROWSER).write_text(git_source(WS08, BROWSER))
 Path("tests/browser/ws07-attendance-information.spec.ts").write_text(git_source(WS07, BROWSER))
-manager_contract = git_source(WS08, CONTRACT)
-manager_contract = replace_exact(
-    manager_contract,
+Path(CONTRACT).write_text(git_source(WS08, CONTRACT))
+Path("tests/contracts/ws07-attendance-report.test.mjs").write_text(git_source(WS07, CONTRACT))
+live_contract_path = Path("tests/contracts/live-workspace.test.mjs")
+live_contract = live_contract_path.read_text()
+live_contract = replace_exact(
+    live_contract,
     "workspace.indexOf('function PersonalLeaveRequests(')",
     "workspace.indexOf('function HrLeaveWorkspace(')"
 )
-Path(CONTRACT).write_text(manager_contract)
-Path("tests/contracts/ws07-attendance-report.test.mjs").write_text(git_source(WS07, CONTRACT))
+live_contract_path.write_text(live_contract)
 print("Resolved the three known merge conflicts, preserved manager and HR role-specific paths and both test suites.")
