@@ -16,6 +16,8 @@ jobs:
       CI: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout trusted Candidate source for cross-repository contract tests
+        run: git clone --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
