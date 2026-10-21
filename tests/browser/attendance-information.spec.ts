@@ -501,6 +501,14 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   });
   expect(filteredRowsGeometry.height).toBeCloseTo(80, 0);
   expect(filteredRowsGeometry.gap).toBeCloseTo(6, 0);
+  const filteredFeedback = page.getByRole('status').filter({ hasText: 'Now showing result for' });
+  await expect(filteredFeedback).toContainText('“Early” + “Late”');
+  const employeeSearch = page.getByLabel('Search employees', { exact: true });
+  await employeeSearch.fill('');
+  await employeeSearch.press('Enter');
+  await expect.poll(() => attendanceCalls.slice(beforeMultiStatusFilter).some(call => call.p_report === false && call.p_search === '')).toBe(true);
+  await expect(employeeSearch).toHaveValue('');
+  await expect(filteredFeedback).toContainText('“Early” + “Late”');
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
   await expect(page.locator('#attendance-filters')).toBeHidden();
