@@ -134,8 +134,9 @@ test('manager dashboard follows the Figma attendance summary and keeps its contr
   assert.match(workspace, /downloadCsv\(`managerial-dashboard-/);
   assert.match(workspace, /2xl:grid-cols-\[134px_138px_138px_1px_repeat\(5,minmax\(0,1fr\)\)\]/);
   assert.match(workspace, /attendance-trend-area/);
-  assert.match(workspace, /Pending attendance corrections/);
-  assert.match(workspace, /Pending leave requests/);
+  assert.match(workspace, /aria-label=\{tx\('Dashboard'\)\}/);
+  assert.match(workspace, /aria-label=\{tx\('Dashboard views'\)\}/);
+  assert.doesNotMatch(workspace, /dashboard-actions-heading|Needs attention/);
   assert.match(workspace, /<header id="manager-dashboard-header" className="[^\"]*min-h-\[67px\][^\"]*bg-\[#EFF7F8\]/);
   assert.match(workspace, /<h2 id="live-dashboard-heading" className="text-lg font-bold text-\[#353535\]"/);
   assert.match(workspace, /xl:grid-cols-\[334px_184px_64px\]/);

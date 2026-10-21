@@ -101,7 +101,7 @@ test('manager dashboard controls, data labels, accessibility text, and CSV label
     'Managerial Dashboard', 'Today’s workforce attendance for this organization', 'Managerial dashboard actions',
     'Search metrics', 'Search dashboard metrics', 'Filter attendance chart', 'Attendance chart range',
     'Last 7 days', 'Last 30 days', 'Today’s Attendance Summary', 'Daily Attendance Chart',
-    'Recorded attendance by day', 'Needs attention', 'Pending attendance corrections', 'Pending leave requests',
+    'Recorded attendance by day',
     'Today', 'Attendance trend', 'Section', 'Metric', 'Value',
   ]) assert.ok(locale.includes(`'${phrase}'`), `missing dashboard translation: ${phrase}`);
   assert.match(workspace, /label=\{tx\(metric\.label\)\}/);

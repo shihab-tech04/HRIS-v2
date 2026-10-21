@@ -214,11 +214,13 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   const reportState = await signInSyntheticManager(page);
 
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
-  await expect(page.getByText('October 21, 2026', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Dashboard', exact: true })
+    .getByText('October 21, 2026', { exact: true })).toBeVisible();
   const dashboardViews = page.getByRole('navigation', { name: 'Dashboard views' });
   await expect(dashboardViews.getByRole('button', { name: 'Personal Dashboard', exact: true })).toBeDisabled();
   await expect(dashboardViews.getByRole('button', { name: 'Managerial Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('status', { name: 'Dashboard last update' })).toContainText(/^Last Updated at /);
+  await expect(page.getByRole('heading', { name: 'Needs attention', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Present 3' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Absent 1' })).toBeVisible();
