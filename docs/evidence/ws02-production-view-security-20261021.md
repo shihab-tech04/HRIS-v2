@@ -44,6 +44,12 @@ The earlier PG17 workflows on source code commit b55ca3dd also passed:
 
 The address assertions deny anon/authenticated INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER; authenticated SELECT remains allowed. Service_role privileges are explicitly retained. The family fixture begins with broad PUBLIC/anon/authenticated privileges and verifies that the existing migration removes them while preserving service_role privileges. Tests contain synthetic records only.
 
+## Separate disposable Auth/Postgres/browser run
+
+The separate CI run [39634694092](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634694092) completed **success** on source code commit b55ca3dd12a90557159f9eccc6b53310a4c6e94e. The isolated-hris job completed successfully. Its TypeScript/contracts/build checks, standalone browser regressions with synthetic sessions, local Auth/RLS workflow acceptance, Phase 04 parity checks and disposable-database Advisor inspection all passed. The workflow started and stopped a fresh local-only Supabase environment.
+
+This run is distinct from the three PG17 ACL checks above. It is source/disposable-environment evidence only; it does not exercise hosted Auth sessions or certify hosted two-tenant isolation. Hosted acceptance remains **BLOCKED** until the environment owner provides a persistent populated isolated setup and approved real Auth identities.
+
 ## Security Advisor classification
 
 Read-only Advisor refresh at 2026-10-21 16:26Z reported:
