@@ -1199,7 +1199,8 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
         : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
     </div>
     </>}
-    {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
+    {error && currentTenantReady && <StatusMessage error={managerReportView ? projectText(locale, error) : error}
+      retryLabel={managerReportView ? projectText(locale, 'Retry') : undefined} onRetry={() => void load()} />}
     {actionMessage && currentTenantReady && <p role="status" className={requestView ? 'sr-only' : 'rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900'}>{actionMessage}</p>}
     {requestView && <section id="attendance-correction-requests" aria-labelledby="attendance-requests-heading" className="space-y-3">
       <h2 id="attendance-requests-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{projectText(locale, 'Attendance Requests')}</h2>
@@ -1286,6 +1287,10 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
             const employeeName = row.employee_name || row.full_name;
             const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
+            const attendanceStatus = managerReportView
+              ? (typeof row.status === 'string' && row.status.trim() ? row.status.trim() : 'Not recorded')
+              : projectText(locale, normalizedStatus === 'present' ? 'On Time'
+                : normalizedStatus === 'early and late' || normalizedStatus === 'early late' ? 'Early & Late' : displayAttendanceStatus(row.status));
             const statusTone = normalizedStatus === 'late' ? 'text-[#B59A00]'
               : normalizedStatus === 'absent' ? 'text-rose-700'
                 : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'text-[#00803B]'
@@ -1317,7 +1322,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
                 <td className={cellClass}>{displayAttendanceWorkLocation(row.work_mode, locale)}</td>
                 <td className={`${cellClass} tabular-nums`}>{displayAttendanceClock(row.check_in, locale, tenantTimeZone)}</td>
                 <td className={`${cellClass} tabular-nums`}>{displayAttendanceClock(row.check_out, locale, tenantTimeZone)}</td>
-                <td className={`${cellClass} rounded-r-lg border-r border-white`}><span className={`font-bold ${statusTone}`}>{projectText(locale, normalizedStatus === 'present' ? 'On Time' : normalizedStatus === 'early and late' || normalizedStatus === 'early late' ? 'Early & Late' : displayAttendanceStatus(row.status))}</span></td>              </>}
+                <td className={`${cellClass} rounded-r-lg border-r border-white`}><span className={`font-bold ${statusTone}`}>{attendanceStatus}</span></td>              </>}
             </tr>;
           })}</tbody>
         </table>

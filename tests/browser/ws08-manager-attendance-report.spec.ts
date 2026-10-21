@@ -129,7 +129,8 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   await expect(row).toContainText('09:13:16am');
   await expect(row).toContainText('05:46:58pm');
   await expect(row).toContainText('present');
-  await expect(row).not.toContainText('WS08-001');
+  const employeeNumber = row.getByText('Employee number WS08-001', { exact: true });
+  await expect(employeeNumber).toHaveClass(/sr-only/);
   await expect(row).not.toContainText('8.56');
   const teamHeader = report.getByRole('columnheader', { name: 'Team Name' });
   await expect(teamHeader).toHaveAttribute('aria-sort', 'none');
@@ -196,6 +197,16 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('দল নির্বাচন করুন', { exact: true })).toBeVisible();
   await expect(page.getByLabel('অবস্থা', { exact: true })).toBeVisible();
+  for (const viewport of [{ width: 768, height: 1024 }, { width: 375, height: 812 }]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width + 1);
+    await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('দল নির্বাচন করুন', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('অবস্থা', { exact: true })).toBeVisible();
+    await page.screenshot({ path: path.join(evidence, `ws08-manager-attendance-information-filters-bn-${viewport.width}x${viewport.height}-20261021.png`) });
+  }
 });
 
 test('Manager report-only attendance screen matches Figma aggregate variant 17:28321 and stays responsive', async ({ page }) => {
@@ -216,7 +227,8 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   await expect(positive).toContainText('45.00');
   await expect(positive).toContainText('46.48');
   await expect(positive).toContainText('+1.48');
-  await expect(positive).not.toContainText('WS08-001');
+  const positiveEmployeeNumber = positive.getByText('Employee number WS08-001', { exact: true });
+  await expect(positiveEmployeeNumber).toHaveClass(/sr-only/);
   await expect(negative).toContainText('44.30');
   await expect(negative).toContainText('-0.70');
   expect(await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox()).toMatchObject({ height: 59 });
@@ -280,6 +292,15 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('দল নির্বাচন করুন', { exact: true })).toBeVisible();
+  for (const viewport of [{ width: 768, height: 1024 }, { width: 375, height: 812 }]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width + 1);
+    await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('দল নির্বাচন করুন', { exact: true })).toBeVisible();
+    await page.screenshot({ path: path.join(evidence, `ws08-manager-attendance-report-filters-bn-${viewport.width}x${viewport.height}-20261021.png`) });
+  }
 });
 
 test('Manager daily attendance separates loading and empty states', async ({ page }) => {
@@ -298,7 +319,7 @@ test('Manager daily attendance shows a retryable error without an empty-state cl
   const beforeRetry = calls.length;
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(alert).toContainText('উপস্থিতির তথ্য লোড করা যায়নি।');
-  await page.getByRole('button', { name: 'পুনরায় চেষ্টা করুন' }).click();
+  await page.getByRole('button', { name: 'আবার চেষ্টা করুন' }).click();
   await expect.poll(() => calls.length).toBeGreaterThan(beforeRetry);
 });
 
@@ -317,7 +338,7 @@ test('Manager attendance report gives a retryable Bengali error without claiming
   const beforeRetry = calls.length;
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(alert).toContainText('উপস্থিতির তথ্য লোড করা যায়নি।');
-  await page.getByRole('button', { name: 'পুনরায় চেষ্টা করুন' }).click();
+  await page.getByRole('button', { name: 'আবার চেষ্টা করুন' }).click();
   await expect.poll(() => calls.length).toBeGreaterThan(beforeRetry);
 });
 

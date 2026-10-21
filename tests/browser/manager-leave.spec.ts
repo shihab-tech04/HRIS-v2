@@ -220,6 +220,21 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('approved');
   expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-01' });
 
+  const managerEvidence = path.resolve(process.cwd(), 'docs/evidence/ws08');
+  await mkdir(managerEvidence, { recursive: true });
+  for (const viewport of [{ width: 768, height: 1024 }, { width: 375, height: 812 }]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width + 1);
+    await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('অবস্থা অনুযায়ী ফিল্টার', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'তারিখের সীমা প্রয়োগ করুন', exact: true })).toBeVisible();
+    await expect(statusFilter).toHaveValue('all');
+    await page.screenshot({ path: path.join(managerEvidence, `ws08-manager-leave-filters-bn-${viewport.width}x${viewport.height}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await expect(statusFilter).toHaveValue('all');
 

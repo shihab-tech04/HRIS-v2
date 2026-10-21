@@ -723,6 +723,7 @@ const bengali: Record<string, string> = {
   'Select an attendance record': 'উপস্থিতির রেকর্ড নির্বাচন করুন',
   'Select an attendance record.': 'একটি উপস্থিতির রেকর্ড নির্বাচন করুন।',
   'Loading attendance records…': 'উপস্থিতির রেকর্ড লোড হচ্ছে…',
+  'Unable to load attendance records.': 'উপস্থিতির তথ্য লোড করা যায়নি।',
   'Unable to load attendance records for correction. Retry.': 'সংশোধনের জন্য উপস্থিতির রেকর্ড লোড করা যায়নি। আবার চেষ্টা করুন।',
   'No attendance records are available for this month.': 'এই মাসে কোনো উপস্থিতির রেকর্ড নেই।',
   'Attendance date': 'উপস্থিতির তারিখ',
