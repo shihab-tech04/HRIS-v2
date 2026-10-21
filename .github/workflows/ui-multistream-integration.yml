@@ -42,10 +42,11 @@ jobs:
             cp src/live/LiveHrisWorkspace.tsx integration-evidence/LiveHrisWorkspace.unmerged.txt
             cp tests/browser/attendance-information.spec.ts integration-evidence/attendance-information.unmerged.txt
             cp tests/contracts/attendance-report.test.mjs integration-evidence/attendance-report.unmerged.txt
+            cp tests/browser/manager-leave.spec.ts integration-evidence/manager-leave.unmerged.txt
             cat integration-evidence/ws07-conflicts.txt
             python3 /tmp/hris-merge-scripts/resolve-ws07-conflicts.py
-            git add src/live/LiveHrisWorkspace.tsx src/live/LiveApp.tsx tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs tests/contracts/live-workspace.test.mjs
-            git diff --cached --check -- src/live/LiveHrisWorkspace.tsx src/live/LiveApp.tsx tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs tests/contracts/live-workspace.test.mjs
+            git add src/live/LiveHrisWorkspace.tsx src/live/LiveApp.tsx tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts tests/browser/ws07-manager-leave.spec.ts tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs tests/contracts/live-workspace.test.mjs
+            git diff --cached --check -- src/live/LiveHrisWorkspace.tsx src/live/LiveApp.tsx tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts tests/browser/ws07-manager-leave.spec.ts tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs tests/contracts/live-workspace.test.mjs
           fi
           git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS07 resolved integration' > integration-evidence/ws07-commit.log 2>&1
           if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 3f1f1f1b0edb6341cf6e4be8501eff88789caf44 > integration-evidence/ws06-merge.log 2>&1; then
