@@ -39,7 +39,6 @@ test('manager filters the leave queue and completes approval and rejection actio
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     await route.abort();
   });
-  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
