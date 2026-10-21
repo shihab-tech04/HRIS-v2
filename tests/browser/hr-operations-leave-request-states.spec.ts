@@ -204,7 +204,11 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.locator('#leave-request-status')).toHaveValue('pending');
   await expect(page.getByRole('button', { name: 'Leave Requests', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Search requests', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  const leaveFiltersButton = page.getByRole('button', { name: 'Filters', exact: true });
+  await expect(leaveFiltersButton).toHaveAttribute('aria-expanded', 'false');
+  expect(await leaveFiltersButton.evaluate(button => Boolean(button.parentElement?.querySelector('input[type="search"]')))).toBe(true);
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
+  expect(await page.getByRole('heading', { name: 'Leave Requests' }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
   const leaveRowGeometry = await table.getByRole('row').nth(1).evaluate(row => {
     const first = row.getBoundingClientRect();
     const next = row.nextElementSibling?.getBoundingClientRect();
@@ -457,7 +461,9 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.getByRole('alert')).toContainText('You do not have permission to manage leave policy.');
   requests.splice(0, requests.length);
   await page.evaluate(() => { window.location.hash = 'leave-requests'; });
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  const emptyLeaveFiltersButton = page.getByRole('button', { name: 'Filters', exact: true });
+  if (await emptyLeaveFiltersButton.getAttribute('aria-expanded') !== 'true') await emptyLeaveFiltersButton.click();
+  await page.locator('#leave-request-filters').getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByText('No leave requests were returned for this tenant.')).toBeVisible();
   await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-empty-1920x1080.png'), fullPage: true });

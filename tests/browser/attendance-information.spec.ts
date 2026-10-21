@@ -203,6 +203,29 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     'Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status',
   ]);
   await expect(attendanceTable.locator('tbody tr')).toHaveCount(8);
+  const attendanceRowsGeometry = await attendanceTable.evaluate(table => {
+    const firstRow = table.querySelector('tbody tr');
+    const nextRow = firstRow?.nextElementSibling;
+    const headerCell = table.querySelector('thead th');
+    const surface = table.parentElement?.parentElement;
+    const rowBounds = firstRow?.getBoundingClientRect();
+    const nextBounds = nextRow?.getBoundingClientRect();
+    const style = headerCell ? getComputedStyle(headerCell) : null;
+    return {
+      rowHeight: rowBounds?.height,
+      rowGap: rowBounds && nextBounds ? nextBounds.top - rowBounds.bottom : null,
+      headerHeight: headerCell?.getBoundingClientRect().height,
+      headerRadius: style ? Number.parseFloat(style.borderTopLeftRadius) : 0,
+      surfaceBackground: surface ? getComputedStyle(surface).backgroundColor : '',
+      surfaceBorder: surface ? getComputedStyle(surface).borderTopWidth : '',
+    };
+  });
+  expect(attendanceRowsGeometry.rowHeight).toBeCloseTo(80, 0);
+  expect(attendanceRowsGeometry.rowGap).toBeCloseTo(6, 0);
+  expect(attendanceRowsGeometry.headerHeight).toBeCloseTo(59, 0);
+  expect(attendanceRowsGeometry.headerRadius).toBeGreaterThanOrEqual(8);
+  expect(attendanceRowsGeometry.surfaceBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(attendanceRowsGeometry.surfaceBorder).toBe('0px');
   await expect(page.getByRole('heading', { name: 'Attendance Requests' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   const bengaliAttendanceTable = page.getByRole('table', { name: 'উপস্থিতির তথ্য' });
@@ -254,8 +277,12 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await correctionCard.getByRole('columnheader').allTextContents()).toEqual([
     'Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Action',
   ]);
-  await expect(correctionCard.getByLabel('Search attendance requests', { exact: true })).toBeVisible();
-  await expect(correctionCard.getByRole('button', { name: 'Filters', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  const correctionSearch = correctionCard.getByLabel('Search attendance requests', { exact: true });
+  const correctionFiltersButton = correctionCard.getByRole('button', { name: 'Filters', exact: true });
+  await expect(correctionSearch).toBeVisible();
+  await expect(correctionFiltersButton).toHaveAttribute('aria-expanded', 'false');
+  expect(await correctionFiltersButton.evaluate(button => Boolean(button.parentElement?.querySelector('input[type="search"]')))).toBe(true);
+  expect(await correctionCard.getByRole('heading', { name: 'Attendance Requests' }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
   await expect(correctionCard.getByRole('button', { name: 'Approve selected attendance corrections (unavailable)' })).toHaveCount(0);
   await expect(correctionCard.getByRole('button', { name: 'Reject selected attendance corrections (unavailable)' })).toHaveCount(0);
   const correctionRowGeometry = await correctionCard.getByRole('row').nth(1).evaluate(row => {
@@ -465,6 +492,15 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(attendanceTable.locator('tbody tr')).toHaveCount(2);
   await expect(attendanceTable.getByRole('columnheader', { name: 'Date', exact: true })).toBeVisible();
   await expect(attendanceTable.getByRole('columnheader', { name: 'From date', exact: true })).toHaveCount(0);
+  const filteredRowsGeometry = await attendanceTable.evaluate(table => {
+    const firstRow = table.querySelector('tbody tr');
+    const nextRow = firstRow?.nextElementSibling;
+    const firstBounds = firstRow?.getBoundingClientRect();
+    const nextBounds = nextRow?.getBoundingClientRect();
+    return { height: firstBounds?.height, gap: firstBounds && nextBounds ? nextBounds.top - firstBounds.bottom : null };
+  });
+  expect(filteredRowsGeometry.height).toBeCloseTo(80, 0);
+  expect(filteredRowsGeometry.gap).toBeCloseTo(6, 0);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
   await expect(page.locator('#attendance-filters')).toBeHidden();

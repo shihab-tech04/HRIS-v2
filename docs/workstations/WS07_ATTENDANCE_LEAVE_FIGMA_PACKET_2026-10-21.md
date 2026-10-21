@@ -22,9 +22,10 @@ This packet covers HR Operations Attendance Information, Attendance Requests, an
 
 ## Latest WS04 visual findings and response
 
-- **WS01-owned shell:** Full-shell Attendance/Leave captures omit the approved section title and tab strip, placing tables too high. WS07 has raised this on PR #49 and will not edit shared navigation, shell, or route code.
-- **Attendance Requests:** The old saved crops are stale: they show the previous status toolbar and outlined action glyphs. The live module uses the approved `Name, Date, In Time, Out Time, Applying Date, Remarks, Action` order and filled green/red circles. The browser test now asserts that field order and icon geometry/color, verifies all-row selection and resolved states, and captures exact Figma nodes 17:29937/30342/30766/31148.
-- **Leave Requests:** The test now asserts route default Pending, all visible rows selected in node 17:32168, and table-only approved/rejected views for nodes 17:32584/32957. Successful resolved tables omit request search/date/status controls, Refresh, summaries, and the absence calendar. Error/loading/empty recovery behavior and working calendar/policy routes remain.
+- **WS01-owned shell:** WS04 ledger #45 at head `590f436e36fcfe7a387cde1e961f6a7243012a8f` confirms full-shell Attendance/Leave captures still omit the approved section title and tab strip. WS07 has asked WS01 on PR #49 for the integration route/geometry contract and will not edit shared navigation, shell, or route code.
+- **Attendance Information:** The approved table uses a 59px header followed by separate 80px white row cards with 6px gaps. The detail table no longer sits inside a white bordered wrapper that hides those gaps; the existing aggregate-only report surface keeps its original border and header styling. Tests now check those geometries for normal and filtered rows.
+- **Attendance Requests:** The old saved crops are stale: they show the previous toolbar and outlined action glyphs. The live module uses the approved `Name, Date, In Time, Out Time, Applying Date, Remarks, Action` order, a 24px title, and filled green/red circles. The status-filter affordance now sits inside the Figma search field, and resolved states retain their back/title control without an extra Filters control. Browser tests assert field order, embedded filter access, action geometry/color, all-row selection, and resolved states for nodes 17:29937/30342/30766/31148.
+- **Leave Requests:** Normal and selected states now use a 24px title and the Figma search field with its embedded filter affordance; the extra top-level Refresh control is moved into the expanded filter panel, preserving manual refresh. Tests still assert Pending default, all visible rows selected in node 17:32168, and table-only approved/rejected views for nodes 17:32584/32957. Successful resolved tables omit search/date/status controls, Refresh, summaries, and the absence calendar. Error/loading/empty recovery behavior and working calendar/policy routes remain.
 - **Typography/evidence:** Exact-state screenshots are full-page captures after Poppins is loaded. Tests assert the computed font family, loaded font face, viewport/document-width bound, table field order, resolved state presentation, and internal horizontal scrolling at 375/768/1280/1920px in EN/BN.
 
 ## Evidence and frame-state register
@@ -35,9 +36,9 @@ This packet covers HR Operations Attendance Information, Attendance Requests, an
 
 ## Verification gates
 
-- Local `npm run lint`, 16 focused Attendance/Leave contract tests, and `npx vite build` passed after the WS07 changes. Vite reports the existing bundle-size warning.
-- Local Playwright could not run because this workspace has no Chromium executable. No local browser pass is claimed.
-- Fresh exact-head GitHub Actions on #43 is required; record its PR run, push run, source SHA, screenshot artifact, and digest in PR #43.
+- Local `npm run lint`, the 16 Attendance/Leave contract tests used by the WS07 workflow, and `npm run build` passed for this changeset. Vite reports the existing bundle-size warning.
+- Local Playwright could not launch because this clean worktree has no Chromium executable. No local browser pass is claimed.
+- Fresh exact-head GitHub Actions on #43 is pending; record its PR run, push run, source SHA, screenshot artifact, and digest in PR #43.
 - WS04 independent visual review remains open. #49’s shell run or screenshots are not #43 evidence.
 - HR03-01 remains blocked on Product legal-entity decisions and WS02’s approved API/permission contract. No unapproved next-frame contract or action is fabricated.
 
