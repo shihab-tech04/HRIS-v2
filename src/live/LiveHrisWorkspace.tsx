@@ -1278,12 +1278,13 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
             {attendanceHeaders.map(header => <th key={header} scope="col" aria-label={aggregateOnly && header === 'Team Name' ? projectText(locale, header) : undefined} aria-sort={header === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
               {header === 'Team Name' ? <div className="flex items-center gap-1">
-                <span>{projectText(locale, header)}</span>
+                <span className="shrink-0 whitespace-nowrap">{projectText(locale, header)}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
                   aria-label={projectText(locale, 'Sort by {column} {direction}')
                     .replace('{column}', projectText(locale, 'Team Name'))
                     .replace('{direction}', projectText(locale, teamSortDirection === 'asc' ? 'descending' : 'ascending'))}
-                  className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#085587]">                  <img src={attendanceTeamSortIcon} alt="" />
+                  className="inline-flex min-h-9 min-w-8 shrink-0 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#085587]">
+                  <img src={attendanceTeamSortIcon} alt="" />
                 </button>
               </div> : projectText(locale, header)}
             </th>)}
