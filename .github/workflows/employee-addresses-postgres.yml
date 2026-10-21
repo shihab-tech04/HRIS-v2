@@ -6,6 +6,7 @@ on:
       - 'supabase/migrations/20261016150216_employee_get_my_addresses.sql'
       - 'supabase/migrations/20261016151101_employee_addresses_self_read_policy.sql'
       - 'supabase/migrations/20261016151112_employee_get_my_addresses_cleanup.sql'
+      - 'supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql'
       - 'tests/sql/employee-addresses/**'
       - '.github/workflows/employee-addresses-postgres.yml'
   push:
@@ -14,6 +15,7 @@ on:
       - 'supabase/migrations/20261016150216_employee_get_my_addresses.sql'
       - 'supabase/migrations/20261016151101_employee_addresses_self_read_policy.sql'
       - 'supabase/migrations/20261016151112_employee_get_my_addresses_cleanup.sql'
+      - 'supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql'
       - 'tests/sql/employee-addresses/**'
       - '.github/workflows/employee-addresses-postgres.yml'
   workflow_dispatch:
@@ -21,7 +23,7 @@ permissions:
   contents: read
 jobs:
   employee-addresses-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
       database:
@@ -41,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install PostgreSQL client
         run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
-      - name: Verify address row isolation and remove temporary getter
+      - name: Verify two-tenant address isolation and remove temporary getter
         env:
           PGHOST: 127.0.0.1
           PGPORT: '5432'
@@ -53,6 +55,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-addresses/fixture.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016150216_employee_get_my_addresses.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016151101_employee_addresses_self_read_policy.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-addresses/verify.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016151112_employee_get_my_addresses_cleanup.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-addresses/verify-cleanup.sql
