@@ -85,7 +85,7 @@ jobs:
           before = __import__('os').environ['GITHUB_SHA']
           paths = subprocess.check_output(['git','diff','--name-only','-z',before,'HEAD']).decode().split('\0')
           allowed = ('src/', 'tests/', 'scripts/', 'docs/', '.github/', 'supabase/')
-          print(f'HRIS_EXPORT_BEGIN|${GITHUB_SHA}|{subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip()}', flush=True)
+          print(f'HRIS_EXPORT_BEGIN|{before}|{subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip()}', flush=True)
           total = 0
           for path in sorted(filter(None, paths)):
               if not path.startswith(allowed): continue
