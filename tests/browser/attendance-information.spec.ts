@@ -449,6 +449,14 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     return second.top - first.bottom;
   });
   expect(Math.abs(aggregateRowGap - 6)).toBeLessThan(0.5);
+  const aggregateHeaderGap = await reportTable.evaluate(table => {
+    const header = table.querySelector('thead th')!.getBoundingClientRect();
+    const first = table.querySelector('tbody tr td')!.getBoundingClientRect();
+    return first.top - header.bottom;
+  });
+  // Approved Figma child 17:28321 has 16–17px before row one, 6px between data rows.
+  expect(aggregateHeaderGap).toBeGreaterThanOrEqual(15.5);
+  expect(aggregateHeaderGap).toBeLessThanOrEqual(17.5);
   await expect(positiveRow).toContainText('UX Designer');
   await expect(positiveRow).toContainText('Synthetic Product Team');
   await expect(positiveRow).toContainText('Experience Design');
