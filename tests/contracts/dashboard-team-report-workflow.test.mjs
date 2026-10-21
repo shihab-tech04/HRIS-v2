@@ -83,6 +83,7 @@ test('isolated acceptance covers selected dates, role denials, team scoping, ret
   assert.match(browserSpec, /Filtered total/);
   assert.match(browserSpec, /উপস্থিতির বিস্তারিত দেখুন/);
   assert.match(browserSpec, /Switch language to Bengali/);
+  assert.match(browserSpec, /path\.resolve\(process\.cwd\(\), 'docs\/evidence\/ws08'\)/);
   assert.match(browserSpec, /375/);
   assert.match(browserSpec, /download/);
   for (const phrase of ['Team Report', 'Apply date', 'Filtered total', 'Team report details', 'Scrollable team report totals', 'View details', 'Employee number']) {

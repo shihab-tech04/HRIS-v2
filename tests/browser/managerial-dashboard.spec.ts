@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import path from 'path';
 import { mkdirSync } from 'node:fs';
 
-const evidenceDirectory = process.env.HRIS_DASHBOARD_EVIDENCE_DIR || path.resolve(process.cwd(), 'docs/evidence');
+const evidenceDirectory = process.env.HRIS_DASHBOARD_EVIDENCE_DIR || path.resolve(process.cwd(), 'docs/evidence/ws08');
 mkdirSync(evidenceDirectory, { recursive: true });
 const evidencePath = (name: string) => path.join(evidenceDirectory, name);
 
