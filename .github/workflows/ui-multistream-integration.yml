@@ -41,10 +41,11 @@ jobs:
             cp tests/browser/attendance-information.spec.ts integration-evidence/attendance-information.unmerged.spec.ts
             cp tests/contracts/attendance-report.test.mjs integration-evidence/attendance-report.unmerged.test.mjs
             cat integration-evidence/ws07-conflicts.txt
-            echo "WS07 integration needs source-aware conflict resolution."
-            exit 1
+            python3 scripts/integration/resolve-ws07-conflicts.py
+            git add src/live/LiveHrisWorkspace.tsx tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs
+            git diff --cached --check
           fi
-          git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS07 integration' > integration-evidence/ws07-commit.log 2>&1
+          git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS07 resolved integration' > integration-evidence/ws07-commit.log 2>&1
           if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 3f1f1f1b0edb6341cf6e4be8501eff88789caf44 > integration-evidence/ws06-merge.log 2>&1; then
             git diff --name-only --diff-filter=U > integration-evidence/ws06-conflicts.txt
             git diff > integration-evidence/ws06-conflict-diff.txt || true
