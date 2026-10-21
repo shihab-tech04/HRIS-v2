@@ -32,6 +32,8 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
     const layout = await page.evaluate(() => {
       const viewport = window.innerWidth;
       const region = document.querySelector<HTMLElement>('[aria-label="Leave request results"]');
+      const table = region?.querySelector<HTMLTableElement>('table');
+      const tableBounds = table?.getBoundingClientRect();
       const ancestors: Array<Record<string, unknown>> = [];
       for (let element: HTMLElement | null = region; element && ancestors.length < 8; element = element.parentElement) {
         const bounds = element.getBoundingClientRect();
@@ -53,7 +55,9 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
       }).sort((left, right) => right.right - left.right).slice(0, 10);
       return { viewport, documentWidth: document.documentElement.scrollWidth, bodyWidth: document.body.scrollWidth,
         region: region ? { left: Math.round(region.getBoundingClientRect().left), right: Math.round(region.getBoundingClientRect().right),
-          clientWidth: region.clientWidth, scrollWidth: region.scrollWidth } : null, ancestors, elements };
+          clientWidth: region.clientWidth, scrollWidth: region.scrollWidth } : null,
+        table: table && tableBounds ? { left: Math.round(tableBounds.left), right: Math.round(tableBounds.right), width: Math.round(tableBounds.width),
+          minWidth: window.getComputedStyle(table).minWidth } : null, ancestors, elements };
     });
     if (layout.viewport !== width || layout.documentWidth > width + 1) {
       leaveResponsiveWidthFailures.push(`${frame} ${width}px: ${JSON.stringify(layout)}`);
@@ -389,7 +393,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   managerPermissionEnabled = false;
   await page.evaluate(() => { window.location.hash = ''; });
   await page.reload();
-  await page.getByRole('button', { name: 'Leave', exact: true }).click();
+  await page.evaluate(() => { window.location.hash = 'leave-requests'; });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByLabel('Filter by status', { exact: true }).selectOption('all');
   await expect(page.getByRole('table', { name: 'Leave requests' })).toBeVisible();
@@ -400,7 +404,6 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.getByRole('alert')).toContainText('You do not have permission to manage leave policy.');
   requests.splice(0, requests.length);
   await page.evaluate(() => { window.location.hash = 'leave-requests'; });
-  await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByText('No leave requests were returned for this tenant.')).toBeVisible();
   await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);

@@ -2041,7 +2041,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized leave records…')}</p> : visibleData && <>
       {leaveView === 'requests' && <p className="sr-only" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>}
       {leaveView === 'requests' && (!visibleData.requests.length ? <p className="rounded-lg bg-[#F8FAFA] p-4 text-sm text-slate-600">{tx('No leave requests were returned for this tenant.')}</p> : !filteredRequests.length
-          ? <p className="p-5 text-sm text-slate-600">{tx('No requests match these filters.')}</p> : <div className="w-full min-w-0 max-w-full overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
+          ? <p className="p-5 text-sm text-slate-600">{tx('No requests match these filters.')}</p> : <div style={{ contain: "paint" }} className="w-full min-w-0 max-w-full overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
           <table className="w-full min-w-[1376px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label={tx('Leave requests')}>
             <thead className="text-[14px] text-[#9E9E9E]"><tr>
               {['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', ['approved', 'rejected'].includes(statusFilter) ? 'Status' : 'Action']
