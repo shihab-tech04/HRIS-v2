@@ -1,0 +1,11 @@
+Runner branch: work/main-pages-reproducibility-20261021
+Source SHA before generated-output commit: 05a83e7f4ce342279adb6011dd64fae98921c63d
+Node: v22.23.3
+npm: 10.9.9
+Linux binding: 1.2.15
+
+Build output checksums (first and second clean builds matched):
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  .nojekyll
+54bf5004b7fd206b46e0f9ea30c2ed3f37f997ebc85a76dc42ec0f9c6ece26e0  assets/app-DBe61BSX.css
+6f46da8c1949f515e329ddb511c9fde6b0b842b6f4578e221017cb578878308a  assets/app-DqsfAdd6.js
+83055b1c6900a2e2887a32cbd8405534e95f2214c563ba5943b0e781f845d9e3  index.html
