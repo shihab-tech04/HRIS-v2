@@ -117,7 +117,7 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   expect(await heading.evaluate(element => getComputedStyle(element).fontFamily)).toContain('Inter');
   await expect(report).toBeVisible();
   await expect.poll(() => attendanceCalls.some(call => call.p_report === false)).toBe(true);
-  expect(await report.getByRole('columnheader').allTextContents()).toEqual([
+  expect((await report.getByRole('columnheader').allTextContents()).map(text => text.trim())).toEqual([
     'Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status',
   ]);
   const row = report.getByRole('row', { name: /Synthetic Attendance Employee/ });
@@ -208,7 +208,7 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   await expect(report).toBeVisible();
   await expect(report).toHaveAttribute('aria-label', 'Attendance summary by employee');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true)).toBe(true);
-  expect(await report.getByRole('columnheader').allTextContents()).toEqual([
+  expect((await report.getByRole('columnheader').allTextContents()).map(text => text.trim())).toEqual([
     'Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation',
   ]);
   const positive = report.getByRole('row', { name: /Synthetic Positive Employee/ });

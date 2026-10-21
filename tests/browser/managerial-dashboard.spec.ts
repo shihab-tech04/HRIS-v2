@@ -271,10 +271,12 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
       await expect(page.getByRole('complementary', { name: 'Primary HRIS navigation' })).toHaveCSS('width', '111px');
     } else {
       await page.getByRole('button', { name: 'Open navigation menu' }).click();
-      await expect(page.getByRole('complementary', { name: 'HRIS navigation' })).toBeVisible();
-      await expect(moduleNavigation.getByRole('button', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
+      const mobileNavigationDialog = page.getByRole('dialog', { name: 'HRIS navigation' });
+      await expect(mobileNavigationDialog).toBeVisible();
+      const mobileModuleNavigation = mobileNavigationDialog.getByRole('navigation', { name: 'HRIS modules' });
+      await expect(mobileModuleNavigation.getByRole('button', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
       await page.getByRole('button', { name: 'Close navigation menu' }).click();
-      await expect(page.getByRole('complementary', { name: 'HRIS navigation' })).toHaveCount(0);
+      await expect(mobileNavigationDialog).toHaveCount(0);
     }
     const renderedTracks = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
       .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
