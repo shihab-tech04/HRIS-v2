@@ -46,7 +46,7 @@ test('attendance detail returns only same-tenant team labels and keeps executabl
 });
 
 test('Figma team filter applies to visible attendance rows and CSV exports', () => {
-  assert.match(workspace, /label htmlFor="attendance-team"[^>]*>Select Team/);
+  assert.match(workspace, /label htmlFor="attendance-team"[^>]*>\{reportText\('Select Team'\)\}/);
   assert.match(workspace, /setAppliedTeamFilter\(selectedTeamFilter\)/);
   assert.match(workspace, /const exportRows = filteredRows/);
   assert.match(workspace, /No attendance report rows match the selected team/);
@@ -60,21 +60,22 @@ test('Figma Team Name sort order is accessible and shared by table and CSV', () 
   assert.match(teamSortAsset, /<svg[^>]*width="14" height="11\.5957" viewBox="0 0 14 11\.5957"/);
   assert.doesNotMatch(workspace, /figma\.com\/api\/mcp\/asset/);
   assert.match(workspace, /setTeamSortDirection\(value => value === 'asc' \? 'desc' : 'asc'\)/);
-  assert.match(workspace, /aria-sort=\{aggregateOnly && label === 'Team Name'/);
+  assert.match(workspace, /aria-sort=\{aggregateOnly && label === reportText\('Team Name'\)/);
   assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);
   assert.match(browser, /Sort by Team Name ascending/);
   assert.match(browser, /Sort by Team Name descending/);
 });
 
 test('Figma report toolbar uses exact local icons, order, and component dimensions', () => {
-  const start = workspace.indexOf('<form aria-label="Attendance report controls"');
+  const start = workspace.indexOf("<form aria-label={reportText('Attendance report controls')}");
   const end = workspace.indexOf('</form>', start);
   assert.ok(start >= 0 && end > start);
   const toolbar = workspace.slice(start, end);
-  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf('aria-label="Filters"'));
+  assert.ok(toolbar.indexOf("tx('Download Report')") < toolbar.indexOf("aria-label={reportText('Filters')}"));
   assert.match(toolbar, /lg:w-\[334px\]/);
   assert.match(toolbar, /lg:w-\[184px\]/);
   assert.match(toolbar, /w-16/);
+  assert.match(toolbar, /gap-\[9px\]/);
   assert.match(toolbar, /attendanceSearchIcon/);
   assert.match(toolbar, /attendanceDownloadIcon/);
   assert.match(toolbar, /attendanceFilterIcon/);
@@ -85,6 +86,8 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
 });
 
 test('Figma attendance aggregate column headings use the approved regular 14px gray type', () => {
+  assert.match(workspace, /aggregateOnly \? 'space-y-\[18px\]'/);
+  assert.match(workspace, /!aggregateOnly && <span className="mt-0\.5 block text-xs font-normal text-slate-500">\{display\(row\.employee_number\)\}<\/span>/);
   assert.match(workspace, /<thead className="bg-white text-\[14px\] text-\[#9E9E9E\]">/);
   assert.match(workspace, /className="h-\[59px\] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg"/);
   assert.match(browser, /fontSize: style\.fontSize, fontWeight: style\.fontWeight, color: style\.color/);

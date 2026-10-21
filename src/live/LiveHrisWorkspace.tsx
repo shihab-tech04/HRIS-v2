@@ -908,6 +908,31 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
 }
 
 function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: { tenantId: string; canView: boolean; canReport: boolean; canManage: boolean; locale: Locale }) {
+  const tx = (value: string) => projectText(locale, value);
+  const reportText = (value: string) => {
+    if (locale !== 'bn') return value;
+    const labels: Record<string, string> = {
+      'Attendance Report': 'উপস্থিতি প্রতিবেদন',
+      'Attendance report controls': 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ',
+      'Attendance summary by employee': 'কর্মচারীভিত্তিক উপস্থিতি সারাংশ',
+      'Filters': 'ফিল্টার',
+      'Retry': 'পুনরায় চেষ্টা করুন',
+      'Apply Filter': 'ফিল্টার প্রয়োগ করুন',
+      'Search....': 'খুঁজুন...',
+      'Name': 'নাম',
+      'Search employees': 'কর্মচারী খুঁজুন',
+      'Office Hour': 'অফিস সময়',
+      'Work Hour': 'কাজের সময়',
+      'Select Team': 'দল নির্বাচন করুন',
+      'Choose a valid date range.': 'সঠিক তারিখসীমা নির্বাচন করুন।',
+      'Unable to load attendance records.': 'উপস্থিতির তথ্য লোড করা যায়নি।',
+      'No attendance report rows match the selected team.': 'নির্বাচিত দলের জন্য কোনো উপস্থিতি প্রতিবেদন নেই।',
+      'No attendance records were returned for this date range.': 'এই তারিখসীমার জন্য কোনো উপস্থিতির রেকর্ড পাওয়া যায়নি।',
+      'Loading attendance data…': 'উপস্থিতির তথ্য লোড হচ্ছে…',
+      'Scrollable attendance report table': 'স্ক্রলযোগ্য উপস্থিতি প্রতিবেদন টেবিল',
+    };
+    return labels[value] || tx(value);
+  };
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1111,21 +1136,21 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   }, [aggregateOnly, appliedTeamFilter, currentRecords, teamSortDirection]);
   const rows = filteredRows;
 
-  return <section aria-labelledby="attendance-report-heading" className={`mx-auto w-full max-w-[1386px] ${aggregateOnly ? 'space-y-2' : 'space-y-4'}`}>
+  return <section aria-labelledby="attendance-report-heading" className={`mx-auto w-full max-w-[1386px] ${aggregateOnly ? 'space-y-[18px]' : 'space-y-4'}`}>
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
-      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">Attendance Report</h2>
+      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{aggregateOnly ? reportText('Attendance Report') : 'Attendance Report'}</h2>
         {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
-      {aggregateOnly && <form aria-label="Attendance report controls" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
-        <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
+      {aggregateOnly && <form aria-label={reportText('Attendance report controls')} onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-[9px] lg:w-auto">
+        <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">{reportText('Search employees')}</label>
           <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2" />
-          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search...." className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-3 text-sm placeholder:text-[#86929E]" />
-          <button type="submit" className="sr-only">Search employees</button>
+          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={reportText('Search....')} className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-3 text-sm placeholder:text-[#86929E]" />
+          <button type="submit" className="sr-only">{reportText('Search employees')}</button>
         </div>
         <button type="button" disabled={!filteredRows.length} onClick={exportReport} className="inline-flex min-h-12 items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-[14px] text-sm text-[#86929E] disabled:opacity-50 lg:w-[184px]">
-          <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> Download Report
+          <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> {tx('Download Report')}
         </button>
-        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label="Filters">
-          <img src={attendanceFilterIcon} alt="" /><span className="sr-only">Filters</span>
+          <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className="inline-flex min-h-12 w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-sm hover:bg-slate-50" aria-label={reportText('Filters')}>
+          <img src={attendanceFilterIcon} alt="" /><span className="sr-only">{reportText('Filters')}</span>
         </button>
       </form>}
     </div>
@@ -1143,14 +1168,14 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       </button>
     </form>}
     <div id="attendance-filters" hidden={!filtersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
-      <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">From date</label>
+      <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">{aggregateOnly ? reportText('From date') : 'From date'}</label>
         <input id="attendance-from" type="date" value={aggregateOnly ? draftFrom : from} onChange={event => aggregateOnly ? setDraftFrom(event.target.value) : setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-      <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">To date</label>
+      <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">{aggregateOnly ? reportText('To date') : 'To date'}</label>
         <input id="attendance-to" type="date" value={aggregateOnly ? draftTo : to} onChange={event => aggregateOnly ? setDraftTo(event.target.value) : setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-      {aggregateOnly && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">Select Team</label>
+      {aggregateOnly && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">{reportText('Select Team')}</label>
         <select id="attendance-team" value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-          <option value="">All teams</option>
+          <option value="">{tx('All teams')}</option>
           {teamOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select></div>}
       {showDetails && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">Status</label>
@@ -1159,10 +1184,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
         </select></div>}
       {aggregateOnly
         ? <button type="button" onClick={applyReportFilters}
-          className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">Apply Filter</button>
+          className="min-h-11 self-end rounded-lg border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">{reportText('Apply Filter')}</button>
         : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
     </div>
-    {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
+    {error && currentTenantReady && <StatusMessage error={aggregateOnly ? reportText(error) : error} retryLabel={aggregateOnly ? reportText('Retry') : 'Retry'} onRetry={() => void load()} />}
     {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
     {currentCorrections.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h3 className="font-medium">Attendance correction requests</h3>
@@ -1225,14 +1250,16 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       </div>
     </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm">
+      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">{aggregateOnly ? reportText('Loading attendance data…') : 'Loading attendance data…'}</p> : aggregateOnly && error ? null : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? reportText('No attendance report rows match the selected team.') : aggregateOnly ? reportText('No attendance records were returned for this date range.') : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label={aggregateOnly ? reportText('Scrollable attendance report table') : 'Scrollable attendance report table'} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
+          <table aria-label={aggregateOnly ? reportText('Attendance summary by employee') : 'Attendance information'} className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm">
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
-              {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">
+            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'].map(reportText) : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === reportText('Team Name') ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
+              {aggregateOnly && label === reportText('Team Name') ? <div className="flex items-center gap-1">
                 <span>{label}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
-                  aria-label={`Sort by Team Name ${teamSortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                  aria-label={teamSortDirection === 'asc'
+                    ? locale === 'bn' ? 'দলের নাম অবরোহী ক্রমে সাজান' : 'Sort by Team Name descending'
+                    : locale === 'bn' ? 'দলের নাম আরোহী ক্রমে সাজান' : 'Sort by Team Name ascending'}
                   className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
                   <img src={attendanceTeamSortIcon} alt="" />
                 </button>
@@ -1256,11 +1283,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
               return Number.isFinite(numeric) ? numeric.toFixed(2) : display(value);
             };
             return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className="h-20">
-              <td className={`${cellClass} rounded-l-lg border-l border-white font-medium`}>
+              <td className={`${cellClass} rounded-l-lg border-l border-white ${aggregateOnly ? 'font-normal' : 'font-medium'}`}>
                 <div className="flex min-w-44 items-center gap-3">
                   <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-[#DCEFF4] text-base font-semibold text-[#085587]">{nameInitials(employeeName)}</span>
-                  <span className="min-w-0"><span className="block break-words text-slate-800">{display(employeeName)}</span>
-                    <span className="mt-0.5 block text-xs font-normal text-slate-500">{display(row.employee_number)}</span></span>
+                  <span className="min-w-0"><span className={`block break-words ${aggregateOnly ? 'text-[#424242]' : 'text-slate-800'}`}>{display(employeeName)}</span>
+                    {!aggregateOnly && <span className="mt-0.5 block text-xs font-normal text-slate-500">{display(row.employee_number)}</span>}</span>
                 </div>
               </td>
               <td className={cellClass}>{display(row.designation_title)}</td>

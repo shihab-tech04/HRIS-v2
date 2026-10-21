@@ -1,7 +1,9 @@
 name: HRIS Figma UI branch acceptance (no deploy)
 on:
   push:
-    branches: [work/ws01-figma-attendance-shell-20261021]
+    branches:
+      - work/ws01-figma-attendance-shell-20261021
+      - work/ws08-management-phase05-20261020
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,5 +47,6 @@ jobs:
             test-results/
             docs/evidence/attendance-*.png
             docs/evidence/ws01-shell/*.png
+            docs/evidence/ws08/*.png
           if-no-files-found: ignore
           retention-days: 7
