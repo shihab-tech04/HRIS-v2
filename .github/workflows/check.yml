@@ -1,13 +1,13 @@
 name: Verify HRIS build and browser smoke
 on:
   push:
-    branches: [release/hris-stable-20261017]
+    branches: [release/hris-stable-20261017, work/ws06-employee-phase05-20261020]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   check:
-    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
+    if: github.ref == 'refs/heads/development/hris-checkpoints' || github.ref == 'refs/heads/work/ws06-employee-phase05-20261020' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -15,6 +15,9 @@ jobs:
       - name: Checkout the matching Candidate release for cross-repository contracts
         if: github.ref == 'refs/heads/release/hris-stable-20261017'
         run: git clone --depth 1 --branch release/candidate-stable-20261017 https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+      - name: Checkout trusted Candidate development source for WS06 cross-repository contracts
+        if: github.ref == 'refs/heads/work/ws06-employee-phase05-20261020'
+        run: git clone --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'

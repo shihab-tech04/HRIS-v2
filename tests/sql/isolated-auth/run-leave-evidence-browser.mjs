@@ -811,7 +811,11 @@ try {
   await ownDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_NAME, { exact: true }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTED_NAME, { exact: true }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText('Correction required', { exact: true }).waitFor({ state: 'visible' });
   await ownDocumentCard.getByText('Verified', { exact: true }).waitFor({ state: 'visible' });
+  // The disposable fixture has no expiry date; its empty-date fallback must stay explicit.
+  await ownDocumentCard.getByText('Expires', { exact: true }).waitFor({ state: 'visible' });
+  await ownDocumentCard.getByText('Not provided', { exact: true }).waitFor({ state: 'visible' });
   await refreshedEmployee.unroute('**/rest/v1/rpc/hris_get_my_employee_documents');
   await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
   await ownDocumentCard.waitFor({ state: 'visible' });
@@ -821,6 +825,14 @@ try {
   await refreshedEmployee.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await refreshedEmployee.getByRole('heading', { name: 'আমার নথি' }).waitFor({ state: 'visible' });
   await rejectedDocumentCard.getByText('সংশোধনের কারণ', { exact: false }).waitFor({ state: 'visible' });
+  await rejectedDocumentCard.getByText('সংশোধন প্রয়োজন', { exact: true }).waitFor({ state: 'visible' });
+  // E03-07: the same owner-authorized private document remains downloadable in Bengali.
+  // Reuse the real Storage-backed fixture; do not mock permissions or mutate database rows.
+  const bengaliDocumentDownload = refreshedEmployee.waitForEvent('download');
+  await ownDocumentCard.getByRole('button', { name: 'ডাউনলোড', exact: true }).click();
+  await assertDownloadedEvidence(refreshedEmployee, await bengaliDocumentDownload,
+    'Synthetic Employee A document', 'synthetic employee document');
+  await refreshedEmployee.getByRole('status').filter({ hasText: 'ডাউনলোড শুরু হয়েছে' }).waitFor({ state: 'visible' });
   await assertNoHorizontalOverflow(refreshedEmployee, 'Employee documents Bengali mobile');
   await refreshedEmployee.getByRole('button', { name: 'Switch language to English' }).click();
   const documentDownload = refreshedEmployee.waitForEvent('download');
@@ -831,10 +843,48 @@ try {
   await assertNoHorizontalOverflow(refreshedEmployee, 'Employee document self-service refreshed desktop');
   await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
   await ownDocumentCard.waitFor({ state: 'visible' });
+
+  // E03-05: override one authorized self-document read in the isolated browser only.
+  // All real database document rows remain unchanged; this verifies existing date formatting.
+  let expiryProjectionCalls = 0;
+  await refreshedEmployee.route('**/rest/v1/rpc/hris_get_my_employee_documents', async route => {
+    const upstream = await route.fetch();
+    if (!upstream.ok()) throw new Error('E03-05 isolated document read failed.');
+    const payload = await upstream.json();
+    if (!payload || !Array.isArray(payload.documents)
+        || !payload.documents.some(document => document.id === process.env.HRIS_LOCAL_DOCUMENT_ID)) {
+      throw new Error('E03-05 expected the authorized employee document in the RPC response.');
+    }
+    expiryProjectionCalls += 1;
+    await route.fulfill({
+      response: upstream,
+      json: {
+        ...payload,
+        documents: payload.documents.map(document => document.id === process.env.HRIS_LOCAL_DOCUMENT_ID
+          ? { ...document, expires_at: '2030-05-21',
+            verification_note: process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON } : document),
+      },
+    });
+  });
+  await refreshedEmployee.getByRole('button', { name: 'Refresh documents' }).click();
+  await ownDocumentCard.getByText('May 21, 2030', { exact: true }).waitFor({ state: 'visible' });
+  // E03-08: a verified document must never reveal a stray correction note.
+  // The rejected document still shows its own correction reason after the same refresh.
+  if (await ownDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).count() !== 0) {
+    throw new Error('E03-08 verified document unexpectedly exposed a rejection reason.');
+  }
+  await rejectedDocumentCard.getByText(process.env.HRIS_LOCAL_DOCUMENT_REJECTION_REASON, { exact: false }).waitFor({ state: 'visible' });
+  await refreshedEmployee.unroute('**/rest/v1/rpc/hris_get_my_employee_documents');
+  if (expiryProjectionCalls !== 1) {
+    throw new Error('E03-05 expected exactly one synthetic date-projection response.');
+  }
   await refreshedEmployeeContext.close();
 
   console.log('Real local Auth/Postgres/Storage leave flow passed: employee UI submits proof-backed leave, employee and manager retrieve its private evidence, manager approves and rejects, refreshed employee history and owner-only decision notifications persist, Bengali and English notification actions return to the matching request on mobile and desktop.');
   console.log('LEAVE_EVIDENCE_BROWSER_ACCEPTANCE=PASS');
+  console.log('E03-04_DOCUMENT_VERIFICATION_STATUS_BROWSER_PASS');
+  console.log('E03-05_EXPIRY_DATE_BROWSER_PASS');
+  console.log('E03-08_REJECTED_REASON_VISIBILITY_BROWSER_PASS');
   console.log('EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS');
 } finally {
   if (browser) await browser.close();
