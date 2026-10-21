@@ -23,25 +23,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p integration-evidence
-          git fetch origin "+refs/heads/work/ws07-hr-org-phase05-20261020:refs/remotes/origin/work/ws07-hr-org-phase05-20261020" "+refs/heads/work/ws06-employee-profile-figma-20261021:refs/remotes/origin/work/ws06-employee-profile-figma-20261021"
-          git merge-base --is-ancestor "bafda05579a3144f455620e635bec6e093b160c1" HEAD
-          test "$(git merge-base HEAD bafda05579a3144f455620e635bec6e093b160c1)" = "bafda05579a3144f455620e635bec6e093b160c1"
-          git cat-file -e "9d7cf862e060babc259d94bbbbf5daa13536b015^{commit}"
+          mkdir -p integration-evidence /tmp/hris-merge-scripts
+          cp scripts/integration/resolve-ws07-conflicts.py scripts/integration/dedupe-bengali-merge.py /tmp/hris-merge-scripts/
+          git fetch origin "+refs/heads/work/ws08-management-phase05-20261020:refs/remotes/origin/work/ws08-management-phase05-20261020" "+refs/heads/work/ws07-hr-org-phase05-20261020:refs/remotes/origin/work/ws07-hr-org-phase05-20261020" "+refs/heads/work/ws06-employee-profile-figma-20261021:refs/remotes/origin/work/ws06-employee-profile-figma-20261021"
+          test "$(git rev-parse origin/work/ws08-management-phase05-20261020)" = "286bc1881966aefe1da1e0a579d31bb9e5e3fa04"
+          git reset --hard "286bc1881966aefe1da1e0a579d31bb9e5e3fa04"
+          test "$(git rev-parse HEAD)" = "286bc1881966aefe1da1e0a579d31bb9e5e3fa04"
+          git cat-file -e "985ec675c12697cd83caeccd672b82c349b924bd^{commit}"
           git cat-file -e "3f1f1f1b0edb6341cf6e4be8501eff88789caf44^{commit}"
-          printf 'WS08 base: %s\nWS07: %s\nWS06: %s\n' "bafda05579a3144f455620e635bec6e093b160c1" "9d7cf862e060babc259d94bbbbf5daa13536b015" "3f1f1f1b0edb6341cf6e4be8501eff88789caf44" > integration-evidence/pinned-heads.txt
+          printf 'WS08 base: %s\nWS07: %s\nWS06: %s\n' "286bc1881966aefe1da1e0a579d31bb9e5e3fa04" "985ec675c12697cd83caeccd672b82c349b924bd" "3f1f1f1b0edb6341cf6e4be8501eff88789caf44" > integration-evidence/pinned-heads.txt
       - name: Rehearse real cross-workstation Git merges
         shell: bash
         run: |
           set -euo pipefail
-          if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 9d7cf862e060babc259d94bbbbf5daa13536b015 > integration-evidence/ws07-merge.log 2>&1; then
+          if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 985ec675c12697cd83caeccd672b82c349b924bd > integration-evidence/ws07-merge.log 2>&1; then
             git diff --name-only --diff-filter=U > integration-evidence/ws07-conflicts.txt
             git diff > integration-evidence/ws07-conflict-diff.txt || true
             cp src/live/LiveHrisWorkspace.tsx integration-evidence/LiveHrisWorkspace.unmerged.txt
             cp tests/browser/attendance-information.spec.ts integration-evidence/attendance-information.unmerged.txt
             cp tests/contracts/attendance-report.test.mjs integration-evidence/attendance-report.unmerged.txt
             cat integration-evidence/ws07-conflicts.txt
-            python3 scripts/integration/resolve-ws07-conflicts.py
+            python3 /tmp/hris-merge-scripts/resolve-ws07-conflicts.py
             git add src/live/LiveHrisWorkspace.tsx src/live/LiveApp.tsx tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs tests/contracts/live-workspace.test.mjs
             git diff --cached --check -- src/live/LiveHrisWorkspace.tsx src/live/LiveApp.tsx tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/contracts/attendance-report.test.mjs tests/contracts/ws07-attendance-report.test.mjs tests/contracts/live-workspace.test.mjs
           fi
@@ -53,7 +55,7 @@ jobs:
             exit 1
           fi
           git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS06 integration' > integration-evidence/ws06-commit.log 2>&1
-          python3 scripts/integration/dedupe-bengali-merge.py
+          python3 /tmp/hris-merge-scripts/dedupe-bengali-merge.py
           if ! git diff --quiet -- src/live/project-locale.ts; then
             git add src/live/project-locale.ts
             git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Preserve identical EN/BN locale mappings after merge'
@@ -82,7 +84,7 @@ jobs:
           python3 - <<'PY'
           import subprocess, base64, hashlib
           from pathlib import Path
-          before = __import__('os').environ['GITHUB_SHA']
+          before = '286bc1881966aefe1da1e0a579d31bb9e5e3fa04'
           paths = subprocess.check_output(['git','diff','--name-only','-z',before,'HEAD']).decode().split('\0')
           allowed = ('src/', 'tests/', 'scripts/', 'docs/', '.github/', 'supabase/')
           print(f'HRIS_EXPORT_BEGIN|{before}|{subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip()}', flush=True)
