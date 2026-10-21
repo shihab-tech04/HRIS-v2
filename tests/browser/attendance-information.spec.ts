@@ -143,6 +143,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
   await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(designSections.getByRole('button', { name: 'উপস্থিতির তথ্য' })).toHaveAttribute('aria-current', 'page');
+  await expect(designSections.getByRole('button', { name: 'ছুটির আবেদনসমূহ' })).toBeEnabled();
   await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
