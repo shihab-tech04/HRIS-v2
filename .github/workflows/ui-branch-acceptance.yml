@@ -49,5 +49,6 @@ jobs:
             docs/evidence/attendance-*.png
             docs/evidence/ws01-shell/*.png
             docs/evidence/ws08/*.png
+            docs/evidence/ws08-*.png
           if-no-files-found: ignore
           retention-days: 7
