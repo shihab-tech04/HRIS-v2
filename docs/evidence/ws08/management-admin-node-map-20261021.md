@@ -44,8 +44,8 @@ The HOD/CEO labels are inside the Figma Requisition and Referral sections, not a
 
 - `npm run lint`: pass.
 - `npm run test:contracts`: 356/356 pass.
-- Manager attendance browser coverage: English/Bengali, role denial, loading/error/empty, keyboard filter disclosure, apply/search/export, source status, sort, and 1920/1280/768/375 captures are covered. The local Playwright runtime has no Chromium headless binary, so browser screenshots are pending exact-head CI.
-- Local targeted attendance report contracts: 11/11 pass. Full repository contracts need the sibling `HRIS-Candidate-v2` checkout referenced by existing tests; it is absent from this workspace.
-- Local TypeScript and Vite build: pass. The build sync step rewrote tracked Pages output; those generated changes were restored after verification.
-- Exact-head GitHub Actions and screenshot artifact: pending the PR #44 checkpoint push.
+- Manager attendance browser coverage includes English/Bengali, role denial, loading/error/empty, keyboard filter disclosure, apply/search/export, source status, sorting, and 1920/1280/768/375 captures. The last completed exact-head run at `3b731508` passed 64/64 browser tests and captured the Manager screenshots in artifact `12360412274`; fresh hosted evidence is pending for the base-synchronized head.
+- Focused local attendance/report/workspace/SA06 contracts passed 31/31 in this checkpoint. The local Playwright runtime has no Chromium headless binary; browser acceptance therefore relies on exact-head GitHub Actions.
+- TypeScript and the Vite build passed on the preceding exact head; the latest base synchronization is awaiting its own hosted type/build/browser run.
+- PR #44 is now based on WS01 #49 head `be78824462bbe212948615006ebed165af3944ec`, with current head `7c73260e67d2ceac32953dd7bb3e8bea385b0544`. The #49 exact-head run `39634656721` passed 57/57 browser tests; current #44 exact-head Actions run and screenshot artifact are not attached yet.
 - WS04 independent visual acceptance and WS02 two-tenant permission verification: pending.
