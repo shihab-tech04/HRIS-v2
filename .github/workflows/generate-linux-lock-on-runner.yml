@@ -3,8 +3,8 @@ on:
   push:
     branches:
       - work/main-pages-reproducibility-20261021
-  pull_request:
-    branches: [main]
+    paths:
+      - .github/workflows/generate-linux-lock-on-runner.yml
 permissions:
   contents: write
 jobs:
@@ -17,8 +17,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.3'
-      - name: Verify locked toolchain
+      - name: Verify exact candidate ref and toolchain
         run: |
+          test "$(git branch --show-current)" = "work/main-pages-reproducibility-20261021"
+          git status --short --branch
+          git rev-parse HEAD
           test "$(node --version)" = "v22.23.3"
           test "$(npm --version)" = "10.9.9"
           node --version
@@ -60,74 +63,21 @@ jobs:
           find index.html .nojekyll assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/pages-second.sha256
           diff -u /tmp/pages-first.sha256 /tmp/pages-second.sha256
           cat /tmp/pages-second.sha256
-      - name: Switch Main verification to clean installs and retain browser evidence
+      - name: Commit only the generated lock and Pages outputs to the candidate branch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('.github/workflows/check.yml')
-          text = path.read_text()
-          assert "node-version: '22'" in text
-          assert 'run: npm install --no-audit --no-fund' in text
-          assert '      - name: TypeScript check\n' in text
-          assert '      - name: Upload failing browser evidence\n' in text
-          text = text.replace("node-version: '22'", "node-version: '22.23.3'", 1)
-          text = text.replace('run: npm install --no-audit --no-fund', 'run: npm ci --no-audit --no-fund', 1)
-          text = text.replace(
-              '      - name: TypeScript check\n',
-              "      - name: Verify lockfile toolchain\n"
-              "        run: |\n"
-              "          test \"$(node --version)\" = \"v22.23.3\"\n"
-              "          test \"$(npm --version)\" = \"10.9.9\"\n"
-              "      - name: TypeScript check\n",
-              1,
-          )
-          text = text.replace(
-              '      - name: Upload failing browser evidence\n'
-              '        if: failure()\n'
-              '        uses: actions/upload-artifact@v4\n'
-              '        with:\n'
-              '          name: browser-test-failures\n'
-              '          path: |\n'
-              '            test-results\n'
-              '            playwright-report\n'
-              '          if-no-files-found: ignore\n',
-              '      - name: Upload exact-head browser and screenshot evidence\n'
-              '        if: always()\n'
-              '        uses: actions/upload-artifact@v4\n'
-              '        with:\n'
-              '          name: browser-evidence\n'
-              '          path: |\n'
-              '            test-results/\n'
-              '            playwright-report/\n'
-              '            docs/phase-1/screenshots/*.png\n'
-              '          if-no-files-found: warn\n'
-              '          retention-days: 14\n',
-              1,
-          )
-          assert 'run: npm ci --no-audit --no-fund' in text
-          assert 'name: browser-evidence' in text
-          path.write_text(text)
-          PY
-      - name: Verify candidate contains only the reproducibility fix
-        run: |
-          git status --short
           git diff --check
-          git add package-lock.json .github/workflows/check.yml index.html assets
+          git add package-lock.json index.html assets
           git add -f .nojekyll
           git diff --cached --stat
           git diff --cached --check
-      - name: Commit focused reproducibility change
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix: lock Linux dependencies and keep Pages build reproducible"
-          git rev-parse HEAD | tee /tmp/final-sha.txt
-          printf "Node: %s\nnpm: %s\n" "$(node --version)" "$(npm --version)" > reproducibility-proof.txt
+          git commit -m "fix: lock Linux dependencies and synchronize Pages build"
+          printf "Candidate branch: work/main-pages-reproducibility-20261021\nSource before generated commit: %s\n" "$(git rev-parse HEAD^)" > reproducibility-proof.txt
+          printf "Commit: %s\nNode: %s\nnpm: %s\nLinux binding: %s\n" "$(git rev-parse HEAD)" "$(node --version)" "$(npm --version)" "$(node -p "require('./package-lock.json').packages['node_modules/@rolldown/binding-linux-x64-gnu'].version")" >> reproducibility-proof.txt
           printf "\nBuild output checksums (first and second build matched):\n" >> reproducibility-proof.txt
           cat /tmp/pages-second.sha256 >> reproducibility-proof.txt
-          printf "\nCommit: " >> reproducibility-proof.txt
-          cat /tmp/final-sha.txt >> reproducibility-proof.txt
-          git push origin "HEAD:$GITHUB_REF_NAME"
+          git push origin HEAD:work/main-pages-reproducibility-20261021
       - name: Upload Linux lock/build reproducibility proof
         uses: actions/upload-artifact@v4
         with:
