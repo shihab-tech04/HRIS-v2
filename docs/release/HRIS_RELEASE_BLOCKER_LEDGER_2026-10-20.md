@@ -81,3 +81,17 @@ Production project hrmis-saas has 116 migration rows through 20261020044145. Rea
 ## Release decision
 
 HOLD. Do not merge, enable Candidate registration/applications, mutate production records/permissions/schema, or replay applied migrations. Only WS05 may merge/deploy, after every listed gate passes and the hosted URLs confirm the intended deployed commit.
+
+## UX-00 parallel-track integration observation — 2026-10-21
+
+**Authoritative read-only head check:** Main `main=cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7`, Main `development/hris-checkpoints=2a5fe5f4ad7ff2600d5b1d60c7749dbaee0e77cc`; Candidate `development/hris-checkpoints=e3cb9c178cbfb66eb611c640f885a13581b50f51`. Existing UX draft PRs #45 (Main), #7 (Candidate), #41 (WS05) stay open and unmerged at initial review. **Refresh head references before any integration test/merge.**
+
+**New dependency:** Main PR #48, head `7dfe831bf6fce23686fcc9b6a22af24e5643587f`, is a **DRAFT combined proposal** for PR #46 deterministic Pages asset outputs + PR #47 limited client administrative table grant revocation. It reports isolated lint, 90/90 contract tests and build PASS and links a standalone PG17 security test run, **not** the missing authenticated hosted API/role/tenant acceptance or restored DB backup. PRs #46 and #47 remain separate draft sources. No production migration or merge is implied.
+
+**Parallel UX-00 intake:**
+- WS04/WS01/WS07/WS08: compare directly inspected manager Figma attendance/leave states and dashboard to source, one role/state/viewport at a time; existing token value conflict remains review-required.
+- WS03: public jobs → details → back, then isolated authenticated apply → applications and interview/offer/preboarding; full Candidate Figma identity not established.
+- WS02: security contract, missing RPCs and cross-tenant negative tests independent of visual check. PR #48 is one input, not clearance.
+- WS05: verify exact source/deployed SHAs, independent off-GitHub backup hash/readback/restore and DB snapshot restore proof, protected reviews, preview+production acceptance before any release. **RELEASE HOLD**.
+
+These are durable evidence/handoffs, **not autonomous Work sessions**. No deployed version is claimed from UX-00 evidence.
