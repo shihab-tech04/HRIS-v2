@@ -64,3 +64,24 @@ Figma's primary style reads `#08558B` (`rgb(8, 85, 139)`). Main and Candidate so
 - **WS05 release controller:** **NOT READY / HOLD.** Main source `4cc2661` and test tree `4cebe84` passed runs 39420943283/39422238862, with current development tip `fe83696` docs-only; these runs do not refresh frozen Main RC #38 or production. Candidate PR #6 `530c2de` has no workflow/status result; run 39419429848 at `9c61a3c` failed CA11-04 after CA10/12/13 markers. Candidate production remains public-only, hosted role/tenant acceptance is not established, and WS05 still lacks database snapshot/restore proof. PR #44 records target `4cc2661` versus API base `1714a08` and its clean merge-tree only for those recorded inputs. Keep Main PR #38 and Candidate PR #5 in DRAFT/HOLD; no merge or deploy follows from this audit.
 
 This audit is docs-only. It performed no production writes, application changes, merges, or deployments. See [`HRIS_Figma_Parity_Matrix_2026-10-20.csv`](HRIS_Figma_Parity_Matrix_2026-10-20.csv) for each route/frame status, evidence pointer, owner, and next action.
+
+## UX-00 live source-backed state inspection — 2026-10-21
+
+**Provenance:** Read-only direct Figma Plugin API inspection of approved file `XEXLe9J1oATlITS9I5u1P9`, page `0:1`; source checked in current Main development branch `2a5fe5f4ad7ff2600d5b1d60c7749dbaee0e77cc`, file `src/live/LiveHrisWorkspace.tsx`. This is an **evidence update**, not UI implementation or visual certification.
+
+| Verified Figma state/node | Source-visible canonical labels | Source mapping / next audit |
+| --- | --- | --- |
+| Attendance report `17:28320` (1920×1117) | Attendance Report, search, Download Report, Name, Team Name, From date, To date, Office Hour, Work Hour, Deviation | Candidate `PageId:attendance` through `LiveHrisWorkspace`. Compare signed-in manager route, data columns and responsive table. **UNMAPPED role/state/viewport, not a parity FAIL.** |
+| Attendance request `17:29937`, bulk `17:30342`, approved `17:30766`, rejected `17:31148` (all 1920×1080) | Attendance Requests, Date, Applying Date, Remarks, Action, approved/rejected state | Match workflow state/authorization and selection/bulk behavior before design changes; do not invent approval API. **BLOCKED**. |
+| Leave request `17:31769`, bulk `17:32168`, approved `17:32584`, rejected `17:32957` (all 1920×1080) | Leave Requests, Applicable From, Applicable To, Leave Type, Applying Date, Remarks, Action, approved/rejected state | Candidate `PageId:leave`. Source also contains calendar and leave policy, so **preserve** existing features while resolving exact role/state/fields. **BLOCKED**. |
+| Employee application `265:48972` (1920×1080) | New Applications, Employee Requisition Requests, Employee Referral Requests, Personal Self Service History | **Main employee self-service** candidate, **not** approved Candidate portal `?view=apply` screen. Keep Candidate Figma correspondence **UNKNOWN**, not PASS or FAIL. |
+
+**Important correction in the trace:** the visible heading inside node `17:28320` reads **Attendance Report**, despite its frame layer name being `attendance information`. Do not mark the implemented Attendance Report heading a Figma mismatch based only on the frame-layer name.
+
+**Actionable UX-00 packets (non-overlapping):**
+- **UXM-00-ATT (WS04 verifier; WS01+WS07 source owners):** extract exact Main `attendance` role/permission and each substate; screenshot 1920/1280/768/375; compare table columns, date filtering, bulk and approval state; record linked acceptance ID and missing API contract.
+- **UXM-00-LEAVE (WS04 verifier; WS07+WS08 source owners):** compare leave request/bulk/approved/rejected state one at a time at matched viewport; preserve calendar and policy; no schema/API edits.
+- **UXM-00-DASH (WS04 verifier; WS01+WS08 source owners):** map manager `9:22640` / `9:23429` to `PageId:dashboard`, resolve chart measure/denominator with WS02 **before** implementation.
+- **WS05 gate:** no release from this evidence; keep Main PR #38 and all production change paths HOLD pending independent acceptance, backup/restore and role/tenant tests.
+
+**Status:** source-backed screen/state candidate mapping progressed, exact visual/functional PASS count **unchanged** (4 geometry only); 1 token mismatch and 56 blocked comparisons remain as previously classified pending a new full matrix review. No screenshot or pixel match asserted.
