@@ -1,0 +1,44 @@
+name: HRIS full Git-history offsite backup
+on:
+  push:
+    branches:
+      - backup/hris-prerelease-full-history-20261021
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-source-backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Mirror both authoritative public repositories with full history
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output mirrors restored
+          for repo in HRIS-v2 HRIS-Candidate-v2; do
+            git clone --mirror "https://github.com/shihab-tech04/${repo}.git" "mirrors/${repo}.git"
+            git -C "mirrors/${repo}.git" fsck --full --no-reflogs
+            git -C "mirrors/${repo}.git" bundle create "../../output/${repo}-all-refs.bundle" --all
+            git -C "mirrors/${repo}.git" bundle verify "../../output/${repo}-all-refs.bundle"
+            git clone --mirror "output/${repo}-all-refs.bundle" "restored/${repo}.git"
+            git -C "restored/${repo}.git" fsck --full --no-reflogs
+            src_sha="$(git -C "mirrors/${repo}.git" rev-parse refs/heads/main)"
+            restored_sha="$(git -C "restored/${repo}.git" rev-parse refs/heads/main)"
+            test "$src_sha" = "$restored_sha"
+            test "$(git -C "mirrors/${repo}.git" rev-parse "refs/heads/main^{tree}")" = "$(git -C "restored/${repo}.git" rev-parse "refs/heads/main^{tree}")"
+            { echo "REPO=${repo}"; echo "RESTORED_MAIN_SHA=${restored_sha}"; echo "RESTORED_MAIN_TREE=$(git -C "restored/${repo}.git" rev-parse "refs/heads/main^{tree}")"; git -C "mirrors/${repo}.git" show-ref | sort; } > "output/${repo}-refs.txt"
+          done
+          test "$(git -C restored/HRIS-v2.git rev-parse refs/heads/main)" = "cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7"
+          test "$(git -C restored/HRIS-Candidate-v2.git rev-parse refs/heads/main)" = "38174c7b607999f951c7eea47aefaa443735080e"
+          (cd output && sha256sum *.bundle *.txt > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          printf 'Both complete Git mirrors, bundle verification, independent clone from each bundle, git fsck, main SHA and tree comparison passed. No production data accessed.\n' > output/RESTORE_TEST_PASS.txt
+          cat output/RESTORE_TEST_PASS.txt
+          cat output/SHA256SUMS.txt
+      - name: Preserve complete bundles and restore evidence as artifact for off-GitHub transfer
+        uses: actions/upload-artifact@v4
+        with:
+          name: HRIS-Main-and-Candidate-full-history-20261021
+          path: output/
+          if-no-files-found: error
+          retention-days: 7
