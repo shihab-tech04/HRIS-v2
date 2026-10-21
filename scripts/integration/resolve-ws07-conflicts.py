@@ -184,9 +184,16 @@ hr_leave_test_path.write_text(hr_leave_test)
 manager_leave_test = Path("tests/browser/manager-leave.spec.ts")
 manager_leave_src = git_source(WS08, "tests/browser/manager-leave.spec.ts")
 # Preserve the independently tested HR Operations manager-leave viewport suite separately.
-Path("tests/browser/ws07-manager-leave.spec.ts").write_text(
-    git_source(WS07, "tests/browser/manager-leave.spec.ts")
+ws07_manager_test = git_source(WS07, "tests/browser/manager-leave.spec.ts")
+ws07_manager_test = replace_exact(
+    ws07_manager_test,
+    "await page.getByRole('button', { name: 'Leave', exact: true }).click();",
+    "await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();\n"
+    "  await page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true }).click();"
 )
+ws07_manager_test = ws07_manager_test.replace(".toContainText('Approved')", ".toContainText('approved')")
+ws07_manager_test = ws07_manager_test.replace(".toContainText('Rejected')", ".toContainText('rejected')")
+Path("tests/browser/ws07-manager-leave.spec.ts").write_text(ws07_manager_test)
 manager_leave_src = manager_leave_src.replace(
     ".toContainText('Approved')", ".toContainText('approved')"
 ).replace(
