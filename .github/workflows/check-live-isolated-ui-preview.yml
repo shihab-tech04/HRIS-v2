@@ -1,0 +1,34 @@
+name: Verify deployed isolated HRIS preview URLs
+on:
+  push:
+    branches: ['work/hris-isolated-ui-preview-v2-20261021']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Test Main and Candidate public preview HTML/assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_preview() {
+            local label="$1" url="$2" marker="$3"
+            local root="/tmp/${label}.html"
+            local code
+            code=$(curl --location --silent --show-error --max-time 25 --output "$root" --write-out '%{http_code}' "$url")
+            echo "${label} main HTML status: $code"
+            test "$code" = "200"
+            grep -Eiq "$marker" "$root"
+            local script
+            script=$(grep -oE '/assets/[^"]+\.js' "$root" | head -1)
+            test -n "$script"
+            code=$(curl --location --silent --show-error --max-time 25 --output "/tmp/${label}.js" --write-out '%{http_code}' "${url%/}$script")
+            echo "${label} JS status: $code / $(wc -c < /tmp/${label}.js) bytes"
+            test "$code" = "200"
+            test "$(wc -c < "/tmp/${label}.js")" -gt 10000
+          }
+          check_preview main "https://synesis-hris-progress-preview-b4aek6chw-shajib-6798.vercel.app/" "Synesis HRIS"
+          check_preview candidate "https://synesis-hris-progress-preview-hsdqtuxux-shajib-6798.vercel.app/" "Synesis|Careers|Candidate"
