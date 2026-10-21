@@ -26,21 +26,23 @@ Read-only hosted refresh completed on 2026-10-21 through the existing Supabase c
 | Public Candidate vacancy source | candidate_public_jobs_source() is SECURITY DEFINER and callable by anon/authenticated/service_role. Its reviewed source body is intended for public published-vacancy browsing, filters to published/active/non-expired synesis-it jobs and masks salary unless published. Its output schema also contains tenant_id, required_documents, screening_questions and instructions; no anonymous row/HTTP response was inspected. | Candidate PR #8 disables Apply and Save and uses the public vacancy view. Only an approved public-field projection may be displayed; no private applicant data is authorized by this review. | PASS for source-intended public endpoint; payload allowlist and response scope NOT TESTED |
 | Role, tenant-switch and unauthorized-operation acceptance | No authorized hosted Auth identities or populated second tenant exist in the available branch. | Address/family/leave PG17 checks exercise synthetic role membership, tenant isolation, stale/inactive session denial and direct ACL denial. They are disposable database acceptance, not real Supabase Auth acceptance. | PASS for listed disposable tests; BLOCKED for hosted acceptance |
 
-## Exact-head PG17 verification
+## Exact-head PG17 ACL verification
 
-All three PostgreSQL 17 workflows passed on source code commit b55ca3dd12a90557159f9eccc6b53310a4c6e94e:
+Three PostgreSQL 17 ACL workflows triggered on report-only commit 39e217a68f064a8a5acfa4df7b0f3f6e4b266135 all completed **success**:
+
+- Existing family migration tenant/ACL checks: [run 39635069404](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39635069404) — passed.
+- Address tenant isolation and ACL checks: [run 39635069405](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39635069405) — passed.
+- leave_types broad-ACL revocation and read-only checks: [run 39635069453](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39635069453) — passed.
+
+Commit 39e217a is report-only after source fix b55ca3dd12a90557159f9eccc6b53310a4c6e94e; the tested SQL and fixtures are unchanged. The source code under test remains at b55ca3dd. These three ACL checks are separate from the disposable Auth/Postgres/browser workflow recorded below.
+
+The earlier PG17 workflows on source code commit b55ca3dd also passed:
 
 - Address tenant isolation and client ACL checks: [run 39634701893](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634701893).
 - Family tenant isolation and broad-ACL revocation using the existing family migration: [run 39634701839](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634701839).
 - leave_types broad-ACL revocation and tenant read checks: [run 39634701890](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634701890).
 
-The address assertions deny anon/authenticated INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER; authenticated SELECT remains allowed. Service_role privileges are explicitly retained. The family fixture likewise begins with broad PUBLIC/anon/authenticated privileges and verifies that the existing migration removes them while preserving service_role privileges. Tests contain synthetic records only.
-
-## Separate disposable Auth/Postgres/browser run
-
-The separate CI run [39634694092](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634694092) completed **success** on the same source code commit b55ca3dd12a90557159f9eccc6b53310a4c6e94e. Its TypeScript/contracts/build checks, standalone browser regressions with synthetic sessions, local Auth/RLS workflow acceptance, Phase 04 parity checks and disposable-database Advisor inspection all passed. The workflow started and stopped a fresh local-only Supabase environment.
-
-This run is distinct from the three PG17 ACL runs above. It is source/disposable-environment evidence only; it does not exercise hosted Auth sessions or certify hosted two-tenant isolation. The hosted acceptance gate remains **BLOCKED**.
+The address assertions deny anon/authenticated INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER; authenticated SELECT remains allowed. Service_role privileges are explicitly retained. The family fixture begins with broad PUBLIC/anon/authenticated privileges and verifies that the existing migration removes them while preserving service_role privileges. Tests contain synthetic records only.
 
 ## Security Advisor classification
 
