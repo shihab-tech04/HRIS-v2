@@ -27,7 +27,7 @@ jobs:
           node-version: '24.21.0'
           cache: npm
       - name: Install locked dependencies
-        run: npm ci --include=optional --no-audit --no-fund
+        run: npm install --include=optional --no-audit --no-fund
       - name: TypeScript check
         run: npm run lint
       - name: Attendance and Leave source contract checks
