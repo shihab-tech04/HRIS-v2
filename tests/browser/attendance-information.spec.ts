@@ -243,7 +243,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(designSections.getByRole('button', { name: 'উপস্থিতির তথ্য' })).toHaveAttribute('aria-current', 'page');
   await expect(designSections.getByRole('button', { name: 'ছুটির আবেদনসমূহ' })).toBeEnabled();
   await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
-  await expect(page.getByLabel('Search employees')).toHaveAttribute('placeholder', 'খুঁজুন....');
+  await expect(page.getByLabel('কর্মচারী খুঁজুন')).toHaveAttribute('placeholder', 'খুঁজুন....');
   await expect(attendanceTable.getByRole('columnheader', { name: /দলের নাম/ }).getByRole('button', { name: /ঊর্ধ্বক্রমে/ })).toBeVisible();
   await captureResponsiveShell('bn');
   await page.getByRole('button', { name: 'Switch language to English' }).click();
@@ -518,4 +518,119 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(formulaCsv).toContain("\"'=HYPERLINK(");
   expect(formulaCsv).toContain('"-0.7"');
   expect(externalRequests).toEqual([]);
+});
+
+test('attendance requests at 375px keep horizontal scrolling inside the results table', async ({ page }) => {
+  const correction = {
+    id: 'e7777777-7777-4777-8777-777777777777',
+    employee_id: 'e4444444-4444-4444-8444-444444444444',
+    employee_number: 'ATT-001',
+    full_name: 'Synthetic Attendance Employee',
+    attendance_date: '2026-10-12',
+    requested_check_in: '2026-10-12T03:15:00.000Z',
+    requested_check_out: null,
+    requested_work_mode: null,
+    reason: 'Synthetic missed punch approval',
+    status: 'pending',
+  };
+
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost'
+        || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+      await route.continue();
+      return;
+    }
+    await route.abort();
+  });
+  await page.route('**/auth/v1/**', async route => {
+    const requestPath = new URL(route.request().url()).pathname;
+    if (requestPath.endsWith('/token')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        access_token: jwt, refresh_token: 'synthetic-refresh', token_type: 'bearer', expires_in: 3600, user,
+      }) });
+    } else if (requestPath.endsWith('/user')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) });
+    } else {
+      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'No local test session' }) });
+    }
+  });
+  await page.route('**/rest/v1/**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const endpoint = url.pathname.split('/').pop() || '';
+    if (endpoint === 'has_tenant_permission') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: 'true' });
+      return;
+    }
+    if (endpoint === 'hris_get_tenant_dashboard_summary') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        dashboard_date: '2026-10-12', team_members: 1, employees: 1, attendance_today: 1,
+        present_today: 1, attendance_last_7_days: [], attendance_last_30_days: [],
+      }) });
+      return;
+    }
+    if (endpoint === 'hris_get_tenant_attendance_data') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      const data = body.p_report === true ? [] : { records: [], corrections: [correction] };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+      return;
+    }
+    let data: unknown = [];
+    if (endpoint === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'qa_tenant_manager', status: 'active' }];
+    else if (endpoint === 'admin_users') data = { active: false, is_super_admin: false };
+    else if (endpoint === 'tenants') data = [{ id: tenantId, name: 'Synthetic Attendance Org', slug: 'attendance-test', timezone: 'Asia/Dhaka' }];
+    else if (endpoint === 'employees') data = [];
+    if (request.method() === 'HEAD') {
+      await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+  });
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  const mobileMenuTrigger = page.getByRole('button', { name: 'Open navigation menu' });
+  await mobileMenuTrigger.click();
+  const mobileMenu = page.getByRole('dialog', { name: 'HRIS navigation' });
+  await mobileMenu.getByRole('navigation', { name: 'HRIS modules' })
+    .getByRole('button', { name: 'Attendance & Leave' }).click();
+  const sections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+  await sections.getByRole('button', { name: 'Attendance Requests' }).click();
+  await expect(page).toHaveURL(/#attendance-correction-requests$/);
+
+  const resultsTable = page.getByRole('table').first();
+  await expect(resultsTable.getByRole('row', { name: /Synthetic missed punch approval/ })).toBeVisible();
+  const resultsScroller = resultsTable.locator('xpath=..');
+  await expect(resultsScroller).toHaveCSS('overflow-x', 'auto');
+  await mkdir(path.resolve(process.cwd(), 'docs/evidence/ws01-shell'), { recursive: true });
+  await page.screenshot({
+    path: path.resolve(process.cwd(), 'docs/evidence/ws01-shell/attendance-requests-overflow-en-375.png'),
+    fullPage: false,
+  });
+
+  const dimensions = await page.evaluate(() => {
+    const scroller = document.querySelector('#attendance-correction-requests .overflow-x-auto') as HTMLElement | null;
+    const table = scroller?.querySelector('table') as HTMLElement | null;
+    const bounds = scroller?.getBoundingClientRect();
+    return {
+      viewportWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      scrollerClientWidth: scroller?.clientWidth ?? 0,
+      scrollerScrollWidth: scroller?.scrollWidth ?? 0,
+      scrollerLeft: bounds?.left ?? -1,
+      scrollerRight: bounds?.right ?? -1,
+      tableWidth: table?.getBoundingClientRect().width ?? 0,
+    };
+  });
+  expect(dimensions.viewportWidth).toBe(375);
+  expect(dimensions.documentWidth).toBeLessThanOrEqual(376);
+  expect(dimensions.scrollerLeft).toBeGreaterThanOrEqual(0);
+  expect(dimensions.scrollerRight).toBeLessThanOrEqual(376);
+  expect(dimensions.scrollerScrollWidth).toBeGreaterThan(dimensions.scrollerClientWidth);
+  expect(dimensions.tableWidth).toBeGreaterThan(dimensions.scrollerClientWidth);
 });
