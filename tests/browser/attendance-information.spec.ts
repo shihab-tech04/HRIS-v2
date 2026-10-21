@@ -252,7 +252,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
-  await expect(row).not.toContainText('ATT-001');
+  // Keep the identifier available to assistive technology without rendering it in the row.
+  await expect(row.getByText('Employee number ATT-001', { exact: true })).toHaveClass(/sr-only/);
   await expect(row).toContainText('UX Designer');
   await expect(row).toContainText('Synthetic Product Team');
   await expect(row).toContainText('Experience Design');
