@@ -193,6 +193,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
         const rows = attendanceTable.locator('tbody tr');
         const rowGap = await rows.evaluateAll(items => items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().bottom);
         expect(Math.abs(rowGap - 6)).toBeLessThan(0.5);
+        const tableHeaderY = (await attendanceTable.locator('thead th').first().boundingBox())?.y ?? Number.NaN;
+        expect(Math.abs(tableHeaderY - 302)).toBeLessThanOrEqual(1);
         const tableSurfaces = await attendanceTable.evaluate(table => {
           const frame = table.parentElement?.parentElement;
           const headerCell = table.querySelector('thead th');
