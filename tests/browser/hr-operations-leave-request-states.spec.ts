@@ -262,7 +262,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.getByRole('button', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByLabel('Select all pending leave requests')).toHaveCount(0);
   await expect(table.locator('tbody tr').first().locator('td').last()).toContainText('Approved');
-  await expect(table.locator('tbody tr').first().locator('td').last()).toHaveClass(/text-emerald-700/);
+  await expect(table.locator('tbody tr').first().locator('td').last().getByText('Approved', { exact: true })).toHaveClass(/text-emerald-700/);
   await expect(page.getByLabel('Search requests')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
   await expect(page.locator('#leave-request-controls')).toHaveCount(0);
@@ -288,7 +288,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
     'Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', 'Status',
   ]);
   await expect(table.locator('tbody tr').first().locator('td').last()).toContainText('Rejected');
-  await expect(table.locator('tbody tr').first().locator('td').last()).toHaveClass(/text-rose-600/);
+  await expect(table.locator('tbody tr').first().locator('td').last().getByText('Rejected', { exact: true })).toHaveClass(/text-rose-600/);
   await expect(page.getByLabel('Search requests')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
   await expect(page.locator('#leave-request-controls')).toHaveCount(0);
