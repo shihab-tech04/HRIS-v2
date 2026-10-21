@@ -3798,7 +3798,40 @@ export function LiveHrisWorkspace({
       <aside className="sticky top-[72px] hidden h-[calc(100vh-4.5rem)] w-[111px] shrink-0 overflow-y-auto border-r border-slate-200 bg-[#E7F1F3] p-2 lg:block">{navigation}</aside>
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-[1600px]">
-          {current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
+          {(page === 'attendance' || page === 'leave') ? (
+            <section aria-label="Attendance and leave application management" className="-mx-4 -mt-5 mb-7 border-b border-slate-200 bg-white sm:-mx-6 lg:-mx-8">
+              <h1 className="px-4 py-5 text-base font-normal text-[#49454F] sm:px-6 lg:px-8">
+                {projectText(locale, 'Attendance & Leave Application Management')}
+              </h1>
+              <nav aria-label="Attendance and leave sections" className="flex min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6 lg:px-8">
+                <button type="button" disabled={!nav.some(item => item.id === 'attendance')}
+                  onClick={() => navigate('attendance')} aria-current={page === 'attendance' ? 'page' : undefined}
+                  className={`min-h-12 shrink-0 border-b-2 px-4 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'attendance' ? 'border-[#085587] text-[#49454F]' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}>
+                  {projectText(locale, 'Attendance Information')}
+                </button>
+                <span aria-disabled="true" title="Attendance request state requires verified workflow mapping"
+                  className="inline-flex min-h-12 shrink-0 cursor-not-allowed items-center border-b-2 border-transparent px-4 text-sm text-slate-400">
+                  {projectText(locale, 'Attendance Requests')}
+                </span>
+                <button type="button" disabled={!nav.some(item => item.id === 'leave')}
+                  onClick={() => navigate('leave')} aria-current={page === 'leave' ? 'page' : undefined}
+                  className={`min-h-12 shrink-0 border-b-2 px-4 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[#085587] text-[#49454F]' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}>
+                  {projectText(locale, 'Leave Requests')}
+                </button>
+                {nav.some(item => item.id === 'my-leave') ? (
+                  <button type="button" onClick={() => navigate('my-leave')}
+                    className="min-h-12 shrink-0 border-b-2 border-transparent px-4 text-sm text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#085587]">
+                    {projectText(locale, 'Personal Leave Application History')}
+                  </button>
+                ) : (
+                  <span aria-disabled="true" title="Personal leave history requires employee self-service access"
+                    className="inline-flex min-h-12 shrink-0 cursor-not-allowed items-center border-b-2 border-transparent px-4 text-sm text-slate-400">
+                    {projectText(locale, 'Personal Leave Application History')}
+                  </span>
+                )}
+              </nav>
+            </section>
+          ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale}
