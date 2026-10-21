@@ -120,6 +120,11 @@ CREATE POLICY employee_addresses_admin_read ON public.employee_addresses
   USING (public.has_permission('employees.view') OR public.has_permission('employees.manage'));
 GRANT USAGE ON SCHEMA public, auth TO authenticated, anon;
 GRANT SELECT ON public.tenants, public.employees, public.employee_addresses TO authenticated;
+-- Reproduce the hosted table overgrant before the repair migration. Explicit
+-- service_role grants prove that the migration preserves backend privileges.
+GRANT ALL PRIVILEGES ON TABLE public.employee_addresses TO PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.employee_addresses TO service_role;
 
 CREATE FUNCTION public.check_employee_addresses(passed boolean, description text)
 RETURNS void LANGUAGE plpgsql AS $$
