@@ -1245,7 +1245,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
               </div> : projectText(locale, header)}
             </th>)}
           </tr></thead>
-          <tbody>{rows.map((row, index) => {
+          <tbody className={aggregateOnly ? "before:table-row before:h-[4px] before:content-['']" : undefined}>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
             const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
