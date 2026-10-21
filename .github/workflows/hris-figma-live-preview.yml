@@ -1,0 +1,82 @@
+name: HRIS latest Figma-aligned isolated preview bundle (no prod)
+on:
+  push:
+    branches: ['work/hris-figma-ui-live-preview-20261021']
+  workflow_dispatch:
+  # Artifact-only fixture preview: no production data or SQL access.
+permissions:
+  contents: write
+jobs:
+  package:
+    name: Build fixture-only preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install audited source dependencies
+        run: npm install --include=optional --no-audit --no-fund
+      - name: Prepare isolated preview without hosted API access
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const change = (path, before, after) => {
+            const contents = fs.readFileSync(path, 'utf8');
+            if (!contents.includes(before)) throw new Error(`Expected preview transformation not found: ${path}`);
+            fs.writeFileSync(path, contents.replace(before, after));
+          };
+          change('src/lib/supabase.ts',
+            "export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://oslgwxaqfbteqtwqvdzs.supabase.co';",
+            "export const supabaseUrl = 'https://preview-disabled.invalid';");
+          change('src/lib/supabase.ts',
+            "export const supabasePublicKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_fjNbVQbzBzIA8INgwJyPJQ_6vTd3PZv';",
+            "export const supabasePublicKey = 'preview-backend-disabled';");
+          change('src/live/LiveApp.tsx',
+            "const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';",
+            "const previewEnabled = true; // Separate, fixture-only visual preview");
+          const live='src/live/LiveApp.tsx';
+          const source=fs.readFileSync(live,'utf8');
+          const rx=/const isDirectPreviewRequested = Boolean\(\s*previewEnabled &&[\s\S]*?window\.location\.hash === '#preview'\)\s*\);/;
+          if (!rx.test(source)) throw new Error('Preview gate contract changed');
+          fs.writeFileSync(live,source.replace(rx, 'const isDirectPreviewRequested = true; // Separate fixture-only visual preview'));
+          fs.copyFileSync('app.html', 'index.html');
+          change('vite.config.ts',"new URL('./app.html', import.meta.url)","new URL('./index.html', import.meta.url)");
+          const cfg=fs.readFileSync('vite.config.ts','utf8');
+          const base=/base: process\.env\.GITHUB_PAGES === 'true' \|\| process\.env\.NODE_ENV === 'production'\s*\? '\/HRIS-v2\/'\s*: '\/',/;
+          if(!base.test(cfg))throw new Error('Vite base contract changed');
+          fs.writeFileSync('vite.config.ts',cfg.replace(base,"base: '/',"));
+          NODE
+      - name: Build isolated UI without publishing
+        run: npx vite build
+      - name: Verify output and no production Supabase endpoint
+        shell: bash
+        run: |
+          test -s dist/index.html
+          test -d dist/assets
+          if grep -R -q 'oslgwxaqfbteqtwqvdzs' dist; then
+            echo 'Production project identifier found in preview build; refusing artifact' >&2
+            exit 1
+          fi
+          find dist -type f -printf '%p %s bytes\n'
+      - name: Publish static artifact only to this isolated preview branch
+        shell: bash
+        run: |
+          mkdir -p preview-dist
+          cp -a dist/. preview-dist/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f preview-dist
+          if ! git diff --cached --quiet; then
+            git commit -m "build(preview): generated fixture-only static HRIS bundle"
+            git push origin HEAD:work/hris-figma-ui-live-preview-20261021
+          fi
+      - name: Save isolated Vite build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-isolated-ui-preview-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
