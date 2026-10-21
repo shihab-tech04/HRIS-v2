@@ -47,7 +47,7 @@ test('all five profile panels render in EN/BN at the requested widths without vi
             return { tab, content, title, detail, titleToDetail: detail.y - title.y - title.height };
           });
           // Figma node 66:72042 places this row at y=329; the submitted screenshot already matches that anchor.
-          expect([geometry.tab.y, geometry.tab.height]).toEqual([329, 54]);
+          expect([geometry.tab.x, geometry.tab.y, geometry.tab.width, geometry.tab.height]).toEqual([326, 329, 313, 54]);
           expect(geometry.content.y).toBe(408);
           expect(geometry.detail.y).toBe(520);
           expect(geometry.titleToDetail).toBe(52);
