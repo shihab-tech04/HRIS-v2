@@ -40,7 +40,7 @@ The recovery-request check accepts a synthetic nonexistent address. It does not 
 |---|---|---|---|
 | WS01 Main PR #49 | 2e24564c837509e12b4cbc69f8b6295cda066c0b | Run 39553849299 passed | Figma attendance/leave source change and browser evidence; no SQL/API changes. Draft, no reviews. |
 | WS03 Candidate PR #8 | 28260cdf73b0af312df4cf136b61942f5363b573 | Run 39554069318 passed | Public-only vacancy UI and 12 responsive/state captures with empty public data. Private registration/application stays gated; no approved Candidate Figma frame set. Draft, no reviews. |
-| WS04 acceptance PR #45 | be185fef98bc2191b454e738731e57b40cb7d64d | Run 39554082145 passed | Latest audit reports 4 PASS / 0 FAIL / 57 BLOCKED. It passes only the aggregate attendance child-frame contract. Attendance root and leave requests remain blocked. Its comparison still references old WS01 head ed400c05397faca0ff4c568927871a6813071238, so current PR #49 head and artifact need independent review. Draft, no review submission. |
+| WS04 acceptance PR #45 | 037701c43f32990f00c985b14ccf3374233b8cdb | Run 39554750372 passed | Current audit reports 4 PASS / 0 FAIL / 57 BLOCKED, with a supplemental Leave Requests table-structure FAIL and workflow states still blocked. It compared current Main PR #49 head 2e24564c837509e12b4cbc69f8b6295cda066c0b; exact visual acceptance is incomplete. Draft, no review submission. |
 | WS06 PR #42 | fe1ccf111111f3a08522c619c15e28b5290a160e | Draft evidence packet | Ownership/gate audit; no incoming UI code. |
 | WS07 PR #43 | 40af3e9f727a5ce64281ba39b0847853791dbf2a | Draft evidence packet | HR03 contract audit; no incoming UI code. |
 | WS08 PR #44 | d6b00e513b15b67c0b4c473fb5e6d5c6b2f636db | Draft evidence packet | SA06 master-data contract audit; no incoming UI code. |
@@ -71,7 +71,7 @@ The sign-in/recovery screen smoke passed in an isolated browser. It does not pro
 1. Refresh and read back the off-GitHub source archive with current PR #41 history and verified checksum/restore manifest.
 2. Produce the encrypted database backup and isolated restore proof through the existing runbook.
 3. Close hosted tenant-isolation, RLS, ACL, Auth-session, and RPC-specific acceptance with independent tenant sessions.
-4. Have WS04 review current WS01 head 2e24564c837509e12b4cbc69f8b6295cda066c0b and latest evidence; resolve its 57 blocked rows or explicitly exclude them from release scope.
+4. Close WS04's 57 blocked rows and the supplemental Leave Requests structural failure; have WS04 inspect current Candidate PR #8 head 28260cdf73b0af312df4cf136b61942f5363b573 and exact run 39554069318 (the current WS04 report still cites the predecessor artifact and calls the latest run pending).
 5. Establish an authorized protected integration/rollback path and obtain required reviews on the release and source PRs.
 
 No merge or deployment is authorized by this preflight.
@@ -79,3 +79,8 @@ No merge or deployment is authorized by this preflight.
 ## New WS02 source since this preflight was prepared
 
 Main PR #50, head 89dccad45c35eaee1f9a84f40ce3ec4acc124e80, proposes a tenant-scoped employee-address read policy and restrictive parent-employee guard. Its disposable PostgreSQL 17 check passed on code commit 15b2284312d99c6e524cd36df3d43839b250874b in workflow_dispatch run 39554393758. The evidence-only follow-up is on the latest PR head. PR #50 is still a draft, based on development, and has no review submissions or Main integration. This source check does not establish the policy in hosted production or cross-tenant session acceptance; those remain release blockers.
+
+
+### WS04 latest independent comparison update
+
+WS04 PR #45 advanced to 037701c43f32990f00c985b14ccf3374233b8cdb and its exact-head CI passed in run 39554750372. The report now compares the current Main PR #49 head. It records 4 PASS / 0 FAIL / 57 BLOCKED in the original ledger, plus a supplemental Leave Requests table-structure FAIL and blocked workflow states. Candidate PR #8 run 39554069318 has since passed and produced current-head public-only screenshots; the WS04 report has not incorporated that artifact, and no approved Candidate-specific Figma frame is available.
