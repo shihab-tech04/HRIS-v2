@@ -160,6 +160,30 @@ async function signInSyntheticManager(
   return reportState;
 }
 
+test('Figma dashboard title and authorized view tabs match the manager route at desktop and mobile widths', async ({ page }) => {
+  await signInSyntheticManager(page);
+  const pageHeading = page.getByRole('heading', { name: 'Dashboard', exact: true });
+  const dashboardTabs = page.getByRole('navigation', { name: 'Dashboard views' });
+  const managerialTab = dashboardTabs.getByRole('button', { name: 'Managerial Dashboard', exact: true });
+  await expect(pageHeading).toBeVisible();
+  await expect(managerialTab).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('section[aria-label="Dashboard"] p[role="status"]')).toContainText('Last Updated at');
+  // Match the approved two-tab frame without granting an unauthorized route.
+  await expect(dashboardTabs.getByText('Personal Dashboard', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(dashboardTabs.getByRole('button', { name: 'Personal Dashboard' })).toHaveCount(0);
+
+  for (const width of [1920, 375]) {
+    await page.setViewportSize({ width, height: 1080 });
+    await expect(pageHeading).toBeVisible();
+    await expect(managerialTab).toBeVisible();
+    const titleBounds = await pageHeading.boundingBox();
+    const tabBounds = await managerialTab.boundingBox();
+    expect(titleBounds).not.toBeNull();
+    expect(tabBounds).not.toBeNull();
+    expect(tabBounds!.y).toBeGreaterThan(titleBounds!.y);
+  }
+});
+
 test('tenant switching keeps the authorized manager workspace and loads the selected tenant summary', async ({ page }) => {
   const reportState = await signInSyntheticManager(page, {}, 'both-admin');
   await page.getByRole('button', { name: 'Account options' }).click();

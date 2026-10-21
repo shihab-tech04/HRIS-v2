@@ -4,6 +4,7 @@ on:
     branches:
       - work/ws01-figma-attendance-shell-20261021
       - work/ws08-management-phase05-20261020
+      - work/hris-figma-dashboard-integrated-20261021
   workflow_dispatch:
 permissions:
   contents: read
@@ -48,5 +49,6 @@ jobs:
             docs/evidence/attendance-*.png
             docs/evidence/ws01-shell/*.png
             docs/evidence/ws08/*.png
+            docs/evidence/ws08-*.png
           if-no-files-found: ignore
           retention-days: 7

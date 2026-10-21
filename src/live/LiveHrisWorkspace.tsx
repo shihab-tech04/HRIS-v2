@@ -46,7 +46,7 @@ import { projectText, type Locale } from './project-locale';
 import {
   Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
-  Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
+  Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle, Info,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -458,7 +458,7 @@ function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; 
   </div>;
 }
 
-function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean; locale: Locale }) {
+function LiveDashboard({ tenantId, onOpen, canReport, locale, onDataRefreshed }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean; locale: Locale; onDataRefreshed?: (tenantId: string, at: Date) => void }) {
   const tx = (value: string) => projectText(locale, value);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryTenantId, setSummaryTenantId] = useState('');
@@ -504,7 +504,9 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
       if (requestId !== dashboardSummarySequence.current || activeDashboardTenantId.current !== tenantId) return;
       setSummary(value as DashboardSummary);
       setSummaryTenantId(tenantId);
-      setRefreshedAt(new Date());
+      const fetchedAt = new Date();
+      setRefreshedAt(fetchedAt);
+      onDataRefreshed?.(tenantId, fetchedAt);
     } catch {
       if (requestId === dashboardSummarySequence.current && activeDashboardTenantId.current === tenantId) {
         setSummary(null);
@@ -820,14 +822,6 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
           <AttendanceTrend points={trendPoints} range={activeChartRange} locale={locale} />
         </div>
       </section>
-      <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Needs attention')}</h3>
-          <p className="mt-1 text-xs text-[#86929E]">{tx('Open a work queue to review pending items.')}</p></div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Metric label={tx('Pending attendance corrections')} value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
-          <Metric label={tx('Pending leave requests')} value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
-        </div>
-      </section>
       {canReport && <section aria-labelledby="dashboard-team-report-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 border-b border-[#E5E5EF] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -903,6 +897,14 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         <p className="mt-3 text-xs text-slate-500">{tx('Only aggregate counts are shown. Employees with no same-tenant team assignment appear as Unassigned.')}</p>
         <p className="mt-1 text-xs text-slate-500">{tx('Team membership totals reflect current active employee records; attendance counts use the selected report date.')}</p>
       </section>}
+      <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Needs attention')}</h3>
+          <p className="mt-1 text-xs text-[#86929E]">{tx('Open a work queue to review pending items.')}</p></div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Metric label={tx('Pending attendance corrections')} value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
+          <Metric label={tx('Pending leave requests')} value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
+        </div>
+      </section>
       {teamReportDetail && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget) closeTeamReportDetails(); }}>
         <section ref={teamReportDetailDialog} role="dialog" aria-modal="true" aria-labelledby="team-report-detail-heading" onKeyDown={handleTeamReportDialogKeyDown} className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
@@ -3751,6 +3753,7 @@ export function LiveHrisWorkspace({
     if (permissions.recruitment) return 'recruitment';
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
+  const [managerDashboardUpdated, setManagerDashboardUpdated] = useState<{ tenantId: string; at: Date } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [attendanceView, setAttendanceView] = useState<'information' | 'requests'>(() =>
@@ -4013,8 +4016,36 @@ export function LiveHrisWorkspace({
                 )}
               </nav>
             </section>
-          ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
-          {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
+          ) : (page === 'dashboard' || page === 'my-dashboard') ? (
+             <section aria-label={projectText(locale, 'Dashboard')} className="-mx-4 -mt-5 mb-8 border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
+               <div className="flex min-h-[85px] flex-col justify-center gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                 <div>
+                   <h1 className="text-2xl font-normal text-[#49454F]">{projectText(locale, 'Dashboard')}</h1>
+                   <p className="mt-1 text-sm text-[#9B9B9B]">{new Date().toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                 </div>
+                 {page === 'dashboard' && managerDashboardUpdated?.tenantId === tenantId && (
+                   <p role="status" className="inline-flex min-h-12 items-center gap-3 rounded-lg bg-[#E6EEF3] px-5 py-2 text-sm text-[var(--color-figma-primary-600)]">
+                     <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
+                     {locale === 'bn' ? 'সর্বশেষ আপডেট' : 'Last Updated at'} {managerDashboardUpdated.at.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                   </p>
+                 )}
+               </div>
+               <nav aria-label={locale === 'bn' ? 'ড্যাশবোর্ড ভিউ' : 'Dashboard views'} className="flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6">
+                 {isEmployee ? <button type="button" onClick={() => navigate('my-dashboard')} aria-current={page === 'my-dashboard' ? 'page' : undefined}
+                   className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'my-dashboard' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                   {projectText(locale, 'Personal Dashboard')}
+                 </button> : <span aria-disabled="true" title={projectText(locale, 'Personal Dashboard')} className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F]">
+                   {projectText(locale, 'Personal Dashboard')}
+                 </span>}
+                 {permissions.dashboard && <button type="button" onClick={() => navigate('dashboard')} aria-current={page === 'dashboard' ? 'page' : undefined}
+                   className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'dashboard' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                   {projectText(locale, 'Managerial Dashboard')}
+                 </button>}
+               </nav>
+             </section>
+           ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
+          {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale}
+            onDataRefreshed={(updatedTenantId, at) => setManagerDashboardUpdated({ tenantId: updatedTenantId, at })} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} tenantTimeZone={tenantTimeZone} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView}
           />}
