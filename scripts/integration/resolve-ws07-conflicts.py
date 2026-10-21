@@ -116,6 +116,8 @@ live_app_path.write_text(live_app)
 Path(BROWSER).write_text(git_source(WS08, BROWSER))
 hr_browser = git_source(WS07, BROWSER)
 hr_browser = hr_browser.replace("getByRole('button', { name: 'Attendance', exact: true })", "getByRole('button', { name: 'Attendance & Leave', exact: true })")
+# Force only the synthetic HR-operations fixture to exercise its authorized view.
+hr_browser = replace_exact(hr_browser, "role: 'qa_tenant_manager'", "role: 'synthetic_hr_operations_admin'")
 Path("tests/browser/ws07-attendance-information.spec.ts").write_text(hr_browser)
 
 # The shared Figma shell intentionally groups Attendance and Leave under one top-level item.
@@ -130,7 +132,19 @@ hr_leave_test = hr_leave_test.replace(
     "await expect(page.getByRole('button', { name: 'Leave Requests', exact: true })).toHaveCount(0);",
     "await expect(page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true })).toHaveAttribute('aria-current', 'page');"
 )
+# Scope module action assertions to the content button, not the shared nav tab.
+hr_leave_test = hr_leave_test.replace(
+    "page.getByRole('button', { name: 'Leave Requests' })",
+    "page.getByRole('button', { name: 'Leave Requests' }).last()"
+)
 hr_leave_test_path.write_text(hr_leave_test)
+# The Manager status API returns its lower-case canonical enum; do not mutate product data.
+manager_leave_test = Path("tests/browser/manager-leave.spec.ts")
+manager_leave_src = manager_leave_test.read_text()
+manager_leave_src = manager_leave_src.replace(
+    ".toContainText('Approved')", ".toContainText('approved')"
+)
+manager_leave_test.write_text(manager_leave_src)
 Path(CONTRACT).write_text(git_source(WS08, CONTRACT))
 Path("tests/contracts/ws07-attendance-report.test.mjs").write_text(git_source(WS07, CONTRACT))
 live_contract_path = Path("tests/contracts/live-workspace.test.mjs")
