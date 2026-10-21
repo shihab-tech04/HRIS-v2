@@ -191,6 +191,13 @@ ws07_manager_test = replace_exact(
     "await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();\n"
     "  await page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true }).click();"
 )
+# Latest WS08 preserves pending status on navigation; explicit All is required for range comparisons.
+ws07_manager_test = replace_exact(
+    ws07_manager_test,
+    "  await requestFrom.fill('2026-10-01');",
+    "  await page.locator('#leave-request-status').selectOption('all');\n"
+    "  await requestFrom.fill('2026-10-01');"
+)
 ws07_manager_test = ws07_manager_test.replace(".toContainText('Approved')", ".toContainText('approved')")
 ws07_manager_test = ws07_manager_test.replace(".toContainText('Rejected')", ".toContainText('rejected')")
 Path("tests/browser/ws07-manager-leave.spec.ts").write_text(ws07_manager_test)
