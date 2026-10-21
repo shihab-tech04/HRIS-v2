@@ -3,7 +3,7 @@
 **Figma file:** [Synesis HRIS](https://www.figma.com/design/XEXLe9J1oATlITS9I5u1P9)
 
 **Figma page:** Page 1, node `0:1`
-**Current checkpoint:** PR #44, Managerial Dashboard plus daily Attendance Information and the separate report-only aggregate variant. The latest tested runtime implementation is `bafda05579a3144f455620e635bec6e093b160c1`.
+**Current checkpoint:** PR #44, Managerial Dashboard plus daily Attendance Information and the separate report-only aggregate variant, synchronized with WS01 #49 head `e645a18144ac0eb30e413140875d851b5c40c220`. The fresh post-sync exact-head Actions run and screenshot artifact are linked from the PR body.
 
 ## Manager states
 
@@ -48,10 +48,9 @@ The HOD/CEO labels are inside the Figma Requisition and Referral sections, not a
 
 ## Verification record
 
-- Latest tested implementation head `bafda05579a3144f455620e635bec6e093b160c1`: exact-head Actions run [39644594475](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39644594475) passed TypeScript/source contracts, build, source-drift reporting, and browser acceptance (64/64 browser tests).
-- Hosted evidence artifact [12365998882](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39644594475/artifacts/12365998882), SHA-256 `fb5f9547457bd0efb46cecc110b490ed0cc0416f361b3dcd619f2c959b4cbeec`, contains refreshed WS08 screenshots: dashboard at 1920/1280/768/375 plus 375 full-page, Manager attendance/detail and aggregate report at 1920/1280/768/375, and Bengali attendance/report/leave filter views at 768/375.
-- Manager Attendance Information geometry passed: 48px toolbar, 8px gap, visible table header top at toolbar top +56px with 59px height, and 80px data rows. Aggregate geometry passed at 1920/1280: 16px header-to-first-row gap and 6px data-row gap.
-- Manager leave status preservation, overlap results, role denials, responsive navigation, EN/BN checks, and Bengali Manager date-filter visibility passed in the same browser run.
+- Pre-sync implementation head `bafda05579a3144f455620e635bec6e093b160c1` passed exact-head Actions run [39644594475](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39644594475) and artifact [12365998882](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39644594475/artifacts/12365998882), but that run predates WS01 #49 head `e645a18144ac0eb30e413140875d851b5c40c220`. It remains historical dashboard evidence; use the post-sync artifact linked from PR #44 for current visual comparison.
+- Current geometry contract: the Manager Attendance Information test measures the visible `<thead>` surface at toolbar top +56px after the 48px toolbar and 8px gap, with a 59px header and 80px rows. WS01’s latest aggregate rule gives node `17:28321` a 17px header-to-first-row gutter; the Manager test allows 16–18px and preserves the 6px row gutter at 1920/1280.
+- The post-sync browser suite covers Manager leave status preservation and the tenant-scoped overlap result, role denials, responsive navigation, EN/BN behavior, and Bengali Manager date-filter visibility at 375/768; use the exact current run linked from PR #44 for its result.
 - Local `npm run lint`, Vite build, and focused management/workspace/attendance/SA06 contracts passed (39/39). The full local contract command reported 344/351 because seven existing Candidate checks require the absent sibling `HRIS-Candidate-v2` checkout; hosted Actions checked it out and its full contract step passed.
-- WS01 #49 remains the base at `be78824462bbe212948615006ebed165af3944ec`; its shared HR01 source and Team Name assertion were not changed by WS08.
+- WS01 #49 is synchronized at `e645a18144ac0eb30e413140875d851b5c40c220`; inherited HR01 source, its Team Name assertion, route hashes, and aggregate spacing remain WS01-owned and were carried forward unchanged.
 - WS04 independent visual acceptance and WS02 two-tenant permission verification remain pending. Keep PR #44 draft; release status remains HOLD.

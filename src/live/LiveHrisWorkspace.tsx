@@ -44,7 +44,7 @@ import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
-  Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Info, Megaphone,
+  Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarCheck, CalendarDays, CheckCircle2, FileText, Info, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -1304,7 +1304,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
       ? managerReportView ? 'attendance-report__detail-table-offset' : 'lg:-mt-2'
       : ''}`}>
       {loading || !currentTenantReady ? <p role="status" className="rounded-xl bg-white p-5 text-sm">Loading attendance data…</p> : error ? null : !rows.length ? <p className="rounded-xl bg-white p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={attendanceTableLabel} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'} ${managerDetail ? 'attendance-report__detail-table' : ''}`}>
+          <table aria-label={attendanceTableLabel} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? 'aggregate-attendance-table' : 'table-fixed'} ${managerDetail ? 'attendance-report__detail-table' : ''}`}>
           {!aggregateOnly && <colgroup><col style={{ width: '258px' }} /><col style={{ width: '113px' }} /><col style={{ width: '155px' }} /><col style={{ width: '188px' }} /><col style={{ width: '143px' }} /><col style={{ width: '166px' }} /><col style={{ width: '125px' }} /><col style={{ width: '123px' }} /><col style={{ width: '112px' }} /></colgroup>}
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
             {attendanceHeaders.map(header => <th key={header} scope="col" aria-label={aggregateOnly && header === 'Team Name' ? projectText(locale, header) : undefined} aria-sort={header === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
@@ -1320,7 +1320,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
               </div> : projectText(locale, header)}
             </th>)}
           </tr></thead>
-          <tbody>{aggregateOnly && <tr aria-hidden="true" className="h-1"><td colSpan={attendanceHeaders.length} className="h-1 border-0 p-0 text-[0px] leading-none" /></tr>}{rows.map((row, index) => {
+          <tbody>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
             const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
@@ -3797,7 +3797,7 @@ export function LiveHrisWorkspace({
   const nav = useMemo(() => {
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
     if (permissions.dashboard) items.push({ id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" />, group: 'HRIS' });
-    if (permissions.attendance) items.push({ id: 'attendance', label: 'Attendance', icon: <CalendarDays className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.attendance) items.push({ id: 'attendance', label: 'Attendance', icon: <CalendarCheck className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.attendanceView || permissions.attendanceManage) items.push({ id: 'shift-roster', label: 'Roster', icon: <Clock3 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.leave) items.push({ id: 'leave', label: 'Leave', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.organization || isSuperAdmin) {
@@ -3850,22 +3850,30 @@ export function LiveHrisWorkspace({
   }, [nav, locale, hasAttendanceAndLeave]);
 
   useEffect(() => {
-    const syncAttendanceHash = () => {
-      const requestsView = window.location.hash === '#attendance-correction-requests';
+    const syncWorkspaceHash = () => {
+      const hash = window.location.hash;
+      const requestsView = hash === '#attendance-correction-requests';
+      const leaveView = hash === '#leave-requests' || hash === '#leave-calendar' || hash === '#leave-policy';
       if (requestsView && nav.some(item => item.id === 'attendance') && permissions.attendanceManage) {
         setPage('attendance');
         setAttendanceView('requests');
         return;
       }
       setAttendanceView('information');
+      if (leaveView) {
+        // Leave subroutes are owned by LeaveWorkspace. The shared shell only
+        // selects the authorized module; it does not reinterpret the route.
+        if (nav.some(item => item.id === 'leave')) setPage('leave');
+        return;
+      }
       if (requestsView) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     };
-    syncAttendanceHash();
-    window.addEventListener('hashchange', syncAttendanceHash);
-    window.addEventListener('popstate', syncAttendanceHash);
+    syncWorkspaceHash();
+    window.addEventListener('hashchange', syncWorkspaceHash);
+    window.addEventListener('popstate', syncWorkspaceHash);
     return () => {
-      window.removeEventListener('hashchange', syncAttendanceHash);
-      window.removeEventListener('popstate', syncAttendanceHash);
+      window.removeEventListener('hashchange', syncWorkspaceHash);
+      window.removeEventListener('popstate', syncWorkspaceHash);
     };
   }, [nav, permissions.attendanceManage]);
 
@@ -3932,7 +3940,10 @@ export function LiveHrisWorkspace({
     setMobileOpen(false);
     if (next !== 'attendance') {
       setAttendanceView('information');
-      if (window.location.hash === '#attendance-correction-requests') {
+      if (window.location.hash === '#attendance-correction-requests'
+          || window.location.hash === '#leave-requests'
+          || window.location.hash === '#leave-calendar'
+          || window.location.hash === '#leave-policy') {
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
       }
     }
@@ -3943,6 +3954,18 @@ export function LiveHrisWorkspace({
     const currentHash = window.location.hash;
     if (currentHash !== hash) window.history.pushState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
     window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+  const setLeaveSection = (next: 'requests' | 'calendar' | 'policy') => {
+    const hash = next === 'requests' ? '#leave-requests' : next === 'calendar' ? '#leave-calendar' : '#leave-policy';
+    const currentHash = window.location.hash;
+    if (currentHash === hash) return;
+    const oldURL = window.location.href;
+    window.history.pushState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+    // LeaveWorkspace owns these states and listens for hashchange. pushState
+    // avoids native fragment scrolling that would hide the shared title band.
+    if (page === 'leave') {
+      window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL: window.location.href }));
+    }
   };
   const openTravelRequest = (requestId: string) => { setTravelFocusRequestId(requestId); navigate('my-travel'); };
   const clearTravelRequestFocus = (requestId: string) => setTravelFocusRequestId(currentId => currentId === requestId ? null : currentId);
@@ -4027,7 +4050,7 @@ export function LiveHrisWorkspace({
                   {projectText(locale, 'Attendance Requests')}
                 </span>}
                 <button type="button" disabled={!nav.some(item => item.id === 'leave')}
-                  onClick={() => { setAttendanceSection('information'); navigate('leave'); }} aria-current={page === 'leave' ? 'page' : undefined}
+                  onClick={() => { navigate('leave'); setLeaveSection('requests'); }} aria-current={page === 'leave' ? 'page' : undefined}
                   className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                   {projectText(locale, 'Leave Requests')}
                 </button>

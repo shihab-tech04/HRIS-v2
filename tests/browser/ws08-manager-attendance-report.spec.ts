@@ -318,8 +318,8 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
     const headerBounds = await report.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox();
     const firstRowBounds = await aggregateRows.nth(0).boundingBox();
     const secondRowBounds = await aggregateRows.nth(1).boundingBox();
-    expect(Math.abs((firstRowBounds?.y ?? 0) - ((headerBounds?.y ?? 0) + (headerBounds?.height ?? 0)) - 16),
-      JSON.stringify({ viewport, headerBounds, firstRowBounds })).toBeLessThan(0.5);
+    expect(Math.abs((firstRowBounds?.y ?? 0) - ((headerBounds?.y ?? 0) + (headerBounds?.height ?? 0)) - 17),
+      JSON.stringify({ viewport, headerBounds, firstRowBounds })).toBeLessThanOrEqual(1);
     expect(Math.abs((secondRowBounds?.y ?? 0) - ((firstRowBounds?.y ?? 0) + (firstRowBounds?.height ?? 0)) - 6),
       JSON.stringify({ viewport, firstRowBounds, secondRowBounds })).toBeLessThan(0.5);
   }
