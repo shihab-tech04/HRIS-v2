@@ -53,6 +53,11 @@ jobs:
             exit 1
           fi
           git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS06 integration' > integration-evidence/ws06-commit.log 2>&1
+          python3 scripts/integration/dedupe-bengali-merge.py
+          if ! git diff --quiet -- src/live/project-locale.ts; then
+            git add src/live/project-locale.ts
+            git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Preserve identical EN/BN locale mappings after merge'
+          fi
           git log --oneline -8 > integration-evidence/merged-graph.txt
       - uses: actions/setup-node@v4
         with:
