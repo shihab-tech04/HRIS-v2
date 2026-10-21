@@ -81,8 +81,10 @@ test('Super Admin with active tenant membership opens the authorized HRIS worksp
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
+  await page.getByRole('button', { name: 'Account options' }).click();
   await expect(page.getByText('synthetic-superadmin@example.org')).toBeVisible();
   await expect(page.getByText('Super Administrator')).toBeVisible();
+  await page.getByRole('button', { name: 'Account options' }).click();
   const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
   await expect(moduleNav).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
@@ -91,8 +93,14 @@ test('Super Admin with active tenant membership opens the authorized HRIS worksp
   await expect(moduleNav.getByRole('button', { name: /Leave/ })).toBeVisible();
   await expect(page.getByText(/No schedule-based late marks or sample counts are substituted/)).toBeVisible();
 
-  await moduleNav.getByRole('button', { name: /Leave/ }).click();
+  // The shared shell groups Attendance and Leave under one module entry.
+  // Select the Leave Requests subsection to verify its authorized route.
+  await moduleNav.getByRole('button', { name: 'Attendance & Leave' }).click();
+  const attendanceLeaveSections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+  await expect(attendanceLeaveSections.getByRole('button', { name: 'Attendance Information' })).toHaveAttribute('aria-current', 'page');
+  await attendanceLeaveSections.getByRole('button', { name: 'Leave Requests' }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+  await expect(attendanceLeaveSections.getByRole('button', { name: 'Leave Requests' })).toHaveAttribute('aria-current', 'page');
 });
 
 test('organization Teams directory filters only the active tenant rows', async ({ page }) => {

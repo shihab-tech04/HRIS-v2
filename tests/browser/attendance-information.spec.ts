@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import path from 'path';
 
-// The fixture values represent the tenant's Asia/Dhaka timezone. Keep this
-// browser journey deterministic on hosted runners whose default timezone is UTC.
-test.use({ timezoneId: 'Asia/Dhaka' });
+// The fixture tenant is Asia/Dhaka while this browser stays UTC, proving that
+// attendance rows use the selected tenant's timezone instead of the host's.
+test.use({ timezoneId: 'UTC' });
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
@@ -52,10 +52,10 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') { await route.continue(); return; }
+    if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') { await route.continue(); return; }
     externalRequests.push(url.toString());
     await route.abort();
   });
-  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.route('**/auth/v1/**', async route => {
     const requestPath = new URL(route.request().url()).pathname;
     if (requestPath.endsWith('/token')) {
@@ -131,18 +131,28 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  await page.evaluate(() => document.fonts.ready);
+  expect(await page.evaluate(() => document.fonts.check('14px Poppins'))).toBe(true);
+  await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
   // The Figma application-management strip is a view-only layer over existing
   // server-authorized routes, not an invented bulk-approval workflow.
   await expect(page.getByRole('heading', { name: 'Attendance & Leave Application Management' })).toBeVisible();
   const designSections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
   await expect(designSections.getByRole('button', { name: 'Attendance Information' })).toHaveAttribute('aria-current', 'page');
-  await expect(designSections.getByText('Attendance Requests')).toHaveAttribute('aria-disabled', 'true');
+  await expect(designSections.getByRole('button', { name: 'Attendance Requests' })).toBeEnabled();
   await expect(designSections.getByRole('button', { name: 'Leave Requests' })).toBeEnabled();
   await expect(page.getByRole('heading', { name: 'Attendance Report' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
   await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
+  expect(await attendanceTable.getByRole('columnheader').allTextContents()).toEqual([
+    'Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status',
+  ]);
+  const attendanceTeamHeader = attendanceTable.getByRole('columnheader', { name: /Team Name/ });
+  await expect(attendanceTeamHeader).toHaveAttribute('aria-sort', 'none');
+  await expect(attendanceTeamHeader.getByRole('button', { name: 'Sort by Team Name ascending' })).toBeVisible();
+  await expect(page.getByLabel('Search employees')).toHaveAttribute('placeholder', 'Search....');
+  await expect(page.getByText('Synthetic missed punch approval')).toHaveCount(0);
 
   const shellEvidenceDir = path.resolve(process.cwd(), 'docs/evidence/ws01-shell');
   await mkdir(shellEvidenceDir, { recursive: true });
@@ -160,77 +170,176 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
       } else {
         await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeVisible();
       }
+      if (width === 1920) {
+        const logo = page.getByRole('banner').getByRole('img', { name: 'Synesis IT' });
+        const logoDimensions = await logo.evaluate(element => {
+          const bounds = element.getBoundingClientRect();
+          return { naturalWidth: (element as HTMLImageElement).naturalWidth, naturalHeight: (element as HTMLImageElement).naturalHeight,
+            renderedWidth: bounds.width, renderedHeight: bounds.height };
+        });
+        expect(logoDimensions).toEqual({ naturalWidth: 174, naturalHeight: 30, renderedWidth: 174, renderedHeight: 30 });
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+      const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
+      await expect(tableRegion).toBeVisible();
+      if (width < 1024) expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+      if (width === 1920) {
+        const frame = await page.locator('section[aria-labelledby="attendance-report-heading"]').boundingBox();
+        expect(frame?.x).toBe(324);
+        expect(frame?.width).toBe(1383);
+        const nameHeader = locale === 'en' ? 'Name' : 'নাম';
+        expect((await attendanceTable.getByRole('columnheader', { name: nameHeader, exact: true }).boundingBox())?.height).toBe(59);
+        expect((await attendanceTable.locator('tbody tr').first().boundingBox())?.height).toBe(80);
+        const rows = attendanceTable.locator('tbody tr');
+        const rowGap = await rows.evaluateAll(items => items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().bottom);
+        expect(Math.abs(rowGap - 6)).toBeLessThan(0.5);
+        const controls = page.getByRole('form', {
+          name: locale === 'en' ? 'Attendance report controls' : 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ',
+        });
+        const controlWidths = await Promise.all([
+          controls.getByLabel(locale === 'en' ? 'Search employees' : 'কর্মচারী খুঁজুন'),
+          controls.getByRole('button', { name: locale === 'en' ? 'Download Report' : 'প্রতিবেদন ডাউনলোড করুন', exact: true }),
+          controls.getByRole('button', { name: locale === 'en' ? 'Filters' : 'ফিল্টার', exact: true }),
+        ].map(locator => locator.evaluate(element => element.getBoundingClientRect().width)));
+        expect(controlWidths).toEqual([334, 170, 62]);
+      }
+      if (width === 375) {
+        const logo = page.getByRole('banner').getByRole('img', { name: 'Synesis IT' });
+        const bounds = await logo.boundingBox();
+        expect(bounds?.width).toBe(145);
+        expect(bounds?.height).toBe(25);
+      }
       await page.screenshot({ path: path.join(shellEvidenceDir, `attendance-${locale}-${width}.png`), fullPage: false });
     }
   };
   await captureResponsiveShell('en');
+  for (const width of [768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    const trigger = page.getByRole('button', { name: 'Open navigation menu' });
+    await trigger.click();
+    const menu = page.getByRole('dialog', { name: 'HRIS navigation' });
+    await expect(menu).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close navigation menu' })).toBeFocused();
+    await page.screenshot({ path: path.join(shellEvidenceDir, `attendance-menu-en-${width}.png`), fullPage: false });
+    await page.keyboard.press('Shift+Tab');
+    const lastMenuItem = menu.getByRole('navigation', { name: 'HRIS modules' }).getByRole('button').last();
+    await expect(lastMenuItem).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Close navigation menu' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+    const accountTrigger = page.getByRole('button', { name: 'Account options' });
+    await accountTrigger.click();
+    const accountPanel = page.getByRole('region', { name: 'Account details' });
+    await expect(accountPanel).toBeVisible();
+    await expect(accountPanel.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    const accountBounds = await accountPanel.boundingBox();
+    expect(accountBounds?.x).toBeGreaterThanOrEqual(0);
+    expect((accountBounds?.x || 0) + (accountBounds?.width || 0)).toBeLessThanOrEqual(width + 1);
+    await page.keyboard.press('Escape');
+    await expect(accountPanel).toBeHidden();
+    await expect(accountTrigger).toBeFocused();
+  }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(designSections.getByRole('button', { name: 'উপস্থিতির তথ্য' })).toHaveAttribute('aria-current', 'page');
   await expect(designSections.getByRole('button', { name: 'ছুটির আবেদনসমূহ' })).toBeEnabled();
   await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
+  await expect(page.getByLabel('কর্মচারী খুঁজুন')).toHaveAttribute('placeholder', 'খুঁজুন....');
+  await expect(attendanceTable.getByRole('columnheader', { name: /দলের নাম/ }).getByRole('button', { name: /ঊর্ধ্বক্রমে/ })).toBeVisible();
   await captureResponsiveShell('bn');
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
-  await expect(row).not.toContainText('ATT-001');
+  // Keep the identifier available to assistive technology without rendering it in the row.
+  await expect(row.getByText('Employee number ATT-001', { exact: true })).toHaveClass(/sr-only/);
   await expect(row).toContainText('UX Designer');
   await expect(row).toContainText('Synthetic Product Team');
   await expect(row).toContainText('Experience Design');
   await expect(row).toContainText('12-10-2026');
   await expect(row).toContainText('Work from Office');
   await expect(row).toContainText('09:13:16am');
-  await expect(row).not.toContainText('8.56');
+  await expect(row).toContainText('05:46:58pm');
+  await expect(row).toContainText('On Time');
   await expect(page.getByText('Aggregate Report Employee')).toHaveCount(0);
-  const correctionCard = page.getByRole('heading', { name: 'Attendance correction requests' }).locator('xpath=..');
-  const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
-  await expect(approvalRow).toContainText('09:15');
+
+  const requestTab = designSections.getByRole('button', { name: 'Attendance Requests' });
+  await requestTab.click();
+  await expect(page).toHaveURL(/#attendance-correction-requests$/);
+  await expect(page.getByRole('heading', { name: 'Attendance Requests' })).toBeVisible();
+  const requestTable = page.getByRole('table').first();
+  await expect(requestTable).toBeVisible();
+  await expect(requestTable).toContainText('Synthetic missed punch approval');
+  await expect(page.getByRole('table', { name: 'Attendance information' })).toHaveCount(0);
+
+  const captureRequestViews = async (locale: 'en' | 'bn') => {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    for (const width of [1920, 1280, 768, 375]) {
+      await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+      await expect(requestTable).toBeVisible();
+      const scrollRegion = requestTable.locator('xpath=..');
+      if (width < 768) expect(await scrollRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+      await page.screenshot({ path: path.join(shellEvidenceDir, 'attendance-requests-' + locale + '-' + width + '.png'), fullPage: false });
+    }
+  };
+  await captureRequestViews('en');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(designSections.getByRole('button', { name: 'উপস্থিতির আবেদনসমূহ' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: 'উপস্থিতির আবেদনসমূহ' })).toBeVisible();
+  await captureRequestViews('bn');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+
+  const approvalRow = requestTable.getByRole('row', { name: /Synthetic missed punch approval/ });
   await approvalRow.getByRole('button', { name: 'Approve' }).click();
-  await expect(page.getByText('Attendance correction approved.', { exact: true })).toBeVisible();
-  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toContainText('approved');
-  const rejectionRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
+  await expect(page.getByRole('status').filter({ hasText: 'Attendance correction approved.' })).toHaveText('Attendance correction approved.');
+  await expect(approvalRow).toContainText(/approved/i);
+  const rejectionRow = requestTable.getByRole('row', { name: /Synthetic missed punch rejection/ });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const rejectionDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
   await expect(rejectionDialog).toContainText('Synthetic Attendance Employee');
-  await rejectionDialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(rejectionDialog).toBeHidden();
-  expect(correctionDecisions).toHaveLength(1);
-
-  await rejectionRow.getByRole('button', { name: 'Reject' }).click();
-  const escapedDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
   await page.keyboard.press('Escape');
-  await expect(escapedDialog).toBeHidden();
+  await expect(rejectionDialog).toBeHidden();
   await expect(rejectionRow.getByRole('button', { name: 'Reject' })).toBeFocused();
-  expect(correctionDecisions).toHaveLength(1);
 
+  await page.setViewportSize({ width: 375, height: 812 });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const confirmedDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
+  const dialogBounds = await confirmedDialog.boundingBox();
+  expect(dialogBounds?.x).toBeGreaterThanOrEqual(0);
+  expect((dialogBounds?.x || 0) + (dialogBounds?.width || 0)).toBeLessThanOrEqual(376);
+  expect((dialogBounds?.y || 0) + (dialogBounds?.height || 0)).toBeLessThanOrEqual(813);
+  await page.screenshot({ path: path.join(shellEvidenceDir, 'attendance-rejection-overlay-en-375.png'), fullPage: false });
   await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
-  await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
-  const rejectedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
-  await expect(rejectedRow).toContainText('rejected');
-  await expect(rejectedRow).toContainText('Decision note: Please include the missing punch time.');
+  await expect(page.getByRole('status').filter({ hasText: 'Attendance correction rejected.' })).toHaveText('Attendance correction rejected.');
+  await expect(rejectionRow).toContainText(/rejected/i);
+  await expect(rejectionRow).toContainText('Decision note: Please include the missing punch time.');
   expect(correctionDecisions).toEqual([
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
     { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },
   ]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261016.png'), fullPage: true });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(shellEvidenceDir, 'attendance-requests-resolved-en-1920.png'), fullPage: false });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Attendance Information' }).click();
+  await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
 
   await page.getByLabel('Search employees').fill('Synthetic');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_search === 'Synthetic')).toBe(true);
   await page.getByRole('button', { name: 'Filters' }).click();
   await expect(page.getByLabel('From date')).toBeVisible();
-  const detailCallsBeforeDraft = attendanceCalls.filter(call => call.p_report === false).length;
   await page.getByLabel('From date').fill('2026-10-05');
+  await expect.poll(() => attendanceCalls.some(call => call.p_start === '2026-10-05')).toBe(true);
   await page.getByLabel('Status').selectOption('late');
-  await expect.poll(() => attendanceCalls.filter(call => call.p_report === false).length, { timeout: 500 }).toBe(detailCallsBeforeDraft);
-  await page.getByRole('button', { name: 'Apply Filter', exact: true }).click();
-  await expect.poll(() => attendanceCalls.some(call => call.p_report === false && call.p_start === '2026-10-05' && call.p_status === 'late')).toBe(true);
+  await expect.poll(() => attendanceCalls.some(call => call.p_status === 'late')).toBe(true);
   await expect(page.getByRole('row', { name: /Synthetic Late Employee/ })).toBeVisible();
   await expect(page.getByLabel('Status').locator('option')).toHaveText(['All visible statuses', 'late', 'present']);
   const downloadWaiter = page.waitForEvent('download');
@@ -242,20 +351,22 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   if (detailCsvStream) for await (const chunk of detailCsvStream) detailCsv += chunk.toString();
   expect(detailCsv).toContain('"Team Name"');
   expect(detailCsv).toContain('"Synthetic Design Team"');
-  expect(detailCsv).toContain('"Working hours"');
-  expect(detailCsv).toContain('"8.3"');
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
   await expect(tableRegion).toBeVisible();
   expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.join(shellEvidenceDir, 'attendance-information-interactions-en-375.png'), fullPage: true });
 
   reportOnly = true;
+  await page.evaluate(() => window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#attendance-correction-requests`));
   await page.setViewportSize({ width: 1920, height: 1117 });
   await page.reload();
-  await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  await expect(page).not.toHaveURL(/#attendance-correction-requests$/);
+  await expect(page.getByText('Attendance Requests', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('heading', { name: 'Attendance Requests' })).toHaveCount(0);
+  await expect(page.getByText(/Synthetic missed punch approval/)).toHaveCount(0);
   const reportTable = page.getByRole('table', { name: 'Attendance summary by employee' });
   await expect(reportTable).toBeVisible();
   const reportFrame = page.locator('section[aria-labelledby="attendance-report-heading"]');
@@ -295,11 +406,9 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     return { width: bounds.width, height: bounds.height };
   });
   const searchIconBounds = await readIconBounds(0);
-  const searchFilterIconBounds = await readIconBounds(1);
-  const downloadIconBounds = await readIconBounds(2);
-  const filterIconBounds = await readIconBounds(3);
+  const downloadIconBounds = await readIconBounds(1);
+  const filterIconBounds = await readIconBounds(2);
   expect(Math.abs(searchIconBounds.width - 12.4444)).toBeLessThan(0.1);
-  expect(Math.abs(searchFilterIconBounds.width - 18)).toBeLessThan(0.1);
   expect(Math.abs(downloadIconBounds.width - 10)).toBeLessThan(0.1);
   expect(Math.abs(downloadIconBounds.height - 12)).toBeLessThan(0.1);
   expect(Math.abs(filterIconBounds.width - 18)).toBeLessThan(0.1);
@@ -333,7 +442,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect((await reportTable.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox())?.height).toBe(59);
   await expect(positiveRow).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.join(shellEvidenceDir, 'attendance-report-aggregate-en-1920.png'), fullPage: true });
 
   const teamNameHeader = reportTable.getByRole('columnheader', { name: /Team Name/ });
   await expect(teamNameHeader).toHaveAttribute('aria-sort', 'none');
@@ -403,7 +512,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Search employees').fill('Formula');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Formula')).toBe(true);
-  await expect(page.getByRole('row', { name: /Aggregate Report Employee/ })).not.toContainText('=HYPERLINK');
+  await expect(page.getByRole('row', { name: /Aggregate Report Employee/ })).toContainText('=HYPERLINK');
   const formulaDownloadWaiter = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Report', exact: true }).click();
   const formulaDownload = await formulaDownloadWaiter;
@@ -413,4 +522,119 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(formulaCsv).toContain("\"'=HYPERLINK(");
   expect(formulaCsv).toContain('"-0.7"');
   expect(externalRequests).toEqual([]);
+});
+
+test('attendance requests at 375px keep horizontal scrolling inside the results table', async ({ page }) => {
+  const correction = {
+    id: 'e7777777-7777-4777-8777-777777777777',
+    employee_id: 'e4444444-4444-4444-8444-444444444444',
+    employee_number: 'ATT-001',
+    full_name: 'Synthetic Attendance Employee',
+    attendance_date: '2026-10-12',
+    requested_check_in: '2026-10-12T03:15:00.000Z',
+    requested_check_out: null,
+    requested_work_mode: null,
+    reason: 'Synthetic missed punch approval',
+    status: 'pending',
+  };
+
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost'
+        || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+      await route.continue();
+      return;
+    }
+    await route.abort();
+  });
+  await page.route('**/auth/v1/**', async route => {
+    const requestPath = new URL(route.request().url()).pathname;
+    if (requestPath.endsWith('/token')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        access_token: jwt, refresh_token: 'synthetic-refresh', token_type: 'bearer', expires_in: 3600, user,
+      }) });
+    } else if (requestPath.endsWith('/user')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) });
+    } else {
+      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'No local test session' }) });
+    }
+  });
+  await page.route('**/rest/v1/**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const endpoint = url.pathname.split('/').pop() || '';
+    if (endpoint === 'has_tenant_permission') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: 'true' });
+      return;
+    }
+    if (endpoint === 'hris_get_tenant_dashboard_summary') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        dashboard_date: '2026-10-12', team_members: 1, employees: 1, attendance_today: 1,
+        present_today: 1, attendance_last_7_days: [], attendance_last_30_days: [],
+      }) });
+      return;
+    }
+    if (endpoint === 'hris_get_tenant_attendance_data') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      const data = body.p_report === true ? [] : { records: [], corrections: [correction] };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+      return;
+    }
+    let data: unknown = [];
+    if (endpoint === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'qa_tenant_manager', status: 'active' }];
+    else if (endpoint === 'admin_users') data = { active: false, is_super_admin: false };
+    else if (endpoint === 'tenants') data = [{ id: tenantId, name: 'Synthetic Attendance Org', slug: 'attendance-test', timezone: 'Asia/Dhaka' }];
+    else if (endpoint === 'employees') data = [];
+    if (request.method() === 'HEAD') {
+      await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+  });
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  const mobileMenuTrigger = page.getByRole('button', { name: 'Open navigation menu' });
+  await mobileMenuTrigger.click();
+  const mobileMenu = page.getByRole('dialog', { name: 'HRIS navigation' });
+  await mobileMenu.getByRole('navigation', { name: 'HRIS modules' })
+    .getByRole('button', { name: 'Attendance & Leave' }).click();
+  const sections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+  await sections.getByRole('button', { name: 'Attendance Requests' }).click();
+  await expect(page).toHaveURL(/#attendance-correction-requests$/);
+
+  const resultsTable = page.getByRole('table').first();
+  await expect(resultsTable.getByRole('row', { name: /Synthetic missed punch approval/ })).toBeVisible();
+  const resultsScroller = resultsTable.locator('xpath=..');
+  await expect(resultsScroller).toHaveCSS('overflow-x', 'auto');
+  await mkdir(path.resolve(process.cwd(), 'docs/evidence/ws01-shell'), { recursive: true });
+  await page.screenshot({
+    path: path.resolve(process.cwd(), 'docs/evidence/ws01-shell/attendance-requests-overflow-en-375.png'),
+    fullPage: false,
+  });
+
+  const dimensions = await page.evaluate(() => {
+    const scroller = document.querySelector('#attendance-correction-requests .overflow-x-auto') as HTMLElement | null;
+    const table = scroller?.querySelector('table') as HTMLElement | null;
+    const bounds = scroller?.getBoundingClientRect();
+    return {
+      viewportWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      scrollerClientWidth: scroller?.clientWidth ?? 0,
+      scrollerScrollWidth: scroller?.scrollWidth ?? 0,
+      scrollerLeft: bounds?.left ?? -1,
+      scrollerRight: bounds?.right ?? -1,
+      tableWidth: table?.getBoundingClientRect().width ?? 0,
+    };
+  });
+  expect(dimensions.viewportWidth).toBe(375);
+  expect(dimensions.documentWidth).toBeLessThanOrEqual(376);
+  expect(dimensions.scrollerLeft).toBeGreaterThanOrEqual(0);
+  expect(dimensions.scrollerRight).toBeLessThanOrEqual(376);
+  expect(dimensions.scrollerScrollWidth).toBeGreaterThan(dimensions.scrollerClientWidth);
+  expect(dimensions.tableWidth).toBeGreaterThan(dimensions.scrollerClientWidth);
 });

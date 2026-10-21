@@ -39,7 +39,6 @@ test('manager filters the leave queue and completes approval and rejection actio
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
     await route.abort();
   });
-  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -129,22 +128,36 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
-  await page.getByRole('button', { name: 'Leave', exact: true }).click();
+  await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
+  await page.getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
   const leaveTable = page.getByRole('table', { name: 'Leave requests' });
   await expect(leaveTable).toBeVisible();
-  await leaveTable.scrollIntoViewIfNeeded();
+  await expect(page.locator('#leave-request-status')).toHaveValue('pending');
+  await expect(leaveTable.locator('tbody tr')).toHaveCount(2);
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   const shellEvidenceDir = path.resolve(process.cwd(), 'docs/evidence/ws01-shell');
   await mkdir(shellEvidenceDir, { recursive: true });
   for (const width of [1920, 1280, 768, 375]) {
     await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await page.evaluate(() => window.scrollTo(0, 0));
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
     await page.screenshot({ path: path.join(shellEvidenceDir, `leave-en-${width}.png`), fullPage: false });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'ছুটির আবেদনসমূহ' })).toBeVisible();
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.join(shellEvidenceDir, `leave-bn-${width}.png`), fullPage: false });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
 
   const calendarMonth = page.getByLabel('Month', { exact: true });
   await calendarMonth.fill('2026-11');
@@ -172,6 +185,14 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
   await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.join(shellEvidenceDir, `leave-bn-${width}.png`), fullPage: false });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   failAbsenceUntilRetry = true;
   await page.locator('#leave-absence-month').fill('2026-12');
   const bengaliCalendarError = page.getByRole('alert').filter({ hasText: 'অনুপস্থিতির ক্যালেন্ডার লোড করা যায়নি।' });
@@ -179,17 +200,28 @@ test('manager filters the leave queue and completes approval and rejection actio
   failAbsenceUntilRetry = false;
   await bengaliCalendarError.getByRole('button', { name: 'আবার চেষ্টা করুন' }).click();
   await expect(page.getByRole('region', { name: /অনুপস্থিতির ক্যালেন্ডার.*ডিসেম্বর/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Switch language to English' }).click();
-
   const table = page.getByRole('table', { name: 'Leave requests' });
   const requestFrom = page.locator('#leave-request-from');
   const requestTo = page.locator('#leave-request-to');
+  const statusFilter = page.locator('#leave-request-status');
+  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('অবস্থা অনুযায়ী ফিল্টার', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'তারিখের সীমা প্রয়োগ করুন', exact: true })).toBeVisible();
+  await expect(statusFilter).toHaveValue('pending');
+  await statusFilter.selectOption('all');
   await requestFrom.fill('2026-10-01');
   await requestTo.fill('2026-10-01');
-  await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
+  await page.getByRole('button', { name: 'তারিখের সীমা প্রয়োগ করুন', exact: true }).click();
+  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  await expect(statusFilter).toHaveValue('all');
   await expect(table.locator('tbody tr')).toHaveCount(1);
   await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('approved');
   expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-01' });
+
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await expect(statusFilter).toHaveValue('all');
 
   await requestFrom.fill('2026-10-22');
   await requestTo.fill('2026-10-21');

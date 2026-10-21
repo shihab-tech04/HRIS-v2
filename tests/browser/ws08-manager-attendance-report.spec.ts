@@ -190,6 +190,12 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   await expect(page.getByRole('heading', { name: 'উপস্থিতি প্রতিবেদন', exact: true })).toBeVisible();
   await expect(page.getByRole('form', { name: 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'উপস্থিতির তথ্য' }).getByRole('columnheader', { name: 'প্রবেশের সময়' })).toBeVisible();
+  const bengaliFilters = page.getByRole('button', { name: 'ফিল্টার', exact: true });
+  await bengaliFilters.click();
+  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('দল নির্বাচন করুন', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('অবস্থা', { exact: true })).toBeVisible();
 });
 
 test('Manager report-only attendance screen matches Figma aggregate variant 17:28321 and stays responsive', async ({ page }) => {
@@ -269,6 +275,11 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   await expect(report.getByRole('columnheader', { name: 'দলের নাম', exact: true })).toBeVisible();
   await expect(page.getByRole('form', { name: 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ' })).toBeVisible();
   await expect(report).toHaveAttribute('aria-label', 'কর্মচারীভিত্তিক উপস্থিতি সারাংশ');
+  const bengaliFilters = page.getByRole('button', { name: 'ফিল্টার', exact: true });
+  await bengaliFilters.click();
+  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('দল নির্বাচন করুন', { exact: true })).toBeVisible();
 });
 
 test('Manager daily attendance separates loading and empty states', async ({ page }) => {

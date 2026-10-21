@@ -4,6 +4,7 @@ import attendanceDownloadIcon from '../assets/attendance-download.png';
 import attendanceFilterIcon from '../assets/attendance-filter.svg';
 import attendanceSearchIcon from '../assets/attendance-search.svg';
 import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
+import synesisItLogo from '../assets/synesis-it-logo.png';
 import './attendance-report.css';
 import { OrganizationTeams } from './OrganizationTeams';
 import { OrganizationProjects } from './OrganizationProjects';
@@ -49,7 +50,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-type TenantOption = { id: string; name: string; slug: string };
+type TenantOption = { id: string; name: string; slug: string; timezone?: string | null };
 type PermissionSet = {
   dashboard: boolean;
   attendance: boolean;
@@ -255,6 +256,26 @@ function displayWorkMode(value: unknown): string {
 function displayAttendanceStatus(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) return 'Not recorded';
   return value.trim().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function displayAttendanceClock(value: unknown, locale: Locale, timeZone?: string | null): string {
+  if (typeof value !== 'string' || !value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const options: Intl.DateTimeFormatOptions = {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+  };
+  if (timeZone) options.timeZone = timeZone;
+  return new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-US', {
+    ...options,
+  }).format(date).replace(/\s/g, '').toLowerCase();
+}
+
+function displayAttendanceWorkLocation(value: unknown, locale: Locale): string {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase().replaceAll('_', ' ') : '';
+  if (normalized === 'office' || normalized === 'work from office') return projectText(locale, 'Work from Office');
+  if (normalized === 'home' || normalized === 'remote' || normalized === 'wfh' || normalized === 'work from home') return projectText(locale, 'Work from Home');
+  return projectText(locale, displayWorkMode(value));
 }
 
 function displayAttendanceDate(value: unknown): string {
@@ -925,46 +946,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   </section>;
 }
 
-function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: { tenantId: string; canView: boolean; canReport: boolean; canManage: boolean; locale: Locale }) {
-  const tx = (value: string) => projectText(locale, value);
-  const reportText = (value: string) => {
-    if (locale !== 'bn') return value;
-    const labels: Record<string, string> = {
-      'Attendance Report': 'উপস্থিতি প্রতিবেদন',
-      'Attendance information': 'উপস্থিতির তথ্য',
-      'Attendance report controls': 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ',
-      'Attendance summary by employee': 'কর্মচারীভিত্তিক উপস্থিতি সারাংশ',
-      'Filters': 'ফিল্টার',
-      'Retry': 'পুনরায় চেষ্টা করুন',
-      'Apply Filter': 'ফিল্টার প্রয়োগ করুন',
-      'Search....': 'খুঁজুন...',
-      'Name': 'নাম',
-      'Designation': 'পদবি',
-      'Department': 'বিভাগ',
-      'Team Name': 'দলের নাম',
-      'Status': 'অবস্থা',
-      'Work Location': 'কর্মস্থল',
-      'In Time': 'প্রবেশের সময়',
-      'Out Time': 'প্রস্থানের সময়',
-      'From': 'শুরু',
-      'To': 'শেষ',
-      'From date': 'শুরুর তারিখ',
-      'To date': 'শেষের তারিখ',
-      'Select Status': 'অবস্থা নির্বাচন করুন',
-      'All visible statuses': 'সব দৃশ্যমান অবস্থা',
-      'Search employees': 'কর্মচারী খুঁজুন',
-      'Office Hour': 'অফিস সময়',
-      'Work Hour': 'কাজের সময়',
-      'Select Team': 'দল নির্বাচন করুন',
-      'Choose a valid date range.': 'সঠিক তারিখসীমা নির্বাচন করুন।',
-      'Unable to load attendance records.': 'উপস্থিতির তথ্য লোড করা যায়নি।',
-      'No attendance report rows match the selected team.': 'নির্বাচিত দলের জন্য কোনো উপস্থিতি প্রতিবেদন নেই।',
-      'No attendance records were returned for this date range.': 'এই তারিখসীমার জন্য কোনো উপস্থিতির রেকর্ড পাওয়া যায়নি।',
-      'Loading attendance data…': 'উপস্থিতির তথ্য লোড হচ্ছে…',
-      'Scrollable attendance report table': 'স্ক্রলযোগ্য উপস্থিতি প্রতিবেদন টেবিল',
-    };
-    return labels[value] || tx(value);
-  };
+function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canManage, locale, view }: { tenantId: string; tenantTimeZone: string | null; canView: boolean; canReport: boolean; canManage: boolean; locale: Locale; view: 'information' | 'requests' }) {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -996,6 +978,8 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   resolvingCorrectionIdRef.current = resolvingCorrectionId;
   const showDetails = canView || canManage;
   const aggregateOnly = canReport && !showDetails;
+  const managerDetail = showDetails && !canManage;
+  const managerReportView = aggregateOnly || managerDetail;
 
   async function load() {
     const requestId = ++requestSequence.current;
@@ -1030,7 +1014,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       if (requestId !== requestSequence.current) return;
       const detailRows = asRows(detailData?.records);
       setRecords(showDetails ? detailRows : asRows(reportResult.data));
-      setCorrections(asRows(detailData?.corrections));
+      setCorrections(canManage ? asRows(detailData?.corrections) : []);
       if (showDetails) {
         const availableStatuses = Array.from(new Set(detailRows.map(row => String(row.status || '')).filter(Boolean))).sort();
         setStatusOptions(status === 'all' ? availableStatuses
@@ -1081,9 +1065,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       if (rejectionTriggerRef.current?.isConnected) rejectionTriggerRef.current.focus();
-      else document.getElementById('attendance-report-heading')?.focus();
+      else document.getElementById(view === 'requests' ? 'attendance-requests-heading' : 'attendance-report-heading')?.focus();
     };
-  }, [rejectingCorrection]);
+  }, [rejectingCorrection, view]);
 
   useEffect(() => {
     setSelectedTeamFilter('');
@@ -1115,13 +1099,13 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       });
       if (rpcError) throw rpcError;
       if (activeTenantId.current !== actionTenantId) return;
-      setActionMessage(`Attendance correction ${decision}.`);
+      setActionMessage(projectText(locale, decision === 'approved' ? 'Attendance correction approved.' : 'Attendance correction rejected.'));
       if (decision === 'rejected') {
         setRejectingCorrection(null);
         setCorrectionResolutionNote('');
       }
       await load();
-      if (decision === 'rejected') document.getElementById('attendance-report-heading')?.focus();
+      if (decision === 'rejected') document.getElementById(view === 'requests' ? 'attendance-requests-heading' : 'attendance-report-heading')?.focus();
     } catch (cause) {
       if (activeTenantId.current === actionTenantId) setError(cause instanceof Error ? cause.message : 'Unable to resolve this correction.');
     } finally {
@@ -1144,8 +1128,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   const currentTenantReady = dataTenantId === tenantId;
   const currentRecords = currentTenantReady ? records : [];
   const currentCorrections = currentTenantReady ? corrections : [];
+  const requestView = view === 'requests' && canManage;
   const teamOptions = useMemo(() => {
-    if (!aggregateOnly && !showDetails) return [];
+    if (!managerReportView && !showDetails) return [];
     const names = new Set(currentRecords.map(row => String(row.team_name ?? '').trim()).filter(Boolean));
     const options = Array.from(names).sort((left, right) => left.localeCompare(right))
       .map(name => ({ value: name, label: name }));
@@ -1156,7 +1141,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       options.push({ value: selectedTeamFilter, label: selectedTeamFilter === '__NO_TEAM__' ? 'Unassigned' : selectedTeamFilter });
     }
     return options;
-  }, [aggregateOnly, currentRecords, selectedTeamFilter, showDetails]);
+  }, [currentRecords, managerReportView, selectedTeamFilter, showDetails]);
   const filteredRows = useMemo(() => {
     const matchingRows = !appliedTeamFilter ? currentRecords : currentRecords.filter(row => appliedTeamFilter === '__NO_TEAM__'
       ? !String(row.team_name ?? '').trim()
@@ -1172,98 +1157,90 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     }).map(item => item.row);
   }, [appliedTeamFilter, currentRecords, teamSortDirection]);
   const rows = filteredRows;
-  const detailHeaderClasses = [
-    'h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg',
-    'h-[59px] bg-white px-0 py-0 font-normal',
-    'h-[59px] bg-white px-[9px] py-0 font-normal',
-    'h-[59px] bg-white px-[9px] py-0 text-center font-normal',
-    'h-[59px] bg-white px-4 py-0 text-center font-normal',
-    'h-[59px] bg-white px-4 py-0 text-center font-normal',
-    'h-[59px] bg-white px-4 py-0 text-center font-normal',
-    'h-[59px] bg-white px-4 py-0 text-center font-normal',
-    'h-[59px] bg-white pl-[33px] pr-4 py-0 font-normal last:rounded-r-lg',
-  ];
+  const attendanceHeaders = aggregateOnly
+    ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation']
+    : ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status'];
 
-  return <section aria-labelledby="attendance-report-heading" className={`attendance-report mx-auto w-full max-w-[1386px] ${aggregateOnly ? 'space-y-[18px]' : 'space-y-2'}`}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 id="attendance-report-heading" tabIndex={-1} className="attendance-report__heading text-2xl font-normal text-[#3D3D3D]">{reportText('Attendance Report')}</h2>
-      <form aria-label={reportText('Attendance report controls')} onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }}
-        className={`flex w-full flex-wrap items-center justify-end lg:w-[600px] ${aggregateOnly ? 'gap-[9px]' : 'gap-2'}`}>
-        <div className={`relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none ${aggregateOnly ? '' : 'h-12'}`}>
-          <label htmlFor="attendance-search" className="sr-only">{reportText('Search employees')}</label>
-          <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2" />
-          <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={reportText('Search....')}
-            className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-10 text-sm placeholder:text-[#86929E]" />
-          <span aria-hidden="true" className="pointer-events-none absolute right-[14px] top-1/2 flex h-[18px] w-[18px] -translate-y-1/2 items-center justify-center">
-            <img src={attendanceFilterIcon} alt="" className="h-4 w-4" />
-          </span>
-          <button type="submit" className="sr-only">{reportText('Search employees')}</button>
-        </div>
-        <button type="button" disabled={!filteredRows.length} onClick={exportReport} className={`inline-flex min-h-12 items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-[14px] text-sm text-[#86929E] disabled:opacity-50 ${aggregateOnly ? 'lg:w-[184px]' : 'lg:w-[170px]'}`}>
-          <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> {tx('Download Report')}
-        </button>
-        <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)}
-          className={`inline-flex min-h-12 items-center justify-center rounded-lg border border-[#DEE0E3] bg-[#08558B] hover:bg-[#074770] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08558B] ${aggregateOnly ? 'w-16' : 'w-[62px]'}`} aria-label={reportText('Filters')}>
-          <img src={attendanceFilterIcon} alt="" className="brightness-0 invert" /><span className="sr-only">{reportText('Filters')}</span>
-        </button>
-      </form>
-    </div>
-    <div id="attendance-filters" hidden={!filtersOpen} className="grid grid-cols-1 gap-3 rounded-lg bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
-      <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">{reportText('From')}</label>
-        <input id="attendance-from" aria-label={reportText('From date')} type="date" value={draftFrom} onChange={event => setDraftFrom(event.target.value)} className="min-h-11 w-full rounded border border-[#AEAEAE] px-3 text-sm" /></div>
-      <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">{reportText('To')}</label>
-        <input id="attendance-to" aria-label={reportText('To date')} type="date" value={draftTo} onChange={event => setDraftTo(event.target.value)} className="min-h-11 w-full rounded border border-[#AEAEAE] px-3 text-sm" /></div>
-      {(aggregateOnly || showDetails) && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">{reportText('Select Team')}</label>
-        <select id="attendance-team" value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
+  return <section aria-labelledby={requestView ? 'attendance-requests-heading' : 'attendance-report-heading'} className={`${managerReportView ? 'attendance-report' : ''} mx-auto w-full ${aggregateOnly ? 'max-w-[1386px] space-y-[18px]' : 'max-w-[1383px] space-y-2'}`}>
+    {!requestView && <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="attendance-report-heading" tabIndex={-1} className={`${managerReportView ? 'attendance-report__heading' : ''} text-2xl font-normal text-[#3D3D3D]`}>{projectText(locale, 'Attendance Report')}</h2>
+        <form aria-label={projectText(locale, 'Attendance report controls')} onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className={`flex w-full flex-wrap items-center justify-end ${managerReportView ? 'gap-[9px] lg:w-[600px]' : 'gap-2 lg:w-auto'}`}>
+          <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">{projectText(locale, 'Search employees')}</label>
+            <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2" />
+            <input id="attendance-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={projectText(locale, 'Search....')} className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white pl-[33px] pr-3 text-sm placeholder:text-[#86929E]" />
+            <button type="submit" className="sr-only">{projectText(locale, 'Search employees')}</button>
+          </div>
+          <button type="button" disabled={!filteredRows.length} onClick={exportReport} className={`inline-flex min-h-12 items-center gap-1.5 rounded-lg border border-[#DEE0E3] bg-white px-[14px] text-sm text-[#86929E] disabled:opacity-50 ${aggregateOnly ? 'lg:w-[184px]' : 'lg:w-[170px]'}`}>
+            <img src={attendanceDownloadIcon} alt="" className="h-3 w-2.5 shrink-0 object-contain" /> {projectText(locale, 'Download Report')}
+          </button>
+          <button type="button" aria-expanded={filtersOpen} aria-controls="attendance-filters" onClick={() => setFiltersOpen(value => !value)} className={`inline-flex min-h-12 items-center justify-center rounded-lg border border-[#DEE0E3] text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08558B] ${managerReportView ? 'bg-[#08558B] hover:bg-[#074770]' : 'bg-white hover:bg-slate-50'} ${aggregateOnly ? 'w-16' : 'w-[62px]'}`} aria-label={projectText(locale, 'Filters')}>
+            <img src={attendanceFilterIcon} alt="" className={managerReportView ? 'brightness-0 invert' : ''} /><span className="sr-only">{projectText(locale, 'Filters')}</span>
+          </button>
+        </form>
+      </div>
+    <div id="attendance-filters" hidden={!filtersOpen} className={`grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 ${managerReportView ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+      <div><label htmlFor="attendance-from" className="mb-1 block text-xs font-medium text-slate-600">{projectText(locale, 'From date')}</label>
+        <input id="attendance-from" type="date" value={managerReportView ? draftFrom : from} onChange={event => managerReportView ? setDraftFrom(event.target.value) : setFrom(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+      <div><label htmlFor="attendance-to" className="mb-1 block text-xs font-medium text-slate-600">{projectText(locale, 'To date')}</label>
+        <input id="attendance-to" type="date" value={managerReportView ? draftTo : to} onChange={event => managerReportView ? setDraftTo(event.target.value) : setTo(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
+      {managerReportView && <div><label htmlFor="attendance-team" className="mb-1 block text-xs font-medium text-slate-600">{projectText(locale, 'Select Team')}</label>        <select id="attendance-team" value={selectedTeamFilter} onChange={event => setSelectedTeamFilter(event.target.value)}
           className="min-h-11 w-full rounded border border-[#AEAEAE] bg-white px-3 text-sm">
-          <option value="">{tx('All teams')}</option>
+          <option value="">{projectText(locale, 'All teams')}</option>
           {teamOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select></div>}
-      {showDetails && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">{reportText('Select Status')}</label>
-        <select id="attendance-status" aria-label={reportText('Status')} value={draftStatus} onChange={event => setDraftStatus(event.target.value)} className="min-h-11 w-full rounded border border-[#AEAEAE] px-3 text-sm">
-          <option value="all">{reportText('All visible statuses')}</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
+      {showDetails && <div><label htmlFor="attendance-status" className="mb-1 block text-xs font-medium text-slate-600">{projectText(locale, 'Status')}</label>
+        <select id="attendance-status" value={managerDetail ? draftStatus : status} onChange={event => managerDetail ? setDraftStatus(event.target.value) : setStatus(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+          <option value="all">All visible statuses</option>{statusOptions.map(value => <option key={value} value={value}>{value}</option>)}
         </select></div>}
-      <button type="button" onClick={applyReportFilters}
-        className="min-h-11 self-end rounded border border-[#08558B] bg-white px-4 text-sm font-medium text-[#08558B] hover:bg-[#EFF7F8]">{reportText('Apply Filter')}</button>
+      {managerReportView
+        ? <button type="button" onClick={applyReportFilters}
+          className="min-h-11 self-end rounded border border-[#085587] bg-white px-4 text-sm font-medium text-[#085587] hover:bg-[#EFF7F8]">{projectText(locale, 'Apply Filter')}</button>
+        : <p className="self-end pb-2 text-xs text-slate-500">Date and status filters apply automatically.</p>}
     </div>
-    {error && currentTenantReady && <StatusMessage error={reportText(error)} retryLabel={reportText('Retry')} onRetry={() => void load()} />}
-    {actionMessage && currentTenantReady && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
-    {currentCorrections.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="font-medium">Attendance correction requests</h3>
-      <p className="mt-1 text-sm text-slate-600">{currentCorrections.filter(item => item.status === 'pending').length} pending in this date range.</p>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-            {['Employee', 'Date', 'Requested change', 'Reason', 'Status', ...(canManage ? ['Actions'] : [])].map(label =>
-              <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
-          </tr></thead>
-          <tbody className="divide-y divide-slate-100">{currentCorrections.map((item, index) => <tr key={String(item.id || index)}>
-            <td className="px-3 py-3">{display(item.full_name)}</td>
-            <td className="px-3 py-3">{display(item.attendance_date)}</td>
-            <td className="px-3 py-3">{[
-              item.requested_check_in ? `In ${displayTime(item.requested_check_in)}` : '',
-              item.requested_check_out ? `Out ${displayTime(item.requested_check_out)}` : '',
-              item.requested_work_mode ? `Mode ${String(item.requested_work_mode)}` : '',
-            ].filter(Boolean).join(' · ') || '—'}</td>
-            <td className="px-3 py-3">{display(item.reason)}</td>
-            <td className="px-3 py-3 capitalize"><span>{display(item.status)}</span>
-              {Boolean(item.resolution_note) && <span className="mt-1 block normal-case whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(item.resolution_note)}</span>}
-            </td>
-            {canManage && <td className="px-3 py-3">
-              {item.status === 'pending' ? <div className="flex gap-2">
-                <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(item.id), 'approved')}
-                  className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
-                  {resolvingCorrectionId === item.id ? 'Saving…' : 'Approve'}
-                </button>
-                <button type="button" disabled={Boolean(resolvingCorrectionId)}
-                  className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
-                  onClick={event => { rejectionTriggerRef.current = event.currentTarget; setCorrectionResolutionNote(''); setError(''); setActionMessage(''); setRejectingCorrection(item); }}>Reject</button>
-              </div> : '—'}
-            </td>}
-          </tr>)}</tbody>
-        </table>
-      </div>
-    </section>}
+    </>}
+    {error && currentTenantReady && <StatusMessage error={error} onRetry={() => void load()} />}
+    {actionMessage && currentTenantReady && <p role="status" className={requestView ? 'sr-only' : 'rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900'}>{actionMessage}</p>}
+    {requestView && <section id="attendance-correction-requests" aria-labelledby="attendance-requests-heading" className="space-y-3">
+      <h2 id="attendance-requests-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{projectText(locale, 'Attendance Requests')}</h2>
+      {currentCorrections.length === 0
+        ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No attendance correction requests were returned for this date range.</p>
+        : <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="font-medium">Attendance correction requests</h3>
+          <p className="mt-1 text-sm text-slate-600">{currentCorrections.filter(item => item.status === 'pending').length} pending in this date range.</p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
+                {['Employee', 'Date', 'Requested change', 'Reason', 'Status', ...(canManage ? ['Actions'] : [])].map(label =>
+                  <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">{currentCorrections.map((item, index) => <tr key={String(item.id || index)}>
+                <td className="px-3 py-3">{display(item.full_name)}</td>
+                <td className="px-3 py-3">{display(item.attendance_date)}</td>
+                <td className="px-3 py-3">{[
+                  item.requested_check_in ? 'In ' + displayTime(item.requested_check_in) : '',
+                  item.requested_check_out ? 'Out ' + displayTime(item.requested_check_out) : '',
+                  item.requested_work_mode ? 'Mode ' + String(item.requested_work_mode) : '',
+                ].filter(Boolean).join(' · ') || '—'}</td>
+                <td className="px-3 py-3">{display(item.reason)}</td>
+                <td className="px-3 py-3 capitalize"><span>{display(item.status)}</span>
+                  {Boolean(item.resolution_note) && <span className="mt-1 block normal-case whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(item.resolution_note)}</span>}
+                </td>
+                {canManage && <td className="px-3 py-3">
+                  {item.status === 'pending' ? <div className="flex gap-2">
+                    <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(item.id), 'approved')}
+                      className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
+                      {resolvingCorrectionId === item.id ? 'Saving…' : 'Approve'}
+                    </button>
+                    <button type="button" disabled={Boolean(resolvingCorrectionId)}
+                      className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
+                      onClick={event => { rejectionTriggerRef.current = event.currentTarget; setCorrectionResolutionNote(''); setError(''); setActionMessage(''); setRejectingCorrection(item); }}>Reject</button>
+                  </div> : '—'}
+                </td>}
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </section>}    </section>}
     {currentTenantReady && rejectingCorrection && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
       onMouseDown={event => { if (event.target === event.currentTarget && !resolvingCorrectionId) { setRejectingCorrection(null); setCorrectionResolutionNote(''); } }}>
       <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-rejection-heading" aria-describedby="attendance-rejection-description"
@@ -1288,31 +1265,30 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
         </div>
       </div>
     </div>}
-    <div className={`overflow-hidden ${aggregateOnly ? 'rounded-xl border border-slate-200 bg-white' : 'bg-[#EFF7F8]'}`}>
-      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">{reportText('Loading attendance data…')}</p> : error ? null : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? reportText('No attendance report rows match the selected team.') : reportText('No attendance records were returned for this date range.')}</p> : <div role="region" aria-label={reportText('Scrollable attendance report table')} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={aggregateOnly ? reportText('Attendance summary by employee') : projectText(locale, 'Attendance Information')} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'}`}>
-          {!aggregateOnly && <colgroup>{[268, 104, 131, 218, 145, 134, 112, 143, 128].map((width, index) => <col key={index} style={{ width }} />)}</colgroup>}
+    {!requestView && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
+          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'}`}>
+          {!aggregateOnly && <colgroup><col style={{ width: '258px' }} /><col style={{ width: '113px' }} /><col style={{ width: '155px' }} /><col style={{ width: '188px' }} /><col style={{ width: '143px' }} /><col style={{ width: '166px' }} /><col style={{ width: '125px' }} /><col style={{ width: '123px' }} /><col style={{ width: '112px' }} /></colgroup>}
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status']).map(reportText).map((label, index) => <th key={label} scope="col" aria-sort={label === reportText('Team Name') ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className={aggregateOnly ? 'h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg' : detailHeaderClasses[index]}>
-              {label === reportText('Team Name') ? <div className="flex items-center gap-1 whitespace-nowrap">
-                <span>{label}</span>
+            {attendanceHeaders.map(header => <th key={header} scope="col" aria-label={aggregateOnly && header === 'Team Name' ? projectText(locale, header) : undefined} aria-sort={header === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
+              {header === 'Team Name' ? <div className="flex items-center gap-1">
+                <span>{projectText(locale, header)}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
-                  aria-label={teamSortDirection === 'asc'
-                    ? locale === 'bn' ? 'দলের নাম অবরোহী ক্রমে সাজান' : 'Sort by Team Name descending'
-                    : locale === 'bn' ? 'দলের নাম আরোহী ক্রমে সাজান' : 'Sort by Team Name ascending'}
-                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
-                  <img src={attendanceTeamSortIcon} alt="" />
+                  aria-label={projectText(locale, 'Sort by {column} {direction}')
+                    .replace('{column}', projectText(locale, 'Team Name'))
+                    .replace('{direction}', projectText(locale, teamSortDirection === 'asc' ? 'descending' : 'ascending'))}
+                  className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#085587]">                  <img src={attendanceTeamSortIcon} alt="" />
                 </button>
-              </div> : label}
+              </div> : projectText(locale, header)}
             </th>)}
           </tr></thead>
           <tbody>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
-            const cellClass = 'h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]';
+            const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
             const statusTone = normalizedStatus === 'late' ? 'text-[#B59A00]'
               : normalizedStatus === 'absent' ? 'text-rose-700'
-                : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'text-emerald-700'
+                : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'text-[#00803B]'
                   : 'text-slate-500';
             const deviationValue = row.deviation === null || row.deviation === undefined || row.deviation === '' ? Number.NaN : Number(row.deviation);
             const deviationText = Number.isFinite(deviationValue) ? `${deviationValue > 0 ? '+' : ''}${deviationValue.toFixed(2)}` : display(row.deviation);
@@ -1323,11 +1299,11 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
               return Number.isFinite(numeric) ? numeric.toFixed(2) : display(value);
             };
             return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className="h-20">
-              <td className={`${cellClass} rounded-l-lg border-l border-white ${aggregateOnly ? 'font-normal' : 'font-normal'}`}>
-                <div className={`flex min-w-0 items-center ${aggregateOnly ? 'gap-3' : 'gap-2'}`}>
+              <td className={`${cellClass} rounded-l-lg border-l border-white pl-[14px] pr-4 font-medium`}>
+                <div className="flex min-w-44 items-center gap-2">
                   <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-[#DCEFF4] text-base font-semibold text-[#085587]">{nameInitials(employeeName)}</span>
-                  <span className="min-w-0"><span className="block break-words text-[#424242]">{display(employeeName)}</span></span>
-                </div>
+                  <span className="min-w-0"><span className="block break-words text-[#424242]">{display(employeeName)}</span>
+                    <span className="sr-only">Employee number {display(row.employee_number)}</span></span>                </div>
               </td>
               <td className={cellClass}>{display(row.designation_title)}</td>
               <td className={cellClass}>{display(row.team_name)}</td>
@@ -1338,16 +1314,15 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
                 <td className={`${cellClass} rounded-r-lg border-r tabular-nums`}><span className={`font-semibold ${deviationTone}`}>{deviationText}</span></td>
               </> : <>
                 <td className={`${cellClass} tabular-nums`}>{displayAttendanceDate(row.attendance_date)}</td>
-                <td className={cellClass}>{displayAttendanceLocation(row.work_mode, locale)}</td>
-                <td className={`${cellClass} tabular-nums`}>{displayAttendanceTime(row.check_in)}</td>
-                <td className={`${cellClass} tabular-nums`}>{displayAttendanceTime(row.check_out)}</td>
-                <td className={`${cellClass} rounded-r-lg border-r border-white`}><span className={`font-semibold ${statusTone}`}>{display(row.status)}</span></td>
-              </>}
+                <td className={cellClass}>{displayAttendanceWorkLocation(row.work_mode, locale)}</td>
+                <td className={`${cellClass} tabular-nums`}>{displayAttendanceClock(row.check_in, locale, tenantTimeZone)}</td>
+                <td className={`${cellClass} tabular-nums`}>{displayAttendanceClock(row.check_out, locale, tenantTimeZone)}</td>
+                <td className={`${cellClass} rounded-r-lg border-r border-white`}><span className={`font-bold ${statusTone}`}>{projectText(locale, normalizedStatus === 'present' ? 'On Time' : normalizedStatus === 'early and late' || normalizedStatus === 'early late' ? 'Early & Late' : displayAttendanceStatus(row.status))}</span></td>              </>}
             </tr>;
           })}</tbody>
         </table>
       </div>}
-    </div>
+    </div>}
   </section>;
 }
 
@@ -1662,7 +1637,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   const [resolutionNote, setResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending');
   const [requestFromDate, setRequestFromDate] = useState('');
   const [requestToDate, setRequestToDate] = useState('');
   const [appliedRequestRange, setAppliedRequestRange] = useState({ from: '', to: '' });
@@ -1740,10 +1715,14 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     setData(null); dataTenantId.current = '';
     setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
     setDownloadingEvidenceId(''); setEvidenceMessage(''); setEvidenceError('');
-    setSearch(''); setStatusFilter('all'); setFilterError('');
+    setSearch(''); setFilterError('');
     void load(appliedRequestRange);
     return () => { requestSequence.current += 1; };
   }, [tenantId, appliedRequestRange]);
+
+  useEffect(() => {
+    setStatusFilter('pending');
+  }, [tenantId]);
 
   useEffect(() => {
     setAbsenceData(null);
@@ -1912,7 +1891,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 
   return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full max-w-[1386px] space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">Leave Requests</h2>
+      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{tx('Leave Requests')}</h2>
         <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
       <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
@@ -1987,7 +1966,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </>}
       </section>
       {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
           <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
             <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
@@ -3762,6 +3741,13 @@ export function LiveHrisWorkspace({
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [attendanceView, setAttendanceView] = useState<'information' | 'requests'>(() =>
+    typeof window !== 'undefined' && window.location.hash === '#attendance-correction-requests' ? 'requests' : 'information');
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuCloseRef = useRef<HTMLButtonElement>(null);
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const accountPanelRef = useRef<HTMLDivElement>(null);
   const [travelFocusRequestId, setTravelFocusRequestId] = useState<string | null>(null);
   const [leaveFocusRequestId, setLeaveFocusRequestId] = useState<string | null>(null);
   const [serviceRequestFocusId, setServiceRequestFocusId] = useState<string | null>(null);
@@ -3813,10 +3799,84 @@ export function LiveHrisWorkspace({
     return items;
   }, [permissions, isEmployee, isSuperAdmin]);
 
-  const localizedNav = useMemo(() => nav.map(item => ({
-    ...item,
-    label: projectText(locale, item.label),
-  })), [nav, locale]);
+  const hasAttendanceAndLeave = nav.some(item => item.id === 'attendance') && nav.some(item => item.id === 'leave');
+  const localizedNav = useMemo(() => {
+    const items = hasAttendanceAndLeave
+      ? nav.filter(item => item.id !== 'leave').map(item => item.id === 'attendance' ? { ...item, label: 'Attendance & Leave' } : item)
+      : nav;
+    return items.map(item => ({ ...item, label: projectText(locale, item.label) }));
+  }, [nav, locale, hasAttendanceAndLeave]);
+
+  useEffect(() => {
+    const syncAttendanceHash = () => {
+      const requestsView = window.location.hash === '#attendance-correction-requests';
+      if (requestsView && nav.some(item => item.id === 'attendance') && permissions.attendanceManage) {
+        setPage('attendance');
+        setAttendanceView('requests');
+        return;
+      }
+      setAttendanceView('information');
+      if (requestsView) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    };
+    syncAttendanceHash();
+    window.addEventListener('hashchange', syncAttendanceHash);
+    window.addEventListener('popstate', syncAttendanceHash);
+    return () => {
+      window.removeEventListener('hashchange', syncAttendanceHash);
+      window.removeEventListener('popstate', syncAttendanceHash);
+    };
+  }, [nav, permissions.attendanceManage]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handleMobileKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = document.querySelector<HTMLElement>('[data-mobile-navigation]');
+      const focusable = panel?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', handleMobileKeyDown);
+    mobileMenuCloseRef.current?.focus();
+    return () => {
+      window.removeEventListener('keydown', handleMobileKeyDown);
+      mobileMenuTriggerRef.current?.focus();
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    const handleAccountKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setAccountOpen(false);
+      accountTriggerRef.current?.focus();
+    };
+    const closeOutside = (event: MouseEvent) => {
+      if (!accountPanelRef.current?.contains(event.target as Node) && !accountTriggerRef.current?.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleAccountKeyDown);
+    document.addEventListener('mousedown', closeOutside);
+    return () => {
+      window.removeEventListener('keydown', handleAccountKeyDown);
+      document.removeEventListener('mousedown', closeOutside);
+    };
+  }, [accountOpen]);
 
   useEffect(() => {
     if (nav.some(item => item.id === page)) return;
@@ -3824,7 +3884,24 @@ export function LiveHrisWorkspace({
   }, [nav, page]);
 
   const roleLabel = isSuperAdmin ? 'Super Administrator' : permissions.dashboard || permissions.attendance || permissions.leave || permissions.organization || permissions.employees || permissions.employeesManage || permissions.performance || permissions.recruitment || permissions.holidayManage || permissions.learningManage || permissions.travel || permissions.expenses || permissions.payroll || permissions.selfServiceManage ? 'HRIS Administrator' : 'Employee';
-  const navigate = (next: PageId) => { setPage(next); setMobileOpen(false); };
+  const tenantTimeZone = tenants.find(tenant => tenant.id === tenantId)?.timezone || null;
+  const navigate = (next: PageId) => {
+    setPage(next);
+    setMobileOpen(false);
+    if (next !== 'attendance') {
+      setAttendanceView('information');
+      if (window.location.hash === '#attendance-correction-requests') {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      }
+    }
+  };
+  const setAttendanceSection = (next: 'information' | 'requests') => {
+    setAttendanceView(next);
+    const hash = next === 'requests' ? '#attendance-correction-requests' : '';
+    const currentHash = window.location.hash;
+    if (currentHash !== hash) window.history.pushState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
   const openTravelRequest = (requestId: string) => { setTravelFocusRequestId(requestId); navigate('my-travel'); };
   const clearTravelRequestFocus = (requestId: string) => setTravelFocusRequestId(currentId => currentId === requestId ? null : currentId);
   const openLeaveRequest = (requestId: string) => { setLeaveFocusRequestId(requestId); navigate('my-leave'); };
@@ -3834,43 +3911,55 @@ export function LiveHrisWorkspace({
   const current = localizedNav.find(item => item.id === page);
 
   const navigation = <nav aria-label="HRIS modules" className="flex flex-col gap-2 lg:gap-[14px]">
-    {localizedNav.map(item => <button key={item.id} type="button" title={item.label} onClick={() => {
+    {localizedNav.map(item => {
+      const attendanceGroupActive = hasAttendanceAndLeave && item.id === 'attendance' && (page === 'attendance' || page === 'leave');
+      const itemActive = attendanceGroupActive || page === item.id;
+      return <button key={item.id} type="button" title={item.label} onClick={() => {
       if (item.id === 'my-roster') setRosterFocusDate(null);
-      navigate(item.id);
-    }} aria-current={page === item.id ? 'page' : undefined}
-      className={`group flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-[#08558B] lg:min-h-0 lg:flex-col lg:justify-center lg:gap-2 lg:rounded-none lg:px-0 lg:py-0 lg:text-center ${page === item.id ? 'bg-[#EFF7F8] text-[#49454F] lg:bg-transparent' : 'text-[#424242] hover:bg-slate-50 lg:hover:bg-transparent'}`}>
-      <span data-sidebar-icon className={`grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg transition-colors ${page === item.id ? 'bg-[#08558B] text-white' : 'bg-white text-[#424242] group-hover:bg-slate-50'}`}>
+      if (item.id === 'attendance' && hasAttendanceAndLeave) {
+        setAttendanceSection('information');
+        navigate('attendance');
+      } else navigate(item.id);
+    }} aria-current={itemActive ? 'page' : undefined}
+      className={`group flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] lg:min-h-0 lg:flex-col lg:justify-center lg:gap-2 lg:rounded-none lg:px-0 lg:py-0 lg:text-center ${itemActive ? 'bg-[#EFF7F8] text-[#49454F] lg:bg-transparent' : 'text-[#424242] hover:bg-slate-50 lg:hover:bg-transparent'}`}>
+      <span data-sidebar-icon className={`grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg transition-colors ${itemActive ? 'bg-[var(--color-figma-primary-600)] text-white' : 'bg-white text-[#424242] group-hover:bg-slate-50'}`}>
         {item.icon}
       </span>
       <span data-sidebar-label className="min-w-0 max-w-[94px] flex-1 text-left text-[14px] font-normal leading-[normal] text-[#424242] lg:flex-none lg:line-clamp-2 lg:text-center">
         {item.label}
       </span>
-    </button>)}
+    </button>;
+    })}
   </nav>;
 
   return <div className="min-h-screen bg-[#EFF7F8] text-slate-900">
-    <header className="sticky top-0 z-30 flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-[#E9ECED] bg-white px-3 sm:px-4 lg:px-6">
-      <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border text-slate-700 focus-visible:outline-2 focus-visible:outline-[#08558B] lg:hidden" aria-label="Open navigation menu"><Menu className="h-5 w-5" /></button>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="shrink-0 leading-none"><p className="text-sm font-bold tracking-[0.12em] text-[#08558B]">SYNESIS</p><p className="mt-1 text-[9px] font-medium tracking-[0.16em] text-slate-500">HRIS 360°</p></div>
-          <span className="hidden h-8 border-l border-slate-200 sm:block" aria-hidden="true" />
-          <p className="hidden truncate text-xs text-slate-500 sm:block">{tenantName}</p>
-        </div>
+    <header className="sticky top-0 z-30 flex h-[72px] min-h-[72px] flex-nowrap items-center justify-between gap-2 border-b border-[#E9ECED] bg-white px-2 sm:px-4 lg:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        <button ref={mobileMenuTriggerRef} type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#DEE0E3] text-slate-700 focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] lg:hidden" aria-label="Open navigation menu"><Menu className="h-5 w-5" /></button>
+        <img src={synesisItLogo} alt="Synesis IT" width={174} height={30} className="h-[25px] w-[145px] shrink-0 object-contain sm:h-[30px] sm:w-[174px]" />
       </div>
-      <div className="flex items-center gap-2">
-        {tenants.length > 1 && <div><label className="sr-only" htmlFor="workspace-tenant">Organization</label><select id="workspace-tenant" value={tenantId} onChange={event => onTenantChange(event.target.value)} className="min-h-11 max-w-[210px] rounded-lg border border-slate-300 bg-white px-2 text-sm">
-          {tenants.map(tenant => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
-        </select></div>}
+      <div className="relative flex shrink-0 items-center gap-2">
         <button type="button" onClick={() => setLocale(currentLocale => currentLocale === 'en' ? 'bn' : 'en')}
           aria-label={locale === 'en' ? 'Switch language to Bengali' : 'Switch language to English'}
-          aria-pressed={locale === 'bn'} className="inline-flex min-h-11 min-w-12 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold hover:bg-slate-50">
+          aria-pressed={locale === 'bn'} className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white px-2 text-sm font-semibold hover:bg-slate-50">
           {locale === 'en' ? 'EN' : 'বাংলা'}
         </button>
-        <span className="hidden max-w-56 truncate text-xs text-slate-500 md:block" title={userEmail}>{userEmail}</span>
-        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#DCEFF4] text-sm font-semibold text-[#08558B]">{userEmail.slice(0, 1).toUpperCase()}</span>
-        <span className="hidden rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 sm:inline-flex items-center gap-1"><ShieldCheck className="h-4 w-4" />{roleLabel}</span>
-        <button type="button" onClick={onSignOut} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm hover:bg-slate-50"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Sign out</span></button>
+        <button type="button" disabled title="Notifications are unavailable" aria-label="Notifications unavailable" className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-lg bg-[#E6EEF3] text-[#424242] disabled:cursor-not-allowed">
+          <Bell className="h-5 w-5" aria-hidden="true" />
+        </button>
+        <button ref={accountTriggerRef} type="button" aria-label="Account options" aria-expanded={accountOpen} aria-controls="workspace-account-panel" aria-haspopup="true"
+          onClick={() => setAccountOpen(value => !value)} className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg bg-[#DCEFF4] text-sm font-semibold text-[var(--color-figma-primary-600)] focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)]">
+          {userEmail.slice(0, 1).toUpperCase()}
+        </button>
+        {accountOpen && <div ref={accountPanelRef} id="workspace-account-panel" role="region" aria-label="Account details" className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(20rem,calc(100vw-1rem))] rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-lg">
+          <p className="truncate text-sm font-medium text-slate-900">{tenantName}</p>
+          <p className="mt-1 break-all text-xs text-slate-600">{userEmail}</p>
+          <p className="mt-1 flex items-center gap-1 text-xs text-slate-600"><ShieldCheck className="h-4 w-4 shrink-0" />{roleLabel}</p>
+          {tenants.length > 1 && <div className="mt-3"><label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="workspace-tenant">Organization</label><select id="workspace-tenant" value={tenantId} onChange={event => onTenantChange(event.target.value)} className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm">
+            {tenants.map(tenant => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+          </select></div>}
+          <button type="button" onClick={() => { setAccountOpen(false); onSignOut(); }} className="mt-4 inline-flex min-h-10 w-full items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm hover:bg-slate-50"><LogOut className="h-4 w-4" />Sign out</button>
+        </div>}
       </div>
     </header>
     <div className="flex min-h-[calc(100vh-4.5rem)]">
@@ -3884,22 +3973,25 @@ export function LiveHrisWorkspace({
               </h1>
               <nav aria-label="Attendance and leave sections" className="flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6 lg:px-6">
                 <button type="button" disabled={!nav.some(item => item.id === 'attendance')}
-                  onClick={() => navigate('attendance')} aria-current={page === 'attendance' ? 'page' : undefined}
-                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'attendance' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  onClick={() => { setAttendanceSection('information'); navigate('attendance'); }} aria-current={page === 'attendance' && attendanceView === 'information' ? 'page' : undefined}
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'attendance' && attendanceView === 'information' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                   {projectText(locale, 'Attendance Information')}
                 </button>
-                <span aria-disabled="true" title="Attendance request state requires verified workflow mapping"
+                {permissions.attendanceManage ? <button type="button" onClick={() => { setAttendanceSection('requests'); navigate('attendance'); }} aria-current={page === 'attendance' && attendanceView === 'requests' ? 'page' : undefined}
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'attendance' && attendanceView === 'requests' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  {projectText(locale, 'Attendance Requests')}
+                </button> : <span aria-disabled="true" title="Attendance request management requires attendance.manage access"
                   className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-slate-400">
                   {projectText(locale, 'Attendance Requests')}
-                </span>
+                </span>}
                 <button type="button" disabled={!nav.some(item => item.id === 'leave')}
-                  onClick={() => navigate('leave')} aria-current={page === 'leave' ? 'page' : undefined}
-                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  onClick={() => { setAttendanceSection('information'); navigate('leave'); }} aria-current={page === 'leave' ? 'page' : undefined}
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                   {projectText(locale, 'Leave Requests')}
                 </button>
                 {nav.some(item => item.id === 'my-leave') ? (
                   <button type="button" onClick={() => navigate('my-leave')}
-                    className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F] hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#08558B]">
+                    className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F] hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)]">
                     {projectText(locale, 'Personal Leave Application History')}
                   </button>
                 ) : (
@@ -3913,7 +4005,7 @@ export function LiveHrisWorkspace({
           ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
-            tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale}
+            tenantId={tenantId} tenantTimeZone={tenantTimeZone} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView}
           />}
           {page === 'shift-roster' && (permissions.attendanceView || permissions.attendanceManage) && <ShiftRoster tenantId={tenantId} canManage={permissions.attendanceManage} locale={locale} />}
           {page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} />}
@@ -3974,10 +4066,10 @@ export function LiveHrisWorkspace({
       </main>
     </div>
     {mobileOpen && <div className="fixed inset-0 z-50 bg-slate-950/40 lg:hidden" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMobileOpen(false); }}>
-      <aside aria-label="HRIS navigation" className="h-full w-72 max-w-[85vw] overflow-y-auto border-r border-[#E9ECED] bg-white p-4 text-slate-900 shadow-xl">
-        <div className="mb-3 flex items-center justify-between"><span className="font-semibold">Navigation</span><button type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg border" aria-label="Close navigation menu"><X className="mx-auto h-4 w-4" /></button></div>
+      <div data-mobile-navigation role="dialog" aria-modal="true" aria-label="HRIS navigation" className="h-full w-72 max-w-[85vw] overflow-y-auto border-r border-[#E9ECED] bg-white p-4 text-slate-900 shadow-xl">
+        <div className="mb-3 flex items-center justify-between"><span className="font-semibold">{projectText(locale, 'Navigation')}</span><button ref={mobileMenuCloseRef} type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg border focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)]" aria-label="Close navigation menu"><X className="mx-auto h-4 w-4" /></button></div>
         {navigation}
-      </aside>
+      </div>
     </div>}
   </div>;
 }

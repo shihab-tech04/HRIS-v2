@@ -7,6 +7,8 @@
     --color-brand-primary: #085587;
     --color-brand-hover: #074770;
     --color-brand-light: #F0F7FB;
+    /* Approved Figma Primary-600 from node 17:28320; shell-only accent. */
+    --color-figma-primary-600: #08558B;
   }
   
   body {

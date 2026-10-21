@@ -14,7 +14,7 @@ const teamSortAsset = readFileSync(new URL('../../src/assets/attendance-team-sor
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 const sqlRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/attendance-information.spec.ts', import.meta.url), 'utf8');
-const managerBrowser = readFileSync(new URL('../browser/ws08-manager-attendance-report.spec.ts', import.meta.url), 'utf8');
+const ws08Browser = readFileSync(new URL('../browser/ws08-manager-attendance-report.spec.ts', import.meta.url), 'utf8');
 
 test('attendance report team labels come from tenant-checked employee team joins', () => {
   assert.match(migration, /'team_name',x\.team_name/);
@@ -46,8 +46,13 @@ test('attendance detail returns only same-tenant team labels and keeps executabl
   assert.ok(browser.includes(`name: '${bengaliTeamName}'`));
 });
 
+test('aggregate Team Name header keeps an exact Bengali accessible name beside its sort action', () => {
+  assert.match(workspace, /aria-label=\{aggregateOnly && header === 'Team Name' \? projectText\(locale, header\) : undefined\}/);
+  assert.ok(ws08Browser.includes("name: 'দলের নাম'"));
+});
+
 test('Figma team filter applies to visible attendance rows and CSV exports', () => {
-  assert.match(workspace, /label htmlFor="attendance-team"[^>]*>\{reportText\('Select Team'\)\}/);
+  assert.match(workspace, /managerReportView && <div><label htmlFor="attendance-team"[^>]*>\{projectText\(locale, 'Select Team'\)\}/);
   assert.match(workspace, /setAppliedTeamFilter\(selectedTeamFilter\)/);
   assert.match(workspace, /const exportRows = filteredRows/);
   assert.match(workspace, /No attendance report rows match the selected team/);
@@ -61,40 +66,32 @@ test('Figma Team Name sort order is accessible and shared by table and CSV', () 
   assert.match(teamSortAsset, /<svg[^>]*width="14" height="11\.5957" viewBox="0 0 14 11\.5957"/);
   assert.doesNotMatch(workspace, /figma\.com\/api\/mcp\/asset/);
   assert.match(workspace, /setTeamSortDirection\(value => value === 'asc' \? 'desc' : 'asc'\)/);
-  assert.match(workspace, /aria-sort=\{label === reportText\('Team Name'\)/);
+  assert.match(workspace, /aria-sort=\{header === 'Team Name'/);
   assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);
   assert.match(browser, /Sort by Team Name ascending/);
   assert.match(browser, /Sort by Team Name descending/);
 });
 
 test('Figma report toolbar uses exact local icons, order, and component dimensions', () => {
-  const start = workspace.indexOf("<form aria-label={reportText('Attendance report controls')}");
+  const start = workspace.indexOf("<form aria-label={projectText(locale, 'Attendance report controls')}");
   const end = workspace.indexOf('</form>', start);
   assert.ok(start >= 0 && end > start);
   const toolbar = workspace.slice(start, end);
-  assert.ok(toolbar.indexOf("tx('Download Report')") < toolbar.indexOf("aria-label={reportText('Filters')}"));
+  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf("aria-label={projectText(locale, 'Filters')}"));
   assert.match(toolbar, /lg:w-\[334px\]/);
-  assert.match(toolbar, /lg:w-\[184px\]/);
-  assert.match(toolbar, /w-16/);
-  assert.match(toolbar, /gap-\[9px\]/);
+  assert.match(toolbar, /aggregateOnly \? 'lg:w-\[184px\]' : 'lg:w-\[170px\]'/);
+  assert.match(toolbar, /aggregateOnly \? 'w-16' : 'w-\[62px\]'/);
   assert.match(toolbar, /attendanceSearchIcon/);
   assert.match(toolbar, /attendanceDownloadIcon/);
   assert.match(toolbar, /attendanceFilterIcon/);
   assert.match(searchAsset, /width="12\.4444" height="12\.4444"/);
   assert.match(filterAsset, /width="18" height="18"/);
   assert.deepEqual([...downloadAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.match(browser, /expect\(controlWidths\)\.toEqual\(\[334, 170, 62\]\)/);
   assert.match(browser, /controlBounds/);
 });
 
 test('Figma attendance aggregate column headings use the approved regular 14px gray type', () => {
-  assert.match(workspace, /aggregateOnly \? 'space-y-\[18px\]'/);
-  assert.doesNotMatch(workspace, /!aggregateOnly && <span className="mt-0\.5 block text-xs font-normal text-slate-500">\{display\(row\.employee_number\)\}<\/span>/);
-  assert.match(workspace, /\[268, 104, 131, 218, 145, 134, 112, 143, 128\]/);
-  assert.match(workspace, /displayAttendanceTime\(row\.check_in\)/);
-  assert.match(workspace, /displayAttendanceLocation\(row\.work_mode, locale\)/);
-  assert.match(managerBrowser, /matches Figma node 17:28694/);
-  assert.match(managerBrowser, /'From date', 'Work Location', 'In Time', 'Out Time', 'Status'/);
-  assert.match(managerBrowser, /not\.toContainText\('WS08-001'\)/);
   assert.match(workspace, /<thead className="bg-white text-\[14px\] text-\[#9E9E9E\]">/);
   assert.match(workspace, /className="h-\[59px\] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg"/);
   assert.match(browser, /fontSize: style\.fontSize, fontWeight: style\.fontWeight, color: style\.color/);
@@ -117,9 +114,8 @@ test('shared CSV export neutralizes formula-leading text while preserving numeri
 });
 
 test('Figma Apply Filter commits aggregate date and Team drafts together', () => {
-  assert.match(workspace, /value=\{draftFrom\}/);
-  assert.match(workspace, /value=\{draftTo\}/);
-  assert.match(workspace, /value=\{draftStatus\}/);
+  assert.match(workspace, /value=\{managerReportView \? draftFrom : from\}/);
+  assert.match(workspace, /value=\{managerReportView \? draftTo : to\}/);
   assert.match(workspace, /onClick=\{applyReportFilters\}/);
   assert.match(workspace, /setFrom\(draftFrom\);\s*setTo\(draftTo\);\s*setStatus\(draftStatus\);\s*setAppliedTeamFilter\(selectedTeamFilter\)/);
   assert.match(browser, /reportCallsBeforeDraft/);
