@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
@@ -259,8 +260,39 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('alert')).toContainText('Unable to load leave data.');
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(table.locator('tbody tr')).toHaveCount(4);
-  await page.setViewportSize({ width: 375, height: 812 });
-  await expect(page.getByRole('region', { name: 'Leave request results' })).toBeVisible();
-  await expect(page.getByLabel('From date', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+
+  const leaveRequestViewports = [
+    { width: 375, height: 812 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 900 },
+    { width: 1920, height: 1080 },
+  ] as const;
+  const assertLeaveRequestResponsiveState = async (locale: 'en' | 'bn') => {
+    const labels = locale === 'en'
+      ? { heading: 'Leave Requests', region: 'Leave request results', from: 'From date', to: 'To date', status: 'Filter by status', apply: 'Apply date range' }
+      : { heading: 'ছুটির আবেদন', region: 'Leave request results', from: 'শুরুর তারিখ', to: 'শেষ তারিখ', status: 'অবস্থা অনুযায়ী ফিল্টার', apply: 'তারিখের সীমা প্রয়োগ করুন' };
+
+    for (const viewport of leaveRequestViewports) {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole('heading', { name: labels.heading, exact: true })).toBeVisible();
+      await expect(page.getByRole('region', { name: labels.region, exact: true })).toBeVisible();
+      await expect(page.getByLabel(labels.from, { exact: true })).toBeVisible();
+      await expect(page.getByLabel(labels.to, { exact: true })).toBeVisible();
+      await expect(page.getByLabel(labels.status, { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: labels.apply, exact: true })).toBeVisible();
+      const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(documentWidth, `${locale} Manager Leave Requests document width at ${viewport.width}px`).toBeLessThanOrEqual(viewport.width);
+      await page.evaluate(async () => { await document.fonts.ready; });
+      await page.screenshot({
+        path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-manager-${locale}-${viewport.width}-20261021.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
+  };
+
+  await assertLeaveRequestResponsiveState('en');
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('button', { name: 'Switch language to English' })).toBeVisible();
+  await assertLeaveRequestResponsiveState('bn');
 });
