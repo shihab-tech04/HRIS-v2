@@ -1,0 +1,39 @@
+name: Employee Figma source asset acceptance (no deploy)
+on:
+  push:
+    branches:
+      - work/ws06-figma-assets-recovery-20261021
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate six exact local Figma SVGs and prohibit temporary asset URLs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=sorted(Path("src/assets/employee-figma").glob("*.svg"))
+          assert len(files)==6, f"Expected six source-backed SVG assets; found {len(files)}"
+          for p in files:
+              data=p.read_text(encoding="utf-8")
+              root=ET.fromstring(data)
+              assert root.tag=="{http://www.w3.org/2000/svg}svg", (str(p),root.tag)
+              assert root.attrib.get("width") and root.attrib.get("height"), str(p)
+              assert "www.figma.com/api/mcp/asset" not in data, str(p)
+              assert "<script" not in data.lower(), str(p)
+              assert 'href="http://' not in data.lower(), str(p)
+              assert 'href="https://' not in data.lower(), str(p)
+              print(f"PASS {p}: {len(data.encode())} bytes, {root.attrib.get('width')}x{root.attrib.get('height')}")
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install main source dependencies
+        run: npm install --include=optional --no-audit --no-fund
+      - name: Check Main source and compile with recovered static assets
+        run: npm run lint && npm run build
