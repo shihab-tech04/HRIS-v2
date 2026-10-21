@@ -75,6 +75,35 @@ jobs:
         run: npx playwright test tests/browser/attendance-information.spec.ts tests/browser/ws07-attendance-information.spec.ts tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts --retries=0
       - name: Full integrated browser acceptance
         run: npm run test:e2e
+      - name: Export exact merged source delta for connector-controlled integration branch
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess, base64, hashlib
+          from pathlib import Path
+          before = __import__('os').environ['GITHUB_SHA']
+          paths = subprocess.check_output(['git','diff','--name-only','-z',before,'HEAD']).decode().split('\0')
+          allowed = ('src/', 'tests/', 'scripts/', 'docs/', '.github/', 'supabase/')
+          print(f'HRIS_EXPORT_BEGIN|${GITHUB_SHA}|{subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip()}', flush=True)
+          total = 0
+          for path in sorted(filter(None, paths)):
+              if not path.startswith(allowed): continue
+              p=Path(path)
+              if not p.is_file():
+                  print('HRIS_EXPORT_DELETE|'+path,flush=True);continue
+              data=p.read_bytes()
+              if len(data)>2_000_000: raise RuntimeError(f'Oversize tracked file {path}')
+              total += len(data)
+              if total>9_000_000: raise RuntimeError('Export exceeds safe source limit')
+              b64=base64.b64encode(data).decode()
+              chunks=[b64[i:i+6400] for i in range(0,len(b64),6400)]
+              digest=hashlib.sha256(data).hexdigest()
+              print(f'HRIS_EXPORT_FILE|{path}|{len(data)}|{digest}|{len(chunks)}',flush=True)
+              for i,chunk in enumerate(chunks):
+                  print(f'HRIS_EXPORT_CHUNK|{path}|{i}|{chunk}',flush=True)
+          print(f'HRIS_EXPORT_END|{total}',flush=True)
+          PY
       - name: Preserve conflict and test evidence
         if: always()
         uses: actions/upload-artifact@v4
