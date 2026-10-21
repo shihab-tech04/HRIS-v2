@@ -450,7 +450,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await expect(negativeRow).toContainText('44.30');
   await expect(negativeRow).toContainText('-0.70');
   await expect(negativeRow.getByRole('cell').last().locator('span')).toHaveClass(/text-rose-700/);
-  expect(await reportTable.getByRole('columnheader').allTextContents()).toEqual([
+  expect((await reportTable.getByRole('columnheader').allTextContents()).map(text => text.trim())).toEqual([
     'Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation',
   ]);
   const reportHeaderStyle = await reportTable.getByRole('columnheader', { name: 'Name', exact: true }).evaluate(element => {
