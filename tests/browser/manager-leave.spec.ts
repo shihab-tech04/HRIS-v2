@@ -288,6 +288,48 @@ test('manager filters the leave queue and completes approval and rejection actio
         fullPage: true,
         animations: 'disabled',
       });
+
+      if (viewport.width === 375) {
+        const results = page.getByRole('region', { name: labels.region, exact: true });
+        const leaveTable = results.getByRole('table', { name: 'Leave requests', exact: true });
+        const initialScroll = await results.evaluate(element => ({
+          left: element.scrollLeft,
+          max: element.scrollWidth - element.clientWidth,
+        }));
+        expect(initialScroll.max, `${locale} 375px Leave results must expose horizontal table overflow`).toBeGreaterThan(0);
+
+        await results.focus();
+        await expect(results).toBeFocused();
+        for (let step = 0; step < 50; step += 1) await results.press('ArrowRight');
+
+        const finalScroll = await results.evaluate(element => ({
+          left: element.scrollLeft,
+          max: element.scrollWidth - element.clientWidth,
+          bounds: element.getBoundingClientRect().toJSON(),
+        }));
+        expect(finalScroll.left, `${locale} 375px keyboard scroll must move the Leave table`).toBeGreaterThan(initialScroll.left);
+        expect(finalScroll.left, `${locale} 375px keyboard scroll must reach the far side`).toBeGreaterThanOrEqual(finalScroll.max - 2);
+        const lastColumn = leaveTable.getByRole('columnheader').last();
+        const lastAction = leaveTable.getByRole('row').nth(1).getByRole('button').last();
+        await expect(lastColumn).toBeVisible();
+        await expect(lastAction).toBeVisible();
+        const [lastColumnBounds, lastActionBounds] = await Promise.all([
+          lastColumn.boundingBox(),
+          lastAction.boundingBox(),
+        ]);
+        expect(lastColumnBounds).not.toBeNull();
+        expect(lastActionBounds).not.toBeNull();
+        expect(lastColumnBounds!.x).toBeGreaterThanOrEqual(finalScroll.bounds.x - 1);
+        expect(lastColumnBounds!.x + lastColumnBounds!.width).toBeLessThanOrEqual(finalScroll.bounds.right + 1);
+        expect(lastActionBounds!.x).toBeGreaterThanOrEqual(finalScroll.bounds.x - 1);
+        expect(lastActionBounds!.x + lastActionBounds!.width).toBeLessThanOrEqual(finalScroll.bounds.right + 1);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+        await page.screenshot({
+          path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-manager-${locale}-375-horizontal-end-20261022.png`),
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
     }
   };
 
