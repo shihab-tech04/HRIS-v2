@@ -1198,7 +1198,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       <span className="font-medium">{selectedStatuses.map(value => `“${statusLabel(value)}”`).join(' + ')}</span>
       <button type="button" onClick={() => setSelectedStatuses([])} className="ml-auto min-h-9 rounded-md px-3 font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx('Clear result')}</button>
     </div>}
-    {correctionRequestsPage && showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="w-full min-w-0 max-w-full space-y-3 overflow-x-clip">
+    {correctionRequestsPage && showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="w-full min-w-0 max-w-full space-y-3 overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-h-12 items-center gap-3">
           {['approved', 'rejected'].includes(correctionStatusFilter)

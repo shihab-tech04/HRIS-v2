@@ -294,9 +294,9 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await page.getByLabel('To date', { exact: true }).fill('2026-10-21');
   await page.getByRole('button', { name: 'Apply date range' }).click();
   await expect.poll(() => leaveCalls.some(call => call.p_start === '2026-10-20' && call.p_end === '2026-10-21')).toBe(true);
-  await expect(table.getByRole('row', { name: /Synthetic Pending Employee/ })).toBeVisible();
+  await expect(firstPendingRow).toBeVisible();
   await page.getByRole('button', { name: 'Clear dates' }).click();
-  await expect(table.getByRole('row', { name: /Synthetic Pending Employee/ })).toBeVisible();
+  await expect(firstPendingRow).toBeVisible();
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
 
   await page.getByRole('row', { name: /Synthetic Pending Employee$/ }).getByRole('button', { name: 'Approve', exact: true }).click();
