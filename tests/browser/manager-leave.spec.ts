@@ -219,7 +219,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await table.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Leave request approved.')).toBeVisible();
   await page.getByLabel('Filter by status').selectOption('all');
-  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('approved');
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('Approved');
   expect(decisions[1]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333331', p_decision: 'approved', p_note: null });
 
   await page.getByLabel('Filter by status').selectOption('pending');
@@ -246,7 +246,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await confirmedRejection.getByRole('button', { name: 'Reject request' }).click();
   await expect(page.getByText('Leave request rejected.')).toBeVisible();
   await page.getByLabel('Filter by status').selectOption('all');
-  await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('rejected');
+  await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Rejected');
   await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Decision note: Please correct the requested dates before resubmitting.');
   expect(decisions[2]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333332', p_decision: 'rejected', p_note: 'Please correct the requested dates before resubmitting.' });
 
