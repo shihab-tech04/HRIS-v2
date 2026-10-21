@@ -42,10 +42,9 @@ The HOD/CEO labels are inside the Figma Requisition and Referral sections, not a
 
 ## Verification record
 
-- `npm run lint`: pass.
-- `npm run test:contracts`: 356/356 pass.
-- Manager attendance browser coverage includes English/Bengali, role denial, loading/error/empty, keyboard filter disclosure, apply/search/export, source status, sorting, and 1920/1280/768/375 captures. The last completed exact-head run at `3b731508` passed 64/64 browser tests and captured the Manager screenshots in artifact `12360412274`; fresh hosted evidence is pending for the base-synchronized head.
-- Focused local attendance/report/workspace/SA06 contracts passed 31/31 in this checkpoint. The local Playwright runtime has no Chromium headless binary; browser acceptance therefore relies on exact-head GitHub Actions.
-- TypeScript and the Vite build passed on the preceding exact head; the latest base synchronization is awaiting its own hosted type/build/browser run.
-- PR #44 is now based on WS01 #49 head `be78824462bbe212948615006ebed165af3944ec`, with current head `7c73260e67d2ceac32953dd7bb3e8bea385b0544`. The #49 exact-head run `39634656721` passed 57/57 browser tests; current #44 exact-head Actions run and screenshot artifact are not attached yet.
-- WS04 independent visual acceptance and WS02 two-tenant permission verification: pending.
+- Exact-head PR #44 run [39636801387](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39636801387) passed on source head `299b0c9c2e29617e2cce0fda0d78a04799625812`. Its `ui-check` completed TypeScript/source contracts, build, source-drift reporting, browser smoke, and responsive regression steps successfully.
+- Run artifact `12363310528`, SHA-256 `5feb3614898f4dede500d0c401d66db47a878ba684628af36ac3deafdce3c617`, contains Manager dashboard and attendance/report screenshots at 1920, 1280, 768, and 375 widths, plus Bengali attendance/report filters at 768 and 375 and Bengali leave filters at 768 and 375. They are hosted browser evidence; independent WS04 visual acceptance remains pending.
+- The strict Manager Attendance Information geometry assertion passed in that run: 48px control row, 8px gap, 59px table header, and 80px data rows. The report chart remains source-backed daily record counts; denominator and 0–100% semantics remain blocked pending design approval.
+- Focused local attendance/report/workspace/SA06 contracts passed 31/31. The hosted exact-head run is authoritative for the current base-synchronized browser/build check; local Playwright has no Chromium binary.
+- PR #44 is draft, open, and mergeable, based on WS01 #49 head `be78824462bbe212948615006ebed165af3944ec`. WS01 run [39634656721](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39634656721) passed 57/57 browser tests on that base; artifact `12361495549`, SHA-256 `e4be8ef05f8d6f91d5ccd1a5ff72e2c4bdd693473ce7c038533a621ebca49da2`. The inherited HR01 source and Team Name assertion remain WS01-owned and unedited by WS08.
+- This verification note is a documentation-only update after the passing source head; its new exact-head Actions run must also pass before treating the current PR head as verified. WS04 independent visual acceptance and WS02 two-tenant permission verification remain pending.
