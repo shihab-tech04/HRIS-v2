@@ -44,7 +44,7 @@ The hosted RPC binds to the authenticated employee row and requested active tena
 - **PR #49 (Main) and #43 (HR Operations):** keep role-gated, tenant-scoped views. Personal leave history and attendance requests without a verified hosted API remain unavailable. HR01 contact editing remains unavailable because its exact hosted RPCs are absent.
 - **PR #44 (Management):** retain the existing tenant-scoped readers; do not infer manager permissions from client role state. Hosted role/cross-tenant runtime acceptance remains open.
 - **PR #52 (Employee Profile):** keep read-only profile display on `hris_get_my_dashboard_data`; education, experience, training, bank, family and all edit/write capabilities remain unavailable where no reviewed read/write contract exists. Do not wire the hosted-only self-write RPCs.
-- **Candidate PR #8:** public published vacancies may remain viewable. Keep Apply, Save, private candidate profiles, recruiter pipeline, interviews, panel notes and offers unavailable until exact source-backed APIs and server authorization are verified.
+- **Candidate PR #8** (head `7740b68824cf3ff5d2bd5d7ac19c1756826d0de1`): public published vacancies may remain viewable. Keep Apply, Save, private candidate profiles, recruiter pipeline, interviews, panel notes and offers unavailable until exact source-backed APIs and server authorization are verified.
 
 ## Source changes and verification
 

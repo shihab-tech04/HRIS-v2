@@ -1,7 +1,7 @@
 name: HRIS employee address privacy checks
 on:
   pull_request:
-    branches: [main]
+    branches: [main, development/hris-checkpoints]
     paths:
       - 'supabase/migrations/20261016150216_employee_get_my_addresses.sql'
       - 'supabase/migrations/20261016151101_employee_addresses_self_read_policy.sql'
@@ -10,7 +10,7 @@ on:
       - 'tests/sql/employee-addresses/**'
       - '.github/workflows/employee-addresses-postgres.yml'
   push:
-    branches: [main]
+    branches: [main, work/ws02-production-view-security-20261021]
     paths:
       - 'supabase/migrations/20261016150216_employee_get_my_addresses.sql'
       - 'supabase/migrations/20261016151101_employee_addresses_self_read_policy.sql'

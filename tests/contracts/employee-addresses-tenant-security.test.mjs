@@ -31,6 +31,8 @@ test('disposable acceptance exercises two tenants, employee ownership, least pri
 });
 
 test('address privacy workflow runs only synthetic PostgreSQL and applies the source migration', () => {
+  assert.match(workflow, /pull_request:[\s\S]*branches: \[main, development\/hris-checkpoints\]/);
+  assert.match(workflow, /push:[\s\S]*branches: \[main, work\/ws02-production-view-security-20261021\]/);
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /POSTGRES_PASSWORD: synthetic_test_only/);
   assert.match(workflow, /20261021060748_employee_addresses_tenant_read_guard\.sql/);
