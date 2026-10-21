@@ -161,6 +161,8 @@ manager_leave_test = Path("tests/browser/manager-leave.spec.ts")
 manager_leave_src = manager_leave_test.read_text()
 manager_leave_src = manager_leave_src.replace(
     ".toContainText('Approved')", ".toContainText('approved')"
+).replace(
+    ".toContainText('Rejected')", ".toContainText('rejected')"
 )
 manager_leave_test.write_text(manager_leave_src)
 Path(CONTRACT).write_text(git_source(WS08, CONTRACT))
