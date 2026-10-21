@@ -143,7 +143,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   expect(leaveRowGeometry.gap).toBeCloseTo(6, 0);
   expect(leaveRowGeometry.avatarHeight).toBe(48);
   const firstPendingRow = table.getByRole('row', { name: /Select request for Synthetic Pending Employee ·/ });
-  await expect(firstPendingRow).toContainText('Synthetic pending leave reason');
+  await expect(firstPendingRow).toContainText('Convocation');
   await expect(firstPendingRow).toContainText('12-10-2026');
   await expect(table.getByRole('row', { name: /Synthetic Approved Employee/ })).toHaveCount(0);
   await expect(table.getByRole('row', { name: /Synthetic Rejected Employee/ })).toHaveCount(0);
@@ -251,6 +251,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
 
   await page.getByRole('row', { name: /Synthetic Pending Employee$/ }).getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(table.getByRole('row', { name: /Synthetic Pending Employee$/ })).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Leave request approved.' })).toBeVisible();
   expect(decisionCalls).toEqual([{ p_id: requests[0].id, p_decision: 'approved', p_note: null }]);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByLabel('Filter by status', { exact: true }).selectOption('approved');
@@ -303,9 +304,16 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
 
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(page.getByRole('region', { name: 'Leave request results' })).toBeVisible();
+  expect(await page.evaluate(() => window.innerWidth)).toBe(375);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   const tableRegion = page.getByRole('region', { name: 'Leave request results' });
-  expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  const mobileResultsBounds = await tableRegion.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return { left: bounds.left, right: bounds.right, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+  });
+  expect(mobileResultsBounds.left).toBeGreaterThanOrEqual(0);
+  expect(mobileResultsBounds.right).toBeLessThanOrEqual(376);
+  expect(mobileResultsBounds.scrollWidth).toBeGreaterThan(mobileResultsBounds.clientWidth);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-mobile-375x812.png') });
 
   expect(leaveCalls.length).toBeGreaterThan(0);

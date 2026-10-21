@@ -233,6 +233,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(correctionRowGeometry.gap).toBeCloseTo(6, 0);
   expect(correctionRowGeometry.avatarHeight).toBe(48);
   const requestResults = correctionCard.getByRole('region', { name: 'Attendance correction request results' });
+  const attendanceRequestWidthIssues: string[] = [];
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
     const layout = await page.evaluate(() => {
@@ -245,7 +246,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
       }).filter(element => element.right > viewport + 1).sort((left, right) => right.right - left.right).slice(0, 8);
       return { viewport, document: document.documentElement.scrollWidth, body: document.body.scrollWidth, elements };
     });
-    expect(layout.document, JSON.stringify(layout)).toBeLessThanOrEqual(width + 1);
+    if (layout.document > width + 1) attendanceRequestWidthIssues.push(JSON.stringify(layout));
     if (width < 1386) expect(await requestResults.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     await page.screenshot({
       path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-requests-normal-en-${width}-20261021.png`),
@@ -255,7 +256,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    if (documentWidth > width + 1) attendanceRequestWidthIssues.push(`${width}px BN document width ${documentWidth}`);
     await page.screenshot({
       path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-requests-normal-bn-${width}-20261021.png`),
       fullPage: true,
@@ -361,6 +363,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
     { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },
   ]);
+  expect(attendanceRequestWidthIssues, 'Attendance Requests must contain the table inside its horizontal scroll region at all four viewport widths in EN and BN')
+    .toEqual([]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);
   await page.evaluate(() => { window.location.hash = ''; });
