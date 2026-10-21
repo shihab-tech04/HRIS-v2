@@ -168,7 +168,8 @@ test('Figma dashboard title and authorized view tabs match the manager route at 
   await expect(pageHeading).toBeVisible();
   await expect(managerialTab).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('section[aria-label="Dashboard"] p[role="status"]')).toContainText('Last Updated at');
-  // Tabs never grant an unauthorized dashboard route.
+  // Match the approved two-tab frame without granting an unauthorized route.
+  await expect(dashboardTabs.getByText('Personal Dashboard', { exact: true })).toHaveAttribute('aria-disabled', 'true');
   await expect(dashboardTabs.getByRole('button', { name: 'Personal Dashboard' })).toHaveCount(0);
 
   for (const width of [1920, 375]) {
