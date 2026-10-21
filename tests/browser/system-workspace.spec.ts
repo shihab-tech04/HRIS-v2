@@ -101,6 +101,20 @@ test('Super Admin with active tenant membership opens the authorized HRIS worksp
   await attendanceLeaveSections.getByRole('button', { name: 'Leave Requests' }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
   await expect(attendanceLeaveSections.getByRole('button', { name: 'Leave Requests' })).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(/#leave-requests$/);
+  await page.reload();
+  await expect(page).toHaveURL(/#leave-requests$/);
+  await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const leaveHeading = page.getByRole('heading', { name: 'ছুটির আবেদনসমূহ' });
+  const localizedLeaveTab = attendanceLeaveSections.getByRole('button', { name: 'ছুটির আবেদনসমূহ' });
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await expect(leaveHeading).toBeVisible();
+    await expect(localizedLeaveTab).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+  }
 });
 
 test('organization Teams directory filters only the active tenant rows', async ({ page }) => {

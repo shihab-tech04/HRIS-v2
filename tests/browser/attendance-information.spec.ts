@@ -393,10 +393,19 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.reload();
   await expect(page).not.toHaveURL(/#attendance-correction-requests$/);
   await expect(page.getByText('Attendance Requests', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('button', { name: 'Leave Requests', exact: true })).toBeDisabled();
   await expect(page.getByRole('heading', { name: 'Attendance Requests' })).toHaveCount(0);
   await expect(page.getByText(/Synthetic missed punch approval/)).toHaveCount(0);
   const reportTable = page.getByRole('table', { name: 'Attendance summary by employee' });
   await expect(reportTable).toBeVisible();
+  await page.evaluate(() => {
+    window.history.pushState(null, '', `${window.location.pathname}${window.location.search}#leave-requests`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.getByRole('heading', { name: 'Leave Requests' })).toHaveCount(0);
+  await expect(page.getByRole('table', { name: 'Leave requests' })).toHaveCount(0);
+  await expect(reportTable).toBeVisible();
+  await page.evaluate(() => window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`));
   const reportFrame = page.locator('section[aria-labelledby="attendance-report-heading"]');
   const reportFrameBounds = await reportFrame.evaluate(element => {
     const bounds = element.getBoundingClientRect();
@@ -443,6 +452,12 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const positiveRow = reportTable.getByRole('row', { name: /Aggregate Report Employee/ });
   const negativeRow = reportTable.getByRole('row', { name: /Aggregate Negative Employee/ });
   const aggregateRows = reportTable.locator('tbody tr');
+  const aggregateHeaderGap = await reportTable.evaluate(table => {
+    const header = table.querySelector('thead th');
+    const firstRow = table.querySelector('tbody tr');
+    return header && firstRow ? firstRow.getBoundingClientRect().top - header.getBoundingClientRect().bottom : Number.NaN;
+  });
+  expect(Math.abs(aggregateHeaderGap - 17)).toBeLessThanOrEqual(1);
   const aggregateRowGap = await aggregateRows.evaluateAll(rows => {
     const first = rows[0].getBoundingClientRect();
     const second = rows[1].getBoundingClientRect();

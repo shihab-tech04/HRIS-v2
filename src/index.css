@@ -24,6 +24,14 @@
   }
 }
 
+/* Figma node 17:28321 separates its report header from the first row by 17px;
+   data rows and the Attendance Information table retain their 6px gutters. */
+.aggregate-attendance-table tbody::before {
+  content: '';
+  display: table-row;
+  height: 5px;
+}
+
 /* Custom scrollbars for high-density tables and SQL viewers */
 ::-webkit-scrollbar {
   width: 6px;
