@@ -4,20 +4,19 @@ on:
     branches: ['work/hris-isolated-ui-preview-20261021']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   package:
     name: Build fixture-only preview
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: npm
+          node-version: '24.21.0'
       - name: Install audited source dependencies
-        run: npm ci
+        run: npm install --include=optional --no-audit --no-fund
       - name: Prepare isolated preview without hosted API access
         shell: bash
         run: |
@@ -61,6 +60,18 @@ jobs:
             exit 1
           fi
           find dist -type f -printf '%p %s bytes\n'
+      - name: Publish static artifact only to this isolated preview branch
+        shell: bash
+        run: |
+          mkdir -p preview-dist
+          cp -a dist/. preview-dist/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f preview-dist
+          if ! git diff --cached --quiet; then
+            git commit -m "build(preview): generated fixture-only static HRIS bundle"
+            git push origin HEAD:work/hris-isolated-ui-preview-20261021
+          fi
       - name: Save isolated Vite build artifact
         uses: actions/upload-artifact@v4
         with:
