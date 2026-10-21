@@ -17,6 +17,8 @@ jobs:
           node-version: '22'
       - name: Install exact branch dependencies
         run: npm install --include=optional --no-audit --no-fund
+      - name: Restore missing optional Linux TypeScript executable from Mac-authored lockfile
+        run: npm install --no-save --no-package-lock --include=optional --no-audit --no-fund @typescript/typescript-linux-x64@7.0.2
       - name: Type, contract and build verification
         run: npm run check
       - name: Assert secure Employee-only UI route and existing RPC contract
