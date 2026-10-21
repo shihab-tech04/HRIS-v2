@@ -121,7 +121,12 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
       const visibleRequests = requests.filter(row => (!start || String(row.to_date) >= start) && (!end || String(row.from_date) <= end));
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         requests: visibleRequests.map(row => ({ ...row })),
-        leave_types: [{ id: 'e4444444-4444-4444-8444-444444444441', name: 'Annual leave' }, { id: 'e4444444-4444-4444-8444-444444444442', name: 'Medical leave' }],
+        leave_types: [
+          { id: 'e4444444-4444-4444-8444-444444444441', name: 'Annual leave', code: 'ANNUAL', applicable_gender: null,
+            min_days_notice: 0, requires_document_proof: false, annual_entitlement: 20, active: true },
+          { id: 'e4444444-4444-4444-8444-444444444442', name: 'Medical leave', code: 'MEDICAL', applicable_gender: null,
+            min_days_notice: 1, requires_document_proof: true, annual_entitlement: 10, active: true },
+        ],
         holidays: [],
       }) });
     }
@@ -376,7 +381,10 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.getByRole('table', { name: 'Leave requests' })).toHaveCount(0);
   await page.evaluate(() => { window.location.hash = 'leave-policy'; });
   await expect(page.getByRole('heading', { level: 2, name: 'Leave policy' })).toBeVisible();
-  await expect(page.getByText('Leave types', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 3, name: 'Leave type policies', exact: true })).toBeVisible();
+  const leavePolicyTable = page.getByRole('region', { name: 'Leave type policy table' }).getByRole('table');
+  await expect(leavePolicyTable.locator('tbody tr')).toHaveCount(2);
+  await expect(leavePolicyTable.getByRole('row', { name: /Annual leave/ })).toContainText('20');
 
   managerPermissionEnabled = false;
   await page.evaluate(() => { window.location.hash = ''; });

@@ -465,6 +465,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Search employees').press('Enter');
   await expect(page.getByText('No attendance records were returned for this date range.')).toBeVisible();
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-empty-1920x1080.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Clear result', exact: true }).click();
   failNextAttendanceDetail = true;
   const attendanceFilters = page.getByRole('button', { name: 'Filters' });
   if (!(await page.getByLabel('From date').isVisible())) await attendanceFilters.click();
