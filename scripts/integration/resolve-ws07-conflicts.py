@@ -117,6 +117,20 @@ Path(BROWSER).write_text(git_source(WS08, BROWSER))
 hr_browser = git_source(WS07, BROWSER)
 hr_browser = hr_browser.replace("getByRole('button', { name: 'Attendance', exact: true })", "getByRole('button', { name: 'Attendance & Leave', exact: true })")
 Path("tests/browser/ws07-attendance-information.spec.ts").write_text(hr_browser)
+
+# The shared Figma shell intentionally groups Attendance and Leave under one top-level item.
+hr_leave_test_path = Path("tests/browser/hr-operations-leave-request-states.spec.ts")
+hr_leave_test = hr_leave_test_path.read_text()
+hr_leave_test = hr_leave_test.replace(
+    "await page.getByRole('button', { name: 'Leave', exact: true }).click();",
+    "await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();\\n"
+    "   await page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true }).click();"
+)
+hr_leave_test = hr_leave_test.replace(
+    "await expect(page.getByRole('button', { name: 'Leave Requests', exact: true })).toHaveCount(0);",
+    "await expect(page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true })).toHaveAttribute('aria-current', 'page');"
+)
+hr_leave_test_path.write_text(hr_leave_test)
 Path(CONTRACT).write_text(git_source(WS08, CONTRACT))
 Path("tests/contracts/ws07-attendance-report.test.mjs").write_text(git_source(WS07, CONTRACT))
 live_contract_path = Path("tests/contracts/live-workspace.test.mjs")
