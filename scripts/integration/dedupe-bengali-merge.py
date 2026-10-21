@@ -30,7 +30,7 @@ if conflicts:
     if {key for key, _, _ in conflicts} != approved:
         raise SystemExit(f"Unexpected divergent translations: {conflicts}")
     import subprocess
-    baseline = subprocess.run(["git", "show", "bafda05579a3144f455620e635bec6e093b160c1:src/live/project-locale.ts"],
+    baseline = subprocess.run(["git", "show", "286bc1881966aefe1da1e0a579d31bb9e5e3fa04:src/live/project-locale.ts"],
                               check=True, capture_output=True, text=True).stdout
     baseline_values = {m.group(1): m.group(2) for line in baseline.splitlines() if (m := literal.match(line))}
     for key, current, alternative in conflicts:
