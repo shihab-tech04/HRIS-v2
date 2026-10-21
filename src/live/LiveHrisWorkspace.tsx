@@ -1788,10 +1788,10 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     return () => { requestSequence.current += 1; };
   }, [tenantId, appliedRequestRange]);
 
-  // A date-range reload must preserve the explicitly selected status.
-  // Reset only on tenant changes, so approved overlaps stay visible.
+  // Preserve status on date reload; tenant changes restore the entry default.
+  // HR Operations opens on Pending, while Manager overview shows All statuses.
   useEffect(() => {
-    setStatusFilter('pending');
+    setStatusFilter(window.location.hash === '#leave-requests' ? 'pending' : 'all');
   }, [tenantId]);
 
   useEffect(() => {
