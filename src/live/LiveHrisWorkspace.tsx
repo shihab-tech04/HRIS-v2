@@ -4,6 +4,7 @@ import attendanceDownloadIcon from '../assets/attendance-download.png';
 import attendanceFilterIcon from '../assets/attendance-filter.svg';
 import attendanceSearchIcon from '../assets/attendance-search.svg';
 import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
+import './attendance-report.css';
 import { OrganizationTeams } from './OrganizationTeams';
 import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
@@ -940,6 +941,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       'Name': 'নাম',
       'Designation': 'পদবি',
       'Department': 'বিভাগ',
+      'Team Name': 'দলের নাম',
       'Status': 'অবস্থা',
       'Work Location': 'কর্মস্থল',
       'In Time': 'প্রবেশের সময়',
@@ -1182,9 +1184,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     'h-[59px] bg-white pl-[33px] pr-4 py-0 font-normal last:rounded-r-lg',
   ];
 
-  return <section aria-labelledby="attendance-report-heading" className={`mx-auto w-full max-w-[1386px] ${aggregateOnly ? 'space-y-[18px]' : 'space-y-2'}`}>
+  return <section aria-labelledby="attendance-report-heading" className={`attendance-report mx-auto w-full max-w-[1386px] ${aggregateOnly ? 'space-y-[18px]' : 'space-y-2'}`}>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{reportText('Attendance Report')}</h2>
+      <h2 id="attendance-report-heading" tabIndex={-1} className="attendance-report__heading text-2xl font-normal text-[#3D3D3D]">{reportText('Attendance Report')}</h2>
       <form aria-label={reportText('Attendance report controls')} onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }}
         className={`flex w-full flex-wrap items-center justify-end lg:w-[600px] ${aggregateOnly ? 'gap-[9px]' : 'gap-2'}`}>
         <div className={`relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none ${aggregateOnly ? '' : 'h-12'}`}>
@@ -1292,13 +1294,13 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
           {!aggregateOnly && <colgroup>{[268, 104, 131, 218, 145, 134, 112, 143, 128].map((width, index) => <col key={index} style={{ width }} />)}</colgroup>}
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
             {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status']).map(reportText).map((label, index) => <th key={label} scope="col" aria-sort={label === reportText('Team Name') ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className={aggregateOnly ? 'h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg' : detailHeaderClasses[index]}>
-              {label === reportText('Team Name') ? <div className="flex items-center gap-1">
+              {label === reportText('Team Name') ? <div className="flex items-center gap-1 whitespace-nowrap">
                 <span>{label}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
                   aria-label={teamSortDirection === 'asc'
                     ? locale === 'bn' ? 'দলের নাম অবরোহী ক্রমে সাজান' : 'Sort by Team Name descending'
                     : locale === 'bn' ? 'দলের নাম আরোহী ক্রমে সাজান' : 'Sort by Team Name ascending'}
-                  className="inline-flex min-h-9 min-w-9 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded text-[#9E9E9E] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-[#08558B]">
                   <img src={attendanceTeamSortIcon} alt="" />
                 </button>
               </div> : label}

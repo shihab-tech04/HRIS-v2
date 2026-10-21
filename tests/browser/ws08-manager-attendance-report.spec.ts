@@ -114,6 +114,7 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   const heading = page.getByRole('heading', { name: 'Attendance Report', exact: true });
   const report = page.getByRole('table', { name: 'Attendance Information' });
   await expect(heading).toBeVisible();
+  expect(await heading.evaluate(element => getComputedStyle(element).fontFamily)).toContain('Inter');
   await expect(report).toBeVisible();
   await expect.poll(() => attendanceCalls.some(call => call.p_report === false)).toBe(true);
   expect(await report.getByRole('columnheader').allTextContents()).toEqual([
@@ -132,6 +133,9 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   await expect(row).not.toContainText('8.56');
   const teamHeader = report.getByRole('columnheader', { name: 'Team Name' });
   await expect(teamHeader).toHaveAttribute('aria-sort', 'none');
+  await page.getByRole('button', { name: 'Sort by Team Name ascending' }).click();
+  await expect(teamHeader).toHaveAttribute('aria-sort', 'ascending');
+  await expect(report.getByRole('row').nth(1)).toContainText('Synthetic Attendance Employee');
   await page.getByRole('button', { name: 'Sort by Team Name descending' }).click();
   await expect(teamHeader).toHaveAttribute('aria-sort', 'descending');
   await expect(report.getByRole('row').nth(1)).toContainText('Synthetic Late Employee');
@@ -139,6 +143,7 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   const searchbox = toolbar.getByRole('searchbox', { name: 'Search employees' });
   const download = toolbar.getByRole('button', { name: 'Download Report', exact: true });
   const filter = toolbar.getByRole('button', { name: 'Filters', exact: true });
+  await expect(filter).toHaveCSS('background-color', 'rgb(8, 85, 139)');
   for (const [control, width] of [[searchbox, 334], [download, 170], [filter, 62]] as const) {
     await expect(control).toHaveCSS('height', '48px');
     expect(Math.abs(((await control.boundingBox())?.width ?? 0) - width)).toBeLessThan(0.5);
@@ -227,10 +232,11 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   const searchBounds = await searchbox.boundingBox();
   const downloadBounds = await download.boundingBox();
   const filterBounds = await filter.boundingBox();
-  const tableRegionBounds = await page.getByRole('region', { name: 'Scrollable attendance report table' }).boundingBox();
+  const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
+  const tableFrameBounds = await tableRegion.locator('xpath=..').boundingBox();
   expect(Math.abs((downloadBounds?.x ?? 0) - ((searchBounds?.x ?? 0) + (searchBounds?.width ?? 0)) - 9)).toBeLessThan(0.5);
   expect(Math.abs((filterBounds?.x ?? 0) - ((downloadBounds?.x ?? 0) + (downloadBounds?.width ?? 0)) - 9)).toBeLessThan(0.5);
-  expect(Math.abs((tableRegionBounds?.y ?? 0) - ((await toolbar.boundingBox())?.y ?? 0) - 48 - 18)).toBeLessThan(0.5);
+  expect(Math.abs((tableFrameBounds?.y ?? 0) - ((await toolbar.boundingBox())?.y ?? 0) - 48 - 18)).toBeLessThan(0.5);
 
   const evidence = path.resolve(process.cwd(), 'docs/evidence/ws08');
   await mkdir(evidence, { recursive: true });
