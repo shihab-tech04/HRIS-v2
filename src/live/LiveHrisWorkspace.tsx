@@ -1970,7 +1970,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 
   const preserveOverviewSections = leaveView === 'requests' && (typeof window === 'undefined' || window.location.hash !== '#leave-requests');
 
-  return <section aria-labelledby="leave-workspace-heading" style={{ maxWidth: `min(${leaveView === 'requests' && !preserveOverviewSections ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
+  return <section aria-labelledby="leave-workspace-heading" style={{ maxWidth: `min(${leaveView === 'requests' && !preserveOverviewSections ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-h-12 items-center gap-3">
         {leaveView === 'requests' && ['approved', 'rejected'].includes(statusFilter)

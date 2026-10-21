@@ -27,6 +27,42 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   let managerPermissionEnabled = true;
   const decisionCalls: Record<string, unknown>[] = [];
   const leaveCalls: Record<string, unknown>[] = [];
+  const leaveResponsiveWidthFailures: string[] = [];
+  const captureLeaveResponsiveWidth = async (width: number, frame: string) => {
+    const layout = await page.evaluate(() => {
+      const viewport = window.innerWidth;
+      const region = document.querySelector<HTMLElement>('[aria-label="Leave request results"]');
+      const ancestors: Array<Record<string, unknown>> = [];
+      for (let element: HTMLElement | null = region; element && ancestors.length < 8; element = element.parentElement) {
+        const bounds = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        ancestors.push({ tag: element.tagName, id: element.id, className: String(element.className).slice(0, 100),
+          left: Math.round(bounds.left), right: Math.round(bounds.right), width: Math.round(bounds.width),
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, overflowX: style.overflowX,
+          minWidth: style.minWidth, maxWidth: style.maxWidth });
+      }
+      const elements = Array.from(document.body.querySelectorAll<HTMLElement>('*')).filter(element => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.right > viewport + 1 && (!region || element === region || !region.contains(element));
+      }).map(element => {
+        const bounds = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return { tag: element.tagName, id: element.id, className: String(element.className).slice(0, 100),
+          left: Math.round(bounds.left), right: Math.round(bounds.right), width: Math.round(bounds.width),
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, overflowX: style.overflowX };
+      }).sort((left, right) => right.right - left.right).slice(0, 10);
+      return { viewport, documentWidth: document.documentElement.scrollWidth, bodyWidth: document.body.scrollWidth,
+        region: region ? { left: Math.round(region.getBoundingClientRect().left), right: Math.round(region.getBoundingClientRect().right),
+          clientWidth: region.clientWidth, scrollWidth: region.scrollWidth } : null, ancestors, elements };
+    });
+    if (layout.viewport !== width || layout.documentWidth > width + 1) {
+      leaveResponsiveWidthFailures.push(`${frame} ${width}px: ${JSON.stringify(layout)}`);
+    }
+    if (layout.region && width < 1386) {
+      expect(layout.region.scrollWidth, `${frame} ${width}px table must scroll inside Leave request results`).toBeGreaterThan(layout.region.clientWidth);
+    }
+    return layout;
+  };
   const leaveNames = ['Synthetic Pending Employee', 'Synthetic Pending Employee 02', 'Synthetic Pending Employee 03', 'Synthetic Pending Employee 04',
     'Synthetic Pending Employee 05', 'Synthetic Pending Employee 06', 'Synthetic Pending Employee 07', 'Synthetic Pending Employee 08'];
   const leaveReasons = ['Convocation', 'Family dependency', 'High fever and cold', 'Migraine pain', 'Family dependency', 'Personal reason', 'Family dependency', 'Convocation'];
@@ -151,7 +187,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-normal-1920x1080.png'), fullPage: true });
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await captureLeaveResponsiveWidth(width, 'EN normal');
     await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-normal-en-${width}-20261021.png`), fullPage: true });
   }
 
@@ -223,17 +259,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(bengaliTable.getByRole('columnheader', { name: 'মন্তব্য', exact: true })).toBeVisible();
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
-    const overflow = await page.evaluate(() => {
-      const viewport = window.innerWidth;
-      const elements = Array.from(document.body.querySelectorAll<HTMLElement>('*')).map(element => {
-        const bounds = element.getBoundingClientRect();
-        const style = window.getComputedStyle(element);
-        return { tag: element.tagName, id: element.id, className: String(element.className).slice(0, 100), left: bounds.left,
-          right: bounds.right, width: bounds.width, overflowX: style.overflowX };
-      }).filter(element => element.right > viewport + 1).sort((left, right) => right.right - left.right).slice(0, 12);
-      return { viewport, document: document.documentElement.scrollWidth, body: document.body.scrollWidth, elements };
-    });
-    expect(overflow.document, JSON.stringify(overflow)).toBeLessThanOrEqual(width + 1);
+    await captureLeaveResponsiveWidth(width, 'BN normal');
     await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-normal-bn-${width}-20261021.png`), fullPage: true });
   }
   await page.getByRole('button', { name: 'Switch language to English' }).click();
@@ -282,7 +308,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   });
   expect(mobileLeaveDialogBounds.x).toBeGreaterThanOrEqual(0);
   expect(mobileLeaveDialogBounds.right).toBeLessThanOrEqual(376);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await captureLeaveResponsiveWidth(375, 'EN rejection dialog');
   await leaveRejectionDialog.getByLabel(/Decision note/).fill('Rejected with a source-backed test note.');
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-rejection-dialog-mobile-20261021.png'), fullPage: true });
   await leaveRejectionDialog.getByRole('button', { name: 'Reject request', exact: true }).click();
@@ -305,7 +331,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(page.getByRole('region', { name: 'Leave request results' })).toBeVisible();
   expect(await page.evaluate(() => window.innerWidth)).toBe(375);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await captureLeaveResponsiveWidth(375, 'EN final requests');
   const tableRegion = page.getByRole('region', { name: 'Leave request results' });
   const mobileResultsBounds = await tableRegion.evaluate(element => {
     const bounds = element.getBoundingClientRect();
@@ -345,4 +371,6 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.getByText('No leave requests were returned for this tenant.')).toBeVisible();
   await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-empty-1920x1080.png'), fullPage: true });
+  expect(leaveResponsiveWidthFailures, 'Leave Requests must fit the document at 375/768/1280/1920px in EN and BN while wide tables scroll inside their results region')
+    .toEqual([]);
 });
