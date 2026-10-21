@@ -77,13 +77,46 @@ merged = replace_exact(merged, old_att_call, new_att_call)
 old_leave_call = "{page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} />}"
 new_leave_call = "{page === 'leave' && permissions.leave && (permissions.leaveManage ? <HrLeaveWorkspace tenantId={tenantId} canManage={true} locale={locale} /> : <LeaveWorkspace tenantId={tenantId} canManage={false} locale={locale} />)}"
 merged = replace_exact(merged, old_leave_call, new_leave_call)
+# Route presentation by authenticated tenant membership role, never by client-provided flags.
+merged = replace_exact(
+    merged,
+    "  userId, userEmail, tenantId, tenantName, tenants, onTenantChange, onSignOut, isSuperAdmin, isEmployee,",
+    "  userId, userEmail, tenantId, tenantName, tenants, onTenantChange, onSignOut, isSuperAdmin, isEmployee, tenantRole = '',"
+)
+merged = replace_exact(
+    merged,
+    "  isEmployee: boolean;\n  permissions?: PermissionSet;",
+    "  isEmployee: boolean;\n  tenantRole?: string;\n  permissions?: PermissionSet;"
+)
+merged = replace_exact(
+    merged,
+    "  const hasAttendanceAndLeave = nav.some(",
+    "  const useHrOperationsView = /(?:^|[_\\s-])hr[_\\s-]operations(?:[_\\s-]|$)/i.test(tenantRole);\n  const hasAttendanceAndLeave = nav.some("
+)
+merged = replace_exact(merged,
+    "(permissions.attendanceManage\n            ? <HrAttendanceReport",
+    "(useHrOperationsView && permissions.attendanceManage\n            ? <HrAttendanceReport")
+merged = replace_exact(merged,
+    "(permissions.leaveManage ? <HrLeaveWorkspace",
+    "(useHrOperationsView && permissions.leaveManage ? <HrLeaveWorkspace")
 assert "<<<<<<<" not in merged and ">>>>>>>" not in merged and "=======" not in merged, "Unresolved conflict"
 assert "function HrAttendanceReport(" in merged and "function HrLeaveWorkspace(" in merged
 Path(UI).write_text(merged)
 
+live_app_path = Path("src/live/LiveApp.tsx")
+live_app = live_app_path.read_text()
+role_insertion = "      userEmail={user.email || 'HRIS user'}\\n"
+if live_app.count(role_insertion) != 2:
+    raise AssertionError("LiveApp membership handoff changed")
+live_app = live_app.replace(role_insertion,
+    role_insertion + "      tenantRole={activeMembership?.role || ''}\\n")
+live_app_path.write_text(live_app)
+
 # Preserve both exact-source acceptance suites under distinct test names.
 Path(BROWSER).write_text(git_source(WS08, BROWSER))
-Path("tests/browser/ws07-attendance-information.spec.ts").write_text(git_source(WS07, BROWSER))
+hr_browser = git_source(WS07, BROWSER)
+hr_browser = hr_browser.replace("getByRole('button', { name: 'Attendance', exact: true })", "getByRole('button', { name: 'Attendance & Leave', exact: true })")
+Path("tests/browser/ws07-attendance-information.spec.ts").write_text(hr_browser)
 Path(CONTRACT).write_text(git_source(WS08, CONTRACT))
 Path("tests/contracts/ws07-attendance-report.test.mjs").write_text(git_source(WS07, CONTRACT))
 live_contract_path = Path("tests/contracts/live-workspace.test.mjs")
