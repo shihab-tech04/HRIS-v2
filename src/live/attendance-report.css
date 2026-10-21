@@ -3,3 +3,9 @@
 .attendance-report .attendance-report__heading {
   font-family: "Inter", var(--font-sans), sans-serif;
 }
+
+@media (min-width: 64rem) {
+  .attendance-report .attendance-report__detail-table-offset {
+    transform: translateY(-8px);
+  }
+}

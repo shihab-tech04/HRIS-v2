@@ -508,6 +508,8 @@ const bengali: Record<string, string> = {
   'On Time': 'সময়মতো',
   'Search....': 'খুঁজুন....',
   'Attendance Report': 'উপস্থিতির প্রতিবেদন',
+  'Attendance information': 'উপস্থিতির তথ্য',
+  'Attendance summary by employee': 'কর্মচারীভিত্তিক উপস্থিতি সারাংশ',
   'No attendance correction requests were returned for this date range.': 'এই তারিখসীমায় কোনো উপস্থিতি সংশোধনের আবেদন পাওয়া যায়নি।',
   'Attendance & Leave': 'উপস্থিতি ও ছুটি',
   'Navigation': 'নেভিগেশন',

@@ -1160,6 +1160,9 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
   const attendanceHeaders = aggregateOnly
     ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation']
     : ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status'];
+  const attendanceTableLabel = aggregateOnly
+    ? projectText(locale, 'Attendance summary by employee')
+    : managerReportView ? projectText(locale, 'Attendance information') : 'Attendance information';
 
   return <section aria-labelledby={requestView ? 'attendance-requests-heading' : 'attendance-report-heading'} className={`${managerReportView ? 'attendance-report' : ''} mx-auto w-full ${aggregateOnly ? 'max-w-[1386px] space-y-[18px]' : 'max-w-[1383px] space-y-2'}`}>
     {!requestView && <>
@@ -1267,10 +1270,10 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
       </div>
     </div>}
     {!requestView && <div className={`min-w-0 ${!aggregateOnly && !filtersOpen
-      ? managerReportView ? 'lg:-translate-y-2' : 'lg:-mt-2'
+      ? managerReportView ? 'attendance-report__detail-table-offset' : 'lg:-mt-2'
       : ''}`}>
       {loading || !currentTenantReady ? <p role="status" className="rounded-xl bg-white p-5 text-sm">Loading attendance data…</p> : error ? null : !rows.length ? <p className="rounded-xl bg-white p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'}`}>
+          <table aria-label={attendanceTableLabel} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'}`}>
           {!aggregateOnly && <colgroup><col style={{ width: '258px' }} /><col style={{ width: '113px' }} /><col style={{ width: '155px' }} /><col style={{ width: '188px' }} /><col style={{ width: '143px' }} /><col style={{ width: '166px' }} /><col style={{ width: '125px' }} /><col style={{ width: '123px' }} /><col style={{ width: '112px' }} /></colgroup>}
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
             {attendanceHeaders.map(header => <th key={header} scope="col" aria-label={aggregateOnly && header === 'Team Name' ? projectText(locale, header) : undefined} aria-sort={header === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
