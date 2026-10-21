@@ -188,7 +188,7 @@ test('Manager daily attendance information matches Figma node 17:28694 and stays
   await filter.press('Enter');
   await expect(filter).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await expect(page.getByRole('heading', { name: 'উপস্থিতি প্রতিবেদন', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'উপস্থিতির প্রতিবেদন', exact: true })).toBeVisible();
   await expect(page.getByRole('form', { name: 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'উপস্থিতির তথ্য' }).getByRole('columnheader', { name: 'প্রবেশের সময়' })).toBeVisible();
   const bengaliFilters = page.getByRole('button', { name: 'ফিল্টার', exact: true });
@@ -282,7 +282,7 @@ test('Manager report-only attendance screen matches Figma aggregate variant 17:2
   await expect(filters).toHaveAttribute('aria-expanded', 'false');
 
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await expect(page.getByRole('heading', { name: 'উপস্থিতি প্রতিবেদন', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'উপস্থিতির প্রতিবেদন', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ফিল্টার', exact: true })).toBeVisible();
   await expect(report.getByRole('columnheader', { name: 'দলের নাম', exact: true })).toBeVisible();
   await expect(page.getByRole('form', { name: 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ' })).toBeVisible();
