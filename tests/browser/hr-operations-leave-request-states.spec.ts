@@ -18,6 +18,27 @@ const jwt = [
 ].join('.');
 
 test('HR leave requests match Figma normal, selected, approved, rejected, and responsive states', async ({ page }) => {
+  const captureFigmaFrame = async (filename: string) => {
+    await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+    const fontState = await page.evaluate(() => ({
+      family: getComputedStyle(document.body).fontFamily,
+      poppinsLoaded: Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'),
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(fontState.family).toContain('Poppins');
+    expect(fontState.poppinsLoaded).toBe(true);
+    expect(fontState.documentWidth, `full-page frame evidence ${filename} must fit the viewport`).toBeLessThanOrEqual(fontState.viewport + 1);
+    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/${filename}`), fullPage: true, animations: 'disabled' });
+  };
+  const expectFilledActionCircle = async (button: ReturnType<typeof page.getByRole>, color: string) => {
+    const circle = button.locator('span[aria-hidden="true"]');
+    await expect(circle).toHaveCSS('background-color', color);
+    await expect(circle).toHaveCSS('border-radius', '9999px');
+    const bounds = await circle.boundingBox();
+    expect(bounds?.width).toBe(24);
+    expect(bounds?.height).toBe(24);
+  };
   let authenticated = false;
   let holdInitialQueueLoad = true;
   let releaseInitialQueueLoad = () => {};
@@ -178,6 +199,10 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   expect(await table.getByRole('columnheader').allTextContents()).toEqual([
     'Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', 'Action',
   ]);
+  await expect(page.locator('#leave-request-status')).toHaveValue('pending');
+  await expect(page.getByRole('button', { name: 'Leave Requests', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Search requests', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveAttribute('aria-expanded', 'false');
   const leaveRowGeometry = await table.getByRole('row').nth(1).evaluate(row => {
     const first = row.getBoundingClientRect();
     const next = row.nextElementSibling?.getBoundingClientRect();
@@ -190,14 +215,17 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   const firstPendingRow = table.getByRole('row', { name: /Select request for Synthetic Pending Employee ·/ });
   await expect(firstPendingRow).toContainText('Convocation');
   await expect(firstPendingRow).toContainText('12-10-2026');
+  await expectFilledActionCircle(firstPendingRow.getByRole('button', { name: 'Approve', exact: true }), 'rgb(0, 135, 77)');
+  await expectFilledActionCircle(firstPendingRow.getByRole('button', { name: 'Reject', exact: true }), 'rgb(255, 0, 0)');
   await expect(table.getByRole('row', { name: /Synthetic Approved Employee/ })).toHaveCount(0);
   await expect(table.getByRole('row', { name: /Synthetic Rejected Employee/ })).toHaveCount(0);
   await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-normal-1920x1080.png'), fullPage: true });
+  await expect(page.getByText('Pending requests', { exact: true })).toHaveCount(0);
+  await captureFigmaFrame('ws07-leave-requests-node-17-31769-normal-en-1920x1080.png');
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
     await captureLeaveResponsiveWidth(width, 'EN normal');
-    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-normal-en-${width}-20261021.png`), fullPage: true });
+    await captureFigmaFrame(`ws07-leave-requests-node-17-31769-normal-en-${width}x1080.png`);
   }
 
   const bulkApprove = page.getByRole('button', { name: 'Approve selected leave requests (unavailable)' });
@@ -208,9 +236,14 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(bulkApprove).toBeDisabled();
   await expect(bulkReject).toBeDisabled();
   await expect(table.locator('tbody tr')).toHaveCount(8);
+  const selectedLeaveCheckboxes = table.locator('tbody input[type="checkbox"]');
+  await expect(selectedLeaveCheckboxes).toHaveCount(8);
+  expect(await selectedLeaveCheckboxes.evaluateAll(inputs => inputs.every(input => (input as HTMLInputElement).checked))).toBe(true);
+  await expectFilledActionCircle(bulkApprove, 'rgb(0, 135, 77)');
+  await expectFilledActionCircle(bulkReject, 'rgb(255, 0, 0)');
   await expect(page.getByLabel('Search requests')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-selected-1920x1080.png'), fullPage: true });
+  await captureFigmaFrame('ws07-leave-requests-node-17-32168-selected-en-1920x1080.png');
   expect(decisionCalls).toHaveLength(0);
 
   for (const request of requests) request.status = 'approved';
@@ -227,11 +260,19 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(page.getByRole('button', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByLabel('Select all pending leave requests')).toHaveCount(0);
   await expect(table.locator('tbody tr').first().locator('td').last()).toContainText('Approved');
+  await expect(table.locator('tbody tr').first().locator('td').last()).toHaveClass(/text-emerald-700/);
   await expect(page.getByLabel('Search requests')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
+  await expect(page.locator('#leave-request-controls')).toHaveCount(0);
+  await expect(page.locator('#leave-request-filters')).toBeHidden();
+  await expect(page.getByLabel('From date', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('To date', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Filter by status', { exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
   await expect(page.getByText('Pending requests', { exact: true })).toHaveCount(0);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-approved-1920x1080.png'), fullPage: true });
+  await expect(page.getByRole('heading', { name: 'Leave type policies' })).toHaveCount(0);
+  await captureFigmaFrame('ws07-leave-requests-node-17-32584-approved-en-1920x1080.png');
 
   for (const request of requests) request.status = 'rejected';
   await page.reload();
@@ -245,9 +286,18 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
     'Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', 'Status',
   ]);
   await expect(table.locator('tbody tr').first().locator('td').last()).toContainText('Rejected');
+  await expect(table.locator('tbody tr').first().locator('td').last()).toHaveClass(/text-rose-600/);
   await expect(page.getByLabel('Search requests')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-rejected-1920x1080.png'), fullPage: true });
+  await expect(page.locator('#leave-request-controls')).toHaveCount(0);
+  await expect(page.locator('#leave-request-filters')).toBeHidden();
+  await expect(page.getByLabel('From date', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('To date', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Filter by status', { exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
+  await expect(page.getByText('Pending requests', { exact: true })).toHaveCount(0);
+  await captureFigmaFrame('ws07-leave-requests-node-17-32957-rejected-en-1920x1080.png');
 
   for (const request of requests) {
     request.status = 'pending';
@@ -291,7 +341,7 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
       expect(bounds.left, `${bounds.id} left edge at ${width}px`).toBeGreaterThanOrEqual(0);
       expect(bounds.right, `${bounds.id} right edge at ${width}px`).toBeLessThanOrEqual(width + 1);
     }
-    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-normal-bn-${width}-20261021.png`), fullPage: true });
+    await captureFigmaFrame(`ws07-leave-requests-node-17-31769-normal-bn-${width}x1080.png`);
   }
   await bengaliFilterToggle.click();
   await expect(bengaliFilters).toBeHidden();

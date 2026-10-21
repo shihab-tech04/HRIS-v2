@@ -19,6 +19,27 @@ const jwtPayload = Buffer.from(JSON.stringify({ sub: userId, aud: 'authenticated
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
 test('attendance information uses tenant-scoped detail rows and keeps filters, export, and mobile table usable', async ({ page }) => {
+  const captureFigmaFrame = async (filename: string) => {
+    await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+    const fontState = await page.evaluate(() => ({
+      family: getComputedStyle(document.body).fontFamily,
+      poppinsLoaded: Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'),
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(fontState.family).toContain('Poppins');
+    expect(fontState.poppinsLoaded).toBe(true);
+    expect(fontState.documentWidth, `full-page frame evidence ${filename} must fit the viewport`).toBeLessThanOrEqual(fontState.viewport + 1);
+    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/${filename}`), fullPage: true, animations: 'disabled' });
+  };
+  const expectFilledActionCircle = async (button: ReturnType<typeof page.getByRole>, color: string) => {
+    const circle = button.locator('span[aria-hidden="true"]');
+    await expect(circle).toHaveCSS('background-color', color);
+    await expect(circle).toHaveCSS('border-radius', '9999px');
+    const bounds = await circle.boundingBox();
+    expect(bounds?.width).toBe(24);
+    expect(bounds?.height).toBe(24);
+  };
   const externalRequests: string[] = [];
   const attendanceCalls: Record<string, unknown>[] = [];
   let reportOnly = false;
@@ -231,6 +252,10 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await correctionCard.getByRole('columnheader').allTextContents()).toEqual([
     'Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Action',
   ]);
+  await expect(correctionCard.getByLabel('Search attendance requests', { exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('button', { name: 'Filters', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(correctionCard.getByRole('button', { name: 'Approve selected attendance corrections (unavailable)' })).toHaveCount(0);
+  await expect(correctionCard.getByRole('button', { name: 'Reject selected attendance corrections (unavailable)' })).toHaveCount(0);
   const correctionRowGeometry = await correctionCard.getByRole('row').nth(1).evaluate(row => {
     const first = row.getBoundingClientRect();
     const next = row.nextElementSibling?.getBoundingClientRect();
@@ -268,24 +293,21 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     });
     if (layout.document > width + 1) attendanceRequestWidthIssues.push(JSON.stringify(layout));
     if (width < 1386) expect(await requestResults.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
-    await page.screenshot({
-      path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-requests-normal-en-${width}-20261021.png`),
-      fullPage: true,
-    });
+    await captureFigmaFrame(`ws07-attendance-requests-node-17-29937-normal-en-${width}x1080.png`);
   }
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
     const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     if (documentWidth > width + 1) attendanceRequestWidthIssues.push(`${width}px BN document width ${documentWidth}`);
-    await page.screenshot({
-      path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-requests-normal-bn-${width}-20261021.png`),
-      fullPage: true,
-    });
+    await captureFigmaFrame(`ws07-attendance-requests-node-17-29937-normal-bn-${width}x1080.png`);
   }
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-normal-1920x1080.png'), fullPage: true });
+  const firstPendingCorrectionRow = correctionCard.getByRole('row').nth(1);
+  await expectFilledActionCircle(firstPendingCorrectionRow.getByRole('button', { name: 'Approve', exact: true }), 'rgb(0, 135, 77)');
+  await expectFilledActionCircle(firstPendingCorrectionRow.getByRole('button', { name: 'Reject', exact: true }), 'rgb(255, 0, 0)');
+  await captureFigmaFrame('ws07-attendance-requests-node-17-29937-normal-en-1920x1080.png');
   const approveSelected = correctionCard.getByRole('button', { name: 'Approve selected attendance corrections (unavailable)' });
   const rejectSelected = correctionCard.getByRole('button', { name: 'Reject selected attendance corrections (unavailable)' });
   await expect(approveSelected).toHaveCount(0);
@@ -293,7 +315,12 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await correctionCard.getByLabel('Select all pending attendance corrections').check();
   await expect(approveSelected).toBeDisabled();
   await expect(rejectSelected).toBeDisabled();
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-selected-1920x1080.png'), fullPage: true });
+  const selectedCorrectionCheckboxes = correctionCard.locator('tbody input[type="checkbox"]');
+  await expect(selectedCorrectionCheckboxes).toHaveCount(8);
+  expect(await selectedCorrectionCheckboxes.evaluateAll(inputs => inputs.every(input => (input as HTMLInputElement).checked))).toBe(true);
+  await expectFilledActionCircle(approveSelected, 'rgb(0, 135, 77)');
+  await expectFilledActionCircle(rejectSelected, 'rgb(255, 0, 0)');
+  await captureFigmaFrame('ws07-attendance-requests-node-17-30342-selected-en-1920x1080.png');
   expect(correctionDecisions).toHaveLength(0);
 
   for (const status of ['approved', 'rejected']) {
@@ -312,11 +339,11 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     await expect(correctionCard.getByLabel('Select all pending attendance corrections')).toHaveCount(0);
     await expect(correctionCard.getByLabel('Search attendance requests')).toHaveCount(0);
     await expect(correctionCard.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
-    await expect(correctionCard.getByRole('row').nth(1).locator('td').last()).toContainText(status === 'approved' ? 'Approved' : 'Rejected');
-    await page.screenshot({
-      path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-requests-${status}-1920x1080.png`),
-      fullPage: true,
-    });
+    await expect(correctionCard.getByRole('button', { name: 'Attendance Requests', exact: true })).toBeVisible();
+    const resolvedStatus = correctionCard.getByRole('row').nth(1).locator('td').last().locator('span');
+    await expect(resolvedStatus).toContainText(status === 'approved' ? 'Approved' : 'Rejected');
+    await expect(resolvedStatus).toHaveClass(status === 'approved' ? /text-emerald-700/ : /text-rose-600/);
+    await captureFigmaFrame(`ws07-attendance-requests-node-${status === 'approved' ? '17-30766' : '17-31148'}-${status}-en-1920x1080.png`);
   }
   for (const request of correctionRequests) request.status = 'pending';
   await page.reload();

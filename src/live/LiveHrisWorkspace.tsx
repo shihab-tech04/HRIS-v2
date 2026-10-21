@@ -1975,6 +1975,8 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   }, []);
 
   const preserveOverviewSections = leaveView === 'requests' && (typeof window === 'undefined' || window.location.hash !== '#leave-requests');
+  const resolvedRequestTable = leaveView === 'requests' && ['approved', 'rejected'].includes(statusFilter)
+    && !loading && !error && filteredRequests.length > 0;
 
   return <section aria-labelledby="leave-workspace-heading" style={{ maxWidth: `min(${leaveView === 'requests' && !preserveOverviewSections ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2016,9 +2018,9 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
             </button>
           </>}
         </form>}
-        <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+        {!resolvedRequestTable && <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
           <RefreshCw className="h-4 w-4" /> Refresh
-        </button>
+        </button>}
       </div>
     </div>
     {leaveView === 'requests' && <div id="leave-request-filters" hidden={(!requestFiltersOpen && !preserveOverviewSections) || ['approved', 'rejected'].includes(statusFilter)} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
