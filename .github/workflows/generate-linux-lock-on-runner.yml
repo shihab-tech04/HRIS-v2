@@ -1,0 +1,132 @@
+name: Generate and validate Linux Pages lock
+on:
+  push:
+    branches:
+      - work/main-pages-reproducibility-20261021
+permissions:
+  contents: write
+jobs:
+  lock-and-prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - name: Verify locked toolchain
+        run: |
+          test "$(node --version)" = "v22.23.3"
+          test "$(npm --version)" = "10.9.9"
+          node --version
+          npm --version
+      - name: Generate a complete Linux lockfile
+        run: npm install --package-lock-only --include=optional --no-audit --no-fund
+      - name: Verify the Linux Rolldown optional binding is locked
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const name = '@rolldown/binding-linux-x64-gnu';
+          const binding = lock.packages['node_modules/' + name];
+          const rolldown = lock.packages['node_modules/rolldown'];
+          if (!binding) throw new Error(name + ' is missing from package-lock.json');
+          if (!rolldown?.optionalDependencies?.[name]) throw new Error('Rolldown does not declare the Linux binding as optional');
+          if (binding.version !== rolldown.optionalDependencies[name]) {
+            throw new Error('Linux binding version does not match Rolldown optional dependency');
+          }
+          console.log(name + '@' + binding.version + ' is present and matches Rolldown.');
+          NODE
+      - name: Clean install and verify native binding
+        run: |
+          npm ci --no-audit --no-fund
+          node -p "require.resolve('@rolldown/binding-linux-x64-gnu')"
+      - name: TypeScript and approved-source contracts
+        run: |
+          npm run lint
+          npm run test:contracts
+      - name: First clean production build and output snapshot
+        run: |
+          npm run build
+          find index.html .nojekyll assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/pages-first.sha256
+      - name: Second clean locked install/build must be byte stable
+        run: |
+          rm -rf node_modules dist
+          npm ci --no-audit --no-fund
+          npm run build
+          find index.html .nojekyll assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/pages-second.sha256
+          diff -u /tmp/pages-first.sha256 /tmp/pages-second.sha256
+          cat /tmp/pages-second.sha256
+      - name: Switch Main verification to clean installs and retain browser evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/check.yml')
+          text = path.read_text()
+          assert "node-version: '22'" in text
+          assert 'run: npm install --no-audit --no-fund' in text
+          assert '      - name: TypeScript check\n' in text
+          assert '      - name: Upload failing browser evidence\n' in text
+          text = text.replace("node-version: '22'", "node-version: '22.23.3'", 1)
+          text = text.replace('run: npm install --no-audit --no-fund', 'run: npm ci --no-audit --no-fund', 1)
+          text = text.replace(
+              '      - name: TypeScript check\n',
+              "      - name: Verify lockfile toolchain\n"
+              "        run: |\n"
+              "          test \"$(node --version)\" = \"v22.23.3\"\n"
+              "          test \"$(npm --version)\" = \"10.9.9\"\n"
+              "      - name: TypeScript check\n",
+              1,
+          )
+          text = text.replace(
+              '      - name: Upload failing browser evidence\n'
+              '        if: failure()\n'
+              '        uses: actions/upload-artifact@v4\n'
+              '        with:\n'
+              '          name: browser-test-failures\n'
+              '          path: |\n'
+              '            test-results\n'
+              '            playwright-report\n'
+              '          if-no-files-found: ignore\n',
+              '      - name: Upload exact-head browser and screenshot evidence\n'
+              '        if: always()\n'
+              '        uses: actions/upload-artifact@v4\n'
+              '        with:\n'
+              '          name: browser-evidence\n'
+              '          path: |\n'
+              '            test-results/\n'
+              '            playwright-report/\n'
+              '            docs/phase-1/screenshots/*.png\n'
+              '          if-no-files-found: warn\n'
+              '          retention-days: 14\n',
+              1,
+          )
+          assert 'run: npm ci --no-audit --no-fund' in text
+          assert 'name: browser-evidence' in text
+          path.write_text(text)
+          PY
+      - name: Verify candidate contains only the reproducibility fix
+        run: |
+          git status --short
+          git diff --check
+          git add package-lock.json .github/workflows/check.yml index.html assets
+          git add -f .nojekyll
+          git diff --cached --stat
+          git diff --cached --check
+      - name: Commit focused reproducibility change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: lock Linux dependencies and keep Pages build reproducible"
+          git rev-parse HEAD | tee /tmp/final-sha.txt
+          printf "Node: %s\nnpm: %s\n" "$(node --version)" "$(npm --version)" > reproducibility-proof.txt
+          printf "\nBuild output checksums (first and second build matched):\n" >> reproducibility-proof.txt
+          cat /tmp/pages-second.sha256 >> reproducibility-proof.txt
+          printf "\nCommit: " >> reproducibility-proof.txt
+          cat /tmp/final-sha.txt >> reproducibility-proof.txt
+          git push origin "HEAD:$GITHUB_REF_NAME"
+      - name: Upload Linux lock/build reproducibility proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-lock-build-proof
+          path: reproducibility-proof.txt
+          retention-days: 14
