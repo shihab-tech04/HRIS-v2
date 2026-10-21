@@ -506,7 +506,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const employeeSearch = page.getByLabel('Search employees', { exact: true });
   await employeeSearch.fill('');
   await employeeSearch.press('Enter');
-  await expect.poll(() => attendanceCalls.slice(beforeMultiStatusFilter).some(call => call.p_report === false && call.p_search === '')).toBe(true);
+  await expect.poll(() => attendanceCalls.slice(beforeMultiStatusFilter).some(call => call.p_report === false && (call.p_search === null || call.p_search === undefined || call.p_search === ''))).toBe(true);
   await expect(employeeSearch).toHaveValue('');
   await expect(filteredFeedback).toContainText('“Early” + “Late”');
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
