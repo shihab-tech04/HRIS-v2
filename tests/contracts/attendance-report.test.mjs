@@ -85,8 +85,8 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
 });
 
 test('Figma attendance aggregate column headings use the approved regular 14px gray type', () => {
-  assert.match(workspace, /aggregateOnly \? 'text-\[14px\] text-\[#9E9E9E\]' : 'text-xs text-slate-500'/);
-  assert.match(workspace, /aggregateOnly \? 'font-normal' : 'font-medium'/);
+  assert.match(workspace, /<thead className="bg-white text-\[14px\] text-\[#9E9E9E\]"/);
+  assert.match(workspace, /className="h-14 bg-white px-4 font-normal"/);
   assert.match(browser, /fontSize: style\.fontSize, fontWeight: style\.fontWeight, color: style\.color/);
   assert.match(browser, /fontSize: '14px', fontWeight: '400', color: 'rgb\(158, 158, 158\)'/);
 });

@@ -64,3 +64,9 @@ This packet covers the HR Operations Attendance Information, Attendance Requests
 ## Next canonical work
 
 Figma metadata review found no approved story-level mapping for the next HR03 organization frames. The canonical next story remains HR03-01, blocked on Product's legal-entity decisions and WS02's schema/API/permission contract. HR02 stories remain unclassified in the readiness overlay, and Candidate conversion remains outside this task's scope. No unsupported organization, employee, Candidate, or Management action was added.
+
+## Reverification packet started from PR head `f466102`
+
+This follow-up tightens the Attendance Information field sequence and separates the Attendance Requests module route, aligns the Leave Requests table with the approved field order and resolved states, and adds retry behavior for attendance-correction read errors. The prior “3/3 local Chromium” result above refers to the earlier checkpoint and does not verify this follow-up patch.
+
+On the follow-up worktree, TypeScript lint, 16 focused Attendance/Leave contracts, and `npx vite build` pass. Local Playwright could not launch because this environment had no Chromium binary and the browser download returned a corrupt empty archive. Exact-head GitHub Actions and WS04 visual acceptance are pending. See the [frame-state register](WS07_ATTENDANCE_LEAVE_FRAME_STATE_REGISTER_2026-10-21.md) for the required state matrix, story mapping, and remaining blockers. Do not treat Attendance or Leave as complete until those gates pass.
