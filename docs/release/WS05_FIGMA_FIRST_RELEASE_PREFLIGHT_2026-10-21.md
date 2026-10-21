@@ -61,7 +61,7 @@ The sign-in/recovery screen smoke passed in an isolated browser. It does not pro
 
 ## Recovery and rollback gates
 
-- Source/Git recovery: a mirrored bundle for both repositories was created outside GitHub, checksum-verified, restored into fresh mirrors, and ref/object manifests matched. The first Drive readback archive SHA-256 was e765ffe7b7577599c811f041d8da29383116c4e3dea699554992b575b7fe0482. A refreshed archive must include the new PR #41 commit before release.
+- Source/Git recovery: refreshed Main and Candidate bundles were uploaded outside GitHub and read back. Both passed git bundle verification; fresh bare-mirror restores exactly matched 124 Main refs and 25 Candidate refs. The refreshed archive link and checksum are in this PR description. This preserves Git/source history only, not the Supabase database.
 - Database recovery: no recoverable production database dump plus isolated restore proof exists. Supabase dashboard access is at a sign-in wall in the connected browser; the current shell has no Supabase CLI or Docker. The existing runbook requires an encrypted source-side dump and isolated PostgreSQL 17 restore proof. This gate remains open.
 - Protected integration: GitHub reports protected=false on both production main branches. The connected GitHub integration cannot configure branch protection, and a protected merge/deploy path is therefore not established.
 - The missing database restore proof and tenant/security evidence also prevent a production rollback claim.
