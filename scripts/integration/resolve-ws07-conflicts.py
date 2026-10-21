@@ -105,11 +105,11 @@ Path(UI).write_text(merged)
 
 live_app_path = Path("src/live/LiveApp.tsx")
 live_app = live_app_path.read_text()
-role_insertion = "      userEmail={user.email || 'HRIS user'}\\n"
+role_insertion = "      userEmail={user.email || 'HRIS user'}\n"
 if live_app.count(role_insertion) != 2:
     raise AssertionError("LiveApp membership handoff changed")
 live_app = live_app.replace(role_insertion,
-    role_insertion + "      tenantRole={activeMembership?.role || ''}\\n")
+    role_insertion + "      tenantRole={activeMembership?.role || ''}\n")
 live_app_path.write_text(live_app)
 
 # Preserve both exact-source acceptance suites under distinct test names.
