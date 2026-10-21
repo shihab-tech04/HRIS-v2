@@ -1,7 +1,7 @@
 name: HRIS Figma UI branch acceptance (no deploy)
 on:
   push:
-    branches: [work/ws01-figma-attendance-shell-20261021]
+    branches: [work/ws01-figma-attendance-shell-20261021, work/hris-attendance-aggregate-figma-gap-20261021]
   workflow_dispatch:
 permissions:
   contents: read
