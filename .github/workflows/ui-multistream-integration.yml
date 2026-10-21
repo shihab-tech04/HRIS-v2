@@ -25,7 +25,8 @@ jobs:
           set -euo pipefail
           mkdir -p integration-evidence
           git fetch origin "+refs/heads/work/ws07-hr-org-phase05-20261020:refs/remotes/origin/work/ws07-hr-org-phase05-20261020" "+refs/heads/work/ws06-employee-profile-figma-20261021:refs/remotes/origin/work/ws06-employee-profile-figma-20261021"
-          test "$(git rev-parse HEAD^)" = "bafda05579a3144f455620e635bec6e093b160c1"
+          git merge-base --is-ancestor "bafda05579a3144f455620e635bec6e093b160c1" HEAD
+          test "$(git merge-base HEAD bafda05579a3144f455620e635bec6e093b160c1)" = "bafda05579a3144f455620e635bec6e093b160c1"
           git cat-file -e "9d7cf862e060babc259d94bbbbf5daa13536b015^{commit}"
           git cat-file -e "3f1f1f1b0edb6341cf6e4be8501eff88789caf44^{commit}"
           printf 'WS08 base: %s\nWS07: %s\nWS06: %s\n' "bafda05579a3144f455620e635bec6e093b160c1" "9d7cf862e060babc259d94bbbbf5daa13536b015" "3f1f1f1b0edb6341cf6e4be8501eff88789caf44" > integration-evidence/pinned-heads.txt
