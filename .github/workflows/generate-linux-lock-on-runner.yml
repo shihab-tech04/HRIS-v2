@@ -63,20 +63,28 @@ jobs:
           find index.html .nojekyll assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/pages-second.sha256
           diff -u /tmp/pages-first.sha256 /tmp/pages-second.sha256
           cat /tmp/pages-second.sha256
-      - name: Commit only the generated lock and Pages outputs to the candidate branch
+      - name: Write proof and stage only generated outputs
         run: |
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          BINDING_VERSION="$(node -p "require('./package-lock.json').packages['node_modules/@rolldown/binding-linux-x64-gnu'].version")"
+          {
+            printf "Runner branch: work/main-pages-reproducibility-20261021\n"
+            printf "Source SHA before generated-output commit: %s\n" "$SOURCE_SHA"
+            printf "Node: %s\nnpm: %s\nLinux binding: %s\n" "$(node --version)" "$(npm --version)" "$BINDING_VERSION"
+            printf "\nBuild output checksums (first and second clean builds matched):\n"
+            cat /tmp/pages-second.sha256
+          } > reproducibility-proof.txt
           git diff --check
           git add package-lock.json index.html assets
           git add -f .nojekyll
+          git add reproducibility-proof.txt
           git diff --cached --stat
           git diff --cached --check
+      - name: Commit and push only to the candidate branch
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "fix: lock Linux dependencies and synchronize Pages build"
-          printf "Candidate branch: work/main-pages-reproducibility-20261021\nSource before generated commit: %s\n" "$(git rev-parse HEAD^)" > reproducibility-proof.txt
-          printf "Commit: %s\nNode: %s\nnpm: %s\nLinux binding: %s\n" "$(git rev-parse HEAD)" "$(node --version)" "$(npm --version)" "$(node -p "require('./package-lock.json').packages['node_modules/@rolldown/binding-linux-x64-gnu'].version")" >> reproducibility-proof.txt
-          printf "\nBuild output checksums (first and second build matched):\n" >> reproducibility-proof.txt
-          cat /tmp/pages-second.sha256 >> reproducibility-proof.txt
           git push origin HEAD:work/main-pages-reproducibility-20261021
       - name: Upload Linux lock/build reproducibility proof
         uses: actions/upload-artifact@v4
