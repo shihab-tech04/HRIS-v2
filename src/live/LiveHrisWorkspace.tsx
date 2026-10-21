@@ -1783,10 +1783,16 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     setData(null); dataTenantId.current = '';
     setResolvingRequestId(''); setRejectingRequest(null); setResolutionNote(''); setActionMessage('');
     setDownloadingEvidenceId(''); setEvidenceMessage(''); setEvidenceError('');
-    setSearch(''); setStatusFilter('pending'); setSelectedRequestIds([]); setFilterError('');
+    setSearch(''); setSelectedRequestIds([]); setFilterError('');
     void load(appliedRequestRange);
     return () => { requestSequence.current += 1; };
   }, [tenantId, appliedRequestRange]);
+
+  // A date-range reload must preserve the explicitly selected status.
+  // Reset only on tenant changes, so approved overlaps stay visible.
+  useEffect(() => {
+    setStatusFilter('pending');
+  }, [tenantId]);
 
   useEffect(() => {
     setAbsenceData(null);
