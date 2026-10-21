@@ -162,6 +162,7 @@ async function signInSyntheticManager(
 
 test('tenant switching keeps the authorized manager workspace and loads the selected tenant summary', async ({ page }) => {
   const reportState = await signInSyntheticManager(page, {}, 'both-admin');
+  await page.getByRole('button', { name: 'Account options' }).click();
   const tenantSelector = page.getByLabel('Organization');
   await expect(tenantSelector).toHaveValue(tenantId);
 
@@ -180,6 +181,7 @@ test('late dashboard summary from the previous tenant cannot replace the selecte
   const reportState = await signInSyntheticManager(page, {}, 'both-admin', tenantId);
   await expect.poll(() => reportState.dashboardSummaryCalls.some(call => call.p_tenant_id === tenantId)).toBe(true);
 
+  await page.getByRole('button', { name: 'Account options' }).click();
   const tenantSelector = page.getByLabel('Organization');
   await tenantSelector.selectOption(tenantIdB);
   await expect.poll(() => reportState.dashboardSummaryCalls.some(call => call.p_tenant_id === tenantIdB)).toBe(true);
@@ -196,6 +198,7 @@ test('late dashboard summary from the previous tenant cannot replace the selecte
 
 test('tenant switching does not retain manager access in a tenant without dashboard permission', async ({ page }) => {
   const reportState = await signInSyntheticManager(page, {}, 'employee-only-b');
+  await page.getByRole('button', { name: 'Account options' }).click();
   const tenantSelector = page.getByLabel('Organization');
   await tenantSelector.selectOption(tenantIdB);
 

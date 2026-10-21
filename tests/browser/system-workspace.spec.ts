@@ -81,8 +81,10 @@ test('Super Admin with active tenant membership opens the authorized HRIS worksp
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
+  await page.getByRole('button', { name: 'Account options' }).click();
   await expect(page.getByText('synthetic-superadmin@example.org')).toBeVisible();
   await expect(page.getByText('Super Administrator')).toBeVisible();
+  await page.getByRole('button', { name: 'Account options' }).click();
   const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
   await expect(moduleNav).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();

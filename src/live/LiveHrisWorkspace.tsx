@@ -1247,7 +1247,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
           </tr></thead>
           <tbody>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
-            const cellClass = 'h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]';
+            const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
             const statusTone = normalizedStatus === 'late' ? 'text-[#B59A00]'
               : normalizedStatus === 'absent' ? 'text-rose-700'
@@ -1852,7 +1852,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 
   return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full max-w-[1386px] space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">Leave Requests</h2>
+      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{tx(locale, 'Leave Requests')}</h2>
         <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
       <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
@@ -3882,8 +3882,8 @@ export function LiveHrisWorkspace({
         navigate('attendance');
       } else navigate(item.id);
     }} aria-current={itemActive ? 'page' : undefined}
-      className={`group flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-[#085587] lg:min-h-0 lg:flex-col lg:justify-center lg:gap-2 lg:rounded-none lg:px-0 lg:py-0 lg:text-center ${itemActive ? 'bg-[#EFF7F8] text-[#49454F] lg:bg-transparent' : 'text-[#424242] hover:bg-slate-50 lg:hover:bg-transparent'}`}>
-      <span data-sidebar-icon className={`grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg transition-colors ${itemActive ? 'bg-[#085587] text-white' : 'bg-white text-[#424242] group-hover:bg-slate-50'}`}>
+      className={`group flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-[#08558B] lg:min-h-0 lg:flex-col lg:justify-center lg:gap-2 lg:rounded-none lg:px-0 lg:py-0 lg:text-center ${itemActive ? 'bg-[#EFF7F8] text-[#49454F] lg:bg-transparent' : 'text-[#424242] hover:bg-slate-50 lg:hover:bg-transparent'}`}>
+      <span data-sidebar-icon className={`grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg transition-colors ${itemActive ? 'bg-[#08558B] text-white' : 'bg-white text-[#424242] group-hover:bg-slate-50'}`}>
         {item.icon}
       </span>
       <span data-sidebar-label className="min-w-0 max-w-[94px] flex-1 text-left text-[14px] font-normal leading-[normal] text-[#424242] lg:flex-none lg:line-clamp-2 lg:text-center">
@@ -3896,7 +3896,7 @@ export function LiveHrisWorkspace({
   return <div className="min-h-screen bg-[#EFF7F8] text-slate-900">
     <header className="sticky top-0 z-30 flex h-[72px] min-h-[72px] flex-nowrap items-center justify-between gap-2 border-b border-[#E9ECED] bg-white px-2 sm:px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        <button ref={mobileMenuTriggerRef} type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#DEE0E3] text-slate-700 focus-visible:outline-2 focus-visible:outline-[#085587] lg:hidden" aria-label="Open navigation menu"><Menu className="h-5 w-5" /></button>
+        <button ref={mobileMenuTriggerRef} type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#DEE0E3] text-slate-700 focus-visible:outline-2 focus-visible:outline-[#08558B] lg:hidden" aria-label="Open navigation menu"><Menu className="h-5 w-5" /></button>
         <img src={synesisItLogo} alt="Synesis IT" width={174} height={30} className="h-[25px] w-[145px] shrink-0 object-contain sm:h-[30px] sm:w-[174px]" />
       </div>
       <div className="relative flex shrink-0 items-center gap-2">
@@ -3909,7 +3909,7 @@ export function LiveHrisWorkspace({
           <Bell className="h-5 w-5" aria-hidden="true" />
         </button>
         <button ref={accountTriggerRef} type="button" aria-label="Account options" aria-expanded={accountOpen} aria-controls="workspace-account-panel" aria-haspopup="true"
-          onClick={() => setAccountOpen(value => !value)} className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg bg-[#DCEFF4] text-sm font-semibold text-[#085587] focus-visible:outline-2 focus-visible:outline-[#085587]">
+          onClick={() => setAccountOpen(value => !value)} className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg bg-[#DCEFF4] text-sm font-semibold text-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">
           {userEmail.slice(0, 1).toUpperCase()}
         </button>
         {accountOpen && <div ref={accountPanelRef} id="workspace-account-panel" role="region" aria-label="Account details" className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(20rem,calc(100vw-1rem))] rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-lg">
@@ -3935,11 +3935,11 @@ export function LiveHrisWorkspace({
               <nav aria-label="Attendance and leave sections" className="flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6 lg:px-6">
                 <button type="button" disabled={!nav.some(item => item.id === 'attendance')}
                   onClick={() => { setAttendanceSection('information'); navigate('attendance'); }} aria-current={page === 'attendance' && attendanceView === 'information' ? 'page' : undefined}
-                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#085587] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'attendance' && attendanceView === 'information' ? 'border-[#085587] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'attendance' && attendanceView === 'information' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                   {projectText(locale, 'Attendance Information')}
                 </button>
                 {permissions.attendanceManage ? <button type="button" onClick={() => { setAttendanceSection('requests'); navigate('attendance'); }} aria-current={page === 'attendance' && attendanceView === 'requests' ? 'page' : undefined}
-                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#085587] ${page === 'attendance' && attendanceView === 'requests' ? 'border-[#085587] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] ${page === 'attendance' && attendanceView === 'requests' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                   {projectText(locale, 'Attendance Requests')}
                 </button> : <span aria-disabled="true" title="Attendance request management requires attendance.manage access"
                   className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-slate-400">
@@ -3947,12 +3947,12 @@ export function LiveHrisWorkspace({
                 </span>}
                 <button type="button" disabled={!nav.some(item => item.id === 'leave')}
                   onClick={() => { setAttendanceSection('information'); navigate('leave'); }} aria-current={page === 'leave' ? 'page' : undefined}
-                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#085587] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[#085587] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                   {projectText(locale, 'Leave Requests')}
                 </button>
                 {nav.some(item => item.id === 'my-leave') ? (
                   <button type="button" onClick={() => navigate('my-leave')}
-                    className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F] hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#085587]">
+                    className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F] hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#08558B]">
                     {projectText(locale, 'Personal Leave Application History')}
                   </button>
                 ) : (
@@ -4028,7 +4028,7 @@ export function LiveHrisWorkspace({
     </div>
     {mobileOpen && <div className="fixed inset-0 z-50 bg-slate-950/40 lg:hidden" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMobileOpen(false); }}>
       <div data-mobile-navigation role="dialog" aria-modal="true" aria-label="HRIS navigation" className="h-full w-72 max-w-[85vw] overflow-y-auto border-r border-[#E9ECED] bg-white p-4 text-slate-900 shadow-xl">
-        <div className="mb-3 flex items-center justify-between"><span className="font-semibold">{projectText(locale, 'Navigation')}</span><button ref={mobileMenuCloseRef} type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg border focus-visible:outline-2 focus-visible:outline-[#085587]" aria-label="Close navigation menu"><X className="mx-auto h-4 w-4" /></button></div>
+        <div className="mb-3 flex items-center justify-between"><span className="font-semibold">{projectText(locale, 'Navigation')}</span><button ref={mobileMenuCloseRef} type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg border focus-visible:outline-2 focus-visible:outline-[#08558B]" aria-label="Close navigation menu"><X className="mx-auto h-4 w-4" /></button></div>
         {navigation}
       </div>
     </div>}
