@@ -9,6 +9,10 @@ on:
       - 'supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql'
       - 'tests/sql/employee-addresses/**'
       - '.github/workflows/employee-addresses-postgres.yml'
+      - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
+      - 'tests/sql/employee-family/**'
+      - '.github/workflows/employee-family-postgres.yml'
+      - '.github/workflows/leave-type-acl-postgres.yml'
   push:
     branches: [main, work/ws02-production-view-security-20261021]
     paths:
@@ -18,6 +22,10 @@ on:
       - 'supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql'
       - 'tests/sql/employee-addresses/**'
       - '.github/workflows/employee-addresses-postgres.yml'
+      - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
+      - 'tests/sql/employee-family/**'
+      - '.github/workflows/employee-family-postgres.yml'
+      - '.github/workflows/leave-type-acl-postgres.yml'
   workflow_dispatch:
 permissions:
   contents: read
