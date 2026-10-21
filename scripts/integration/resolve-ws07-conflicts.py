@@ -123,7 +123,7 @@ hr_leave_test_path = Path("tests/browser/hr-operations-leave-request-states.spec
 hr_leave_test = hr_leave_test_path.read_text()
 hr_leave_test = hr_leave_test.replace(
     "await page.getByRole('button', { name: 'Leave', exact: true }).click();",
-    "await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();\\n"
+    "await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();\n"
     "   await page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true }).click();"
 )
 hr_leave_test = hr_leave_test.replace(
