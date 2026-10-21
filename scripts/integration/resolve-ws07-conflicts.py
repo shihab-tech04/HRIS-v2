@@ -43,6 +43,22 @@ icons = sorted(set(piece.strip() for body in (ws08_icons.group(1), ws07_icons.gr
 assert {"CalendarCheck", "ArrowLeft", "ArrowUpRight", "Info"}.issubset(icons)
 new_imports = "  " + ", ".join(icons) + ",\n"
 merged = merged[:imports.start()] + new_imports + merged[imports.end():]
+# The original conflict covers only the first lucide line. Replace the WHOLE icon
+# declaration so its shared tail cannot reintroduce duplicate identifiers.
+icon_blocks = re.findall(r"^import \{\n[\s\S]*?^\} from 'lucide-react';", merged, re.M)
+assert len(icon_blocks) == 1, "Expected exactly one complete lucide declaration"
+icon_lines = []
+line = "  "
+for icon_name in icons:
+    fragment = icon_name + ", "
+    if len(line) + len(fragment) > 120:
+        icon_lines.append(line.rstrip())
+        line = "  "
+    line += fragment
+if line.strip():
+    icon_lines.append(line.rstrip())
+canonical_icons = "import {\n" + "\n".join(icon_lines) + "\n} from 'lucide-react';"
+merged = replace_exact(merged, icon_blocks[0], canonical_icons)
 
 attendance_manager = component(ws08, "AttendanceReport", "ShiftRoster")
 attendance_hr = component(ws07, "AttendanceReport", "ShiftRoster")
