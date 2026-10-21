@@ -2,6 +2,7 @@ name: HRIS latest Figma-aligned isolated preview bundle (no prod)
 on:
   push:
     branches: ['work/hris-figma-ui-live-preview-20261021']
+    paths-ignore: ['preview-dist/**']
   workflow_dispatch:
   # Artifact-only fixture preview: no production data or SQL access.
 permissions:
