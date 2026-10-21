@@ -246,13 +246,25 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     await page.setViewportSize({ width, height: 1080 });
     const layout = await page.evaluate(() => {
       const viewport = window.innerWidth;
+      const region = document.querySelector<HTMLElement>('[aria-label="Attendance correction request results"]');
+      const ancestors: Array<Record<string, unknown>> = [];
+      for (let element: HTMLElement | null = region; element && ancestors.length < 8; element = element.parentElement) {
+        const bounds = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        ancestors.push({ tag: element.tagName, id: element.id, className: String(element.className).slice(0, 100),
+          left: Math.round(bounds.left), right: Math.round(bounds.right), width: Math.round(bounds.width),
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, overflowX: style.overflowX,
+          minWidth: style.minWidth, maxWidth: style.maxWidth });
+      }
       const elements = Array.from(document.body.querySelectorAll<HTMLElement>('*')).map(element => {
         const bounds = element.getBoundingClientRect();
         const style = window.getComputedStyle(element);
         return { tag: element.tagName, id: element.id, className: String(element.className).slice(0, 90),
           left: Math.round(bounds.left), right: Math.round(bounds.right), overflowX: style.overflowX };
       }).filter(element => element.right > viewport + 1).sort((left, right) => right.right - left.right).slice(0, 8);
-      return { viewport, document: document.documentElement.scrollWidth, body: document.body.scrollWidth, elements };
+      return { viewport, document: document.documentElement.scrollWidth, body: document.body.scrollWidth,
+        region: region ? { left: Math.round(region.getBoundingClientRect().left), right: Math.round(region.getBoundingClientRect().right),
+          clientWidth: region.clientWidth, scrollWidth: region.scrollWidth } : null, ancestors, elements };
     });
     if (layout.document > width + 1) attendanceRequestWidthIssues.push(JSON.stringify(layout));
     if (width < 1386) expect(await requestResults.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
@@ -338,6 +350,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   });
   expect(mobileAttendanceDialogBounds.x).toBeGreaterThanOrEqual(0);
   expect(mobileAttendanceDialogBounds.right).toBeLessThanOrEqual(376);
+  const mobileAttendanceResultsBounds = await requestResults.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return { left: bounds.left, right: bounds.right, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+  });
+  expect(mobileAttendanceResultsBounds.left).toBeGreaterThanOrEqual(0);
+  expect(mobileAttendanceResultsBounds.right).toBeLessThanOrEqual(376);
+  expect(mobileAttendanceResultsBounds.scrollWidth).toBeGreaterThan(mobileAttendanceResultsBounds.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await rejectionDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(rejectionDialog).toBeHidden();

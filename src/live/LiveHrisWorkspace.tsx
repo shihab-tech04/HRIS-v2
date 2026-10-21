@@ -1144,7 +1144,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     return label ? tx(label) : tx('Not recorded');
   };
 
-  return <section aria-labelledby={correctionRequestsPage ? 'attendance-correction-requests-heading' : 'attendance-report-heading'} style={{ maxWidth: `min(${correctionRequestsPage ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-clip">
+  return <section aria-labelledby={correctionRequestsPage ? 'attendance-correction-requests-heading' : 'attendance-report-heading'} style={{ maxWidth: `min(${correctionRequestsPage ? 1376 : 1386}px, calc(100vw - 2rem))` }} className="mx-auto w-full min-w-0 max-w-[1386px] space-y-4 overflow-x-hidden">
     {!correctionRequestsPage && <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">{tx('Attendance Report')}</h2>
       </div>

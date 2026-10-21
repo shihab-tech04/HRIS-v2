@@ -299,13 +299,15 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await expect(firstPendingRow).toBeVisible();
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
 
-  await page.getByRole('row', { name: /Synthetic Pending Employee$/ }).getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(table.getByRole('row', { name: /Synthetic Pending Employee$/ })).toHaveCount(0);
+  await firstPendingRow.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(firstPendingRow).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'Leave request approved.' })).toBeVisible();
   expect(decisionCalls).toEqual([{ p_id: requests[0].id, p_decision: 'approved', p_note: null }]);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByLabel('Filter by status', { exact: true }).selectOption('approved');
-  await expect(table.getByRole('row', { name: /Synthetic Pending Employee$/ }).locator('td').last()).toContainText('Approved');
+  const firstApprovedRow = table.getByRole('row').filter({ hasText: 'HR-001' });
+  await expect(firstApprovedRow).toHaveCount(1);
+  await expect(firstApprovedRow.locator('td').last()).toContainText('Approved');
   await expect(page.getByRole('button', { name: 'Leave Requests' })).toBeVisible();
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-approved-action-1920x1080.png'), fullPage: true });
   await page.getByRole('button', { name: 'Leave Requests' }).click();
