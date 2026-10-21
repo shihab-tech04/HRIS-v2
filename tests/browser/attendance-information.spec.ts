@@ -235,7 +235,17 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const requestResults = correctionCard.getByRole('region', { name: 'Attendance correction request results' });
   for (const width of [375, 768, 1280, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    const layout = await page.evaluate(() => {
+      const viewport = window.innerWidth;
+      const elements = Array.from(document.body.querySelectorAll<HTMLElement>('*')).map(element => {
+        const bounds = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return { tag: element.tagName, id: element.id, className: String(element.className).slice(0, 90),
+          left: Math.round(bounds.left), right: Math.round(bounds.right), overflowX: style.overflowX };
+      }).filter(element => element.right > viewport + 1).sort((left, right) => right.right - left.right).slice(0, 8);
+      return { viewport, document: document.documentElement.scrollWidth, body: document.body.scrollWidth, elements };
+    });
+    expect(layout.document, JSON.stringify(layout)).toBeLessThanOrEqual(width + 1);
     if (width < 1386) expect(await requestResults.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     await page.screenshot({
       path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-requests-normal-en-${width}-20261021.png`),

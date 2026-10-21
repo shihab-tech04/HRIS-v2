@@ -1198,7 +1198,7 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
       <span className="font-medium">{selectedStatuses.map(value => `“${statusLabel(value)}”`).join(' + ')}</span>
       <button type="button" onClick={() => setSelectedStatuses([])} className="ml-auto min-h-9 rounded-md px-3 font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx('Clear result')}</button>
     </div>}
-    {correctionRequestsPage && showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="space-y-3">
+    {correctionRequestsPage && showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="w-full min-w-0 max-w-full space-y-3 overflow-x-clip">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-h-12 items-center gap-3">
           {['approved', 'rejected'].includes(correctionStatusFilter)
@@ -1697,7 +1697,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   const [resolutionNote, setResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' && window.location.hash === '#leave-requests' ? 'pending' : 'all');
   const [requestFiltersOpen, setRequestFiltersOpen] = useState(false);
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
   const [requestFromDate, setRequestFromDate] = useState('');
@@ -1962,6 +1962,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
     const syncLeaveView = () => {
       const hash = window.location.hash;
       setLeaveView(hash === '#leave-calendar' ? 'calendar' : hash === '#leave-policy' ? 'policy' : 'requests');
+      setStatusFilter(hash === '#leave-requests' ? 'pending' : 'all');
     };
     window.addEventListener('hashchange', syncLeaveView);
     return () => window.removeEventListener('hashchange', syncLeaveView);

@@ -142,8 +142,9 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   expect(leaveRowGeometry.height).toBeCloseTo(80, 0);
   expect(leaveRowGeometry.gap).toBeCloseTo(6, 0);
   expect(leaveRowGeometry.avatarHeight).toBe(48);
-  await expect(table.getByRole('row', { name: /Synthetic Pending Employee/ })).toContainText('Synthetic pending leave reason');
-  await expect(table.getByRole('row', { name: /Synthetic Pending Employee/ })).toContainText('12-10-2026');
+  const firstPendingRow = table.getByRole('row', { name: /Select request for Synthetic Pending Employee ·/ });
+  await expect(firstPendingRow).toContainText('Synthetic pending leave reason');
+  await expect(firstPendingRow).toContainText('12-10-2026');
   await expect(table.getByRole('row', { name: /Synthetic Approved Employee/ })).toHaveCount(0);
   await expect(table.getByRole('row', { name: /Synthetic Rejected Employee/ })).toHaveCount(0);
   await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
@@ -330,9 +331,10 @@ test('HR leave requests match Figma normal, selected, approved, rejected, and re
   await page.evaluate(() => { window.location.hash = 'leave-policy'; });
   await expect(page.getByRole('alert')).toContainText('You do not have permission to manage leave policy.');
   requests.splice(0, requests.length);
-  await page.evaluate(() => { window.location.hash = ''; });
+  await page.evaluate(() => { window.location.hash = 'leave-requests'; });
   await page.getByRole('button', { name: 'Leave', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByText('No leave requests were returned for this tenant.')).toBeVisible();
+  await expect(page.getByRole('region', { name: /Absence calendar/ })).toHaveCount(0);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-leave-requests-empty-1920x1080.png'), fullPage: true });
 });
