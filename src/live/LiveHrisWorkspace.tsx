@@ -15,6 +15,7 @@ import { MyLearning } from './MyLearning';
 import { MyPayslips } from './MyPayslips';
 import { EmployeeDocumentVault } from './EmployeeDocumentVault';
 import { EmployeeIdentityCard } from './EmployeeIdentityCard';
+import { EmployeeProfileFigma } from './EmployeeProfileFigma';
 import { EmployeeProfileChangeRequests, ProfileChangeReview } from './ProfileChangeRequests';
 import { EmployeeUpcomingTraining } from './EmployeeUpcomingTraining';
 import { EmployeeUpcomingReviews } from './EmployeeUpcomingReviews';
@@ -78,7 +79,7 @@ type PermissionSet = {
   payrollManage: boolean;
   selfServiceManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-profile' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -3723,6 +3724,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-learning', label: 'My Learning', icon: <BookOpen className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-payslips', label: 'My Payslips', icon: <Receipt className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-documents', label: 'My Documents', icon: <FileText className="h-5 w-5" />, group: 'Personal' });
+    if (isEmployee) items.push({ id: 'my-profile', label: 'My Profile', icon: <Users className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-profile-changes', label: 'Profile requests', icon: <FileText className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-leave', label: 'My Leave', icon: <CalendarDays className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee) items.push({ id: 'my-timesheets', label: 'My Timesheets', icon: <Clock3 className="h-5 w-5" />, group: 'Personal' });
@@ -3845,6 +3847,7 @@ export function LiveHrisWorkspace({
           {page === 'my-learning' && isEmployee && <MyLearning tenantId={tenantId} locale={locale} />}
           {page === 'my-payslips' && isEmployee && <MyPayslips tenantId={tenantId} />}
           {page === 'my-documents' && isEmployee && <EmployeeDocumentVault tenantId={tenantId} userId={userId} locale={locale} />}
+          {page === 'my-profile' && isEmployee && <EmployeeProfileFigma tenantId={tenantId} locale={locale} />}
           {page === 'my-profile-changes' && isEmployee && <EmployeeProfileChangeRequests tenantId={tenantId} locale={locale} />}
           {page === 'my-leave' && isEmployee && <EmployeePersonalLeave tenantId={tenantId} tenantName={tenantName} userId={userId}
             focusRequestId={leaveFocusRequestId} onFocusHandled={clearLeaveRequestFocus} locale={locale} />}
