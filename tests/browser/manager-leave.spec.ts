@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
@@ -131,6 +133,18 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
+  const leaveTable = page.getByRole('table', { name: 'Leave requests' });
+  await expect(leaveTable).toBeVisible();
+  await leaveTable.scrollIntoViewIfNeeded();
+
+  const shellEvidenceDir = path.resolve(process.cwd(), 'docs/evidence/ws01-shell');
+  await mkdir(shellEvidenceDir, { recursive: true });
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.join(shellEvidenceDir, `leave-en-${width}.png`), fullPage: false });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   const calendarMonth = page.getByLabel('Month', { exact: true });
   await calendarMonth.fill('2026-11');
