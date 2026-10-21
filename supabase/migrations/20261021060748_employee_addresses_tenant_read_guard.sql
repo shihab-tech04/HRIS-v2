@@ -18,6 +18,10 @@ BEGIN
   END IF;
 
   EXECUTE 'ALTER TABLE public.employee_addresses ENABLE ROW LEVEL SECURITY';
+  -- Keep this exposed table read-only for clients. The service_role ACL is
+  -- deliberately untouched; the authenticated tenant-filtered SELECT path remains.
+  EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE public.employee_addresses FROM PUBLIC, anon, authenticated';
+  EXECUTE 'GRANT SELECT ON TABLE public.employee_addresses TO authenticated';
   EXECUTE 'CREATE INDEX IF NOT EXISTS employee_addresses_employee_id_idx ON public.employee_addresses (employee_id)';
 
   -- Replace the global permission policy with a tenant membership scoped
