@@ -51,7 +51,7 @@ test('all five profile panels render in EN/BN at the requested widths without vi
             const avatar = await page.locator('[data-figma-node="66:72046"] > div').first().boundingBox();
             expect(avatar).not.toBeNull();
             expect([Math.round(avatar!.x), Math.round(avatar!.y), Math.round(avatar!.width), Math.round(avatar!.height)])
-              ..toEqual([326, 102, 203, 203]);
+              .toEqual([326, 102, 203, 203]);
             const firstTab = await page.getByRole('tab', { name: tabs[0] }).boundingBox();
             expect(firstTab).not.toBeNull();
             expect([Math.round(firstTab!.x), Math.round(firstTab!.y), Math.round(firstTab!.width), Math.round(firstTab!.height)])
