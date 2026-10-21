@@ -22,7 +22,7 @@ test('Phase 00 inventories every original story without inflating the legacy acc
   assert.equal(result.individually_evidenced_in_disposable_journeys, 39);
   assert.equal(result.individually_not_yet_evidenced, 1008);
   assert.equal(result.explicitly_blocked_story_count, 14);
-  assert.equal(result.explicitly_partial_story_count, 7);
+  assert.equal(result.explicitly_partial_story_count, 11);
   assert.equal(result.legacy_verified_aggregate, 82);
   assert.equal(result.deduplicated_verified_total, null);
   assert.equal(result.test_referenced_story_count, 3);
@@ -38,8 +38,12 @@ test('Phase 00 inventories every original story without inflating the legacy acc
   assert.equal(result.entries.find(row => row.story_id === 'E03-02').open_evidence.classification, 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');
   assert.equal(result.entries.find(row => row.story_id === 'E04-05').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.entries.find(row => row.story_id === 'HR01-06').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
+  assert.equal(result.entries.find(row => row.story_id === 'HR01-02').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
+  assert.equal(result.entries.find(row => row.story_id === 'HR01-01').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.entries.find(row => row.story_id === 'HR01-07').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.entries.find(row => row.story_id === 'HR01-08').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
+  assert.equal(result.entries.find(row => row.story_id === 'X03-07').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
+  assert.equal(result.entries.find(row => row.story_id === 'X03-08').open_evidence.classification, 'PARTIAL_ACCEPTANCE');
   assert.equal(result.entries.find(row => row.story_id === 'HR03-01').open_evidence.classification, 'BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT');
   assert.equal(result.entries.find(row => row.story_id === 'E01-01').acceptance_evidence, null);
   assert.equal(result.entries.find(row => row.story_id === 'E01-01').implementation_classification, 'NOT_YET_DETERMINED');

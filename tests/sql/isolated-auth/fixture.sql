@@ -1085,6 +1085,7 @@ INSERT INTO public.tenants(id,slug,code,name,is_active) VALUES
   ('22222222-2222-4222-8222-222222222222','qa-two','QA2','Synthetic Tenant Two',true);
 INSERT INTO public.roles(id,name) VALUES
   ('qa_global_manager','Synthetic global-only role'),
+  ('qa_hris_employee_role','Employee'),
   ('qa_tenant_admin_a','Synthetic tenant A HR admin'),
   ('qa_tenant_reviewer_a','Synthetic tenant A workflow reviewer'),
   ('qa_tenant_manager_b','Synthetic tenant B HR manager'),

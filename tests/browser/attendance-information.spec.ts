@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
 import path from 'path';
 
 // The fixture values represent the tenant's Asia/Dhaka timezone. Keep this
@@ -131,13 +132,47 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  // The Figma application-management strip is a view-only layer over existing
+  // server-authorized routes, not an invented bulk-approval workflow.
+  await expect(page.getByRole('heading', { name: 'Attendance & Leave Application Management' })).toBeVisible();
+  const designSections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+  await expect(designSections.getByRole('button', { name: 'Attendance Information' })).toHaveAttribute('aria-current', 'page');
+  await expect(designSections.getByText('Attendance Requests')).toHaveAttribute('aria-disabled', 'true');
+  await expect(designSections.getByRole('button', { name: 'Leave Requests' })).toBeEnabled();
   await expect(page.getByRole('heading', { name: 'Attendance Report' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
   await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
+
+  const shellEvidenceDir = path.resolve(process.cwd(), 'docs/evidence/ws01-shell');
+  await mkdir(shellEvidenceDir, { recursive: true });
+  const captureResponsiveShell = async (locale: 'en' | 'bn') => {
+    for (const width of [1920, 1280, 768, 375]) {
+      await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+      if (width >= 1024) {
+        const sidebar = page.getByRole('complementary', { name: 'Primary HRIS navigation' });
+        await expect(sidebar).toBeVisible();
+        expect((await sidebar.boundingBox())?.width).toBe(111);
+        const firstItem = sidebar.getByRole('button').first();
+        expect((await firstItem.locator('[data-sidebar-icon]').boundingBox())?.width).toBe(42);
+        await expect(firstItem.locator('[data-sidebar-label]')).toHaveCSS('font-size', '14px');
+        expect((await page.getByRole('banner').boundingBox())?.height).toBe(72);
+      } else {
+        await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeVisible();
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+      await page.screenshot({ path: path.join(shellEvidenceDir, `attendance-${locale}-${width}.png`), fullPage: false });
+    }
+  };
+  await captureResponsiveShell('en');
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(designSections.getByRole('button', { name: 'উপস্থিতির তথ্য' })).toHaveAttribute('aria-current', 'page');
+  await expect(designSections.getByRole('button', { name: 'ছুটির আবেদনসমূহ' })).toBeEnabled();
   await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
+  await captureResponsiveShell('bn');
   await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
   await expect(row).toContainText('ATT-001');
   await expect(row).toContainText('UX Designer');
@@ -288,6 +323,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     return { fontSize: style.fontSize, fontWeight: style.fontWeight, color: style.color };
   });
   expect(reportHeaderStyle).toEqual({ fontSize: '14px', fontWeight: '400', color: 'rgb(158, 158, 158)' });
+  expect((await reportTable.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox())?.height).toBe(59);
   await expect(positiveRow).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261016.png'), fullPage: true });

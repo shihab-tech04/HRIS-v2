@@ -402,7 +402,9 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261015173616_prevent_direct_employee_row_updates.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013124000_hris_appraisal_narrative_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013132335_hris_recruitment_offer_issue.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013170556_hris_candidate_assessment_journey.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261013190200_hris_candidate_preboarding_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013113718_hris_candidate_context_active_profile_tenant_scope.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013221500_hris_candidate_interview_journey.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014153343_hris_candidate_interview_panel_debrief.sql'),
@@ -450,10 +452,13 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013215431_employee_dashboard_attendance_period_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014150000_hris_candidate_initial_application_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014012249_recruiter_application_stage_transition.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014070848_hris_candidate_employee_activation.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261014100459_gate_candidate_employee_activation_until_policy_approval.sql'),
   // Apply the newest Candidate stage-history contract after older notification
   // migrations that recreate its check constraint.
   path.join(mainRoot, 'supabase/migrations/20261016081154_hris_candidate_interview_completion.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016092922_candidate_context_authenticated_execute.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261016170000_hris_candidate_employee_activation_policy.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016221620_employee_personal_leave_calendar.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016223226_employee_documents_tenant_read.sql'),
@@ -473,6 +478,7 @@ for (const file of [
   // Hosted parity rollback expects this historical production base table to exist
   // in the isolated schema as well as production before Phase 03/04 guards install.
   path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -506,6 +512,25 @@ for (const file of [
     }
   }
 }
+// Reapply the current contact RPC source after later authorization and employee
+// table migrations have run. This compatibility check stays in the disposable
+// database and does not replay or change hosted SQL.
+const contactRpcSource = path.join(mainRoot, 'supabase/migrations/20261014171952_employee_contact_details_editing.sql');
+applySql(contactRpcSource);
+const contactRpcSourceCompatibility = JSON.parse(psqlSync(`SELECT jsonb_build_object(
+  'read_signature',to_regprocedure('public.hris_get_tenant_employee_contact_details(uuid,uuid)') IS NOT NULL,
+  'update_signature',to_regprocedure('public.hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)') IS NOT NULL,
+  'read_security_definer',(SELECT prosecdef FROM pg_proc WHERE oid=to_regprocedure('public.hris_get_tenant_employee_contact_details(uuid,uuid)')),
+  'update_security_definer',(SELECT prosecdef FROM pg_proc WHERE oid=to_regprocedure('public.hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)')),
+  'read_empty_search_path',(SELECT proconfig @> ARRAY['search_path=""'] FROM pg_proc WHERE oid=to_regprocedure('public.hris_get_tenant_employee_contact_details(uuid,uuid)')),
+  'update_empty_search_path',(SELECT proconfig @> ARRAY['search_path=""'] FROM pg_proc WHERE oid=to_regprocedure('public.hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)')),
+  'authenticated_execute',has_function_privilege('authenticated','public.hris_get_tenant_employee_contact_details(uuid,uuid)','EXECUTE')
+    AND has_function_privilege('authenticated','public.hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)','EXECUTE'),
+  'anon_denied',NOT has_function_privilege('anon','public.hris_get_tenant_employee_contact_details(uuid,uuid)','EXECUTE')
+    AND NOT has_function_privilege('anon','public.hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)','EXECUTE'),
+  'service_role_denied',NOT has_function_privilege('service_role','public.hris_get_tenant_employee_contact_details(uuid,uuid)','EXECUTE')
+    AND NOT has_function_privilege('service_role','public.hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)','EXECUTE')
+)::text;`).trim());
 const candidateStageHistoryConstraint = psqlSync(`SELECT pg_get_constraintdef(oid)
   FROM pg_constraint
   WHERE conrelid='public.candidate_application_stage_history'::regclass
@@ -2464,6 +2489,15 @@ record('HR01-06 partial: authorized HR contact changes emit a redacted changed-f
     auditedFieldNames: auditedContactFieldNames,
     allChangedValuesExcluded: contactAuditRedactsEveryChangedValue,
     browserMarker: employeeDirectoryBrowserOutput.includes('HR01-06_CONTACT_AUDIT_BROWSER_PASS') }));
+record('HR01-02 partial: employee-directory updates stay within the allowlisted contact fields',
+  employeeDirectoryBrowserOutput.includes('HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS'),
+  'The browser journey verified tenant-scoped contact payloads and rejected writes containing extra fields.');
+record('HR01-06 partial: a missing contact-read RPC shows an unavailable state and hides edit access',
+  employeeDirectoryBrowserOutput.includes('HR01-06_PGRST202_CONTACT_READ_SAFE_BROWSER_PASS'),
+  'The browser journey verified PGRST202 recovery without exposing the contact editor.');
+record('HR01-06 partial: a missing contact-update RPC preserves the draft without reporting success',
+  employeeDirectoryBrowserOutput.includes('HR01-06_PGRST202_CONTACT_UPDATE_SAFE_BROWSER_PASS'),
+  'The browser journey verified PGRST202 recovery without losing the unsaved contact draft.');
 
 record('HR01-04 HR sees and filters each configured employment status within the current tenant',
   !employeeDirectoryTeamOptions.error
@@ -8089,6 +8123,173 @@ record('HR01-08 partial: tenant employee-number and email duplicates are rejecte
     sameTenantEmailDuplicate: duplicateOfficialEmailProbe,
     sameEmailInOtherTenant: sameEmailOtherTenantProbe }));
 
+record('HR01-02/06 contact RPC source migration reapplies after current authorization schema with the expected signatures, ACL, and search path',
+  contactRpcSourceCompatibility.read_signature
+    && contactRpcSourceCompatibility.update_signature
+    && contactRpcSourceCompatibility.read_security_definer
+    && contactRpcSourceCompatibility.update_security_definer
+    && contactRpcSourceCompatibility.read_empty_search_path
+    && contactRpcSourceCompatibility.update_empty_search_path
+    && contactRpcSourceCompatibility.authenticated_execute
+    && contactRpcSourceCompatibility.anon_denied
+    && contactRpcSourceCompatibility.service_role_denied,
+  JSON.stringify(contactRpcSourceCompatibility));
+
+// HR01-01 has one partial live path: HR can create an employee by activating
+// a fully verified accepted-offer candidate. General manual HR creation stays
+// outside this approved implementation.
+const hr0101JobId = 'ab010001-0000-4000-8000-000000000001';
+const hr0101ApplicationId = 'ab010001-0000-4000-8000-000000000002';
+const hr0101HandoffId = 'ab010001-0000-4000-8000-000000000003';
+const hr0101OfferId = 'ab010001-0000-4000-8000-000000000004';
+const hr0101EmployeeNumber = 'HR01-01-E001';
+// The suite intentionally revokes managerA's earlier token in its session
+// revocation checks. Sign in again here so the HR activation test uses a live
+// Auth session rather than the deliberately revoked token.
+const hr0101Manager = await signIn(emails[0]);
+psqlSync(`INSERT INTO public.jobs(id,tenant_id,reference_number,title,status,is_published,is_active)
+  VALUES('${hr0101JobId}'::uuid,'${ids.tenantA}'::uuid,'HR01-01-QA','HR01-01 synthetic role','open',true,true);
+INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,stage)
+  VALUES('${hr0101ApplicationId}'::uuid,'${ids.tenantA}'::uuid,'${hr0101JobId}'::uuid,
+    '${assessmentCandidateA.userId}'::uuid,'HR01-01 Synthetic Candidate','assessment-candidate-a@hris.test','offer_accepted');
+INSERT INTO public.job_offers(id,application_id,offered_title,status,proposed_joining_date,responded_at)
+  VALUES('${hr0101OfferId}'::uuid,'${hr0101ApplicationId}'::uuid,'HR01-01 synthetic role','accepted','2020-01-01',now());
+INSERT INTO public.onboarding_handoffs(
+  id,application_id,status,candidate_personal_data,candidate_completed_steps,candidate_submitted_at
+) VALUES('${hr0101HandoffId}'::uuid,'${hr0101ApplicationId}'::uuid,'submitted_for_verification','{}'::jsonb,
+  ARRAY['step_identity','step_emergency','step_payroll','step_policies']::text[],now());`);
+const hr0101ManagerPermission = await hr0101Manager.client.rpc('has_tenant_permission', {
+  p_tenant_id: ids.tenantA, p_permission_id: 'employees.manage',
+});
+const hr0101NoPermission = await noPermission.client.rpc('hris_activate_candidate_employee', {
+  p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
+  p_employee_number: `${hr0101EmployeeNumber}-DENY`, p_joining_date: '2020-01-01', p_details_verified: true,
+});
+const hr0101CrossTenant = await managerB.client.rpc('hris_activate_candidate_employee', {
+  p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
+  p_employee_number: `${hr0101EmployeeNumber}-CROSS`, p_joining_date: '2020-01-01', p_details_verified: true,
+});
+const hr0101Unverified = await hr0101Manager.client.rpc('hris_activate_candidate_employee', {
+  p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
+  p_employee_number: `${hr0101EmployeeNumber}-UNVERIFIED`, p_joining_date: '2020-01-01', p_details_verified: false,
+});
+const hr0101FutureDate = await hr0101Manager.client.rpc('hris_activate_candidate_employee', {
+  p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
+  p_employee_number: `${hr0101EmployeeNumber}-FUTURE`, p_joining_date: '2099-01-01', p_details_verified: true,
+});
+record('HR01-01 activation denies users without employees.manage, cross-tenant HR, unverified details, and future joining dates',
+  hr0101ManagerPermission.data === true
+    && hr0101NoPermission.error?.code === '42501'
+    && hr0101CrossTenant.error?.code === '42501'
+    && hr0101Unverified.error?.code === '22023'
+    && hr0101FutureDate.error?.code === '55000',
+  JSON.stringify({ managerHasPermission: hr0101ManagerPermission.data,
+    managerPermissionError: hr0101ManagerPermission.error?.message,
+    noPermission: { code: hr0101NoPermission.error?.code, message: hr0101NoPermission.error?.message },
+    crossTenant: { code: hr0101CrossTenant.error?.code, message: hr0101CrossTenant.error?.message },
+    unverified: { code: hr0101Unverified.error?.code, message: hr0101Unverified.error?.message },
+    futureDate: { code: hr0101FutureDate.error?.code, message: hr0101FutureDate.error?.message } }));
+
+let hr0101BrowserOutput = '';
+let hr0101BrowserError = '';
+try {
+  hr0101BrowserOutput = execFileSync('node', [path.join(here, 'run-hr01-01-employee-creation-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_HR01_EMPLOYEE_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_HR01_EMPLOYEE_TENANT_ID: ids.tenantA,
+      HRIS_LOCAL_HR01_APPLICATION_ID: hr0101ApplicationId,
+      HRIS_LOCAL_HR01_CANDIDATE_NAME: 'HR01-01 Synthetic Candidate',
+      HRIS_LOCAL_HR01_EMPLOYEE_NUMBER: hr0101EmployeeNumber,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  hr0101BrowserError = String(error.stderr || error.message || 'local HR01-01 employee-creation browser run failed').slice(-1400);
+}
+const hr0101Employee = queryAdmin(`SELECT COALESCE((SELECT to_jsonb(e) FROM public.employees e
+  WHERE e.tenant_id=${sqlLiteral(ids.tenantA)}::uuid AND e.user_id=${sqlLiteral(assessmentCandidateA.userId)}::uuid
+    AND e.employee_number=${sqlLiteral(hr0101EmployeeNumber)} LIMIT 1),'{}'::jsonb);`);
+const hr0101Handoff = queryAdmin(`SELECT COALESCE((SELECT to_jsonb(h) FROM public.onboarding_handoffs h
+  WHERE h.id=${sqlLiteral(hr0101HandoffId)}::uuid),'{}'::jsonb);`);
+const hr0101Application = queryAdmin(`SELECT COALESCE((SELECT to_jsonb(a) FROM public.job_applications a
+  WHERE a.id=${sqlLiteral(hr0101ApplicationId)}::uuid),'{}'::jsonb);`);
+const hr0101Audit = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer,'details',min(details::text))
+  FROM public.admin_audit_logs WHERE action='candidate.employee.activated'
+    AND target_id=(SELECT e.id::text FROM public.employees e WHERE e.employee_number=${sqlLiteral(hr0101EmployeeNumber)}
+      AND e.tenant_id=${sqlLiteral(ids.tenantA)}::uuid);`);
+const hr0101Retry = await hr0101Manager.client.rpc('hris_activate_candidate_employee', {
+  p_tenant_id: ids.tenantA, p_application_id: hr0101ApplicationId,
+  p_employee_number: hr0101EmployeeNumber, p_joining_date: '2020-01-01', p_details_verified: true,
+});
+const hr0101EmployeeRoleMembership = queryAdmin(`SELECT jsonb_build_object('count',count(*)::integer,
+    'role',min(role),'status',min(status)) FROM public.tenant_memberships
+  WHERE tenant_id=${sqlLiteral(ids.tenantA)}::uuid AND user_id=${sqlLiteral(assessmentCandidateA.userId)}::uuid
+    AND role='qa_hris_employee_role';`);
+record('HR01-01 partial: the HR workspace activates a verified candidate into a tenant employee record with safe retry',
+  hr0101BrowserOutput.includes('HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS')
+    && Boolean(hr0101Employee?.id)
+    && hr0101Employee?.user_id === assessmentCandidateA.userId
+    && hr0101Employee?.employee_number === hr0101EmployeeNumber
+    && hr0101Employee?.full_name === 'HR01-01 Synthetic Candidate'
+    && hr0101Employee?.employment_status === 'active'
+    && hr0101Application?.stage === 'hired'
+    && hr0101Handoff?.status === 'completed'
+    && Boolean(hr0101Handoff?.verified_at)
+    && hr0101Handoff?.verified_by === managerA.userId
+    && hr0101Audit.count === 1
+    && String(hr0101Audit.details).includes('"joining_date": "2020-01-01"')
+    && hr0101EmployeeRoleMembership.count === 1
+    && hr0101EmployeeRoleMembership.role === 'qa_hris_employee_role'
+    && hr0101EmployeeRoleMembership.status === 'active'
+    && !hr0101Retry.error
+    && hr0101Retry.data?.success === true
+    && hr0101Retry.data?.idempotent === true
+    && hr0101Retry.data?.employee_id === hr0101Employee.id,
+  JSON.stringify({ employee: hr0101Employee, applicationStage: hr0101Application?.stage,
+    handoffStatus: hr0101Handoff?.status, auditCount: hr0101Audit.count,
+    membership: hr0101EmployeeRoleMembership, retry: hr0101Retry.data,
+    browserMarker: hr0101BrowserOutput.includes('HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS'),
+    browserError: hr0101BrowserError }));
+
+const x0307BrowserPass = hr0101BrowserOutput.includes('X03-07_PARTIAL_HR_ONBOARDING_ACTIVATION_BROWSER_PASS');
+record('X03-07 partial: HR activates the accepted-offer candidate as an active employee through the existing onboarding handoff',
+  x0307BrowserPass
+    && Boolean(hr0101Employee?.id)
+    && hr0101Employee?.user_id === hr0101Application?.candidate_user_id
+    && hr0101Employee?.employment_status === 'active'
+    && hr0101Application?.stage === 'hired'
+    && hr0101Handoff?.status === 'completed'
+    && hr0101Retry.data?.idempotent === true
+    && hr0101Retry.data?.employee_id === hr0101Employee.id,
+  JSON.stringify({ employeeId: hr0101Employee?.id,
+    employeeUserId: hr0101Employee?.user_id,
+    applicationCandidateUserId: hr0101Application?.candidate_user_id,
+    employeeStatus: hr0101Employee?.employment_status,
+    applicationStage: hr0101Application?.stage,
+    handoffStatus: hr0101Handoff?.status,
+    retry: hr0101Retry.data,
+    browserMarker: x0307BrowserPass }));
+
+const x0308BrowserPass = hr0101BrowserOutput.includes('X03-08_PARTIAL_CANDIDATE_DATA_REUSE_BROWSER_PASS');
+record('X03-08 partial: HR activation reuses the candidate name, email, and Auth identity in the employee record',
+  x0308BrowserPass
+    && hr0101Employee?.full_name === hr0101Application?.full_name
+    && hr0101Employee?.official_email === hr0101Application?.email
+    && hr0101Employee?.user_id === hr0101Application?.candidate_user_id,
+  JSON.stringify({ employeeName: hr0101Employee?.full_name,
+    candidateName: hr0101Application?.full_name,
+    employeeOfficialEmail: hr0101Employee?.official_email,
+    candidateEmail: hr0101Application?.email,
+    employeeUserId: hr0101Employee?.user_id,
+    candidateUserId: hr0101Application?.candidate_user_id,
+    browserMarker: x0308BrowserPass }));
+
 const failed = results.filter((result) => !result.ok);
 console.log(`\nLocal Auth/RLS acceptance: ${results.length - failed.length}/${results.length} passed; ${failed.length} failed.`);
 console.log('Tenant-isolation failures are release blockers; this test uses only a disposable local database.');
@@ -8184,6 +8385,24 @@ if (failed.length) process.exitCode = 1;
     if (deletedBucket.error) throw deletedBucket.error;
   }
   cleanupAttendanceCorrectionBrowserFixture();
+  // Remove the exact HR01-01 synthetic activation rows before deleting their
+  // Auth fixtures. These IDs and employee number are reserved by this runner.
+  psqlSync(`DELETE FROM public.admin_audit_logs
+    WHERE action='candidate.employee.activated' AND details->>'application_id'='ab010001-0000-4000-8000-000000000002';
+    DELETE FROM public.candidate_application_stage_history
+      WHERE application_id='ab010001-0000-4000-8000-000000000002'::uuid AND stage='hired';
+    DELETE FROM public.onboarding_handoffs
+      WHERE application_id='ab010001-0000-4000-8000-000000000002'::uuid;
+    DELETE FROM public.job_offers
+      WHERE application_id='ab010001-0000-4000-8000-000000000002'::uuid;
+    DELETE FROM public.employees
+      WHERE tenant_id='11111111-1111-4111-8111-111111111111'::uuid AND employee_number='HR01-01-E001';
+    DELETE FROM public.tenant_memberships
+      WHERE tenant_id='11111111-1111-4111-8111-111111111111'::uuid
+        AND user_id=(SELECT id FROM auth.users WHERE email='assessment-candidate-a@hris.test')
+        AND role='qa_hris_employee_role';
+    DELETE FROM public.job_applications WHERE id='ab010001-0000-4000-8000-000000000002'::uuid;
+    DELETE FROM public.jobs WHERE id='ab010001-0000-4000-8000-000000000001'::uuid;`);
   // Reviewer attribution is intentionally restrictive so historical audit rows
   // are not silently detached from their actor. Remove only these synthetic
   // profile-request fixtures before deleting Auth users from the empty test DB.

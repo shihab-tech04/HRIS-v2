@@ -415,6 +415,8 @@ try {
   const managerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
   let managerContactReadCalls = 0;
   let managerContactWriteCalls = 0;
+  let missingContactReadApi = false;
+  let missingContactWriteApi = false;
   const managerContactReadPayloads = [];
   const managerContactPayloads = [];
   await managerPage.route('**/*', async route => {
@@ -424,6 +426,11 @@ try {
       && route.request().method() === 'POST') {
       managerContactReadCalls += 1;
       managerContactReadPayloads.push(route.request().postDataJSON());
+      if (missingContactReadApi) {
+        await route.fulfill({ status: 404, contentType: 'application/json',
+          body: JSON.stringify({ code: 'PGRST202', message: 'Could not find the requested contact read function in the schema cache.' }) });
+        return;
+      }
       if (managerContactReadCalls === 1) {
         await new Promise(resolve => setTimeout(resolve, 250));
         await route.fulfill({ status: 503, contentType: 'application/json',
@@ -436,6 +443,11 @@ try {
       && route.request().method() === 'POST') {
       managerContactWriteCalls += 1;
       managerContactPayloads.push(route.request().postDataJSON());
+      if (missingContactWriteApi) {
+        await route.fulfill({ status: 404, contentType: 'application/json',
+          body: JSON.stringify({ code: 'PGRST202', message: 'Could not find the requested contact update function in the schema cache.' }) });
+        return;
+      }
       if (managerContactWriteCalls === 1) {
         await new Promise(resolve => setTimeout(resolve, 250));
         await route.fulfill({ status: 503, contentType: 'application/json',
@@ -533,6 +545,7 @@ try {
   await managerDetails.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Saved employee contact details on mobile');
   console.log('HR01-06_CONTACT_AUDIT_BROWSER_PASS');
+  console.log('HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS');
   const allowedContactFields = Object.keys(editedContact).sort().join(',');
   const readsWrongTenant = managerContactReadPayloads.some(payload => payload.p_tenant_id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID);
   const writesWrongTenant = managerContactPayloads.some(payload => payload.p_tenant_id !== process.env.HRIS_LOCAL_EMPLOYEE_DIRECTORY_TENANT_ID);
@@ -553,6 +566,38 @@ try {
   await managerDetailsAfterRefresh.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(managerPage, 'Employee contact details after desktop refresh recovery');
   await managerDetailsAfterRefresh.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await managerPage.getByRole('button', { name: 'View details for Synthetic Employee A' }).click();
+  const missingApiDetails = managerPage.getByRole('dialog', { name: 'Synthetic Employee A' });
+  missingContactReadApi = true;
+  await missingApiDetails.getByRole('button', { name: 'View contact details' }).click();
+  await missingApiDetails.getByRole('alert').getByText(
+    'Contact editing is currently unavailable. Contact your administrator.', { exact: true }).waitFor({ state: 'visible' });
+  if (await missingApiDetails.getByRole('button', { name: 'Edit contact details' }).count() !== 0) {
+    throw new Error('A missing production contact-read RPC exposed the edit action.');
+  }
+  missingContactReadApi = false;
+  await missingApiDetails.getByRole('button', { name: 'Retry contact details' }).click();
+  await missingApiDetails.getByText(editedContact.official_email, { exact: true }).waitFor({ state: 'visible' });
+  await missingApiDetails.getByRole('button', { name: 'Edit contact details' }).click();
+  await missingApiDetails.getByLabel('Official email').fill('retry-after-missing-api@hris.test');
+  missingContactWriteApi = true;
+  await missingApiDetails.getByRole('button', { name: 'Save contact details' }).click();
+  await missingApiDetails.getByRole('alert').getByText(
+    'Contact editing is currently unavailable. Contact your administrator.', { exact: true }).waitFor({ state: 'visible' });
+  if (await missingApiDetails.getByLabel('Official email').inputValue() !== 'retry-after-missing-api@hris.test') {
+    throw new Error('A missing production contact-update RPC did not preserve the unsaved draft.');
+  }
+  if (await missingApiDetails.getByText('Contact details updated.', { exact: true }).count() !== 0) {
+    throw new Error('A missing production contact-update RPC was reported as a successful update.');
+  }
+  missingContactWriteApi = false;
+  managerPage.once('dialog', dialog => dialog.accept());
+  await missingApiDetails.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await missingApiDetails.getByRole('button', { name: 'Close', exact: true }).click();
+  console.log('HR01-06_PGRST202_CONTACT_READ_SAFE_BROWSER_PASS');
+  console.log('HR01-06_PGRST202_CONTACT_UPDATE_SAFE_BROWSER_PASS');
+
   await managerPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await managerPage.getByRole('button', { name: 'বিস্তারিত দেখুন: Synthetic Employee A' }).click();
   const managerDetailsBengali = managerPage.getByRole('dialog', { name: 'Synthetic Employee A' });

@@ -1,0 +1,49 @@
+name: HRIS Figma UI branch acceptance (no deploy)
+on:
+  push:
+    branches: [work/ws01-figma-attendance-shell-20261021]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hris-figma-ui-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  ui-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout trusted Candidate source for cross-repository contract tests
+        run: git clone --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+      - name: TypeScript and approved source contracts
+        run: npm run lint && npm run test:contracts
+      - name: Compile source-only Figma UI into a disposable build
+        run: npm run build
+      - name: Report generated Pages source drift without publishing it
+        run: |
+          git diff --name-only -- index.html assets .nojekyll
+          echo "This branch does not deploy. WS05 must separately synchronize Pages assets on the reviewed release tree."
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke and responsive regressions
+        run: npm run test:e2e
+      - name: Upload browser failure evidence if any
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-figma-ui-browser-evidence
+          path: |
+            playwright-report/
+            test-results/
+            docs/evidence/attendance-*.png
+            docs/evidence/ws01-shell/*.png
+          if-no-files-found: ignore
+          retention-days: 7

@@ -4,8 +4,8 @@
 
 ## Evidence
 
-- Main application commit: `7080be47683b9e578174c010bdbe68ba04eedfca`.
-- Full disposable Auth/Postgres/Storage/browser workflow: [GitHub Actions run 39385416264](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39385416264), passed on 20 October 2026.
+- Latest Main runtime commit: `1f0bec2fc40f27e600685661a83c6815dd43cf08`.
+- Full disposable Auth/Postgres/Storage/browser workflow: [GitHub Actions run 39425355049](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049), passed on 20 October 2026.
 - Read-only production catalog query confirms unique indexes `employees_tenant_id_employee_number_key` on `(tenant_id, employee_number)` and `employees_tenant_id_official_email_key` on `(tenant_id, official_email)`.
 - Runtime test: `tests/sql/isolated-auth/run-local.mjs`.
 - Contract test: `tests/contracts/hr01-duplicate-prevention.test.mjs`.

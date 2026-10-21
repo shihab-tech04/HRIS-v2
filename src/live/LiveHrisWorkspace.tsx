@@ -42,7 +42,7 @@ import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import {
-  Activity, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
+  Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
   Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
 } from 'lucide-react';
@@ -332,16 +332,20 @@ function StatusMessage({ error, onRetry, retryLabel = 'Retry' }: { error: string
 }
 
 function Metric({ label, value, icon, onOpen, compact = false, emphasized = false }: {
-  label: string; value: unknown; icon: ReactNode; onOpen?: () => void; compact?: boolean; emphasized?: boolean;
+  label: string; value: unknown; icon?: ReactNode; onOpen?: () => void; compact?: boolean; emphasized?: boolean;
 }) {
   const content = <>
     <span className={`flex items-center justify-between gap-2 ${compact ? 'text-sm font-bold text-[#49454F]' : 'text-sm text-slate-600'}`}>
-      <span>{label}</span><span className="shrink-0 text-[#08558B]">{icon}</span>
+      <span>{label}</span>
+      {(icon || (compact && onOpen)) && <span className="inline-flex shrink-0 items-center gap-1 text-[#08558B]" aria-hidden="true">
+        {icon && <span className={compact ? 'text-emerald-600' : ''}>{icon}</span>}
+        {compact && onOpen && <ArrowUpRight className="h-[11px] w-[11px]" />}
+      </span>}
     </span>
     <span className={`${compact ? 'mt-1 text-base font-normal' : 'mt-3 text-2xl font-semibold'} block tabular-nums text-slate-900`}>{display(value)}</span>
   </>;
   const className = compact
-    ? `min-h-[68px] rounded-[4px] border border-[#E6EEF3] ${emphasized ? 'bg-[#E6EEF3]' : 'bg-white'} p-2 text-left ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`
+    ? `min-h-[67px] rounded-[4px] border border-[#E6EEF3] ${emphasized ? 'bg-[#E6EEF3]' : 'bg-white'} p-2 text-left ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`
     : `min-h-[108px] rounded-lg border border-[#DEE0E3] bg-white p-4 text-left shadow-sm ${onOpen ? 'hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]' : ''}`;
   return onOpen
     ? <button type="button" onClick={onOpen} className={className}>{content}</button>
@@ -374,7 +378,12 @@ function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; 
       return `${index ? '' : `M ${point.x} ${point.y} `}C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${next.x} ${next.y}`;
     }).join(' ');
   const areaPath = coords.length ? `${path} L ${coords.at(-1)!.x} 176 L ${coords[0].x} 176 Z` : '';
-  return <div className="overflow-x-auto p-3">
+  const dateLabel = (value: string) => {
+    const date = new Date(`${value}T12:00:00`);
+    const formatLocale = locale === 'bn' ? 'bn-BD' : 'en-US';
+    return `${date.toLocaleDateString(formatLocale, { day: '2-digit' })} ${date.toLocaleDateString(formatLocale, { month: 'short' })}`;
+  };
+  return <div className="w-full min-w-0 overflow-x-auto">
     <svg viewBox="0 0 650 220" role="img" aria-labelledby="attendance-trend-title attendance-trend-description" className="min-w-[600px] w-full">
       <title id="attendance-trend-title">{locale === 'bn' ? `${tx('Attendance records over the last')} ${range} ${tx('days')}` : `Attendance records over the last ${range} days`}</title>
       <desc id="attendance-trend-description">{tx('Daily attendance record counts returned by the tenant-scoped HRIS dashboard service.')}</desc>
@@ -384,16 +393,18 @@ function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; 
         const tick = Math.round(max * (1 - i / 5));
         return <g key={i}>
           <line x1="58" x2="630" y1={y} y2={y} stroke="#e7eef0" />
-          <text x="48" y={y + 4} textAnchor="end" fontSize="11" fill="#77838f">{tick}</text>
+          <text x="48" y={y + 4} textAnchor="end" fontSize="8" fill="#77838f">{tick}</text>
         </g>;
       })}
+      {coords.filter((_, index) => safePoints.length <= 7 || index % 5 === 0 || index === safePoints.length - 1).map((point, index) =>
+        <line key={`grid-${point.point.date}-${index}`} x1={point.x} x2={point.x} y1="44" y2="176" stroke="#e7eef0" />)}
       <path d={areaPath} fill="url(#attendance-trend-area)" />
       <path d={path} fill="none" stroke="#08558B" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {coords.map((point, index) => <g key={`${point.point.date}-${index}`}>
         <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#08558B" strokeWidth="2" />
         {(safePoints.length <= 7 || index % 5 === 0 || index === safePoints.length - 1) &&
-          <text x={point.x} y="202" textAnchor="middle" fontSize="10" fill="#615E83">
-            {new Date(`${point.point.date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'short', day: 'numeric' })}
+          <text x={point.x} y="190" textAnchor="middle" fontSize="8" fill="#615E83">
+            {dateLabel(point.point.date)}
           </text>}
       </g>)}
     </svg>
@@ -573,15 +584,15 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
   }, [summary, summaryTenantId, tenantId]);
 
   const currentSummary = summaryTenantId === tenantId ? summary : null;
-  const metrics = [
-    { label: 'Team Members', value: currentSummary?.team_members ?? currentSummary?.employees, icon: <Users className="h-4 w-4" />, emphasized: true },
-    { label: 'Present', value: currentSummary?.present_today, icon: <CheckCircle2 className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
-    { label: 'Absent', value: currentSummary?.absent_today, icon: <XCircle className="h-4 w-4" />, page: 'attendance' as PageId, emphasized: true },
-    { label: 'Work from Office', value: currentSummary?.wfo_today, icon: <Building2 className="h-4 w-4" />, page: 'attendance' as PageId },
-    { label: 'Work From Home', value: currentSummary?.wfh_today, icon: <House className="h-4 w-4" />, page: 'attendance' as PageId },
-    { label: 'Client Meeting', value: currentSummary?.client_meeting_today, icon: <BriefcaseBusiness className="h-4 w-4" />, page: 'attendance' as PageId },
-    { label: 'On Leave', value: currentSummary?.on_leave_today, icon: <CalendarDays className="h-4 w-4" />, page: 'leave' as PageId },
-    { label: 'Late', value: currentSummary?.late_today, icon: <Clock3 className="h-4 w-4" />, page: 'attendance' as PageId },
+  const metrics: Array<{ label: string; value: unknown; icon?: ReactNode; page?: PageId; emphasized?: boolean }> = [
+    { label: 'Team Members', value: currentSummary?.team_members ?? currentSummary?.employees, emphasized: true },
+    { label: 'Present', value: currentSummary?.present_today, page: 'attendance' as PageId, emphasized: true },
+    { label: 'Absent', value: currentSummary?.absent_today, page: 'attendance' as PageId, emphasized: true },
+    { label: 'Work from Office', value: currentSummary?.wfo_today, page: 'attendance' as PageId },
+    { label: 'Work From Home', value: currentSummary?.wfh_today, page: 'attendance' as PageId },
+    { label: 'Client Meeting', value: currentSummary?.client_meeting_today, icon: <CheckCircle2 className="h-3.5 w-3.5" />, page: 'attendance' as PageId },
+    { label: 'On Leave', value: currentSummary?.on_leave_today, page: 'leave' as PageId },
+    { label: 'Late', value: currentSummary?.late_today, page: 'attendance' as PageId },
   ];
   const visibleMetrics = metrics.filter(metric => `${metric.label} ${tx(metric.label)}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const has30DayTrend = Array.isArray(currentSummary?.attendance_last_30_days) && currentSummary.attendance_last_30_days.length >= 30;
@@ -716,24 +727,24 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
     ], rows);
   }
 
-  return <section aria-labelledby="live-dashboard-heading" className="space-y-5">
-    <header id="manager-dashboard-header" className="flex min-h-[67px] flex-col gap-3 bg-[#EFF7F8] px-4 py-[9px] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+  return <section aria-labelledby="live-dashboard-heading" className="mx-auto w-full max-w-[1396px] space-y-4">
+    <header id="manager-dashboard-header" className="flex min-h-[67px] flex-col gap-3 bg-[#EFF7F8] py-[9px] sm:flex-row sm:items-center sm:justify-between">
       <h2 id="live-dashboard-heading" className="text-lg font-bold text-[#353535]">{tx('Managerial Dashboard')}</h2>
-      <div role="group" aria-label={tx('Managerial dashboard actions')} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[603px] xl:grid-cols-[334px_184px_64px]">
+      <div role="group" aria-label={tx('Managerial dashboard actions')} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] xl:min-w-[596px] xl:grid-cols-[334px_184px_64px] xl:gap-[7px]">
         <label className="relative block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86929E]" />
+          <img src={attendanceSearchIcon} alt="" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
           <input type="search" value={search} onChange={event => setSearch(event.target.value)}
             placeholder={tx('Search metrics')} aria-label={tx('Search dashboard metrics')}
             className="min-h-12 w-full rounded-lg border border-[#DEE0E3] bg-white py-2 pl-9 pr-3 text-sm text-[#1E1B39] placeholder:text-[#86929E] focus:outline-2 focus:outline-[#08558B]" />
         </label>
         <button type="button" disabled={loading || !summary} onClick={downloadReport}
           className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm font-medium text-[#1E1B39] hover:border-[#08558B] disabled:opacity-50">
-          <Download className="h-4 w-4" /> {tx('Download Report')}
+          <img src={attendanceDownloadIcon} alt="" className="h-3 w-[10px] shrink-0 object-contain" /> {tx('Download Report')}
         </button>
         <button type="button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen}
           aria-controls="dashboard-filters" aria-label={tx('Filter attendance chart')}
           className="inline-flex min-h-12 min-w-16 items-center justify-center rounded-lg border border-[#DEE0E3] bg-white text-[#49454F] hover:border-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <SlidersHorizontal className="h-4 w-4" />
+          <img src={attendanceFilterIcon} alt="" />
         </button>
       </div>
     </header>
@@ -745,26 +756,30 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         </select></div>
       <p className="pb-2 text-xs text-slate-500">{tx('Attendance tiles above always summarize today.')}</p>
     </div>}
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      {refreshedAt ? <p className="text-xs text-slate-500">{tx('Last refreshed')} {refreshedAt.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}</p> : <span />}
-      <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm text-[#49454F] hover:bg-white disabled:opacity-50">
-        <RefreshCw className="h-4 w-4" /> {tx('Refresh')}
-      </button>
-    </div>
     {error && <StatusMessage error={error} retryLabel={tx('Retry')} onRetry={() => void load()} />}
     {loading && !currentSummary ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">{tx('Loading authorized dashboard data…')}</p> : currentSummary && <>
-      <section className="rounded-xl border border-[#DEE0E3] bg-white px-[21px] py-[18px] shadow-sm" aria-labelledby="today-attendance-heading">
+      <section className="min-h-[149px] rounded-[12px] bg-white px-[21px] py-[18px]" aria-labelledby="today-attendance-heading">
         <div className="mb-[15px]"><h3 id="today-attendance-heading" className="text-lg font-normal text-[#49454F]">{tx('Today’s Attendance Summary')}</h3></div>
-        {visibleMetrics.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-          {visibleMetrics.map(metric => <Metric key={metric.label} label={tx(metric.label)} value={metric.value} icon={metric.icon}
+        {visibleMetrics.length ? <div className={`grid grid-cols-2 gap-4 md:grid-cols-4 ${search.trim() ? '2xl:grid-cols-4' : '2xl:grid-cols-[134px_138px_138px_1px_repeat(5,minmax(0,1fr))]'}`}>
+          {visibleMetrics.slice(0, 3).map(metric => <Metric key={metric.label} label={tx(metric.label)} value={metric.value} icon={metric.icon}
+            onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
+          {!search.trim() && visibleMetrics.length === metrics.length && <span className="hidden h-14 w-px place-self-center bg-[#86929E] 2xl:block" aria-hidden="true" />}
+          {visibleMetrics.slice(3).map(metric => <Metric key={metric.label} label={tx(metric.label)} value={metric.value} icon={metric.icon}
             onOpen={metric.page ? () => onOpen(metric.page!) : undefined} compact emphasized={'emphasized' in metric && metric.emphasized} />)}
         </div> : <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('No dashboard metrics match')} “{search}”.</p>}
       </section>
-      <section className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="attendance-trend-heading">
-        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#E5E5EF] pb-3"><div><h3 id="attendance-trend-heading" className="text-base font-normal text-[#49454F]">{tx('Daily Attendance Chart')}</h3>
-          <p className="mt-1 text-xs text-[#86929E]">{locale === 'bn' ? `${tx('Recorded attendance by day')} · গত ${activeChartRange} ${tx('days')}` : `${tx('Recorded attendance by day')} · last ${activeChartRange} days`}</p></div>
-          <span className="rounded-md bg-[#EFF7F8] px-2 py-1 text-xs text-[#615E83]">{trendPoints.reduce((sum, point) => sum + Number(point.records || 0), 0).toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')} {tx('records')}</span></div>
-        <AttendanceTrend points={trendPoints} range={activeChartRange} locale={locale} />
+      <section className="relative min-h-[360px] overflow-hidden rounded-[15px] bg-white xl:min-h-[553px]" aria-labelledby="attendance-trend-heading">
+        <div className="mx-5 mt-6 flex h-10 items-start justify-between border-b border-[#E5E5EF] xl:mx-[50px] xl:mt-[36px]">
+          <h3 id="attendance-trend-heading" className="text-base font-normal text-[#252C58]">{tx('Daily Attendance Chart')}</h3>
+          <button type="button" disabled={loading} onClick={() => void load()} aria-label={tx('Refresh')}
+            title={refreshedAt ? `${tx('Last refreshed')} ${refreshedAt.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}` : tx('Refresh')}
+            className="inline-flex h-6 w-5 items-center justify-center text-[#86929E] hover:text-[#08558B] focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:opacity-50">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="px-5 pb-5 pt-6 xl:absolute xl:inset-x-5 xl:top-[70px] xl:px-0 xl:pb-0 xl:pt-0">
+          <AttendanceTrend points={trendPoints} range={activeChartRange} locale={locale} />
+        </div>
       </section>
       <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Needs attention')}</h3>
@@ -1096,9 +1111,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
   }, [aggregateOnly, appliedTeamFilter, currentRecords, teamSortDirection]);
   const rows = filteredRows;
 
-  return <section aria-labelledby="attendance-report-heading" className={`space-y-4 ${aggregateOnly ? 'mx-auto w-full max-w-[1386px]' : ''}`}>
+  return <section aria-labelledby="attendance-report-heading" className={`mx-auto w-full max-w-[1386px] ${aggregateOnly ? 'space-y-2' : 'space-y-4'}`}>
     <div className={`flex flex-wrap justify-between gap-3 ${aggregateOnly ? 'items-center' : 'items-end'}`}>
-      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Attendance Report</h2>
+      <div><h2 id="attendance-report-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">Attendance Report</h2>
         {!aggregateOnly && <p className="mt-1 text-sm text-slate-500">Attendance for your current organization and date range</p>}</div>
       {aggregateOnly && <form aria-label="Attendance report controls" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
         <div className="relative min-w-[220px] flex-1 lg:w-[334px] lg:flex-none"><label htmlFor="attendance-search" className="sr-only">Search employees</label>
@@ -1211,9 +1226,9 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
     </div>}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
-          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full border-separate text-left text-sm ${aggregateOnly ? 'min-w-[1383px] border-spacing-x-0 border-spacing-y-[6px]' : 'min-w-[1280px] border-spacing-0'}`}>
-          <thead className={`bg-white ${aggregateOnly ? 'text-[14px] text-[#9E9E9E]' : 'text-xs text-slate-500'}`}><tr>
-            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className={`border-b border-slate-200 px-4 py-4 ${aggregateOnly ? 'font-normal' : 'font-medium'}`}>
+          <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm">
+          <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
+            {(aggregateOnly ? ['Name', 'Designation', 'Team Name', 'Department', 'From date', 'To date', 'Office Hour', 'Work Hour', 'Deviation'] : ['Name', 'Designation', projectText(locale, 'Team Name'), 'Department', 'Date', 'Work location', 'In time', 'Out time', 'Work hours', 'Status']).map(label => <th key={label} scope="col" aria-sort={aggregateOnly && label === 'Team Name' ? teamSortDirection === 'asc' ? 'ascending' : teamSortDirection === 'desc' ? 'descending' : 'none' : undefined} className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">
               {aggregateOnly && label === 'Team Name' ? <div className="flex items-center gap-1">
                 <span>{label}</span>
                 <button type="button" onClick={() => setTeamSortDirection(value => value === 'asc' ? 'desc' : 'asc')}
@@ -1226,12 +1241,12 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
           </tr></thead>
           <tbody>{rows.map((row, index) => {
             const employeeName = row.employee_name || row.full_name;
-            const cellClass = aggregateOnly ? 'border-y border-slate-100 bg-white px-4 py-3' : 'border-b border-slate-100 px-4 py-3';
+            const cellClass = 'h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
-            const statusTone = normalizedStatus === 'late' ? 'bg-amber-50 text-amber-800'
-              : normalizedStatus === 'absent' ? 'bg-rose-50 text-rose-800'
-                : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'bg-emerald-50 text-emerald-800'
-                  : 'bg-slate-100 text-slate-600';
+            const statusTone = normalizedStatus === 'late' ? 'text-[#B59A00]'
+              : normalizedStatus === 'absent' ? 'text-rose-700'
+                : normalizedStatus === 'present' || normalizedStatus === 'on time' ? 'text-emerald-700'
+                  : 'text-slate-500';
             const deviationValue = row.deviation === null || row.deviation === undefined || row.deviation === '' ? Number.NaN : Number(row.deviation);
             const deviationText = Number.isFinite(deviationValue) ? `${deviationValue > 0 ? '+' : ''}${deviationValue.toFixed(2)}` : display(row.deviation);
             const deviationTone = deviationValue > 0 ? 'text-emerald-700' : deviationValue < 0 ? 'text-rose-700' : 'text-slate-700';
@@ -1240,10 +1255,10 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
               const numeric = Number(value);
               return Number.isFinite(numeric) ? numeric.toFixed(2) : display(value);
             };
-            return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className={aggregateOnly ? 'h-20' : 'hover:bg-slate-50'}>
-              <td className={`${cellClass} font-medium ${aggregateOnly ? 'rounded-l-lg border-l' : ''}`}>
+            return <tr key={String(row.employee_id || row.id || `${row.attendance_date || ''}-${index}`)} className="h-20">
+              <td className={`${cellClass} rounded-l-lg border-l border-white font-medium`}>
                 <div className="flex min-w-44 items-center gap-3">
-                  <span aria-hidden="true" className={`grid shrink-0 place-items-center rounded-xl bg-[#DCEFF4] font-semibold text-[#085587] ${aggregateOnly ? 'h-12 w-12 text-base' : 'h-10 w-10 text-sm'}`}>{nameInitials(employeeName)}</span>
+                  <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-[#DCEFF4] text-base font-semibold text-[#085587]">{nameInitials(employeeName)}</span>
                   <span className="min-w-0"><span className="block break-words text-slate-800">{display(employeeName)}</span>
                     <span className="mt-0.5 block text-xs font-normal text-slate-500">{display(row.employee_number)}</span></span>
                 </div>
@@ -1256,12 +1271,12 @@ function AttendanceReport({ tenantId, canView, canReport, canManage, locale }: {
                 <td className={`${cellClass} tabular-nums`}>{reportHours(row.office_hours)}</td><td className={`${cellClass} tabular-nums`}>{reportHours(row.working_hours)}</td>
                 <td className={`${cellClass} rounded-r-lg border-r tabular-nums`}><span className={`font-semibold ${deviationTone}`}>{deviationText}</span></td>
               </> : <>
-                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayAttendanceDate(row.attendance_date)}</td>
-                <td className="border-b border-slate-100 px-4 py-3">{displayWorkMode(row.work_mode)}</td>
-                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayTime(row.check_in)}</td>
-                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{displayTime(row.check_out)}</td>
-                <td className="border-b border-slate-100 px-4 py-3 tabular-nums">{display(row.work_hours)}</td>
-                <td className="border-b border-slate-100 px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusTone}`}>{display(row.status)}</span></td>
+                <td className={`${cellClass} tabular-nums`}>{displayAttendanceDate(row.attendance_date)}</td>
+                <td className={cellClass}>{displayWorkMode(row.work_mode)}</td>
+                <td className={`${cellClass} tabular-nums`}>{displayTime(row.check_in)}</td>
+                <td className={`${cellClass} tabular-nums`}>{displayTime(row.check_out)}</td>
+                <td className={`${cellClass} tabular-nums`}>{display(row.work_hours)}</td>
+                <td className={`${cellClass} rounded-r-lg border-r border-white`}><span className={`font-semibold capitalize ${statusTone}`}>{display(row.status)}</span></td>
               </>}
             </tr>;
           })}</tbody>
@@ -1830,9 +1845,9 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 
   const hasEvidence = Boolean(visibleData?.requests.some(item => String(item.attachment_url || '').trim()));
 
-  return <section aria-labelledby="leave-workspace-heading" className="space-y-4">
+  return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full max-w-[1386px] space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-medium text-[#49454F]">Leave Requests</h2>
+      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">Leave Requests</h2>
         <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
       <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
         <RefreshCw className="h-4 w-4" /> Refresh
@@ -1936,25 +1951,25 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </form>
         {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : !filteredRequests.length
           ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
-          <table className="w-full min-w-[760px] text-left text-sm" aria-label="Leave requests">
-            <thead className="bg-[#eff7f8] text-xs text-slate-600"><tr>
-              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{label}</th>)}
+          <table className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label="Leave requests">
+            <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
+              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">{label}</th>)}
             </tr></thead>
-            <tbody className="divide-y divide-slate-100">{filteredRequests.map((row, index) => <tr key={String(row.id || index)}>
-              <td className="px-3 py-3 font-medium">{display(row.full_name)}</td><td className="px-3 py-3">{display(row.leave_type_name)}</td>
-              <td className="px-3 py-3">{display(row.from_date)}</td><td className="px-3 py-3">{display(row.to_date)}</td>
-              <td className="px-3 py-3">{display(row.requested_days)}</td><td className="px-3 py-3 font-medium">
+            <tbody>{filteredRequests.map((row, index) => <tr key={String(row.id || index)} className="h-20">
+              <td className="h-20 rounded-l-lg border-y border-l border-white bg-white px-4 py-4 align-middle font-medium text-[#424242]">{display(row.full_name)}</td><td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.leave_type_name)}</td>
+              <td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.from_date)}</td><td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.to_date)}</td>
+              <td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.requested_days)}</td><td className={`h-20 border-y border-white bg-white px-4 py-4 align-middle font-medium text-[#424242] ${!hasEvidence && !canManage ? 'rounded-r-lg border-r' : ''}`}>
                 <span>{display(row.status)}</span>
                 {Boolean(row.resolution_note) && <span className="mt-1 block whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(row.resolution_note)}</span>}
               </td>
-              {hasEvidence && <td className="px-3 py-3">{String(row.attachment_url || '').trim()
+              {hasEvidence && <td className={`h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242] ${!canManage ? 'rounded-r-lg border-r' : ''}`}>{String(row.attachment_url || '').trim()
                 ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
                     aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
                     onClick={() => void downloadEvidence(row)}
                     className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
                     {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
                   </button> : '—'}</td>}
-              {canManage && <td className="px-3 py-3">
+              {canManage && <td className="h-20 rounded-r-lg border-y border-r border-white bg-white px-4 py-4 align-middle">
                 {row.status === 'pending' ? <div className="flex gap-2">
                   <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'approved')}
                     className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
@@ -3753,28 +3768,27 @@ export function LiveHrisWorkspace({
   const clearServiceRequestFocus = (requestId: string) => setServiceRequestFocusId(currentId => currentId === requestId ? null : currentId);
   const current = localizedNav.find(item => item.id === page);
 
-  const navigation = <nav aria-label="HRIS modules" className="space-y-1">
-    {(['HRIS', 'Personal'] as const).map(group => {
-      const items = localizedNav.filter(item => item.group === group);
-      return items.length ? <div key={group} className="space-y-1">
-        <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{projectText(locale, group === 'HRIS' ? 'Workforce' : 'Self service')}</p>
-        {items.map(item => <button key={item.id} type="button" title={item.label} onClick={() => {
-          if (item.id === 'my-roster') setRosterFocusDate(null);
-          navigate(item.id);
-        }} aria-current={page === item.id ? 'page' : undefined}
-          className={`flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-lg px-2 text-center text-[11px] focus-visible:outline-2 focus-visible:outline-[#085587] ${page === item.id ? 'bg-[#DCEFF4] text-[#085587] font-semibold' : 'text-slate-700 hover:bg-white hover:text-[#085587]'}`}>
-          {item.icon}<span className="leading-tight">{item.label}</span>
-        </button>)}
-      </div> : null;
-    })}
+  const navigation = <nav aria-label="HRIS modules" className="flex flex-col gap-2 lg:gap-[14px]">
+    {localizedNav.map(item => <button key={item.id} type="button" title={item.label} onClick={() => {
+      if (item.id === 'my-roster') setRosterFocusDate(null);
+      navigate(item.id);
+    }} aria-current={page === item.id ? 'page' : undefined}
+      className={`group flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-[#08558B] lg:min-h-0 lg:flex-col lg:justify-center lg:gap-2 lg:rounded-none lg:px-0 lg:py-0 lg:text-center ${page === item.id ? 'bg-[#EFF7F8] text-[#49454F] lg:bg-transparent' : 'text-[#424242] hover:bg-slate-50 lg:hover:bg-transparent'}`}>
+      <span data-sidebar-icon className={`grid h-[42px] w-[42px] shrink-0 place-items-center rounded-lg transition-colors ${page === item.id ? 'bg-[#08558B] text-white' : 'bg-white text-[#424242] group-hover:bg-slate-50'}`}>
+        {item.icon}
+      </span>
+      <span data-sidebar-label className="min-w-0 max-w-[94px] flex-1 text-left text-[14px] font-normal leading-[normal] text-[#424242] lg:flex-none lg:line-clamp-2 lg:text-center">
+        {item.label}
+      </span>
+    </button>)}
   </nav>;
 
   return <div className="min-h-screen bg-[#EFF7F8] text-slate-900">
-    <header className="sticky top-0 z-30 flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 sm:px-4 lg:px-8">
+    <header className="sticky top-0 z-30 flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-[#E9ECED] bg-white px-3 sm:px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border text-slate-700 lg:hidden" aria-label="Open navigation menu"><Menu className="h-5 w-5" /></button>
+        <button type="button" onClick={() => setMobileOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border text-slate-700 focus-visible:outline-2 focus-visible:outline-[#08558B] lg:hidden" aria-label="Open navigation menu"><Menu className="h-5 w-5" /></button>
         <div className="flex min-w-0 items-center gap-2">
-          <div className="shrink-0 leading-none"><p className="text-sm font-bold tracking-[0.12em] text-[#085587]">SYNESIS</p><p className="mt-1 text-[9px] font-medium tracking-[0.16em] text-slate-500">HRIS 360°</p></div>
+          <div className="shrink-0 leading-none"><p className="text-sm font-bold tracking-[0.12em] text-[#08558B]">SYNESIS</p><p className="mt-1 text-[9px] font-medium tracking-[0.16em] text-slate-500">HRIS 360°</p></div>
           <span className="hidden h-8 border-l border-slate-200 sm:block" aria-hidden="true" />
           <p className="hidden truncate text-xs text-slate-500 sm:block">{tenantName}</p>
         </div>
@@ -3789,16 +3803,49 @@ export function LiveHrisWorkspace({
           {locale === 'en' ? 'EN' : 'বাংলা'}
         </button>
         <span className="hidden max-w-56 truncate text-xs text-slate-500 md:block" title={userEmail}>{userEmail}</span>
-        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#DCEFF4] text-sm font-semibold text-[#085587]">{userEmail.slice(0, 1).toUpperCase()}</span>
+        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#DCEFF4] text-sm font-semibold text-[#08558B]">{userEmail.slice(0, 1).toUpperCase()}</span>
         <span className="hidden rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 sm:inline-flex items-center gap-1"><ShieldCheck className="h-4 w-4" />{roleLabel}</span>
         <button type="button" onClick={onSignOut} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm hover:bg-slate-50"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Sign out</span></button>
       </div>
     </header>
     <div className="flex min-h-[calc(100vh-4.5rem)]">
-      <aside className="sticky top-[72px] hidden h-[calc(100vh-4.5rem)] w-[111px] shrink-0 overflow-y-auto border-r border-slate-200 bg-[#E7F1F3] p-2 lg:block">{navigation}</aside>
-      <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-[1600px]">
-          {current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
+      <aside aria-label="Primary HRIS navigation" className="sticky top-[72px] hidden h-[calc(100vh-4.5rem)] w-[111px] shrink-0 overflow-y-auto border-r border-[#E9ECED] bg-white px-2 pb-4 pt-[30px] lg:block">{navigation}</aside>
+      <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-6">
+        <div className="mx-auto w-full max-w-none">
+          {(page === 'attendance' || page === 'leave') ? (
+            <section aria-label="Attendance and leave application management" className="-mx-4 -mt-5 mb-8 border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
+              <h1 className="flex min-h-[85px] items-center px-4 py-4 text-2xl font-normal text-[#49454F] sm:px-6 lg:px-6">
+                {projectText(locale, 'Attendance & Leave Application Management')}
+              </h1>
+              <nav aria-label="Attendance and leave sections" className="flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6 lg:px-6">
+                <button type="button" disabled={!nav.some(item => item.id === 'attendance')}
+                  onClick={() => navigate('attendance')} aria-current={page === 'attendance' ? 'page' : undefined}
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'attendance' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  {projectText(locale, 'Attendance Information')}
+                </button>
+                <span aria-disabled="true" title="Attendance request state requires verified workflow mapping"
+                  className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-slate-400">
+                  {projectText(locale, 'Attendance Requests')}
+                </span>
+                <button type="button" disabled={!nav.some(item => item.id === 'leave')}
+                  onClick={() => navigate('leave')} aria-current={page === 'leave' ? 'page' : undefined}
+                  className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[#08558B] disabled:cursor-not-allowed disabled:opacity-50 ${page === 'leave' ? 'border-[#08558B] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                  {projectText(locale, 'Leave Requests')}
+                </button>
+                {nav.some(item => item.id === 'my-leave') ? (
+                  <button type="button" onClick={() => navigate('my-leave')}
+                    className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F] hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#08558B]">
+                    {projectText(locale, 'Personal Leave Application History')}
+                  </button>
+                ) : (
+                  <span aria-disabled="true" title="Personal leave history requires employee self-service access"
+                    className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-slate-400">
+                    {projectText(locale, 'Personal Leave Application History')}
+                  </span>
+                )}
+              </nav>
+            </section>
+          ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale}
@@ -3862,7 +3909,7 @@ export function LiveHrisWorkspace({
       </main>
     </div>
     {mobileOpen && <div className="fixed inset-0 z-50 bg-slate-950/40 lg:hidden" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMobileOpen(false); }}>
-      <aside aria-label="HRIS navigation" className="h-full w-72 max-w-[85vw] overflow-y-auto bg-[#E7F1F3] p-4 text-slate-900 shadow-xl">
+      <aside aria-label="HRIS navigation" className="h-full w-72 max-w-[85vw] overflow-y-auto border-r border-[#E9ECED] bg-white p-4 text-slate-900 shadow-xl">
         <div className="mb-3 flex items-center justify-between"><span className="font-semibold">Navigation</span><button type="button" onClick={() => setMobileOpen(false)} className="min-h-11 min-w-11 rounded-lg border" aria-label="Close navigation menu"><X className="mx-auto h-4 w-4" /></button></div>
         {navigation}
       </aside>

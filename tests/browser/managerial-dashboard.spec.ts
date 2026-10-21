@@ -206,7 +206,7 @@ test('tenant switching does not retain manager access in a tenant without dashbo
 });
 
 test('manager dashboard uses tenant RPC counts and working search, filters, and CSV download', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   const reportState = await signInSyntheticManager(page);
 
   await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
@@ -244,16 +244,50 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
   await expect(presentMetric.getByText('3', { exact: true })).toHaveCSS('font-weight', '400');
   const metricColumns = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
-  expect(metricColumns).toBe(8);
+  expect(metricColumns).toBe(9);
   await expect(page.getByRole('img', { name: /Attendance records over the last 7 days/ })).toBeVisible();
   const attendanceChart = page.getByRole('img', { name: /Attendance records over the last 7 days/ });
-  await expect(attendanceChart.locator('line')).toHaveCount(6);
+  await expect(attendanceChart.locator('line')).toHaveCount(13);
+  await expect(attendanceChart.locator('desc')).toContainText('record counts returned by the tenant-scoped HRIS dashboard service');
   expect(await attendanceChart.locator('path[stroke="#08558B"]').getAttribute('d')).toContain('C ');
   const chartData = page.getByRole('table', { name: 'Attendance chart data' });
   await expect(chartData).toBeAttached();
   await expect(chartData.locator('tbody tr')).toHaveCount(7);
   await expect(chartData.locator('tbody tr').last()).toContainText('30');
-  await page.screenshot({ path: evidencePath('managerial-dashboard-desktop-20261015.png'), fullPage: true });
+  for (const viewport of [
+    { width: 1920, height: 1080, tracks: 9 },
+    { width: 1280, height: 900, tracks: 4 },
+    { width: 768, height: 1024, tracks: 4 },
+    { width: 375, height: 812, tracks: 2 },
+  ]) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await expect(page.getByRole('heading', { name: 'Managerial Dashboard', exact: true })).toBeVisible();
+    const moduleNavigation = page.getByRole('navigation', { name: 'HRIS modules' });
+    if (viewport.width >= 1024) {
+      await expect(moduleNavigation).toBeVisible();
+      await expect(page.getByRole('complementary', { name: 'Primary HRIS navigation' })).toHaveCSS('width', '111px');
+    } else {
+      await page.getByRole('button', { name: 'Open navigation menu' }).click();
+      await expect(page.getByRole('complementary', { name: 'HRIS navigation' })).toBeVisible();
+      await expect(moduleNavigation.getByRole('button', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
+      await page.getByRole('button', { name: 'Close navigation menu' }).click();
+      await expect(page.getByRole('complementary', { name: 'HRIS navigation' })).toHaveCount(0);
+    }
+    const renderedTracks = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
+      .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+    expect(renderedTracks).toBe(viewport.tracks);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width + 1);
+    await page.screenshot({
+      path: evidencePath(`ws08-managerial-dashboard-${viewport.width}x${viewport.height}-20261021.png`),
+    });
+    if (viewport.width === 375) {
+      await page.screenshot({
+        path: evidencePath('ws08-managerial-dashboard-375x812-full-page-20261021.png'),
+        fullPage: true,
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 });
 
   await page.getByRole('searchbox', { name: 'Search dashboard metrics' }).fill('Home');
   await expect(page.getByRole('button', { name: 'Work From Home 1' })).toBeVisible();
@@ -262,7 +296,6 @@ test('manager dashboard uses tenant RPC counts and working search, filters, and 
 
   await page.getByRole('button', { name: 'Filter attendance chart' }).click();
   await page.getByLabel('Attendance chart range').selectOption('30');
-  await expect(page.getByText('Recorded attendance by day · last 30 days')).toBeVisible();
   await expect(page.getByRole('img', { name: /Attendance records over the last 30 days/ })).toBeVisible();
   await expect(chartData.locator('tbody tr')).toHaveCount(30);
 
@@ -317,7 +350,7 @@ test('manager dashboard fits a narrow mobile viewport and keeps all attendance t
   const metricColumns = await page.locator('section[aria-labelledby="today-attendance-heading"] > div.grid')
     .evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length);
   expect(metricColumns).toBe(2);
-  await page.screenshot({ path: evidencePath('managerial-dashboard-mobile-20261015.png'), fullPage: true });
+  await page.screenshot({ path: evidencePath('ws08-managerial-dashboard-375x812-20261021.png') });
 });
 
 test('Team Report retries, opens tenant-scoped details, and stays localized and usable on mobile', async ({ page }) => {
