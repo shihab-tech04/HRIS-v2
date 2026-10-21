@@ -35,10 +35,12 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const expectFilledActionCircle = async (button: ReturnType<typeof page.getByRole>, color: string) => {
     const circle = button.locator('span[aria-hidden="true"]');
     await expect(circle).toHaveCSS('background-color', color);
-    await expect(circle).toHaveCSS('border-radius', '9999px');
     const bounds = await circle.boundingBox();
     expect(bounds?.width).toBe(24);
     expect(bounds?.height).toBe(24);
+    const borderRadius = await circle.evaluate(element => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius));
+    expect(Number.isFinite(borderRadius)).toBe(true);
+    expect(borderRadius).toBeGreaterThanOrEqual((bounds?.width ?? 0) / 2);
   };
   const externalRequests: string[] = [];
   const attendanceCalls: Record<string, unknown>[] = [];
