@@ -1,0 +1,75 @@
+name: HRIS UI multistream integration rehearsal (no deploy)
+on:
+  push:
+    branches: [work/hris-ui-multistream-integration-20261021]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hris-ui-integration-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: '1'
+    steps:
+      - name: Checkout exact WS08-derived integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pin and inspect upstream workstation sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p integration-evidence
+          git fetch origin "+refs/heads/work/ws07-hr-org-phase05-20261020:refs/remotes/origin/work/ws07-hr-org-phase05-20261020" "+refs/heads/work/ws06-employee-profile-figma-20261021:refs/remotes/origin/work/ws06-employee-profile-figma-20261021"
+          test "$(git rev-parse HEAD^)" = "bafda05579a3144f455620e635bec6e093b160c1"
+          git cat-file -e "9d7cf862e060babc259d94bbbbf5daa13536b015^{commit}"
+          git cat-file -e "3f1f1f1b0edb6341cf6e4be8501eff88789caf44^{commit}"
+          printf 'WS08 base: %s\nWS07: %s\nWS06: %s\n' "bafda05579a3144f455620e635bec6e093b160c1" "9d7cf862e060babc259d94bbbbf5daa13536b015" "3f1f1f1b0edb6341cf6e4be8501eff88789caf44" > integration-evidence/pinned-heads.txt
+      - name: Rehearse real cross-workstation Git merges
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 9d7cf862e060babc259d94bbbbf5daa13536b015 > integration-evidence/ws07-merge.log 2>&1; then
+            git diff --name-only --diff-filter=U > integration-evidence/ws07-conflicts.txt
+            git diff > integration-evidence/ws07-conflict-diff.txt || true
+            echo "WS07 integration needs source-aware conflict resolution."
+            exit 1
+          fi
+          git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS07 integration' > integration-evidence/ws07-commit.log 2>&1
+          if ! git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' merge --no-commit --no-ff 3f1f1f1b0edb6341cf6e4be8501eff88789caf44 > integration-evidence/ws06-merge.log 2>&1; then
+            git diff --name-only --diff-filter=U > integration-evidence/ws06-conflicts.txt
+            git diff > integration-evidence/ws06-conflict-diff.txt || true
+            echo "WS06 integration needs source-aware conflict resolution."
+            exit 1
+          fi
+          git -c user.name='HRIS Integration CI' -c user.email='ci@example.invalid' commit -m 'Disposable WS06 integration' > integration-evidence/ws06-commit.log 2>&1
+          git log --oneline -8 > integration-evidence/merged-graph.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Build and cross-repository contract checks
+        run: |
+          git clone --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          npm install --include=optional --no-audit --no-fund
+          npm run lint
+          npm run test:contracts
+          npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Full integrated browser acceptance
+        run: npm run test:e2e
+      - name: Preserve conflict and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-multistream-merge-diagnostics
+          path: |
+            integration-evidence/
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
