@@ -1,0 +1,53 @@
+name: HRIS leave type ACL acceptance (disposable PostgreSQL 17)
+on:
+  pull_request:
+    branches: [development/hris-checkpoints]
+    paths:
+      - 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'
+      - 'tests/sql/leave-type-acl/**'
+      - '.github/workflows/leave-type-acl-postgres.yml'
+  push:
+    branches: [work/ws02-production-view-security-20261021]
+    paths:
+      - 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'
+      - 'tests/sql/leave-type-acl/**'
+      - '.github/workflows/leave-type-acl-postgres.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  leave-type-acl-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_leave_type_acl
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d hris_leave_type_acl"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Reproduce hosted grants, apply ACL fix, and verify two-tenant reads and denied writes
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: test_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: hris_leave_type_acl
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/leave-type-acl/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/leave-type-acl/overgrant.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/leave-type-acl/verify.sql
+          echo "Passed against synthetic PostgreSQL 17; this is not production Auth/RLS certification."

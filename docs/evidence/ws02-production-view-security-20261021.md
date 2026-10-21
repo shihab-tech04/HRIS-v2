@@ -1,59 +1,83 @@
 # WS02 production-view security handoff — 2026-10-21
 
-## Decision
+## Release decision
 
-**Full production-view release remains blocked.** The read-only catalog evidence does not establish hosted HR/Admin or employee acceptance, and only one active production tenant is available for the deployed project. This packet fixes one source-backed address privacy policy defect in an isolated review branch. It makes no production database or deployment changes.
+**BLOCKED for production view release.** Hosted authentication and catalog reads confirm several safe server-side controls, but hosted two-tenant and role acceptance was not possible. The deployed address/family read policies are not tenant-scoped, `leave_types` has excessive direct ACL grants, and Auth leaked-password protection is disabled. PR #50 contains source-backed forward migrations and disposable acceptance coverage; none of those changes has been applied to production.
 
-Source base: `development/hris-checkpoints` at `2a5fe5f4ad7ff2600d5b1d60c7749dbaee0e77cc`.
+No employee or Candidate rows were read for this review. No production schema, data, Auth, membership, role, or tenant writes were made. No merge or deployment was made.
 
-## Minimum security conditions for approved views
+Source base: `development/hris-checkpoints` at `2a5fe5f4ad7ff2600d5b1d60c7749dbaee0e77cc`. PR #50 was rechecked at `89dccad45c35eaee1f9a84f40ce3ec4acc124e80` before this update.
 
-- A current authenticated session must be established before loading private data.
-- Server-side RLS/RPC authorization must bind every employee or Candidate row to the caller's active tenant membership, active role, and exact view permission. A hidden or disabled client control is not an authorization boundary.
-- Anonymous callers must not execute private read or write RPCs. Public vacancy browsing may expose only the published public vacancy projection.
-- Employee self-service reads must bind to the authenticated employee identity. Managers may read only rows whose parent employee belongs to their authorized tenant.
-- Release views may issue only reviewed read requests. Unsupported or absent mutation APIs remain unavailable; no direct-table fallback or client-only permission check is introduced.
-- Acceptance must include two synthetic tenants, employee ownership, view-only versus manage roles, missing/inactive membership, stale session, anonymous access, cross-tenant denial, and direct-write denial.
-- Real employee and Candidate values must not be used to populate unfinished screens.
+## Hosted versus source matrix
 
-## Hosted evidence, read-only
+Hosted evidence was rechecked read-only on 2026-10-21 through the existing Supabase connection for project `hrmis-saas` (`oslgwxaqfbteqtwqvdzs`).
 
-- Supabase project is healthy. The latest deployed migration head is `20261020044145` (`phase03_learning_context_authenticated_acl_20261020`). The current development tree contains later migrations, so it is not at hosted parity.
-- The hosted permission helpers use a live session, active tenant membership, active role, and exact `role_permissions` entry. The legacy `user_roles` catalog is not an authorization fallback.
-- The available hosted evidence includes one Super Admin session and one active tenant membership. No independent HR/Admin or employee sign-in and no second active tenant were available to this workstream. Hosted sign-in, employee ownership, role-restriction, anonymous HTTP, and two-tenant runtime acceptance therefore remain **NOT VERIFIED**.
-- `employee_addresses` and `employee_family_members` have authenticated SELECT policies whose old administrator policies call the global permission helper without checking the parent employee tenant. The hosted family policy is still legacy; the tenant-scoped family migration `20261016171104_employee_family_tenant_scoped_read.sql` is in development but absent from deployed migration history.
-- Hosted `leave_types` has full table ACLs for `anon` and `authenticated`, although its current row policies are SELECT-only. Source migration `20261016142000_hris_leave_type_policy_management.sql` says the RPC is the authenticated write path, revokes client INSERT/UPDATE/DELETE, and grants authenticated SELECT. That source migration is not recorded at the current hosted head.
-- The three hosted employee self-write functions—`employee_update_my_profile(jsonb)`, `employee_save_my_addresses_v2(jsonb)`, and `employee_save_my_family_members_v2(jsonb)`—are SECURITY DEFINER with authenticated/service-role EXECUTE and anon denied. No checked-in development migration defines them. Their hosted identity-bound behavior cannot be reproduced or certified from this source tree, so they are not an approved generic employee or tenant contract.
+| Control | Hosted evidence | Source / isolated evidence | Status |
+|---|---|---|---|
+| Project and migration head | Project healthy, Postgres `17.11.0.002`; latest of 116 hosted migrations is `20261020044145 phase03_learning_context_authenticated_acl_20261020`. | Development base is later than hosted and includes family policy migration `20261016171104`; PR #50 adds address and `leave_types` migrations. | **PASS** for observation; **FAIL** for hosted/source parity |
+| Auth configuration | Existing connection exposes no Auth provider configuration read API. Supabase Security Advisor reports leaked-password protection disabled. | No Auth configuration change proposed. | **BLOCKED** for full config verification; **FAIL** for the disabled protection finding |
+| Live-session guard | Hosted `is_live_session()` requires `auth.uid()`, a matching `auth.sessions` row, and `not_after IS NULL OR > now()`. `hris_get_my_dashboard_data(uuid)` is executable by authenticated/service-role and denied to anon. | PR #50 adds disposable real-Auth expiry denial through the employee dashboard RPC. | **PASS** for catalog definition and grants; hosted runtime **NOT TESTED** |
+| RLS baseline | All 96/96 public base tables have RLS enabled. No anon/public DML policy exists in `pg_policies`. Advisor reports 27 RLS-enabled/no-policy tables, which fail closed absent another access path. | Disposable workflows verify the scoped tables and APIs. | **PASS** for RLS enabled; whole-surface runtime **NOT TESTED** |
+| Broad client table ACLs | `anon` has DML ACLs on 29 public tables; `authenticated` on 35. Those grants alone do not establish data access because RLS still applies. `leave_types` explicitly has anon/auth SELECT, DML, and MAINTAIN grants. | New `20261021084635_leave_types_authenticated_read_only_acl.sql` revokes client/PUBLIC grants, preserves authenticated SELECT, and leaves explicit service-role grants unchanged. Disposable tests exercise tenant SELECT and direct anon/auth mutation denial. | **FAIL** hosted least privilege; source fix awaits exact-head CI and controlled release |
+| Employee address reads | RLS enabled and no client DML. Hosted `employee_addresses_admin_read` calls global `has_permission('employees.view' OR 'employees.manage')` with no parent employee tenant predicate; self read is live-session/identity bound. | PR #50 adds tenant membership/permission scoped administrator policy plus a restrictive parent-tenant guard; self read remains. Two-tenant fixture covers employee, HR manage, view-only, inactive membership/session, global-only permission, anon, and direct-write denial. | **FAIL** hosted; source fix awaits exact-head CI and controlled release |
+| Employee family reads | RLS enabled and no client DML. Hosted admin policy has the same global permission check without the parent employee tenant predicate. | Development source migration `20261016171104_employee_family_tenant_scoped_read.sql` uses a parent employee lookup, active tenant, active membership/role, exact role permission, live session, and restrictive guard. | **FAIL** hosted; source migration exists; exact WS02 workflow pending |
+| Attendance and leave readers | Hosted restrictive tenant-membership guards are present on attendance records/corrections and employee leave balances. | Main PR #49 and Manager PR #44 keep tenant-scoped reader paths and role-gated views. Disposable Auth acceptance is required to test cross-tenant and role behavior. | **PASS** for static guard presence; runtime **NOT TESTED** |
+| Employee Profile, PR #52 | Hosted `hris_get_my_dashboard_data(uuid)` checks live session, active tenant, linked employee identity and requested tenant; anon EXECUTE is false. It projects profile fields plus the employee's own dashboard data. The helper does not explicitly check a tenant-membership row for the employee. | PR #52 calls this existing RPC, renders only curated own profile fields, exposes navigation only for Employee, has tenant-keyed state clearing and a stale-response cleanup guard, and keeps edit/private-data tabs unavailable. Role visibility is not an authorization boundary. | **PASS** for scoped read-only UI/source path; membership semantics and hosted runtime acceptance **BLOCKED**; browser stale-response behavior **NOT TESTED** |
+| HR01 contact | Hosted `hris_get_tenant_employee_contact_details(uuid,uuid)` and `hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)` are absent. | Source migration exists; no replacement contract proposed. | **BLOCKED**; keep contact editing unavailable |
+| Candidate recruiter/interview | Seven exact recruiter/interview RPCs are absent. Direct authenticated SELECT on key private recruiter tables such as applications/interviews is denied; some candidate-self tables remain owner-scoped. | Candidate PR #8 is limited to public published vacancies, with Apply/Save disabled. No candidate self-service or recruiter/interview contract is inferred. | **BLOCKED** for private Candidate views/actions; public vacancy source is statically bounded to published, active, in-deadline jobs |
+| Employee self-write | Hosted-only `employee_update_my_profile(jsonb)`, `employee_save_my_addresses_v2(jsonb)`, and `employee_save_my_family_members_v2(jsonb)` exist with authenticated/service-role EXECUTE and anon denied; no checked-in source migration or call sites were found. | No use or speculative request fields/semantics added. | **BLOCKED**; keep employee mutation actions disabled |
+| Leave type management | Hosted `hris_save_leave_type(uuid,uuid,jsonb,jsonb)` is absent. Direct DML is not an approved view contract. | Source contract is RPC-only; the isolated runner tests the approved RPC's active same-tenant permission, stale optimistic version, duplicate code, cross-tenant denial, and denied direct updates. | **BLOCKED** for hosted mutation; keep mutation disabled |
+| Public Candidate vacancy endpoint | Advisor reports one anon-callable SECURITY DEFINER function, `candidate_public_jobs_source()`. Definition uses a fixed published-jobs source, active/published status and application-deadline checks; salary fields are nulled unless publication is enabled. `public` schema CREATE is false for anon/authenticated; published vacancy view uses `security_invoker=true`. | Candidate PR #8 consumes the public vacancy-only path and disables private apply/save actions. | **PASS** for the reviewed published-only source definition; anonymous HTTP behavior **NOT TESTED** |
+| SECURITY DEFINER review | Advisor reports 246 authenticated-callable SECURITY DEFINER functions; only the release-relevant subset above was inspected. The single anon function is the public vacancy source. | Existing exact-contract and disposable auth workflows cover selected exposed readers/writers, not all 246 functions. | **BLOCKED** for a whole-project definer-function audit |
+| Tenant and role acceptance | Hosted has one active tenant and no independent employee/HR test identities or second tenant available to WS02. No hosted runtime login, tenant switch, session-expiry, or role matrix was executed. | PR #50 adds two-tenant synthetic PG17 policy tests; the full local Auth/Postgres runner exercises synthetic employee, HR, Manager, administrator, inactive membership and RPC cases. | **BLOCKED** for required hosted acceptance; disposable checks are not production certification |
 
-## API dependencies and UI gates
+## Employee Profile PR #52 review
 
-| Area | Source/host evidence | Release disposition |
-|---|---|---|
-| HR01 contact read/write | Development migration `20261014171952_employee_contact_details_editing.sql` defines `hris_get_tenant_employee_contact_details(uuid,uuid)` and `hris_update_tenant_employee_contact_details(uuid,uuid,jsonb)`. The live employee directory calls them. Both are absent from hosted `pg_proc`. | Keep the contact editor's existing missing-RPC safe failure. Do not substitute direct employee-table writes or invent a contract. |
-| Recruiter/interview | Source-backed hosted preflight covers `hris_get_recruitment_pipeline`, `hris_update_candidate_application_stage`, `hris_issue_candidate_offer`, `hris_schedule_candidate_interview`, `hris_get_candidate_interview_responses`, `hris_save_candidate_interview_panel_notes`, and `hris_complete_candidate_interview`. The read-only hosted catalog returned none of these functions. | Keep recruitment/interview actions unavailable until the exact APIs, source migration history, and authorization tests are deployed and rechecked. |
-| Candidate PR #8 | Current head `28260cdf73b0af312df4cf136b61942f5363b573` is limited to public vacancies, with Apply/Save disabled on public-only details; its exact-head UI run 8 passed. No approved Candidate self-service frames were found. It does not supply hosted private recruiter/interview APIs. | Keep public published vacancies on the public projection. Do not expose private applicant profiles, interview data, notes, or offer details. |
-| Employee self-write | The three functions above exist in hosted catalog but not in checked-in migrations, and current development has no matching call sites. | Do not wire them into new screens until a reviewed source migration and disposable real-Auth tests establish exact ownership, tenant, validation, and audit behavior. |
+PR #52 head `62afa0edf224a7cb0b0e54a11fe408b71afb8322` uses the existing `hris_get_my_dashboard_data(p_tenant_id)` RPC. Its route is gated to Employee in the UI, its request uses the selected tenant, response parsing rejects malformed/mismatched profiles, tenant changes clear prior data, and effect cleanup ignores stale responses. The UI displays a constrained own-profile projection and leaves edit actions and unsupported tabs unavailable. Changing client role state cannot replace the server RPC checks.
 
-The read-only hosted RPC probe in PR #48 confirms its nine required signatures (two HR01 and seven Candidate) are absent. PR #49's current UI head is `2e24564c837509e12b4cbc69f8b6295cda066c0b`; it preserves role gates and leaves unsupported attendance requests and unavailable personal leave history disabled. Its UI workflow passed, but this report does not certify hosted sign-in, pixel parity, or release behavior for that PR.
+The hosted RPC binds to the authenticated employee row and requested active tenant, but the source does not establish whether an active employee with an inactive or missing tenant-membership row should retain own-profile access. No contract was invented. WS05 must decide that source-level rule and add exact real-Auth denial/allowance coverage before calling the membership requirement complete. PR #52's browser stale-response behavior and hosted employee acceptance remain untested here.
 
-## Scoped source fix in this branch
+## PR reconciliation and UI capability handoff
 
-Migration `20261021060748_employee_addresses_tenant_read_guard.sql` replaces the address table's global administrator policy with the existing tenant membership helpers and adds a restrictive guard. It preserves the existing employee self-read policy, ties manager reads to the parent employee tenant, and fails migration preflight when the source authorization helpers are missing. The fixture and acceptance checks use synthetic rows and a disposable PostgreSQL 17 runner only.
+- **PR #39:** remains useful production API/security evidence for hosted head `20261020044145`; it predates this recheck and does not clear new ACL/address/family/Auth findings.
+- **PR #48 / #47:** the combined grant migration removes maintenance-class privileges but its CRUD-preservation test conflicts with the existing RPC-only `leave_types` source contract. PR #50 adds a later forward migration to enforce authenticated SELECT-only and anon-denied access on `leave_types`. Do not preserve its broad client DML grant.
+- **PR #49 (Main) and #43 (HR Operations):** keep role-gated, tenant-scoped views. Personal leave history and attendance requests without a verified hosted API remain unavailable. HR01 contact editing remains unavailable because its exact hosted RPCs are absent.
+- **PR #44 (Management):** retain the existing tenant-scoped readers; do not infer manager permissions from client role state. Hosted role/cross-tenant runtime acceptance remains open.
+- **PR #52 (Employee Profile):** keep read-only profile display on `hris_get_my_dashboard_data`; education, experience, training, bank, family and all edit/write capabilities remain unavailable where no reviewed read/write contract exists. Do not wire the hosted-only self-write RPCs.
+- **Candidate PR #8:** public published vacancies may remain viewable. Keep Apply, Save, private candidate profiles, recruiter pipeline, interviews, panel notes and offers unavailable until exact source-backed APIs and server authorization are verified.
 
-Local contract check: **354/354 passed**. The new address policy and two-tenant matrix passed in disposable PostgreSQL 17 on exact source commit `15b2284312d99c6e524cd36df3d43839b250874b`: [workflow run #5](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39554393758), job `119070649396`. Existing isolated family migration workflow passed at development commit `2a5fe5f4ad7ff2600d5b1d60c7749dbaee0e77cc`: [run #6](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39553132929). These checks are disposable evidence, not hosted acceptance.
+## Source changes and verification
 
-## PR #48 reconciliation and WS05 blockers
+PR #50 proposes two forward migrations:
 
-PR #48's forward migration removes `TRUNCATE`, `REFERENCES`, `TRIGGER`, and `MAINTAIN` from selected client table ACLs. Its synthetic assertion deliberately preserves CRUD across all five tables. That is not sufficient evidence for `leave_types`: the source migration above requires client DML revocation and the hosted ACL still has it. WS05 should reconcile the table-specific contract and update the assertion/migration sequence before treating PR #48 as a complete least-privilege fix. This WS02 branch does not alter PR #48.
+1. `20261021060748_employee_addresses_tenant_read_guard.sql` removes the broad address admin policy, adds a tenant-scoped read policy and restrictive parent-employee guard, and preserves self-read. It fails closed if the existing tenant helpers are missing.
+2. `20261021084635_leave_types_authenticated_read_only_acl.sql` removes PUBLIC/anon/authenticated table grants and restores authenticated SELECT only. Explicit service-role grants are not revoked.
 
-WS05 release handoff:
+Tests added/updated include exact policy/ACL contract tests, two-tenant address and leave ACL PostgreSQL 17 fixtures, hosted-grant parity setup in the disposable Auth runner, anon/auth direct mutation denial, approved RPC authorization and argument/state checks, and expired-session RPC denial.
 
-1. Review and sequence the address guard with the existing membership/permission migrations; only apply it through the approved controlled migration process after this branch's PostgreSQL 17 run passes.
-2. Reconcile the hosted `leave_types` grants with the source RPC-only write contract. Keep the RLS SELECT path and approved `hris_save_leave_type` RPC; do not leave anon/authenticated direct DML grants merely to make a generic CRUD-preservation fixture pass.
-3. Confirm why the family tenant-guard migration is absent from hosted migration history and restore hosted/source parity through the release controller.
-4. Keep HR01 contact and recruiter/interview APIs gated until their exact source-backed migrations, hosted signatures/ACLs, and active/inactive/cross-tenant Auth tests pass.
-5. Keep employee self-write APIs out of new screens until their hosted-only definitions have reviewed source provenance and two-tenant real-Auth tests.
-6. Obtain an authorized second tenant plus independent HR/Admin and employee test sessions for hosted acceptance. Do not create memberships, accounts, or sample production records from WS02.
-7. Review SECURITY DEFINER advisor findings by function and call path. The public Candidate jobs source is an intentional public projection; it must remain limited to published vacancy fields and must never return applicant-private data.
+- Local `npm run test:contracts`: **358/358 passed**.
+- `git diff --check`: **PASS**.
+- The earlier address workflow run #5 passed commit `15b2284312d99c6e524cd36df3d43839b250874b`; this is evidence for the earlier address migration revision, not the new exact PR #50 head.
+- Existing family workflow run #6 passed development base `2a5fe5f4ad7ff2600d5b1d60c7749dbaee0e77cc`; it is not a hosted or exact PR #50 test.
+- Docker is unavailable in this work environment, so the local Auth/Postgres runner and PG17 disposable services were not run here. Exact-branch GitHub Actions must pass before source acceptance.
+- Local `npm run lint` cannot run because `tsc` is not installed; offline dependency installation fails because the lockfile lacks platform-optional entries. The lockfile was not changed. CI must provide the authoritative lint/build result.
 
-No production SQL, Auth, membership, role, or tenant writes; no merge; no deployment.
+## Migration and rollback guidance
+
+Apply neither migration to production from this PR. After release authorization, apply each only through the protected release controller and verify catalog ACLs/policies immediately afterward. Both migrations are transactional; a failed migration rolls back atomically.
+
+For a non-production rehearsal, reset the disposable database to the pre-migration fixture. If a post-apply application rollback is required, keep the stricter `leave_types` ACL and tenant guards in place; reverting code must not restore broad client DML or global address/family reads. Any deliberate policy replacement must preserve authenticated self-read and an explicit parent-tenant restrictive guard. Do not use a reverse migration that grants anon/authenticated DML or reinstates the global address/family policies.
+
+## WS05 definitive release gate and blockers
+
+**WS05 gate: BLOCKED — not safe to release the full view set yet.** Minimum visible views can be considered only after all of the following are cleared:
+
+1. Run exact PR #50 PG17/address/family/leave ACL and disposable real-Auth workflows; attach exact commit and passing CI evidence.
+2. Reconcile source migrations with hosted state under protected release authorization; verify the new migration head and resulting policies/ACLs read-only afterward.
+3. Obtain authorized independent employee, HR, Manager, Super Admin and inactive-membership identities plus two isolated hosted tenants. Run positive/negative tenant, role, expiry, tenant-switch and unauthorized direct-access acceptance.
+4. Resolve whether employee self-profile requires active tenant membership, then prove the chosen source contract with real-Auth positive/negative cases.
+5. Keep HR01 contacts, private Candidate/recruiter/interview actions, leave-type mutations, employee writes and other unsupported operations disabled until their exact APIs, arguments, source migrations and server authorization tests exist and are hosted.
+6. Enable/review the Auth leaked-password protection setting through the separately authorized Auth configuration process; this task made no Auth changes.
+7. Review the remaining 246 authenticated SECURITY DEFINER functions by exposed API and permission path before claiming whole-project security acceptance.
+
+No production writes, merges, permission bypasses or deployments were made by WS02.

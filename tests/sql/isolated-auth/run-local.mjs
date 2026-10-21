@@ -479,6 +479,8 @@ for (const file of [
   // in the isolated schema as well as production before Phase 03/04 guards install.
   path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql'),
+  path.join(here, 'overgrant-leave-types-for-hosted-parity.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -3618,6 +3620,27 @@ record('Synthetic user received a real active local Supabase Auth session and pe
   authStatus.uid === managerA.userId && Boolean(authStatus.session_id)
   && authStatus.live === true && authStatus.leave_manage === true);
 
+const employeeAuthClaims = JSON.parse(Buffer.from(employeeA.accessToken.split('.')[1], 'base64url').toString('utf8'));
+const employeeAuthSessionId = employeeAuthClaims.session_id;
+const employeeAuthSessionBeforeExpiryCheck = queryAdmin(`SELECT jsonb_build_object('not_after',not_after)
+  FROM auth.sessions WHERE id=${sqlLiteral(employeeAuthSessionId)}::uuid
+    AND user_id=${sqlLiteral(employeeA.userId)}::uuid`);
+if (!employeeAuthSessionBeforeExpiryCheck) throw new Error('The disposable employee Auth session was not found.');
+let expiredEmployeeDashboard;
+try {
+  psqlSync(`UPDATE auth.sessions SET not_after=now()-interval '1 second'
+    WHERE id=${sqlLiteral(employeeAuthSessionId)}::uuid AND user_id=${sqlLiteral(employeeA.userId)}::uuid`);
+  expiredEmployeeDashboard = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+} finally {
+  const originalNotAfter = employeeAuthSessionBeforeExpiryCheck.not_after;
+  psqlSync(`UPDATE auth.sessions SET not_after=${originalNotAfter === null
+    ? 'NULL' : `${sqlLiteral(originalNotAfter)}::timestamptz`}
+    WHERE id=${sqlLiteral(employeeAuthSessionId)}::uuid AND user_id=${sqlLiteral(employeeA.userId)}::uuid`);
+}
+record('An expired Auth session is denied by the employee dashboard server guard',
+  Boolean(expiredEmployeeDashboard?.error?.code === '42501'),
+  expiredEmployeeDashboard?.error?.code || 'unexpected successful read');
+
 const functionGrantMatrix = queryAdmin(`SELECT jsonb_object_agg(fn,jsonb_build_object(
   'anon',has_function_privilege('anon',fn,'EXECUTE'),
   'authenticated',has_function_privilege('authenticated',fn,'EXECUTE'),
@@ -5626,6 +5649,32 @@ const policyCrossTenant = await managerB.client.rpc('hris_save_leave_type', {
 });
 const directLeavePolicyWrite = await managerA.client.from('leave_types')
   .update({ annual_entitlement: 100 }).eq('tenant_id', ids.tenantA).eq('id', policyId);
+const anonymousLeavePolicyWrite = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .from('leave_types').update({ annual_entitlement: 101 }).eq('tenant_id', ids.tenantA).eq('id', policyId);
+const leaveTypeAclState = queryAdmin(`SELECT jsonb_build_object(
+  'rls_enabled',(SELECT relrowsecurity FROM pg_class WHERE oid='public.leave_types'::regclass),
+  'anon_select',has_table_privilege('anon','public.leave_types','SELECT'),
+  'anon_dml',has_table_privilege('anon','public.leave_types','INSERT')
+    OR has_table_privilege('anon','public.leave_types','UPDATE') OR has_table_privilege('anon','public.leave_types','DELETE'),
+  'anon_maintenance',has_table_privilege('anon','public.leave_types','TRUNCATE')
+    OR has_table_privilege('anon','public.leave_types','REFERENCES')
+    OR has_table_privilege('anon','public.leave_types','TRIGGER') OR has_table_privilege('anon','public.leave_types','MAINTAIN'),
+  'authenticated_select',has_table_privilege('authenticated','public.leave_types','SELECT'),
+  'authenticated_dml',has_table_privilege('authenticated','public.leave_types','INSERT')
+    OR has_table_privilege('authenticated','public.leave_types','UPDATE') OR has_table_privilege('authenticated','public.leave_types','DELETE'),
+  'authenticated_maintenance',has_table_privilege('authenticated','public.leave_types','TRUNCATE')
+    OR has_table_privilege('authenticated','public.leave_types','REFERENCES')
+    OR has_table_privilege('authenticated','public.leave_types','TRIGGER') OR has_table_privilege('authenticated','public.leave_types','MAINTAIN'),
+  'service_role_dml',has_table_privilege('service_role','public.leave_types','INSERT')
+    AND has_table_privilege('service_role','public.leave_types','UPDATE')
+    AND has_table_privilege('service_role','public.leave_types','DELETE')
+)`);
+record('Hosted-equivalent leave_types overgrants are removed while authenticated SELECT and explicit service_role access remain',
+  leaveTypeAclState.rls_enabled === true && leaveTypeAclState.anon_select === false
+    && leaveTypeAclState.anon_dml === false && leaveTypeAclState.anon_maintenance === false
+    && leaveTypeAclState.authenticated_select === true && leaveTypeAclState.authenticated_dml === false
+    && leaveTypeAclState.authenticated_maintenance === false && leaveTypeAclState.service_role_dml === true,
+  JSON.stringify(leaveTypeAclState));
 record('Tenant leave managers can configure existing leave policy fields with idempotent create, optimistic edits, audit, and employee visibility',
   !policyCreate.error && policyCreate.data?.id === policyId
     && !policyRetryCreate.error && policyRetryCreate.data?.id === policyId
@@ -5649,10 +5698,11 @@ record('Leave policy writes require active same-tenant leave.manage and cannot b
     && Boolean(policyReadOnlyViewer.error?.code === '42501')
     && Boolean(policyGlobalOnly.error?.code === '42501')
     && Boolean(policyCrossTenant.error?.code === '42501')
-    && Boolean(directLeavePolicyWrite.error),
+    && Boolean(directLeavePolicyWrite.error) && Boolean(anonymousLeavePolicyWrite.error),
   JSON.stringify({ employee: policyNoPermission.error?.code,
     viewer: policyReadOnlyViewer.error?.code, globalOnly: policyGlobalOnly.error?.code,
-    crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code }));
+    crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code,
+    anonymousWrite: anonymousLeavePolicyWrite.error?.code }));
 
 const noticePolicyId = '99999999-9999-4999-8999-999999999912';
 const noticePolicyCreate = await managerA.client.rpc('hris_save_leave_type', {

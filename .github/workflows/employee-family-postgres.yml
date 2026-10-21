@@ -1,13 +1,13 @@
 name: HRIS employee family privacy checks
 on:
   pull_request:
-    branches: [main, 'release/hris-stable-20261017']
+    branches: [main, 'release/hris-stable-20261017', 'work/ws02-production-view-security-20261021']
     paths:
       - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
       - 'tests/sql/employee-family/**'
       - '.github/workflows/employee-family-postgres.yml'
   push:
-    branches: [main, 'release/hris-stable-20261017']
+    branches: [main, 'release/hris-stable-20261017', 'work/ws02-production-view-security-20261021']
     paths:
       - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
       - 'tests/sql/employee-family/**'
