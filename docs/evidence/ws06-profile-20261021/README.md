@@ -27,7 +27,7 @@ All Add, Edit, and unsupported View actions are disabled. The add/edit form over
 
 The local browser fixture uses sparse data, so every image below contains only unavailable states and no employee data. The main capture is at the exact Figma frame viewport size. Figma metadata places the profile image frame at `(326, 102)` with a size of `203×203`; the captured fixture has the same position and size. It does **not** claim 1:1 parity: Figma shows populated summary details and two education records; the approved RPC exposes only the fields listed above, and there is no approved education read service. The safe single education placeholder therefore leaves unused space in the 2063-pixel viewport. The write-form overlays are not rendered because their writes are not accepted.
 
-Focused visual correction for the measured differences: profile tabs are 54px tall, the personal-information card begins at y=408, the first detail card begins at y=520, and the English/Bengali official-phone labels include “Number”/“নম্বর”. The exact-head CI screenshot artifact linked from PR #52 checks is authoritative for this correction; the PNGs listed below are the prior visual checkpoint and should not be used to accept the corrected geometry. The Figma node context and screenshot place the tab row itself at y=329, which matches the submitted artifact; the prior ledger's y≈283/y≈313 tab-row coordinates do not match that frame coordinate.
+Focused visual correction for the measured differences: the first profile tab is 313px wide at desktop and the tab row is 54px tall; the personal-information card begins at y=408 and the first detail card begins at y=520. The English/Bengali official-phone labels include “Number”/“নম্বর”. The exact-head CI screenshot artifact linked from PR #52 checks is authoritative for this correction; the PNGs listed below are the prior visual checkpoint and should not be used to accept the corrected geometry. The Figma node context and screenshot place the tab row itself at y=329. WS04’s ≈283/313 pair refers to the first tab width, now set to the Figma width.
 
 | Screenshot | Figma node(s) represented | Capture |
 |---|---|---|
@@ -94,8 +94,8 @@ Hashes below are SHA-256 for recovered original PR #51 assets, this checkpoint's
 | File | SHA-256 |
 |---|---|
 | `.github/workflows/ws06-profile-figma-acceptance.yml` | `a8ad4ee91048f2b43dffc770f682f615c201859ce9bedcee7048c41e7772d16c` |
-| `src/live/EmployeeProfileFigma.tsx` | `cb47ce011b8847e05a449a5df255c9c0d78bb21750f8556c2bb08ff90584f1dd` |
-| `tests/browser/employee-profile-figma.spec.ts` | `abe8279cf5beec8a280c1f744fa2388834d4d9688433870a74a0bd001f84702f` |
+| `src/live/EmployeeProfileFigma.tsx` | `a37cc5f4511520332143c5bf0dc80d3199906177e73ceb1052970d081bf5050f` |
+| `tests/browser/employee-profile-figma.spec.ts` | `df842e92345d25dbecb77474ed80f0dd10825c50a3a12715aa92f2fae2ee1bcb` |
 | `tests/browser/employee-profile-harness.html` | `c3291ed85889629353dfa5a6c34f50e497285c5a077c7f95c16fa7b0e0207b7e` |
 | `tests/browser/employee-profile-harness.tsx` | `2519e566cb8af67b3e69d4b7723ffec1ee5aa89742b9f5b350c7d123a6241e09` |
 | `docs/evidence/ws06-profile-20261021/bank-en-1920.png` | `54103f4a8c1ffa479e3a3896fc34265abe7bd5a3c8316b07bc56c83cf4573192` |
