@@ -103,14 +103,14 @@ merged = replace_exact(merged,
 # HR Operations retains the request-only approved Figma state; Managers retain calendar capability.
 merged = replace_exact(
     merged,
-    "  const navigate = (next: PageId) => {\\n    setPage(next);",
-    "  const navigate = (next: PageId) => {\\n"
-    "    if (next === 'leave') {\\n"
-    "      const leaveHash = useHrOperationsView ? '#leave-requests' : '';\\n"
-    "      if (window.location.hash !== leaveHash) window.history.replaceState(null, '', \`${window.location.pathname}${window.location.search}${leaveHash}\`);\\n"
-    "    } else if (['#leave-requests', '#leave-calendar', '#leave-policy'].includes(window.location.hash)) {\\n"
-    "      window.history.replaceState(null, '', \`${window.location.pathname}${window.location.search}\`);\\n"
-    "    }\\n    setPage(next);"
+    "  const navigate = (next: PageId) => {\n    setPage(next);",
+    "  const navigate = (next: PageId) => {\n"
+    "    if (next === 'leave') {\n"
+    "      const leaveHash = useHrOperationsView ? '#leave-requests' : '';\n"
+    "      if (window.location.hash !== leaveHash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${leaveHash}`);\n"
+    "    } else if (['#leave-requests', '#leave-calendar', '#leave-policy'].includes(window.location.hash)) {\n"
+    "      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);\n"
+    "    }\n    setPage(next);"
 )
 
 assert "<<<<<<<" not in merged and ">>>>>>>" not in merged and "=======" not in merged, "Unresolved conflict"
@@ -135,8 +135,8 @@ hr_browser = replace_exact(hr_browser, "role: 'qa_tenant_manager'", "role: 'synt
 # After the negative permission scenario only the plain Attendance button is authorized.
 hr_browser = replace_exact(
     hr_browser,
-    "  await page.reload();\\n  await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();",
-    "  await page.reload();\\n  await page.getByRole('button', { name: 'Attendance', exact: true }).click();"
+    "  await page.reload();\n  await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();",
+    "  await page.reload();\n  await page.getByRole('button', { name: 'Attendance', exact: true }).click();"
 )
 
 Path("tests/browser/ws07-attendance-information.spec.ts").write_text(hr_browser)
