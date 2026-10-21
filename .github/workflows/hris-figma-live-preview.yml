@@ -72,6 +72,10 @@ jobs:
           git add -f preview-dist
           if ! git diff --cached --quiet; then
             git commit -m "build(preview): generated fixture-only static HRIS bundle"
+            # Incorporate workflow-only commits that arrived while this build ran;
+            # never force-push or overwrite another workstation branch.
+            git fetch origin work/hris-figma-ui-live-preview-20261021
+            git rebase origin/work/hris-figma-ui-live-preview-20261021
             git push origin HEAD:work/hris-figma-ui-live-preview-20261021
           fi
       - name: Save isolated Vite build artifact
