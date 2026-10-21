@@ -6,12 +6,24 @@ on:
       - 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'
       - 'tests/sql/leave-type-acl/**'
       - '.github/workflows/leave-type-acl-postgres.yml'
+      - 'supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql'
+      - 'tests/sql/employee-addresses/**'
+      - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
+      - 'tests/sql/employee-family/**'
+      - '.github/workflows/employee-addresses-postgres.yml'
+      - '.github/workflows/employee-family-postgres.yml'
   push:
     branches: [work/ws02-production-view-security-20261021]
     paths:
       - 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'
       - 'tests/sql/leave-type-acl/**'
       - '.github/workflows/leave-type-acl-postgres.yml'
+      - 'supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql'
+      - 'tests/sql/employee-addresses/**'
+      - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
+      - 'tests/sql/employee-family/**'
+      - '.github/workflows/employee-addresses-postgres.yml'
+      - '.github/workflows/employee-family-postgres.yml'
   workflow_dispatch:
 permissions:
   contents: read
