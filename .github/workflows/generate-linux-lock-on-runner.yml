@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - work/main-pages-reproducibility-20261021
+  pull_request:
+    branches: [main]
 permissions:
   contents: write
 jobs:
@@ -10,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: work/main-pages-reproducibility-20261021
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.3'
