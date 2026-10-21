@@ -81,7 +81,8 @@ Routes below refer to the current app page and the selected in-page panel. Add/e
 - Local TypeScript, repository contracts, and build: PASS; all 351 contract tests passed. Vite reports the repository's existing large JavaScript chunk warning.
 - Local Chromium browser tests: 2/2 passed. They cover all five panels × EN/BN × 375/768/1280/1920, the exact 1920×2063 viewport, the 203×203 profile-image anchor, loading/empty/error/retry, keyboard tabs, disabled actions, tenant mismatch, and tenant-switch stale-data clearing.
 - UI employee-only and tenant-response guards: verified in the browser fixture and branch acceptance assertions. Hosted Auth/Postgres cross-tenant denial was not rerun: WS02's PR #52 handoff says the Employee membership rule for the existing dashboard RPC remains unresolved, and the local container has no Docker/Supabase CLI. Do not treat the client guard as a substitute for WS02's real-Auth acceptance.
-- Exact-head GitHub Actions and independent WS04 acceptance: pending final commit and reviewer check.
+- Exact-head GitHub Actions and screenshot artifact: follow the current [PR #52 checks](https://github.com/shihab-tech04/HRIS-v2/pull/52/checks). The last completed run when this report was prepared was [39578171727](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39578171727), which passed at head `54efcdd01359712e3476e0f066579105da5de375`; its screenshot artifact is linked from that run. A new exact-head run follows this report update.
+- Independent WS04 acceptance: requested in the [PR review thread](https://github.com/shihab-tech04/HRIS-v2/pull/52#issuecomment-6312821250); response pending.
 - No database writes, merges, deployments, shared-shell changes, or non-Employee module edits.
 
 ## Source hashes
