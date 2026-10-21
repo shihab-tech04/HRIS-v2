@@ -25,7 +25,9 @@ All Add, Edit, and unsupported View actions are disabled. The add/edit form over
 
 ## Render comparison
 
-The local browser fixture uses sparse data, so every image below contains only unavailable states and no employee data. The main capture is at the exact Figma frame viewport size. Figma metadata places the profile image frame at `(326, 102)` with a size of `203×203`; the captured fixture has the same position and size. It also matches the five-tab navigation, personal/contact/verification card arrangement, icon use, and education section placement. It does **not** claim 1:1 parity: Figma shows populated summary details and two education records; the approved RPC exposes only the fields listed above, and there is no approved education read service. The safe single education placeholder therefore leaves unused space in the 2063-pixel viewport. The write-form overlays are not rendered because their writes are not accepted.
+The local browser fixture uses sparse data, so every image below contains only unavailable states and no employee data. The main capture is at the exact Figma frame viewport size. Figma metadata places the profile image frame at `(326, 102)` with a size of `203×203`; the captured fixture has the same position and size. It does **not** claim 1:1 parity: Figma shows populated summary details and two education records; the approved RPC exposes only the fields listed above, and there is no approved education read service. The safe single education placeholder therefore leaves unused space in the 2063-pixel viewport. The write-form overlays are not rendered because their writes are not accepted.
+
+Focused visual correction for the measured differences: profile tabs are 54px tall, the personal-information card begins at y=408, the first detail card begins at y=520, and the English/Bengali official-phone labels include “Number”/“নম্বর”. The exact-head CI screenshot artifact linked from PR #52 checks is authoritative for this correction; the PNGs listed below are the prior visual checkpoint and should not be used to accept the corrected geometry. The Figma node context and screenshot place the tab row itself at y=329, which matches the submitted artifact; the prior ledger's y≈283/y≈313 tab-row coordinates do not match that frame coordinate.
 
 | Screenshot | Figma node(s) represented | Capture |
 |---|---|---|
@@ -79,10 +81,10 @@ Routes below refer to the current app page and the selected in-page panel. Add/e
 ## Verification and review status
 
 - Local TypeScript, repository contracts, and build: PASS; all 351 contract tests passed. Vite reports the repository's existing large JavaScript chunk warning.
-- Local Chromium browser tests: 2/2 passed. They cover all five panels × EN/BN × 375/768/1280/1920, the exact 1920×2063 viewport, the 203×203 profile-image anchor, loading/empty/error/retry, keyboard tabs, disabled actions, tenant mismatch, and tenant-switch stale-data clearing.
+- Previous checkpoint Chromium browser tests: 2/2 passed. They cover all five panels × EN/BN × 375/768/1280/1920, the exact 1920×2063 viewport, the 203×203 profile-image anchor, loading/empty/error/retry, keyboard tabs, disabled actions, tenant mismatch, and tenant-switch stale-data clearing. The current focused run adds regression checks for the corrected tab/card/detail geometry and EN/BN phone label.
 - UI employee-only and tenant-response guards: verified in the browser fixture and branch acceptance assertions. Hosted Auth/Postgres cross-tenant denial was not rerun: WS02's PR #52 handoff says the Employee membership rule for the existing dashboard RPC remains unresolved, and the local container has no Docker/Supabase CLI. Do not treat the client guard as a substitute for WS02's real-Auth acceptance.
-- Exact-head GitHub Actions and screenshot artifact: follow the current [PR #52 checks](https://github.com/shihab-tech04/HRIS-v2/pull/52/checks). The last completed run when this report was prepared was [39578171727](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39578171727), which passed at head `54efcdd01359712e3476e0f066579105da5de375`; its screenshot artifact is linked from that run. A new exact-head run follows this report update.
-- Independent WS04 acceptance: requested in the [PR review thread](https://github.com/shihab-tech04/HRIS-v2/pull/52#issuecomment-6312821250); response pending.
+- Exact-head GitHub Actions and screenshot artifact: follow the current [PR #52 checks](https://github.com/shihab-tech04/HRIS-v2/pull/52/checks). The current-head run executes the geometry/copy regression assertions and uploads fresh screenshots for independent review.
+- Independent WS04 acceptance: request the current-head screenshot artifact only; review status is tracked in the [PR review thread](https://github.com/shihab-tech04/HRIS-v2/pull/52#issuecomment-6312821250).
 - No database writes, merges, deployments, shared-shell changes, or non-Employee module edits.
 
 ## Source hashes
@@ -92,8 +94,8 @@ Hashes below are SHA-256 for recovered original PR #51 assets, this checkpoint's
 | File | SHA-256 |
 |---|---|
 | `.github/workflows/ws06-profile-figma-acceptance.yml` | `a8ad4ee91048f2b43dffc770f682f615c201859ce9bedcee7048c41e7772d16c` |
-| `src/live/EmployeeProfileFigma.tsx` | `b70f2340a238432f47609678c862579dfe7bcf66e62c15d9c000c4b8f5d83543` |
-| `tests/browser/employee-profile-figma.spec.ts` | `3779bfabcbd6248d58466d662f2e083913063ac226892813b09ca66b68f0f8e2` |
+| `src/live/EmployeeProfileFigma.tsx` | `cb47ce011b8847e05a449a5df255c9c0d78bb21750f8556c2bb08ff90584f1dd` |
+| `tests/browser/employee-profile-figma.spec.ts` | `abe8279cf5beec8a280c1f744fa2388834d4d9688433870a74a0bd001f84702f` |
 | `tests/browser/employee-profile-harness.html` | `c3291ed85889629353dfa5a6c34f50e497285c5a077c7f95c16fa7b0e0207b7e` |
 | `tests/browser/employee-profile-harness.tsx` | `2519e566cb8af67b3e69d4b7723ffec1ee5aa89742b9f5b350c7d123a6241e09` |
 | `docs/evidence/ws06-profile-20261021/bank-en-1920.png` | `54103f4a8c1ffa479e3a3896fc34265abe7bd5a3c8316b07bc56c83cf4573192` |

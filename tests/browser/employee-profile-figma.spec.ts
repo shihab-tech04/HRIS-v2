@@ -29,6 +29,29 @@ test('all five profile panels render in EN/BN at the requested widths without vi
         await expect(tab).toHaveAttribute('aria-selected', 'true');
         const panel = page.getByRole('tabpanel', { name: translated });
         await expect(panel).toBeVisible();
+        if (index === 0) {
+          await expect(panel.getByText(locale === 'en' ? 'Official Phone Number' : 'অফিসিয়াল ফোন নম্বর', { exact: true })).toBeVisible();
+        }
+        if (width === 1920 && locale === 'en' && index === 0) {
+          const geometry = await page.evaluate(() => {
+            const bounds = (selector: string) => {
+              const element = document.querySelector(selector);
+              if (!element) throw new Error(`Missing geometry target: ${selector}`);
+              const rect = element.getBoundingClientRect();
+              return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+            };
+            const tab = bounds('[data-figma-node="66:72092"] [role="tab"]');
+            const content = bounds('section[aria-labelledby="employee-figma-content-title"]');
+            const title = bounds('#employee-figma-content-title');
+            const detail = bounds('section[aria-labelledby="employee-figma-personal-title"]');
+            return { tab, content, title, detail, titleToDetail: detail.y - title.y - title.height };
+          });
+          // Figma node 66:72042 places this row at y=329; the submitted screenshot already matches that anchor.
+          expect([geometry.tab.y, geometry.tab.height]).toEqual([329, 54]);
+          expect(geometry.content.y).toBe(408);
+          expect(geometry.detail.y).toBe(520);
+          expect(geometry.titleToDetail).toBe(52);
+        }
         const enabledActions = await panel.getByRole('button').evaluateAll(buttons =>
           buttons.filter(button => !(button as HTMLButtonElement).disabled).map(button => button.textContent?.trim() || 'unnamed'),
         );

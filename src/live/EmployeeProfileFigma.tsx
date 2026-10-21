@@ -57,7 +57,7 @@ const copy = {
     digitalSignature: 'Digital Signature',
     phoneNumber: 'Phone Number',
     personalEmail: 'Personal E-mail',
-    officialPhone: 'Official Phone',
+    officialPhone: 'Official Phone Number',
     presentAddress: 'Present address',
     permanentAddress: 'Permanent address',
     nid: 'NID',
@@ -154,7 +154,7 @@ const copy = {
     digitalSignature: 'ডিজিটাল স্বাক্ষর',
     phoneNumber: 'ফোন নম্বর',
     personalEmail: 'ব্যক্তিগত ইমেইল',
-    officialPhone: 'অফিসিয়াল ফোন',
+    officialPhone: 'অফিসিয়াল ফোন নম্বর',
     presentAddress: 'বর্তমান ঠিকানা',
     permanentAddress: 'স্থায়ী ঠিকানা',
     nid: 'জাতীয় পরিচয়পত্র',
@@ -461,16 +461,16 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         {tabs.map((tab, index) => <button key={tab.id} ref={node => { tabRefs.current[index] = node; }} type="button" role="tab"
           id={`employee-figma-tab-${tab.id}`} aria-selected={panel === tab.id} aria-controls={`employee-figma-panel-${tab.id}`}
           tabIndex={panel === tab.id ? 0 : -1} onClick={() => setPanel(tab.id)} onKeyDown={event => moveTab(event, index)}
-          className={`min-h-12 shrink-0 rounded-lg px-4 py-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] ${panel === tab.id ? 'bg-[#085587] text-white' : 'bg-white text-[#49454F] hover:bg-[#EFF7F8]'}`}>
+          className={`inline-flex h-[54px] min-h-[54px] shrink-0 items-center justify-center rounded-lg px-4 py-0 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] ${panel === tab.id ? 'bg-[#085587] text-white' : 'bg-white text-[#49454F] hover:bg-[#EFF7F8]'}`}>
           {tab.text}
         </button>)}
       </div>
 
       {tabs.map(tab => <div key={tab.id} id={`employee-figma-panel-${tab.id}`} role="tabpanel" aria-labelledby={`employee-figma-tab-${tab.id}`}
         tabIndex={panel === tab.id ? 0 : -1} hidden={panel !== tab.id} data-figma-node={tab.figma}
-        className="min-w-0 focus-visible:outline-2 focus-visible:outline-[#085587]">
+        className="!mt-[25px] min-w-0 focus-visible:outline-2 focus-visible:outline-[#085587]">
         {tab.id === 'personal' && <section className="space-y-6 rounded-2xl bg-white p-4 sm:p-6 lg:p-8" aria-labelledby="employee-figma-content-title">
-          <div className="border-b border-[#E7EEF2] pb-5">
+          <div className="border-b border-[#E7EEF2] pb-[27px]">
             <h2 id="employee-figma-content-title" className="text-lg font-bold text-[#49454F]">{words.profileContentHeading}</h2>
           </div>
           <div className="grid min-w-0 gap-6 lg:grid-cols-2" data-figma-node="109:40969">
