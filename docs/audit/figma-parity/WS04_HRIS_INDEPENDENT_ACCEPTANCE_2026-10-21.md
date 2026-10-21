@@ -9,7 +9,7 @@
 
 ## Reverified design inventory
 
-Figma metadata was re-read for this review. Page 1 has 314 top-level frames; 81 are 1800–2000px wide and 74 of those are at least 700px high. Those 74 have 40 distinct labels. The Components page has 13 top-level specimen boards. These are design inventory counts, not route counts or proof that all 74 frames are release-scoped.
+Figma metadata was re-read for this review. Page 1 has 314 top-level frames; 81 are 1800–2000px wide and 74 of those are at least 700px high. Those 74 have 40 distinct labels. The Components page has 13 top-level specimen boards. These are design inventory counts, not route counts or proof that all 74 frames are release-scoped. The comparison ledger classifies the accessible current PR routes and exact mapped frames listed below. No approved story/route/state map was supplied for the remaining inventory; those frames stay **BLOCKED / UNMAPPED**, not assumed to pass or silently excluded from release.
 
 The older audit matrix has 61 rows. Its prior 4 PASS / 1 FAIL / 56 BLOCKED disposition is historical. The single primary-color row was a token-reference conflict, not an accepted visual defect; it is now BLOCKED pending an authoritative token decision. The corrected historical matrix is 4 PASS / 0 FAIL / 57 BLOCKED. The results below are new, current-source comparisons and must not be added to those historical counts.
 
