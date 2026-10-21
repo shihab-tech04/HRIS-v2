@@ -4,8 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
-WS08 = "bafda05579a3144f455620e635bec6e093b160c1"
-WS07 = "9d7cf862e060babc259d94bbbbf5daa13536b015"
+WS08 = "286bc1881966aefe1da1e0a579d31bb9e5e3fa04"
+WS07 = "985ec675c12697cd83caeccd672b82c349b924bd"
 UI = "src/live/LiveHrisWorkspace.tsx"
 BROWSER = "tests/browser/attendance-information.spec.ts"
 CONTRACT = "tests/contracts/attendance-report.test.mjs"
