@@ -14,6 +14,7 @@ const teamSortAsset = readFileSync(new URL('../../src/assets/attendance-team-sor
 const fixture = readFileSync(new URL('../sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 const sqlRunner = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const browser = readFileSync(new URL('../browser/attendance-information.spec.ts', import.meta.url), 'utf8');
+const managerBrowser = readFileSync(new URL('../browser/ws08-manager-attendance-report.spec.ts', import.meta.url), 'utf8');
 
 test('attendance report team labels come from tenant-checked employee team joins', () => {
   assert.match(migration, /'team_name',x\.team_name/);
@@ -60,7 +61,7 @@ test('Figma Team Name sort order is accessible and shared by table and CSV', () 
   assert.match(teamSortAsset, /<svg[^>]*width="14" height="11\.5957" viewBox="0 0 14 11\.5957"/);
   assert.doesNotMatch(workspace, /figma\.com\/api\/mcp\/asset/);
   assert.match(workspace, /setTeamSortDirection\(value => value === 'asc' \? 'desc' : 'asc'\)/);
-  assert.match(workspace, /aria-sort=\{aggregateOnly && label === reportText\('Team Name'\)/);
+  assert.match(workspace, /aria-sort=\{label === reportText\('Team Name'\)/);
   assert.match(workspace, /return matchingRows\.map\(\(row, index\) =>/);
   assert.match(browser, /Sort by Team Name ascending/);
   assert.match(browser, /Sort by Team Name descending/);
@@ -87,7 +88,13 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
 
 test('Figma attendance aggregate column headings use the approved regular 14px gray type', () => {
   assert.match(workspace, /aggregateOnly \? 'space-y-\[18px\]'/);
-  assert.match(workspace, /!aggregateOnly && <span className="mt-0\.5 block text-xs font-normal text-slate-500">\{display\(row\.employee_number\)\}<\/span>/);
+  assert.doesNotMatch(workspace, /!aggregateOnly && <span className="mt-0\.5 block text-xs font-normal text-slate-500">\{display\(row\.employee_number\)\}<\/span>/);
+  assert.match(workspace, /\[268, 104, 131, 218, 145, 134, 112, 143, 128\]/);
+  assert.match(workspace, /displayAttendanceTime\(row\.check_in\)/);
+  assert.match(workspace, /displayAttendanceLocation\(row\.work_mode, locale\)/);
+  assert.match(managerBrowser, /matches Figma node 17:28694/);
+  assert.match(managerBrowser, /'From date', 'Work Location', 'In Time', 'Out Time', 'Status'/);
+  assert.match(managerBrowser, /not\.toContainText\('WS08-001'\)/);
   assert.match(workspace, /<thead className="bg-white text-\[14px\] text-\[#9E9E9E\]">/);
   assert.match(workspace, /className="h-\[59px\] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg"/);
   assert.match(browser, /fontSize: style\.fontSize, fontWeight: style\.fontWeight, color: style\.color/);
@@ -110,10 +117,11 @@ test('shared CSV export neutralizes formula-leading text while preserving numeri
 });
 
 test('Figma Apply Filter commits aggregate date and Team drafts together', () => {
-  assert.match(workspace, /value=\{aggregateOnly \? draftFrom : from\}/);
-  assert.match(workspace, /value=\{aggregateOnly \? draftTo : to\}/);
+  assert.match(workspace, /value=\{draftFrom\}/);
+  assert.match(workspace, /value=\{draftTo\}/);
+  assert.match(workspace, /value=\{draftStatus\}/);
   assert.match(workspace, /onClick=\{applyReportFilters\}/);
-  assert.match(workspace, /setFrom\(draftFrom\);\s*setTo\(draftTo\);\s*setAppliedTeamFilter\(selectedTeamFilter\)/);
+  assert.match(workspace, /setFrom\(draftFrom\);\s*setTo\(draftTo\);\s*setStatus\(draftStatus\);\s*setAppliedTeamFilter\(selectedTeamFilter\)/);
   assert.match(browser, /reportCallsBeforeDraft/);
   assert.match(browser, /p_start === '2026-10-01'/);
 });

@@ -174,13 +174,14 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
-  await expect(row).toContainText('ATT-001');
+  await expect(row).not.toContainText('ATT-001');
   await expect(row).toContainText('UX Designer');
   await expect(row).toContainText('Synthetic Product Team');
   await expect(row).toContainText('Experience Design');
   await expect(row).toContainText('12-10-2026');
-  await expect(row).toContainText('Office');
-  await expect(row).toContainText('8.56');
+  await expect(row).toContainText('Work from Office');
+  await expect(row).toContainText('09:13:16am');
+  await expect(row).not.toContainText('8.56');
   await expect(page.getByText('Aggregate Report Employee')).toHaveCount(0);
   const correctionCard = page.getByRole('heading', { name: 'Attendance correction requests' }).locator('xpath=..');
   const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
@@ -220,18 +221,20 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261016.png'), fullPage: true });
 
   await page.getByLabel('Search employees').fill('Synthetic');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_search === 'Synthetic')).toBe(true);
   await page.getByRole('button', { name: 'Filters' }).click();
   await expect(page.getByLabel('From date')).toBeVisible();
+  const detailCallsBeforeDraft = attendanceCalls.filter(call => call.p_report === false).length;
   await page.getByLabel('From date').fill('2026-10-05');
-  await expect.poll(() => attendanceCalls.some(call => call.p_start === '2026-10-05')).toBe(true);
   await page.getByLabel('Status').selectOption('late');
-  await expect.poll(() => attendanceCalls.some(call => call.p_status === 'late')).toBe(true);
+  await expect.poll(() => attendanceCalls.filter(call => call.p_report === false).length, { timeout: 500 }).toBe(detailCallsBeforeDraft);
+  await page.getByRole('button', { name: 'Apply Filter', exact: true }).click();
+  await expect.poll(() => attendanceCalls.some(call => call.p_report === false && call.p_start === '2026-10-05' && call.p_status === 'late')).toBe(true);
   await expect(page.getByRole('row', { name: /Synthetic Late Employee/ })).toBeVisible();
   await expect(page.getByLabel('Status').locator('option')).toHaveText(['All visible statuses', 'late', 'present']);
   const downloadWaiter = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download report' }).click();
+  await page.getByRole('button', { name: 'Download Report', exact: true }).click();
   const download = await downloadWaiter;
   expect(download.suggestedFilename()).toMatch(/^attendance-report-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.csv$/);
   const detailCsvStream = await download.createReadStream();
@@ -239,6 +242,8 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   if (detailCsvStream) for await (const chunk of detailCsvStream) detailCsv += chunk.toString();
   expect(detailCsv).toContain('"Team Name"');
   expect(detailCsv).toContain('"Synthetic Design Team"');
+  expect(detailCsv).toContain('"Working hours"');
+  expect(detailCsv).toContain('"8.3"');
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
@@ -290,9 +295,11 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     return { width: bounds.width, height: bounds.height };
   });
   const searchIconBounds = await readIconBounds(0);
-  const downloadIconBounds = await readIconBounds(1);
-  const filterIconBounds = await readIconBounds(2);
+  const searchFilterIconBounds = await readIconBounds(1);
+  const downloadIconBounds = await readIconBounds(2);
+  const filterIconBounds = await readIconBounds(3);
   expect(Math.abs(searchIconBounds.width - 12.4444)).toBeLessThan(0.1);
+  expect(Math.abs(searchFilterIconBounds.width - 18)).toBeLessThan(0.1);
   expect(Math.abs(downloadIconBounds.width - 10)).toBeLessThan(0.1);
   expect(Math.abs(downloadIconBounds.height - 12)).toBeLessThan(0.1);
   expect(Math.abs(filterIconBounds.width - 18)).toBeLessThan(0.1);
@@ -396,7 +403,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Search employees').fill('Formula');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Formula')).toBe(true);
-  await expect(page.getByRole('row', { name: /Aggregate Report Employee/ })).toContainText('=HYPERLINK');
+  await expect(page.getByRole('row', { name: /Aggregate Report Employee/ })).not.toContainText('=HYPERLINK');
   const formulaDownloadWaiter = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Report', exact: true }).click();
   const formulaDownload = await formulaDownloadWaiter;

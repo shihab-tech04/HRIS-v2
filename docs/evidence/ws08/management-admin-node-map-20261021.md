@@ -3,14 +3,15 @@
 **Figma file:** [Synesis HRIS](https://www.figma.com/design/XEXLe9J1oATlITS9I5u1P9)
 
 **Figma page:** Page 1, node `0:1`
-**Current checkpoint:** PR #44, Manager Attendance Report only.
+**Current checkpoint:** PR #44, Manager daily Attendance Information and the separate report-only aggregate variant.
 
 ## Manager states
 
 | State | Approved Figma node | Current app route and gate | WS08 status |
 | --- | --- | --- | --- |
 | Managerial Dashboard | `9:22640`; chart `9:22784` | `dashboard`; existing `dashboard.view` permission and tenant dashboard data | Previously implemented in PR #44 |
-| Attendance Information | `17:28320`; report table `17:28321` | `attendance`; report-only view uses `reports.view`; detail view remains separately gated | Implemented and tested in this checkpoint |
+| Attendance Information (visible daily-detail state) | Root `17:28320`; content frame `17:28694`; header `17:28696`; rows `17:28722` | `attendance`; daily detail requires `attendance.view` or `attendance.manage` and uses the tenant-scoped detail reader | Implemented in this checkpoint; independent visual acceptance pending |
+| Attendance Report (aggregate-only variant) | `17:28321`; nested table header `17:28324`, rows `17:28349` | `attendance`; requires `reports.view` and uses the tenant-scoped aggregate reader | Preserved as a distinct variant; do not treat it as the visible daily-detail state |
 | Attendance Information — status filter | `17:31530` | `attendance`; status filtering stays on the authorized detail path | Mapped; visual acceptance pending |
 | Attendance Information — team filter | `66:45669` | `attendance`; tenant-derived team options and applied report filter | Mapped; visual acceptance pending |
 | Attendance request | `17:29937` | `attendance`; correction review requires existing attendance management permission | Mapped; visual acceptance pending |
@@ -22,7 +23,9 @@
 | Leave request — approve | `17:32584` | Existing `admin_resolve_leave_request` path; server requires `leave.manage` on the request tenant | Mapped; visual acceptance pending |
 | Leave request — reject | `17:32957` | Existing rejection note/dialog and the same tenant permission check | Mapped; visual acceptance pending |
 
-Only the Attendance Information report state is changed by this checkpoint. The aggregate report reads `hris_get_tenant_attendance_data` with `p_report=true`; it shows source-returned employee, team, department, date-range, office-hour, work-hour, and deviation fields. It does not add a denominator or substitute sample counts. The report RPC does not return profile photos, so the employee marker remains initials derived from the returned name.
+The visible daily-detail state reads `hris_get_tenant_attendance_data` with `p_report=false`; its nine displayed columns follow frame `17:28694`. The search, date, tenant-returned team, and source-status filters use existing detail fields. Date, team, and status filters commit through the Figma Apply Filter action. Team sorting is client-side over the same authorized rows. Employee numbers and work-hours remain in CSV export but are omitted from the visible Figma table. The detail RPC does not return profile photos, so the avatar marker uses initials derived from the returned name. `present` remains the source status in UI; it is not relabeled “On Time” because the backend does not verify that punctuality meaning. The `office`, `home`, and `client_meeting` work-mode values are displayed using the approved location wording.
+
+The separate aggregate variant reads `hris_get_tenant_attendance_data` with `p_report=true`; it shows returned employee, team, department, date-range, office-hour, work-hour, and deviation fields. It does not add a denominator or substitute sample counts. This variant retains its 9-column summary, team filter/sort, and CSV behavior.
 
 ## HOD, Admin, CEO, and Super Admin references
 
@@ -39,6 +42,8 @@ The HOD/CEO labels are inside the Figma Requisition and Referral sections, not a
 
 - `npm run lint`: pass.
 - `npm run test:contracts`: 356/356 pass.
-- Manager report browser test: added for English/Bengali, permission denial, loading/error/empty, keyboard filters, and 1920/1280/768/375 captures. The local Playwright runtime lacks its Chromium headless binary; the pinned download failed in this environment.
+- Manager attendance browser coverage: English/Bengali, role denial, loading/error/empty, keyboard filter disclosure, apply/search/export, source status, sort, and 1920/1280/768/375 captures are covered. The local Playwright runtime has no Chromium headless binary, so browser screenshots are pending exact-head CI.
+- Local targeted attendance report contracts: 11/11 pass. Full repository contracts need the sibling `HRIS-Candidate-v2` checkout referenced by existing tests; it is absent from this workspace.
+- Local TypeScript and Vite build: pass. The build sync step rewrote tracked Pages output; those generated changes were restored after verification.
 - Exact-head GitHub Actions and screenshot artifact: pending the PR #44 checkpoint push.
 - WS04 independent visual acceptance and WS02 two-tenant permission verification: pending.
