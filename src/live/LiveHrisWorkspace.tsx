@@ -4031,10 +4031,12 @@ export function LiveHrisWorkspace({
                  )}
                </div>
                <nav aria-label={locale === 'bn' ? 'ড্যাশবোর্ড ভিউ' : 'Dashboard views'} className="flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6">
-                 {isEmployee && <button type="button" onClick={() => navigate('my-dashboard')} aria-current={page === 'my-dashboard' ? 'page' : undefined}
+                 {isEmployee ? <button type="button" onClick={() => navigate('my-dashboard')} aria-current={page === 'my-dashboard' ? 'page' : undefined}
                    className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'my-dashboard' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                    {projectText(locale, 'Personal Dashboard')}
-                 </button>}
+                 </button> : <span aria-disabled="true" title={projectText(locale, 'Personal Dashboard')} className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F]">
+                   {projectText(locale, 'Personal Dashboard')}
+                 </span>}
                  {permissions.dashboard && <button type="button" onClick={() => navigate('dashboard')} aria-current={page === 'dashboard' ? 'page' : undefined}
                    className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'dashboard' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
                    {projectText(locale, 'Managerial Dashboard')}
