@@ -4,6 +4,22 @@ SELECT public.check_employee_addresses(
   AND NOT has_table_privilege('authenticated', 'public.employee_addresses', 'INSERT')
   AND NOT has_table_privilege('authenticated', 'public.employee_addresses', 'UPDATE')
   AND NOT has_table_privilege('authenticated', 'public.employee_addresses', 'DELETE')
+  AND NOT has_table_privilege('authenticated', 'public.employee_addresses', 'TRUNCATE')
+  AND NOT has_table_privilege('authenticated', 'public.employee_addresses', 'REFERENCES')
+  AND NOT has_table_privilege('authenticated', 'public.employee_addresses', 'TRIGGER')
+  AND NOT has_table_privilege('anon', 'public.employee_addresses', 'INSERT')
+  AND NOT has_table_privilege('anon', 'public.employee_addresses', 'UPDATE')
+  AND NOT has_table_privilege('anon', 'public.employee_addresses', 'DELETE')
+  AND NOT has_table_privilege('anon', 'public.employee_addresses', 'TRUNCATE')
+  AND NOT has_table_privilege('anon', 'public.employee_addresses', 'REFERENCES')
+  AND NOT has_table_privilege('anon', 'public.employee_addresses', 'TRIGGER')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'SELECT')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'INSERT')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'UPDATE')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'DELETE')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'TRUNCATE')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'REFERENCES')
+  AND has_table_privilege('service_role', 'public.employee_addresses', 'TRIGGER')
   AND has_function_privilege('authenticated', 'public.hris_own_employee_for_tenant(uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.hris_admin_can_read_tenant(uuid,text)', 'EXECUTE')
   AND NOT has_function_privilege('anon', 'public.hris_own_employee_for_tenant(uuid)', 'EXECUTE')
@@ -168,6 +184,11 @@ BEGIN
   BEGIN
     DELETE FROM public.employee_addresses;
     RAISE EXCEPTION 'Authenticated client deleted employee addresses';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    TRUNCATE TABLE public.employee_addresses;
+    RAISE EXCEPTION 'Authenticated client truncated employee addresses';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 END
