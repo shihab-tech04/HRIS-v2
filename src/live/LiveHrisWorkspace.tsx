@@ -822,14 +822,6 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale, onDataRefreshed }:
           <AttendanceTrend points={trendPoints} range={activeChartRange} locale={locale} />
         </div>
       </section>
-      <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Needs attention')}</h3>
-          <p className="mt-1 text-xs text-[#86929E]">{tx('Open a work queue to review pending items.')}</p></div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Metric label={tx('Pending attendance corrections')} value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
-          <Metric label={tx('Pending leave requests')} value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
-        </div>
-      </section>
       {canReport && <section aria-labelledby="dashboard-team-report-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 border-b border-[#E5E5EF] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -905,6 +897,14 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale, onDataRefreshed }:
         <p className="mt-3 text-xs text-slate-500">{tx('Only aggregate counts are shown. Employees with no same-tenant team assignment appear as Unassigned.')}</p>
         <p className="mt-1 text-xs text-slate-500">{tx('Team membership totals reflect current active employee records; attendance counts use the selected report date.')}</p>
       </section>}
+      <section aria-labelledby="dashboard-actions-heading" className="rounded-xl border border-[#DEE0E3] bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-3"><h3 id="dashboard-actions-heading" className="text-base font-semibold text-[#1E1B39]">{tx('Needs attention')}</h3>
+          <p className="mt-1 text-xs text-[#86929E]">{tx('Open a work queue to review pending items.')}</p></div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Metric label={tx('Pending attendance corrections')} value={currentSummary.attendance_corrections_pending} icon={<Activity className="h-5 w-5" />} onOpen={() => onOpen('attendance')} />
+          <Metric label={tx('Pending leave requests')} value={currentSummary.leave_pending} icon={<ClipboardList className="h-5 w-5" />} onOpen={() => onOpen('leave')} />
+        </div>
+      </section>
       {teamReportDetail && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget) closeTeamReportDetails(); }}>
         <section ref={teamReportDetailDialog} role="dialog" aria-modal="true" aria-labelledby="team-report-detail-heading" onKeyDown={handleTeamReportDialogKeyDown} className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
