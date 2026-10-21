@@ -193,6 +193,23 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
         const rows = attendanceTable.locator('tbody tr');
         const rowGap = await rows.evaluateAll(items => items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().bottom);
         expect(Math.abs(rowGap - 6)).toBeLessThan(0.5);
+        const tableSurfaces = await attendanceTable.evaluate(table => {
+          const frame = table.parentElement?.parentElement;
+          const headerCell = table.querySelector('thead th');
+          const bodyCell = table.querySelector('tbody td');
+          return {
+            frameBackground: frame ? getComputedStyle(frame).backgroundColor : '',
+            headerBackground: headerCell ? getComputedStyle(headerCell).backgroundColor : '',
+            rowBackground: bodyCell ? getComputedStyle(bodyCell).backgroundColor : '',
+            borderSpacing: getComputedStyle(table).borderSpacing,
+          };
+        });
+        expect(tableSurfaces).toEqual({
+          frameBackground: 'rgba(0, 0, 0, 0)',
+          headerBackground: 'rgb(255, 255, 255)',
+          rowBackground: 'rgb(255, 255, 255)',
+          borderSpacing: '0px 6px',
+        });
         const controls = page.getByRole('form', {
           name: locale === 'en' ? 'Attendance report controls' : 'উপস্থিতি প্রতিবেদন নিয়ন্ত্রণ',
         });

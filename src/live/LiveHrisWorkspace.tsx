@@ -1227,8 +1227,8 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
         </div>
       </div>
     </div>}
-    {!requestView && <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {loading || !currentTenantReady ? <p role="status" className="p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
+    {!requestView && <div className="min-w-0">
+      {loading || !currentTenantReady ? <p role="status" className="rounded-xl bg-white p-5 text-sm">Loading attendance data…</p> : !rows.length ? <p className="rounded-xl bg-white p-5 text-sm text-slate-600">{aggregateOnly && appliedTeamFilter ? 'No attendance report rows match the selected team.' : 'No attendance records were returned for this date range.'}</p> : <div role="region" aria-label="Scrollable attendance report table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B]">
           <table aria-label={aggregateOnly ? 'Attendance summary by employee' : 'Attendance information'} className={`w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm ${aggregateOnly ? '' : 'table-fixed'}`}>
           {!aggregateOnly && <colgroup><col style={{ width: '258px' }} /><col style={{ width: '113px' }} /><col style={{ width: '155px' }} /><col style={{ width: '188px' }} /><col style={{ width: '143px' }} /><col style={{ width: '166px' }} /><col style={{ width: '125px' }} /><col style={{ width: '123px' }} /><col style={{ width: '112px' }} /></colgroup>}
           <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
