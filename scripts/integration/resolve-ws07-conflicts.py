@@ -75,7 +75,7 @@ new_att_call = """{page === 'attendance' && permissions.attendance && (permissio
           )}"""
 merged = replace_exact(merged, old_att_call, new_att_call)
 old_leave_call = "{page === 'leave' && permissions.leave && <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} />}"
-new_leave_call = "{page === 'leave' && permissions.leave && (permissions.leaveManage ? <HrLeaveWorkspace tenantId={tenantId} canManage={true} locale={locale} /> : <LeaveWorkspace tenantId={tenantId} canManage={false} locale={locale} />)}"
+new_leave_call = "{page === 'leave' && permissions.leave && (useHrOperationsView ? <HrLeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} /> : <LeaveWorkspace tenantId={tenantId} canManage={permissions.leaveManage} locale={locale} />)}"
 merged = replace_exact(merged, old_leave_call, new_leave_call)
 # Route presentation by authenticated tenant membership role, never by client-provided flags.
 merged = replace_exact(
@@ -95,10 +95,7 @@ merged = replace_exact(
 )
 merged = replace_exact(merged,
     "(permissions.attendanceManage\n            ? <HrAttendanceReport",
-    "(useHrOperationsView && permissions.attendanceManage\n            ? <HrAttendanceReport")
-merged = replace_exact(merged,
-    "(permissions.leaveManage ? <HrLeaveWorkspace",
-    "(useHrOperationsView && permissions.leaveManage ? <HrLeaveWorkspace")
+    "(useHrOperationsView\n            ? <HrAttendanceReport")
 # Switching to Leave Requests must not inherit the previously viewed Calendar/Policy hash.
 # HR Operations retains the request-only approved Figma state; Managers retain calendar capability.
 merged = replace_exact(
