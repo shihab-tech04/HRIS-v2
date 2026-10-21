@@ -46,7 +46,7 @@ import { projectText, type Locale } from './project-locale';
 import {
   Activity, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, FileText, Megaphone,
   ClipboardList, Clock3, Download, House, LayoutDashboard, LogOut, Mail, MapPin, Menu,
-  Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle,
+  Phone, Receipt, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Target, UserRoundPlus, Users, X, XCircle, Info,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -458,7 +458,7 @@ function AttendanceTrend({ points, range, locale }: { points: DashboardPoint[]; 
   </div>;
 }
 
-function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean; locale: Locale }) {
+function LiveDashboard({ tenantId, onOpen, canReport, locale, onDataRefreshed }: { tenantId: string; onOpen: (page: PageId) => void; canReport: boolean; locale: Locale; onDataRefreshed?: (tenantId: string, at: Date) => void }) {
   const tx = (value: string) => projectText(locale, value);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryTenantId, setSummaryTenantId] = useState('');
@@ -504,7 +504,9 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
       if (requestId !== dashboardSummarySequence.current || activeDashboardTenantId.current !== tenantId) return;
       setSummary(value as DashboardSummary);
       setSummaryTenantId(tenantId);
-      setRefreshedAt(new Date());
+      const fetchedAt = new Date();
+      setRefreshedAt(fetchedAt);
+      onDataRefreshed?.(tenantId, fetchedAt);
     } catch {
       if (requestId === dashboardSummarySequence.current && activeDashboardTenantId.current === tenantId) {
         setSummary(null);
@@ -3750,6 +3752,7 @@ export function LiveHrisWorkspace({
     if (permissions.recruitment) return 'recruitment';
     return isEmployee ? 'my-dashboard' : 'dashboard';
   });
+  const [managerDashboardUpdated, setManagerDashboardUpdated] = useState<{ tenantId: string; at: Date } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [attendanceView, setAttendanceView] = useState<'information' | 'requests'>(() =>
@@ -4012,8 +4015,34 @@ export function LiveHrisWorkspace({
                 )}
               </nav>
             </section>
-          ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
-          {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
+          ) : (page === 'dashboard' || page === 'my-dashboard') ? (
+             <section aria-label={projectText(locale, 'Dashboard')} className="-mx-4 -mt-5 mb-8 border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
+               <div className="flex min-h-[85px] flex-col justify-center gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                 <div>
+                   <h1 className="text-2xl font-normal text-[#49454F]">{projectText(locale, 'Dashboard')}</h1>
+                   <p className="mt-1 text-sm text-[#9B9B9B]">{new Date().toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                 </div>
+                 {page === 'dashboard' && managerDashboardUpdated?.tenantId === tenantId && (
+                   <p role="status" className="inline-flex min-h-12 items-center gap-3 rounded-lg bg-[#E6EEF3] px-5 py-2 text-sm text-[var(--color-figma-primary-600)]">
+                     <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
+                     {locale === 'bn' ? 'সর্বশেষ আপডেট' : 'Last Updated at'} {managerDashboardUpdated.at.toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                   </p>
+                 )}
+               </div>
+               <nav aria-label={locale === 'bn' ? 'ড্যাশবোর্ড ভিউ' : 'Dashboard views'} className="flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-t border-slate-100 px-4 sm:px-6">
+                 {isEmployee && <button type="button" onClick={() => navigate('my-dashboard')} aria-current={page === 'my-dashboard' ? 'page' : undefined}
+                   className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'my-dashboard' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                   {projectText(locale, 'Personal Dashboard')}
+                 </button>}
+                 {permissions.dashboard && <button type="button" onClick={() => navigate('dashboard')} aria-current={page === 'dashboard' ? 'page' : undefined}
+                   className={`inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] px-6 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${page === 'dashboard' ? 'border-[var(--color-figma-primary-600)] text-[#49454F]' : 'border-transparent text-[#49454F] hover:bg-slate-50'}`}>
+                   {projectText(locale, 'Managerial Dashboard')}
+                 </button>}
+               </nav>
+             </section>
+           ) : current && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
+          {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale}
+            onDataRefreshed={(updatedTenantId, at) => setManagerDashboardUpdated({ tenantId: updatedTenantId, at })} />}
           {page === 'attendance' && permissions.attendance && <AttendanceReport
             tenantId={tenantId} tenantTimeZone={tenantTimeZone} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView}
           />}
