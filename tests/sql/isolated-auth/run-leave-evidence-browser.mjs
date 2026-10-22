@@ -399,6 +399,10 @@ try {
     const pageText = await manager.locator('body').innerText().catch(() => '');
     throw new Error(`Manager leave table did not load. Page: ${pageText.slice(-1800)}. ${cause.message}`);
   });
+  // The Figma-aligned Leave Requests route keeps policy management in its own section.
+  // Visit that section explicitly before exercising the real persistence and retry flow.
+  await manager.getByRole('button', { name: 'Leave policy', exact: true }).click();
+  await manager.getByRole('heading', { name: 'Leave policy' }).waitFor({ state: 'visible' });
   const policyFormButton = manager.getByRole('button', { name: 'Add leave type', exact: true }).first();
   await policyFormButton.click();
   const policyForm = manager.getByRole('form', { name: 'Add a leave type' });
@@ -474,6 +478,9 @@ try {
   await manager.getByRole('status').filter({ hasText: 'Leave type updated.' }).waitFor({ state: 'visible' });
   await manager.getByRole('button', { name: 'Refresh leave type policies' }).click();
   await manager.getByRole('row', { name: /Synthetic browser leave policy.*11\.5.*3/ }).waitFor({ state: 'visible' });
+  // The request table is intentionally hidden while its separate policy view is active.
+  await manager.getByRole('button', { name: 'Leave Requests', exact: true }).click();
+  await leaveTable.waitFor({ state: 'visible' });
   const managerRows = await leaveTable.locator('tbody tr').allInnerTexts();
   const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-19/ });
   await managerRow.waitFor({ state: 'visible', timeout: 5000 }).catch(async cause => {
