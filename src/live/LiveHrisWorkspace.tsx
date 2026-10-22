@@ -5155,7 +5155,7 @@ export function LiveHrisWorkspace({
             </section>
           ) : current && page !== 'dashboard' && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
-          {page === 'attendance' && permissions.attendance && (useHrOperationsView
+          {page === 'attendance' && permissions.attendance && ((useHrOperationsView || attendanceView === 'requests')
             ? <HrAttendanceReport tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView} />
             : <AttendanceReport tenantId={tenantId} tenantTimeZone={tenantTimeZone} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView} />
           )}
