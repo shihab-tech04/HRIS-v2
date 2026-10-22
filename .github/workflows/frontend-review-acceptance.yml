@@ -69,6 +69,51 @@ jobs:
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-attendance-information-1920.png', fullPage: true });
             await page.setViewportSize({ width: 1280, height: 800 });
+            await leaveNav.getByRole('button', { name: 'Attendance Requests' }).click();
+            const attendanceQueue = page.getByRole('region', { name: 'Attendance correction request results' });
+            await attendanceQueue.waitFor({ state: 'visible', timeout: 12000 });
+            const correctionTable = attendanceQueue.getByRole('table');
+            const approvedAttendanceHeaders = ['Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Action'];
+            for (const column of approvedAttendanceHeaders) {
+              if (await correctionTable.getByRole('columnheader', { name: column, exact: true }).count() !== 1)
+                throw new Error('Figma Attendance Requests column absent or duplicated: ' + column);
+            }
+            const correctionRows = correctionTable.getByRole('row').filter({ hasText: /Review Employee/ });
+            if (await correctionRows.count() !== 8) throw new Error('Offline Attendance queue fixture must show eight pending synthetic rows');
+            const firstCorrection = correctionTable.getByRole('row').filter({ hasText: 'Review Employee A' });
+            if (!await firstCorrection.getByText('Forgot to punch').count())
+              throw new Error('Attendance Remarks must bind to existing correction reason');
+            if (!await firstCorrection.getByRole('button', { name: 'Approve' }).count() ||
+                !await firstCorrection.getByRole('button', { name: 'Reject' }).count())
+              throw new Error('Attendance decisions missing or not permission-gated');
+            await page.screenshot({ path: 'hris-offline-attendance-requests-1280.png', fullPage: true });
+            await page.setViewportSize({ width: 1920, height: 1080 });
+            await page.screenshot({ path: 'hris-offline-attendance-requests-1920.png', fullPage: true });
+            await page.setViewportSize({ width: 375, height: 812 });
+            if (await page.evaluate(() => document.documentElement.scrollWidth) > 375)
+              throw new Error('Attendance correction route causes 375px document overflow');
+            await attendanceQueue.focus();
+            await page.keyboard.press('ArrowRight');
+            await page.waitForTimeout(250);
+            const queueScroll = await attendanceQueue.evaluate(el => el.scrollLeft);
+            if (queueScroll <= 0) throw new Error('Attendance Requests table is not keyboard scrollable at 375px');
+            await attendanceQueue.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+            const attendanceAction = await firstCorrection.getByRole('button', { name: 'Approve' }).boundingBox();
+            const queueBox = await attendanceQueue.boundingBox();
+            if (!attendanceAction || !queueBox || attendanceAction.x < queueBox.x - 1 ||
+              attendanceAction.x + attendanceAction.width > queueBox.x + queueBox.width + 2)
+              throw new Error('Attendance approval action clipped at full horizontal scroll');
+            await firstCorrection.getByRole('button', { name: 'Reject' }).click();
+            await page.getByRole('dialog', { name: 'Reject attendance correction' }).waitFor();
+            await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+            if (await page.getByRole('dialog', { name: 'Reject attendance correction' }).count())
+              throw new Error('Attendance rejection dialog did not close on Cancel');
+            await attendanceQueue.evaluate(el => { el.scrollLeft = 0; });
+            await page.screenshot({ path: 'hris-offline-attendance-requests-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+            await page.screenshot({ path: 'hris-offline-attendance-requests-bn-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Switch language to English' }).click();
+            await page.setViewportSize({ width: 1280, height: 800 });
             await leaveNav.getByRole('button', { name: 'Leave Requests' }).click();
             await leaveNav.getByRole('button', { name: 'Leave Requests' }).getAttribute('aria-current').then(
               value => { if (value !== 'page') throw new Error('Leave Requests navigation is not selected'); }
