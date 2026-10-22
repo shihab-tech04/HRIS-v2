@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
+      - name: Complete optional platform entries in existing npm lockfile
+        run: npm install --package-lock-only --include=optional --ignore-scripts --no-audit --no-fund
       - name: Reproducible dependency installation
         run: npm ci --include=optional --no-audit --no-fund
       - name: Build the exact Pages asset set
@@ -39,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/work/ws05-free-tier-release-candidate-20261022"
-          git add -A -- index.html assets .nojekyll
+          git add -A -- package-lock.json index.html assets .nojekyll
           if git diff --cached --quiet; then
             echo "Already reproducible; no generated asset commit needed."
             exit 0
