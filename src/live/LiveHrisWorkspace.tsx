@@ -2445,7 +2445,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </button>
       </div>
     </div>
-    {(managementOptionsOpen || supplementView !== 'requests') && <nav id="leave-management-sections" aria-label="Leave management sections" className="flex flex-wrap gap-2">
+    {(managementOptionsOpen || supplementView !== 'requests') && <nav id="leave-management-sections" aria-label={tx('Leave management sections')} className="flex flex-wrap gap-2">
       <button type="button" onClick={() => setSupplementView('requests')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'requests' ? 'page' : undefined}>{tx('Leave Requests')}</button>
       <button type="button" onClick={() => setSupplementView('calendar')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'calendar' ? 'page' : undefined}>{tx('Absence calendar')}</button>
       {canManage && <button type="button" onClick={() => setSupplementView('policy')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'policy' ? 'page' : undefined}>{tx('Leave policy')}</button>}
