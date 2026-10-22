@@ -1,0 +1,47 @@
+name: HRIS New Supabase Admin QA Build (non-deploying)
+on:
+  push:
+    branches:
+      - qa/new-supabase-admin-20261022
+permissions:
+  contents: read
+jobs:
+  qa-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout QA-only source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install deterministic dependencies
+        run: npm ci
+      - name: Type-check
+        run: npm run lint
+      - name: Build new-Supabase QA bundle (no Pages deployment)
+        run: npx vite build --mode qa
+      - name: Verify new target URL and public key are compiled
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          function jsFiles(root) {
+            return fs.readdirSync(root, {withFileTypes:true}).flatMap(x => x.isDirectory() ? jsFiles(path.join(root,x.name)) : x.name.endsWith('.js') ? [path.join(root,x.name)] : []);
+          }
+          const bundle=jsFiles('dist').map(p=>fs.readFileSync(p,'utf8')).join('\n');
+          if(!bundle.includes('xfuxnljfrgvusbrpvxpa.supabase.co') || !bundle.includes('sb_publishable_')) {
+            throw new Error('QA bundle did not contain the authorized destination Supabase URL + publishable key');
+          }
+          console.log('QA bundle destination and public key verified (key not printed).');
+          NODE
+      - name: Save standalone QA build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-new-supabase-admin-qa-build
+          path: dist/
+          if-no-files-found: error
