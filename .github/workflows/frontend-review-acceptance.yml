@@ -73,7 +73,31 @@ jobs:
             await page.getByText('Review Employee A', { exact: true }).first().waitFor({ state: 'visible', timeout: 12000 });
             if (await page.getByText('Leave service returned an invalid response.').count())
               throw new Error('Offline Leave fixture has invalid RPC shape');
+            const leaveResults = page.getByRole('region', { name: 'Leave request results' });
+            await leaveResults.waitFor({ state: 'visible' });
+            const leaveCalendar = page.getByRole('heading', { name: 'Absence calendar' });
+            const resultPrecedesCalendar = await leaveResults.evaluate(el =>
+              !!(el.compareDocumentPosition(document.getElementById('leave-absence-calendar-heading')) & Node.DOCUMENT_POSITION_FOLLOWING));
+            if (!resultPrecedesCalendar)
+              throw new Error('Leave Requests are positioned below the calendar, contradicting the approved request-table route');
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
+            await page.setViewportSize({ width: 375, height: 812 });
+            const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+            if (pageWidth > 375) throw new Error('Leave route causes document overflow at 375px: ' + pageWidth);
+            await leaveResults.focus();
+            await page.keyboard.press('ArrowRight');
+            await page.waitForTimeout(300);
+            const scrollerProgress = await leaveResults.evaluate(el => el.scrollLeft);
+            if (scrollerProgress <= 0) throw new Error('Leave table cannot scroll by keyboard at 375px');
+            await leaveResults.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+            const approve = await leaveResults.getByRole('button', { name: 'Approve' }).first().boundingBox();
+            const region = await leaveResults.boundingBox();
+            if (!approve || !region || approve.x < region.x - 1 || approve.x + approve.width > region.x + region.width + 2)
+              throw new Error('Leave decision action remains clipped after horizontal scroll');
+            await leaveResults.evaluate(el => { el.scrollLeft = 0; });
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.screenshot({ path: 'hris-offline-leave-requests-375.png', fullPage: true });
+            await page.setViewportSize({ width: 1280, height: 800 });
             await page.locator('aside[aria-label="Primary HRIS navigation"]')
               .getByRole('button', { name: 'Dashboard' }).click();
             await page.getByRole('heading', { name: 'Managerial Dashboard' }).first().waitFor();
