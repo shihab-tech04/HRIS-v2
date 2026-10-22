@@ -666,12 +666,26 @@ try {
   await october19.click();
   const selectedOctober19 = manager.getByRole('heading', { name: /Approved absences on/ }).locator('..');
   await selectedOctober19.getByText('Synthetic Employee A').waitFor({ state: 'visible' });
+  // Other legitimate approved requests may cover the rejected request date.
+  // Assert that the rejected request is excluded without requiring the entire day to be empty.
+  const approvedOctober22 = octoberRequests.filter(item =>
+    String(item.status || '').toLowerCase() === 'approved'
+    && String(item.from_date || '') <= '2026-10-22'
+    && String(item.to_date || '') >= '2026-10-22');
+  if (approvedOctober22.some(item => item.id === process.env.HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID)) {
+    throw new Error('A rejected leave request appeared in the approved absence RPC records.');
+  }
   const october22 = octoberCalendar.getByRole('button', { name: /October 22, 2026,/ });
   await october22.click();
   const selectedOctober22 = manager.getByRole('heading', { name: /Approved absences on/ }).locator('..');
-  await selectedOctober22.getByText('No approved absences on this date.').waitFor({ state: 'visible' });
-  if ((await selectedOctober22.innerText()).includes('Synthetic Employee A')) {
-    throw new Error('The absence calendar displayed the employee’s rejected request as approved leave.');
+  if (approvedOctober22.length === 0) {
+    await selectedOctober22.getByText('No approved absences on this date.').waitFor({ state: 'visible' });
+  } else {
+    await selectedOctober22.getByRole('listitem').first().waitFor({ state: 'visible' });
+  }
+  const actualApprovedCount = await selectedOctober22.getByRole('listitem').count();
+  if (actualApprovedCount !== approvedOctober22.length) {
+    throw new Error(`The approved absence calendar count differs from approved tenant RPC records: ${actualApprovedCount} vs ${approvedOctober22.length}.`);
   }
 
   await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
