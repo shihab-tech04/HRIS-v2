@@ -92,6 +92,20 @@ jobs:
               throw new Error('Offline Leave fixture has invalid RPC shape');
             const leaveResults = page.getByRole('region', { name: 'Leave request results' });
             await leaveResults.waitFor({ state: 'visible' });
+            await page.getByRole('searchbox', { name: 'Search requests' }).waitFor({ state: 'visible' });
+            if (await page.getByText('Pending requests', { exact: true }).count())
+              throw new Error('Leave Requests still displays expanded overview cards by default');
+            await page.getByRole('button', { name: 'Filters', exact: true }).click();
+            await page.getByLabel('From date', { exact: true }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Filters', exact: true }).click();
+            if (await page.getByLabel('From date', { exact: true }).count())
+              throw new Error('Advanced filters remain expanded on the compact request screen');
+            await page.getByRole('button', { name: 'More options', exact: true }).click();
+            await page.getByRole('navigation', { name: 'Leave management sections' }).getByRole('button', { name: 'Request overview' }).click();
+            await page.getByText('Pending requests', { exact: true }).waitFor({ state: 'visible' });
+            await page.getByRole('navigation', { name: 'Leave management sections' }).getByRole('button', { name: 'Request overview' }).click();
+            if (await page.getByText('Pending requests', { exact: true }).count())
+              throw new Error('Overview cannot be collapsed after inspection');
             if (await page.getByRole('heading', { name: 'Absence calendar' }).count())
               throw new Error('Default Leave Requests route still expands the calendar below the table');
             if (await page.getByRole('heading', { name: 'Leave policy' }).count())
