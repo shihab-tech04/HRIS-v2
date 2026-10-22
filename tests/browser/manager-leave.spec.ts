@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
@@ -174,7 +175,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await requestTo.fill('2026-10-01');
   await page.getByRole('button', { name: 'Apply date range', exact: true }).click();
   await expect(table.locator('tbody tr')).toHaveCount(1);
-  await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('approved');
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Annual leave/ })).toContainText('Approved');
   expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-01' });
 
   await requestFrom.fill('2026-10-22');
@@ -219,7 +220,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await table.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Leave request approved.')).toBeVisible();
   await page.getByLabel('Filter by status').selectOption('all');
-  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('approved');
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('Approved');
   expect(decisions[1]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333331', p_decision: 'approved', p_note: null });
 
   await page.getByLabel('Filter by status').selectOption('pending');
@@ -246,7 +247,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await confirmedRejection.getByRole('button', { name: 'Reject request' }).click();
   await expect(page.getByText('Leave request rejected.')).toBeVisible();
   await page.getByLabel('Filter by status').selectOption('all');
-  await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('rejected');
+  await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Rejected');
   await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Decision note: Please correct the requested dates before resubmitting.');
   expect(decisions[2]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333332', p_decision: 'rejected', p_note: 'Please correct the requested dates before resubmitting.' });
 
@@ -259,8 +260,88 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('alert')).toContainText('Unable to load leave data.');
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(table.locator('tbody tr')).toHaveCount(4);
-  await page.setViewportSize({ width: 375, height: 812 });
-  await expect(page.getByRole('region', { name: 'Leave request results' })).toBeVisible();
-  await expect(page.getByLabel('From date', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  Object.assign(requests[0], { status: 'pending', resolution_note: undefined });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('pending');
+
+  const leaveRequestViewports = [
+    { width: 375, height: 812 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 900 },
+    { width: 1920, height: 1080 },
+  ] as const;
+  const assertLeaveRequestResponsiveState = async (locale: 'en' | 'bn') => {
+    const labels = locale === 'en'
+      ? { heading: 'Leave Requests', region: 'Leave request results', from: 'From date', to: 'To date', status: 'Filter by status', apply: 'Apply date range' }
+      : { heading: 'ছুটির আবেদন', region: 'Leave request results', from: 'শুরুর তারিখ', to: 'শেষ তারিখ', status: 'অবস্থা অনুযায়ী ফিল্টার', apply: 'তারিখের সীমা প্রয়োগ করুন' };
+
+    for (const viewport of leaveRequestViewports) {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole('heading', { name: labels.heading, exact: true })).toBeVisible();
+      await expect(page.getByRole('region', { name: labels.region, exact: true })).toBeVisible();
+      await expect(page.getByLabel(labels.from, { exact: true })).toBeVisible();
+      await expect(page.getByLabel(labels.to, { exact: true })).toBeVisible();
+      await expect(page.getByLabel(labels.status, { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: labels.apply, exact: true })).toBeVisible();
+      const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(documentWidth, `${locale} Manager Leave Requests document width at ${viewport.width}px`).toBeLessThanOrEqual(viewport.width);
+      await page.evaluate(async () => { await document.fonts.ready; });
+      await page.screenshot({
+        path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-manager-${locale}-${viewport.width}-20261021.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+
+      if (viewport.width === 375) {
+        const results = page.getByRole('region', { name: labels.region, exact: true });
+        // The table's accessible name is localized; keep the responsive check locale agnostic.
+        const leaveTable = results.locator('table');
+        const initialScroll = await results.evaluate(element => ({
+          left: element.scrollLeft,
+          max: element.scrollWidth - element.clientWidth,
+        }));
+        expect(initialScroll.max, `${locale} 375px Leave results must expose horizontal table overflow`).toBeGreaterThan(0);
+
+        await results.focus();
+        await expect(results).toBeFocused();
+        for (let step = 0; step < 50; step += 1) await results.press('ArrowRight');
+
+        const finalScroll = await results.evaluate(element => ({
+          left: element.scrollLeft,
+          max: element.scrollWidth - element.clientWidth,
+          bounds: element.getBoundingClientRect().toJSON(),
+        }));
+        expect(finalScroll.left, `${locale} 375px keyboard scroll must move the Leave table`).toBeGreaterThan(initialScroll.left);
+        expect(finalScroll.left, `${locale} 375px keyboard scroll must reach the far side`).toBeGreaterThanOrEqual(finalScroll.max - 2);
+        const lastColumn = leaveTable.getByRole('columnheader').last();
+        const pendingMedicalRow = leaveTable.locator('tbody tr').filter({ hasText: 'Amira Rahman' }).filter({ hasText: 'Medical leave' });
+        const pendingDecisionButtons = pendingMedicalRow.getByRole('cell').last().getByRole('button');
+        await expect(pendingDecisionButtons).toHaveCount(2);
+        const lastAction = pendingDecisionButtons.last();
+        await expect(lastColumn).toBeVisible();
+        await expect(lastAction).toBeVisible();
+        const [lastColumnBounds, lastActionBounds] = await Promise.all([
+          lastColumn.boundingBox(),
+          lastAction.boundingBox(),
+        ]);
+        expect(lastColumnBounds).not.toBeNull();
+        expect(lastActionBounds).not.toBeNull();
+        expect(lastColumnBounds!.x).toBeGreaterThanOrEqual(finalScroll.bounds.x - 1);
+        expect(lastColumnBounds!.x + lastColumnBounds!.width).toBeLessThanOrEqual(finalScroll.bounds.right + 1);
+        expect(lastActionBounds!.x).toBeGreaterThanOrEqual(finalScroll.bounds.x - 1);
+        expect(lastActionBounds!.x + lastActionBounds!.width).toBeLessThanOrEqual(finalScroll.bounds.right + 1);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+        await page.screenshot({
+          path: path.resolve(process.cwd(), `docs/evidence/ws07-leave-requests-manager-${locale}-375-horizontal-end-20261022.png`),
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+    }
+  };
+
+  await assertLeaveRequestResponsiveState('en');
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('button', { name: 'Switch language to English' })).toBeVisible();
+  await assertLeaveRequestResponsiveState('bn');
 });

@@ -71,7 +71,7 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
   const end = workspace.indexOf('</form>', start);
   assert.ok(start >= 0 && end > start);
   const toolbar = workspace.slice(start, end);
-  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf('aria-label="Filters"'));
+  assert.ok(toolbar.indexOf('Download Report') < toolbar.indexOf("aria-label={tx('Filters')}"));
   assert.match(toolbar, /lg:w-\[334px\]/);
   assert.match(toolbar, /lg:w-\[184px\]/);
   assert.match(toolbar, /w-16/);
@@ -85,8 +85,8 @@ test('Figma report toolbar uses exact local icons, order, and component dimensio
 });
 
 test('Figma attendance aggregate column headings use the approved regular 14px gray type', () => {
-  assert.match(workspace, /aggregateOnly \? 'text-\[14px\] text-\[#9E9E9E\]' : 'text-xs text-slate-500'/);
-  assert.match(workspace, /aggregateOnly \? 'font-normal' : 'font-medium'/);
+  assert.match(workspace, /<thead className=\{aggregateOnly \? 'bg-white text-\[14px\] text-\[#9E9E9E\]' : 'text-\[14px\] text-\[#9E9E9E\]'\}/);
+  assert.match(workspace, /className=\{aggregateOnly \? 'h-14 bg-white px-4 font-normal' : 'h-\[59px\] bg-white px-4 font-normal first:rounded-l-lg last:rounded-r-lg'\}/);
   assert.match(browser, /fontSize: style\.fontSize, fontWeight: style\.fontWeight, color: style\.color/);
   assert.match(browser, /fontSize: '14px', fontWeight: '400', color: 'rgb\(158, 158, 158\)'/);
 });

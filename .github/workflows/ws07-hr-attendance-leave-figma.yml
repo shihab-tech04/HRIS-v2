@@ -1,0 +1,55 @@
+name: WS07 Attendance and Leave Figma acceptance
+
+on:
+  push:
+    branches: [work/ws07-hr-org-phase05-20261020]
+  pull_request:
+    branches: [development/hris-checkpoints]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ws07-hr-attendance-leave-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  attendance-leave:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm install --include=optional --no-audit --no-fund
+      - name: TypeScript check
+        run: npm run lint
+      - name: Attendance and Leave source contract checks
+        run: node --test tests/contracts/attendance-report.test.mjs tests/contracts/leave-absence-calendar.test.mjs
+      - name: Build application bundle
+        run: npx vite build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run Attendance, Leave, and Manager leave browser acceptance
+        run: npm run test:e2e -- tests/browser/attendance-information.spec.ts tests/browser/hr-operations-leave-request-states.spec.ts tests/browser/manager-leave.spec.ts
+      - name: Preserve WS07 screenshots and browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws07-hr-frame-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            docs/evidence/ws07-attendance-information-*.png
+            docs/evidence/ws07-attendance-requests-*.png
+            docs/evidence/ws07-leave-requests-*.png
+            docs/evidence/attendance-information-*.png
+            docs/evidence/attendance-report-*.png
+            test-results/
+            playwright-report/

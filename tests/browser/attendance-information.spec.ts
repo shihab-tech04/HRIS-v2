@@ -19,9 +19,38 @@ const jwtPayload = Buffer.from(JSON.stringify({ sub: userId, aud: 'authenticated
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
 test('attendance information uses tenant-scoped detail rows and keeps filters, export, and mobile table usable', async ({ page }) => {
+  const captureFigmaFrame = async (filename: string) => {
+    await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+    const fontState = await page.evaluate(() => ({
+      family: getComputedStyle(document.body).fontFamily,
+      poppinsLoaded: Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'),
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(fontState.family).toContain('Poppins');
+    expect(fontState.poppinsLoaded).toBe(true);
+    expect(fontState.documentWidth, `full-page frame evidence ${filename} must fit the viewport`).toBeLessThanOrEqual(fontState.viewport + 1);
+    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/${filename}`), fullPage: true, animations: 'disabled' });
+  };
+  const expectFilledActionCircle = async (button: ReturnType<typeof page.getByRole>, color: string) => {
+    const circle = button.locator('span[aria-hidden="true"]');
+    await expect(circle).toHaveCSS('background-color', color);
+    const bounds = await circle.boundingBox();
+    expect(bounds?.width).toBe(24);
+    expect(bounds?.height).toBe(24);
+    const borderRadius = await circle.evaluate(element => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius));
+    expect(Number.isFinite(borderRadius)).toBe(true);
+    expect(borderRadius).toBeGreaterThanOrEqual((bounds?.width ?? 0) / 2);
+  };
   const externalRequests: string[] = [];
   const attendanceCalls: Record<string, unknown>[] = [];
   let reportOnly = false;
+  let holdNextAttendanceDetail = true;
+  let attendanceDetailHeld = false;
+  let releaseAttendanceDetail = () => {};
+  const attendanceDetailWait = new Promise<void>(resolve => { releaseAttendanceDetail = resolve; });
+  let failNextAttendanceDetail = false;
+  let emptyAttendanceDetail = false;
   const syntheticAttendance = {
     id: 'e3333333-3333-4333-8333-333333333333', employee_id: 'e4444444-4444-4444-8444-444444444444',
     full_name: 'Synthetic Attendance Employee', employee_number: 'ATT-001',
@@ -35,26 +64,46 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     full_name: 'Synthetic Late Employee', employee_number: 'ATT-002', status: 'late', work_hours: 8.3,
     team_name: 'Synthetic Design Team',
   };
-  const allAttendance = [syntheticAttendance, syntheticLateAttendance];
-  const correctionRequests: Record<string, unknown>[] = [
-    { id: 'e7777777-7777-4777-8777-777777777777', employee_id: syntheticAttendance.employee_id,
-      employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-12',
-      requested_check_in: '2026-10-12T03:15:00.000Z', requested_check_out: null, requested_work_mode: null,
-      reason: 'Synthetic missed punch approval', status: 'pending' },
-    { id: 'e8888888-8888-4888-8888-888888888888', employee_id: syntheticAttendance.employee_id,
-      employee_number: 'ATT-001', full_name: 'Synthetic Attendance Employee', attendance_date: '2026-10-11',
-      requested_check_in: null, requested_check_out: '2026-10-11T11:30:00.000Z', requested_work_mode: null,
-      reason: 'Synthetic missed punch rejection', status: 'pending' },
-  ];
+  const syntheticEarlyAttendance = {
+    ...syntheticAttendance, id: 'e9999999-9999-4999-8999-999999999999', employee_id: 'eaaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    full_name: 'Synthetic Early Employee', employee_number: 'ATT-003', status: 'early', work_hours: 8.75,
+    team_name: 'Synthetic Research Team',
+  };
+  const additionalOnTimeAttendance = Array.from({ length: 5 }, (_, index) => ({
+    ...syntheticAttendance,
+    id: `e${String(index + 100).padStart(7, '0')}-7777-4777-8777-777777777777`,
+    employee_id: `e${String(index + 200).padStart(7, '0')}-8888-4888-8888-888888888888`,
+    employee_number: `ATT-${String(index + 4).padStart(3, '0')}`,
+    full_name: `Synthetic On-time Employee ${String(index + 4).padStart(2, '0')}`,
+    team_name: ['Synthetic Product Team', 'Synthetic Design Team', 'Synthetic Research Team'][index % 3],
+  }));
+  const allAttendance = [syntheticAttendance, syntheticLateAttendance, syntheticEarlyAttendance, ...additionalOnTimeAttendance];
+  const correctionRequests: Record<string, unknown>[] = Array.from({ length: 8 }, (_, index) => {
+    const day = 12 - index;
+    const dayString = String(day).padStart(2, '0');
+    return {
+      id: `e${String(index + 7777777).padStart(7, '0')}-7777-4777-8777-${String(index + 1).padStart(12, '0')}`,
+      employee_id: syntheticAttendance.employee_id,
+      employee_number: `ATT-${String(index + 1).padStart(3, '0')}`,
+      full_name: index === 0 ? 'Synthetic Attendance Employee' : `Synthetic Attendance Employee ${String(index + 1).padStart(2, '0')}`,
+      attendance_date: `2026-10-${dayString}`,
+      requested_check_in: index === 0 ? '2026-10-12T03:15:00.000Z' : null,
+      requested_check_out: index === 1 ? '2026-10-11T11:30:00.000Z' : null,
+      requested_work_mode: null,
+      requested_at: `2026-10-${String(13 + index).padStart(2, '0')}T03:00:00.000Z`,
+      reason: index === 0 ? 'Synthetic missed punch approval'
+        : index === 1 ? 'Synthetic missed punch rejection' : `Synthetic correction request ${String(index + 1).padStart(2, '0')}`,
+      status: 'pending',
+    };
+  });
   const correctionDecisions: Record<string, unknown>[] = [];
 
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
-    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') { await route.continue(); return; }
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') { await route.continue(); return; }
     externalRequests.push(url.toString());
     await route.abort();
   });
-  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.route('**/auth/v1/**', async route => {
     const requestPath = new URL(route.request().url()).pathname;
     if (requestPath.endsWith('/token')) {
@@ -87,6 +136,16 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
     if (endpoint === 'hris_get_tenant_attendance_data') {
       const body = request.postDataJSON() as Record<string, unknown>;
       attendanceCalls.push(body);
+      if (body.p_report !== true && holdNextAttendanceDetail) {
+        holdNextAttendanceDetail = false;
+        attendanceDetailHeld = true;
+        await attendanceDetailWait;
+      }
+      if (body.p_report !== true && failNextAttendanceDetail) {
+        failNextAttendanceDetail = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Unable to load attendance data.' }) });
+        return;
+      }
       const data = body.p_report === true
         ? [
           { employee_id: syntheticAttendance.employee_id,
@@ -96,7 +155,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
           { employee_id: syntheticLateAttendance.employee_id, employee_number: 'ATT-002', employee_name: 'Aggregate Negative Employee',
             department_name: 'Experience Design', designation_title: 'UX Designer', team_name: 'Synthetic Design Team', attendance_days: 999, office_hours: 45, working_hours: 44.3, deviation: -0.7 },
         ]
-        : { records: body.p_status && body.p_status !== 'all'
+        : { records: emptyAttendanceDetail ? [] : body.p_status && body.p_status !== 'all'
           ? allAttendance.filter(row => row.status === body.p_status) : allAttendance, corrections: correctionRequests };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
       return;
@@ -131,36 +190,241 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+  expect(await page.evaluate(() => Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'))).toBe(true);
+  await expect(page.getByText('Loading attendance data…')).toBeVisible();
+  await expect.poll(() => attendanceDetailHeld).toBe(true);
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-loading-1920x1080.png'), fullPage: true });
+  releaseAttendanceDetail();
   await expect(page.getByRole('heading', { name: 'Attendance Report' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
   const attendanceTable = page.getByRole('table', { name: 'Attendance information' });
-  await expect(attendanceTable.getByRole('columnheader', { name: 'Team Name' })).toBeVisible();
+  expect(await attendanceTable.getByRole('columnheader').allTextContents()).toEqual([
+    'Name', 'Designation', 'Team Name', 'Department', 'From date', 'Work Location', 'In Time', 'Out Time', 'Status',
+  ]);
+  await expect(attendanceTable.locator('tbody tr')).toHaveCount(8);
+  const attendanceRowsGeometry = await attendanceTable.evaluate(table => {
+    const firstRow = table.querySelector('tbody tr');
+    const nextRow = firstRow?.nextElementSibling;
+    const headerCell = table.querySelector('thead th');
+    const surface = table.parentElement?.parentElement;
+    const rowBounds = firstRow?.getBoundingClientRect();
+    const nextBounds = nextRow?.getBoundingClientRect();
+    const style = headerCell ? getComputedStyle(headerCell) : null;
+    return {
+      rowHeight: rowBounds?.height,
+      rowGap: rowBounds && nextBounds ? nextBounds.top - rowBounds.bottom : null,
+      headerHeight: headerCell?.getBoundingClientRect().height,
+      headerRadius: style ? Number.parseFloat(style.borderTopLeftRadius) : 0,
+      surfaceBackground: surface ? getComputedStyle(surface).backgroundColor : '',
+      surfaceBorder: surface ? getComputedStyle(surface).borderTopWidth : '',
+    };
+  });
+  expect(attendanceRowsGeometry.rowHeight).toBeCloseTo(80, 0);
+  expect(attendanceRowsGeometry.rowGap).toBeCloseTo(6, 0);
+  expect(attendanceRowsGeometry.headerHeight).toBeCloseTo(59, 0);
+  expect(attendanceRowsGeometry.headerRadius).toBeGreaterThanOrEqual(8);
+  expect(attendanceRowsGeometry.surfaceBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(attendanceRowsGeometry.surfaceBorder).toBe('0px');
+  await expect(page.getByRole('heading', { name: 'Attendance Requests' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await expect(attendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
+  const bengaliAttendanceTable = page.getByRole('table', { name: 'উপস্থিতির তথ্য' });
+  await expect(bengaliAttendanceTable.getByRole('columnheader', { name: 'দলের নাম' })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
   const row = page.getByRole('table', { name: 'Attendance information' }).getByRole('row', { name: /Synthetic Attendance Employee/ });
-  await expect(row).toContainText('ATT-001');
   await expect(row).toContainText('UX Designer');
   await expect(row).toContainText('Synthetic Product Team');
   await expect(row).toContainText('Experience Design');
   await expect(row).toContainText('12-10-2026');
   await expect(row).toContainText('Office');
-  await expect(row).toContainText('8.56');
+  await expect(row).not.toContainText('8.56');
   await expect(page.getByText('Aggregate Report Employee')).toHaveCount(0);
-  const correctionCard = page.getByRole('heading', { name: 'Attendance correction requests' }).locator('xpath=..');
+  for (const width of [375, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 1080 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-information-normal-en-${width}-20261021.png`), fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  for (const width of [375, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 1080 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/ws07-attendance-information-normal-bn-${width}-20261021.png`), fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => { window.location.hash = 'attendance-correction-requests'; });
+  await expect(page.locator('#attendance-correction-requests')).toBeVisible();
+  const correctionCard = page.locator('#attendance-correction-requests');
+  const ensureCorrectionStatusFilterOpen = async () => {
+    const filtersButton = correctionCard.getByRole('button', { name: 'Filters', exact: true });
+    if (await filtersButton.getAttribute('aria-expanded') !== 'true') await filtersButton.click();
+    await expect(filtersButton).toHaveAttribute('aria-expanded', 'true');
+    const statusFilter = correctionCard.getByLabel('Filter by status', { exact: true });
+    await expect(statusFilter).toBeVisible();
+    return statusFilter;
+  };
+  const openAttendanceRequests = async () => {
+    await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+    await page.evaluate(() => { window.location.hash = ''; });
+    await page.evaluate(() => { window.location.hash = 'attendance-correction-requests'; });
+    await expect(correctionCard).toBeVisible();
+  };
+  await expect(correctionCard.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('columnheader', { name: 'In Time', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('columnheader', { name: 'Out Time', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('columnheader', { name: 'Applying Date', exact: true })).toBeVisible();
+  await expect(correctionCard.getByRole('row')).toHaveCount(9);
+  expect(await correctionCard.getByRole('columnheader').allTextContents()).toEqual([
+    'Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Action',
+  ]);
+  const correctionSearch = correctionCard.getByLabel('Search attendance requests', { exact: true });
+  const correctionFiltersButton = correctionCard.getByRole('button', { name: 'Filters', exact: true });
+  await expect(correctionSearch).toBeVisible();
+  await expect(correctionFiltersButton).toHaveAttribute('aria-expanded', 'false');
+  expect(await correctionFiltersButton.evaluate(button => Boolean(button.parentElement?.querySelector('input[type="search"]')))).toBe(true);
+  expect(await correctionCard.getByRole('heading', { name: 'Attendance Requests' }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
+  await expect(correctionCard.getByRole('button', { name: 'Approve selected attendance corrections (unavailable)' })).toHaveCount(0);
+  await expect(correctionCard.getByRole('button', { name: 'Reject selected attendance corrections (unavailable)' })).toHaveCount(0);
+  const correctionRowGeometry = await correctionCard.getByRole('row').nth(1).evaluate(row => {
+    const first = row.getBoundingClientRect();
+    const next = row.nextElementSibling?.getBoundingClientRect();
+    const avatar = row.querySelector<HTMLElement>('td span[aria-hidden="true"]')?.getBoundingClientRect();
+    return { height: first.height, gap: next ? next.top - first.bottom : null, avatarHeight: avatar?.height };
+  });
+  expect(correctionRowGeometry.height).toBeCloseTo(80, 0);
+  expect(correctionRowGeometry.gap).toBeCloseTo(6, 0);
+  expect(correctionRowGeometry.avatarHeight).toBe(48);
+  const requestResults = correctionCard.getByRole('region', { name: 'Attendance correction request results' });
+  const attendanceRequestWidthIssues: string[] = [];
+  for (const width of [375, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 1080 });
+    const layout = await page.evaluate(() => {
+      const viewport = window.innerWidth;
+      const region = document.querySelector<HTMLElement>('[aria-label="Attendance correction request results"]');
+      const ancestors: Array<Record<string, unknown>> = [];
+      for (let element: HTMLElement | null = region; element && ancestors.length < 8; element = element.parentElement) {
+        const bounds = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        ancestors.push({ tag: element.tagName, id: element.id, className: String(element.className).slice(0, 100),
+          left: Math.round(bounds.left), right: Math.round(bounds.right), width: Math.round(bounds.width),
+          clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, overflowX: style.overflowX,
+          minWidth: style.minWidth, maxWidth: style.maxWidth });
+      }
+      const elements = Array.from(document.body.querySelectorAll<HTMLElement>('*')).map(element => {
+        const bounds = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return { tag: element.tagName, id: element.id, className: String(element.className).slice(0, 90),
+          left: Math.round(bounds.left), right: Math.round(bounds.right), overflowX: style.overflowX };
+      }).filter(element => element.right > viewport + 1).sort((left, right) => right.right - left.right).slice(0, 8);
+      return { viewport, document: document.documentElement.scrollWidth, body: document.body.scrollWidth,
+        region: region ? { left: Math.round(region.getBoundingClientRect().left), right: Math.round(region.getBoundingClientRect().right),
+          clientWidth: region.clientWidth, scrollWidth: region.scrollWidth } : null, ancestors, elements };
+    });
+    if (layout.document > width + 1) attendanceRequestWidthIssues.push(JSON.stringify(layout));
+    if (width < 1386) expect(await requestResults.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+    await captureFigmaFrame(`ws07-attendance-requests-node-17-29937-normal-en-${width}x1080.png`);
+  }
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  for (const width of [375, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 1080 });
+    const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    if (documentWidth > width + 1) attendanceRequestWidthIssues.push(`${width}px BN document width ${documentWidth}`);
+    await captureFigmaFrame(`ws07-attendance-requests-node-17-29937-normal-bn-${width}x1080.png`);
+  }
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const firstPendingCorrectionRow = correctionCard.getByRole('row').nth(1);
+  await expectFilledActionCircle(firstPendingCorrectionRow.getByRole('button', { name: 'Approve', exact: true }), 'rgb(0, 135, 77)');
+  await expectFilledActionCircle(firstPendingCorrectionRow.getByRole('button', { name: 'Reject', exact: true }), 'rgb(255, 0, 0)');
+  await captureFigmaFrame('ws07-attendance-requests-node-17-29937-normal-en-1920x1080.png');
+  const approveSelected = correctionCard.getByRole('button', { name: 'Approve selected attendance corrections (unavailable)' });
+  const rejectSelected = correctionCard.getByRole('button', { name: 'Reject selected attendance corrections (unavailable)' });
+  await expect(approveSelected).toHaveCount(0);
+  await expect(rejectSelected).toHaveCount(0);
+  await correctionCard.getByLabel('Select all pending attendance corrections').check();
+  await expect(approveSelected).toBeDisabled();
+  await expect(rejectSelected).toBeDisabled();
+  const selectedCorrectionCheckboxes = correctionCard.locator('tbody input[type="checkbox"]');
+  await expect(selectedCorrectionCheckboxes).toHaveCount(8);
+  expect(await selectedCorrectionCheckboxes.evaluateAll(inputs => inputs.every(input => (input as HTMLInputElement).checked))).toBe(true);
+  await expectFilledActionCircle(approveSelected, 'rgb(0, 135, 77)');
+  await expectFilledActionCircle(rejectSelected, 'rgb(255, 0, 0)');
+  await captureFigmaFrame('ws07-attendance-requests-node-17-30342-selected-en-1920x1080.png');
+  expect(correctionDecisions).toHaveLength(0);
+
+  for (const status of ['approved', 'rejected']) {
+    for (const request of correctionRequests) request.status = status;
+    await page.reload();
+    await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+    expect(await page.evaluate(() => Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'))).toBe(true);
+    await openAttendanceRequests();
+    await ensureCorrectionStatusFilterOpen();
+    await (await ensureCorrectionStatusFilterOpen()).selectOption(status);
+    await expect(correctionCard.getByRole('row')).toHaveCount(9);
+    expect(await correctionCard.getByRole('columnheader').allTextContents()).toEqual([
+      'Name', 'Date', 'In Time', 'Out Time', 'Applying Date', 'Remarks', 'Status',
+    ]);
+    await expect(correctionCard.getByRole('button', { name: 'Attendance Requests' })).toBeVisible();
+    await expect(correctionCard.getByLabel('Select all pending attendance corrections')).toHaveCount(0);
+    await expect(correctionCard.getByLabel('Search attendance requests')).toHaveCount(0);
+    await expect(correctionCard.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
+    await expect(correctionCard.getByRole('button', { name: 'Attendance Requests', exact: true })).toBeVisible();
+    const resolvedStatus = correctionCard.getByRole('row').nth(1).locator('td').last().locator('span');
+    await expect(resolvedStatus).toContainText(status === 'approved' ? 'Approved' : 'Rejected');
+    await expect(resolvedStatus).toHaveClass(status === 'approved' ? /text-emerald-700/ : /text-rose-600/);
+    await captureFigmaFrame(`ws07-attendance-requests-node-${status === 'approved' ? '17-30766' : '17-31148'}-${status}-en-1920x1080.png`);
+  }
+  for (const request of correctionRequests) request.status = 'pending';
+  await page.reload();
+  await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+  await openAttendanceRequests();
+
   const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
   await expect(approvalRow).toContainText('09:15');
+  await expect(approvalRow).toContainText('13-10-2026');
+  await ensureCorrectionStatusFilterOpen();
   await approvalRow.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText('Attendance correction approved.', { exact: true })).toBeVisible();
-  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toContainText('approved');
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('approved');
+  await expect(correctionCard.getByRole('button', { name: 'Attendance Requests' })).toBeVisible();
+  await expect(correctionCard.getByLabel('Select all pending attendance corrections')).toHaveCount(0);
+  const approvedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
+  await expect(approvedRow).toContainText('Approved');
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-approved-action-1920x1080.png'), fullPage: true });
+  await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
+  await expect(correctionCard.getByRole('heading', { name: 'Attendance Requests', exact: true })).toBeVisible();
+  const pendingStatusFilter = await ensureCorrectionStatusFilterOpen();
+  await pendingStatusFilter.selectOption('pending');
   const rejectionRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
+  await page.setViewportSize({ width: 375, height: 812 });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const rejectionDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
   await expect(rejectionDialog).toContainText('Synthetic Attendance Employee');
+  const mobileAttendanceDialogBounds = await rejectionDialog.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, right: bounds.right, width: bounds.width };
+  });
+  expect(mobileAttendanceDialogBounds.x).toBeGreaterThanOrEqual(0);
+  expect(mobileAttendanceDialogBounds.right).toBeLessThanOrEqual(376);
+  const mobileAttendanceResultsBounds = await requestResults.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return { left: bounds.left, right: bounds.right, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+  });
+  expect(mobileAttendanceResultsBounds.left).toBeGreaterThanOrEqual(0);
+  expect(mobileAttendanceResultsBounds.right).toBeLessThanOrEqual(376);
+  expect(mobileAttendanceResultsBounds.scrollWidth).toBeGreaterThan(mobileAttendanceResultsBounds.clientWidth);
+  const mobileAttendanceDocumentWidth = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+    htmlOverflowX: getComputedStyle(document.documentElement).overflowX,
+    bodyOverflowX: getComputedStyle(document.body).overflowX,
+  }));
+  expect(mobileAttendanceDocumentWidth.documentWidth, JSON.stringify(mobileAttendanceDocumentWidth)).toBeLessThanOrEqual(376);
   await rejectionDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(rejectionDialog).toBeHidden();
   expect(correctionDecisions).toHaveLength(1);
 
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const escapedDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
   await page.keyboard.press('Escape');
@@ -173,28 +437,85 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('rejected');
   const rejectedRow = correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ });
-  await expect(rejectedRow).toContainText('rejected');
+  await expect(rejectedRow).toContainText('Rejected');
   await expect(rejectedRow).toContainText('Decision note: Please include the missing punch time.');
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-rejected-action-1920x1080.png'), fullPage: true });
+  await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
+  await ensureCorrectionStatusFilterOpen();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('approved');
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toBeVisible();
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toHaveCount(0);
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-filtered-approved-action-1920x1080.png'), fullPage: true });
+  await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
+  await ensureCorrectionStatusFilterOpen();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('rejected');
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch rejection/ })).toBeVisible();
+  await expect(correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ })).toHaveCount(0);
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-filtered-rejected-action-1920x1080.png'), fullPage: true });
+  await correctionCard.getByRole('button', { name: 'Attendance Requests' }).click();
+  await ensureCorrectionStatusFilterOpen();
+  await (await ensureCorrectionStatusFilterOpen()).selectOption('all');
   expect(correctionDecisions).toEqual([
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
     { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },
   ]);
+  expect(attendanceRequestWidthIssues, 'Attendance Requests must contain the table inside its horizontal scroll region at all four viewport widths in EN and BN')
+    .toEqual([]);
   expect(attendanceCalls.some(call => call.p_report === false && call.p_tenant_id === tenantId)).toBe(true);
   expect(attendanceCalls.some(call => call.p_report === true && call.p_tenant_id === tenantId)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261016.png'), fullPage: true });
+  await page.evaluate(() => { window.location.hash = ''; });
+  await expect(page.getByRole('table', { name: 'Attendance information' })).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-desktop-20261021.png'), fullPage: true });
 
   await page.getByLabel('Search employees').fill('Synthetic');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_search === 'Synthetic')).toBe(true);
   await page.getByRole('button', { name: 'Filters' }).click();
   await expect(page.getByLabel('From date')).toBeVisible();
   await page.getByLabel('From date').fill('2026-10-05');
   await expect.poll(() => attendanceCalls.some(call => call.p_start === '2026-10-05')).toBe(true);
-  await page.getByLabel('Status').selectOption('late');
+  await page.getByRole('checkbox', { name: 'Late', exact: true }).check();
   await expect.poll(() => attendanceCalls.some(call => call.p_status === 'late')).toBe(true);
   await expect(page.getByRole('row', { name: /Synthetic Late Employee/ })).toBeVisible();
-  await expect(page.getByLabel('Status').locator('option')).toHaveText(['All visible statuses', 'late', 'present']);
+  await expect(page.getByRole('row', { name: /Synthetic Early Employee/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'All statuses', exact: true }).click();
+  const beforeMultiStatusFilter = attendanceCalls.length;
+  await page.getByRole('checkbox', { name: 'Early', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Late', exact: true }).check();
+  await expect.poll(() => attendanceCalls.slice(beforeMultiStatusFilter).some(call => call.p_report === false && call.p_status === null)).toBe(true);
+  await expect(page.getByRole('status').filter({ hasText: 'Now showing result for' })).toContainText('“Early” + “Late”');
+  await expect(page.getByRole('row', { name: /Synthetic Early Employee/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Synthetic Late Employee/ })).toBeVisible();
+  await expect(attendanceTable.locator('tbody tr')).toHaveCount(2);
+  await expect(attendanceTable.getByRole('columnheader', { name: 'Date', exact: true })).toBeVisible();
+  await expect(attendanceTable.getByRole('columnheader', { name: 'From date', exact: true })).toHaveCount(0);
+  const filteredRowsGeometry = await attendanceTable.evaluate(table => {
+    const firstRow = table.querySelector('tbody tr');
+    const nextRow = firstRow?.nextElementSibling;
+    const firstBounds = firstRow?.getBoundingClientRect();
+    const nextBounds = nextRow?.getBoundingClientRect();
+    return { height: firstBounds?.height, gap: firstBounds && nextBounds ? nextBounds.top - firstBounds.bottom : null };
+  });
+  expect(filteredRowsGeometry.height).toBeCloseTo(80, 0);
+  expect(filteredRowsGeometry.gap).toBeCloseTo(6, 0);
+  const filteredFeedback = page.getByRole('status').filter({ hasText: 'Now showing result for' });
+  await expect(filteredFeedback).toContainText('“Early” + “Late”');
+  const employeeSearch = page.getByLabel('Search employees', { exact: true });
+  await employeeSearch.fill('');
+  await employeeSearch.press('Enter');
+  await expect.poll(() => attendanceCalls.slice(beforeMultiStatusFilter).some(call => call.p_report === false && (call.p_search === null || call.p_search === undefined || call.p_search === ''))).toBe(true);
+  await expect(employeeSearch).toHaveValue('');
+  await expect(filteredFeedback).toContainText('“Early” + “Late”');
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Filters', exact: true })).toHaveCount(0);
+  await expect(page.locator('#attendance-filters')).toBeHidden();
+  await page.setViewportSize({ width: 1920, height: 1117 });
+  await page.screenshot({
+    path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-filtered-1920x1080.png'), fullPage: true,
+  });
   const downloadWaiter = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download report' }).click();
   const download = await downloadWaiter;
@@ -210,13 +531,41 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const tableRegion = page.getByRole('region', { name: 'Scrollable attendance report table' });
   await expect(tableRegion).toBeVisible();
   expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-information-mobile-20261021.png'), fullPage: true });
+
+  emptyAttendanceDetail = true;
+  await page.getByLabel('Search employees').fill('No matching attendance');
+  await page.getByLabel('Search employees').press('Enter');
+  await expect(page.getByText('No attendance records were returned for this date range.')).toBeVisible();
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-empty-1920x1080.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Clear result', exact: true }).click();
+  failNextAttendanceDetail = true;
+  const attendanceFilters = page.getByRole('button', { name: 'Filters' });
+  if (!(await page.getByLabel('From date').isVisible())) await attendanceFilters.click();
+  await page.getByLabel('From date').fill('2026-10-06');
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-error-1920x1080.png'), fullPage: true });
+  await page.evaluate(() => { window.location.hash = 'attendance-correction-requests'; });
+  const attendanceCorrectionError = page.locator('#attendance-correction-requests').getByRole('alert');
+  await expect(attendanceCorrectionError).toContainText('Attendance correction requests are unavailable');
+  await expect(attendanceCorrectionError.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-requests-error-1920x1080.png'), fullPage: true });
+  await attendanceCorrectionError.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.locator('#attendance-correction-requests').getByRole('table')).toBeVisible();
+  await page.evaluate(() => { window.location.hash = ''; });
+  await expect(page.getByText('No attendance records were returned for this date range.')).toBeVisible();
 
   reportOnly = true;
+  await page.evaluate(() => { window.location.hash = ''; });
   await page.setViewportSize({ width: 1920, height: 1117 });
   await page.reload();
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
   const reportTable = page.getByRole('table', { name: 'Attendance summary by employee' });
+  await expect(reportTable).toBeVisible();
+  await page.evaluate(() => { window.location.hash = 'attendance-correction-requests'; });
+  await expect(page.locator('#attendance-correction-requests')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
+  await page.evaluate(() => { window.location.hash = ''; });
   await expect(reportTable).toBeVisible();
   const reportFrame = page.locator('section[aria-labelledby="attendance-report-heading"]');
   const reportFrameBounds = await reportFrame.evaluate(element => {
@@ -290,7 +639,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(reportHeaderStyle).toEqual({ fontSize: '14px', fontWeight: '400', color: 'rgb(158, 158, 158)' });
   await expect(positiveRow).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-desktop-20261021.png'), fullPage: true });
 
   const teamNameHeader = reportTable.getByRole('columnheader', { name: /Team Name/ });
   await expect(teamNameHeader).toHaveAttribute('aria-sort', 'none');
@@ -356,7 +705,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   expect(await page.getByRole('region', { name: 'Scrollable attendance report table' }).evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261016.png'), fullPage: true });
+  await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/attendance-report-mobile-20261021.png'), fullPage: true });
   await page.getByLabel('Search employees').fill('Formula');
   await page.getByLabel('Search employees').press('Enter');
   await expect.poll(() => attendanceCalls.some(call => call.p_report === true && call.p_search === 'Formula')).toBe(true);
