@@ -122,6 +122,10 @@ jobs:
             await page.getByRole('heading', { name: 'Leave type policies', exact: true }).waitFor({ state: 'visible' });
             await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
             await leaveResults.waitFor({ state: 'visible' });
+            // Figma screenshots must capture the default state, not expanded test-only menus.
+            await page.getByRole('button', { name: 'More options', exact: true }).click();
+            if (await page.getByRole('navigation', { name: 'Leave management sections' }).count())
+              throw new Error('Leave management options remain visible in default Figma screenshot');
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-leave-requests-1920.png', fullPage: true });
