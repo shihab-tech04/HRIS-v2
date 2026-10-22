@@ -2440,65 +2440,6 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{visibleData.leave_types.length}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Holidays</p><p className="mt-2 text-2xl font-semibold">{visibleData.holidays.length}</p></div>
       </div>
-      <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div><h3 id="leave-absence-calendar-heading" className="font-semibold text-[#08263D]">{tx('Absence calendar')}</h3>
-            <p className="mt-1 text-xs text-slate-600">{tx('Only approved leave requests appear here. Pending requests remain in the review queue.')}</p></div>
-          <div className="flex flex-wrap items-end gap-2">
-            <button type="button" aria-label={tx('Previous month')} onClick={() => setAbsenceMonth(month => shiftLeaveCalendarMonth(month, -1))}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg" aria-controls="leave-absence-month-view">‹</button>
-            <div><label htmlFor="leave-absence-month" className="mb-1 block text-xs font-medium text-slate-600">{tx('Month')}</label>
-              <input id="leave-absence-month" type="month" required value={absenceMonth}
-                onChange={event => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) setAbsenceMonth(event.target.value); }}
-                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm" /></div>
-            <button type="button" aria-label={tx('Next month')} onClick={() => setAbsenceMonth(month => shiftLeaveCalendarMonth(month, 1))}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg" aria-controls="leave-absence-month-view">›</button>
-            <button type="button" onClick={() => setAbsenceMonth(leaveCalendarMonth())}
-              className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">{tx('Current month')}</button>
-          </div>
-        </div>
-        {absenceError && <StatusMessage error={absenceError} onRetry={() => void loadAbsenceSchedule(absenceMonth)} retryLabel={tx('Retry')} />}
-        {(absenceLoading || (!visibleAbsenceData && !absenceError)) && <p role="status" className="rounded-lg border bg-[#F8FAFA] p-4 text-sm">{tx('Loading absence calendar…')}</p>}
-        {visibleAbsenceData && !absenceLoading && <>
-          <div className="overflow-x-auto rounded-lg border border-slate-200" role="region" aria-label={`${tx('Absence calendar')} ${calendarMonthLabel}`} tabIndex={0}>
-            <table id="leave-absence-month-view" className="w-full min-w-[336px] table-fixed text-left text-sm" aria-label={`${tx('Absence calendar')} ${calendarMonthLabel}`}>
-              <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{calendarWeekdays.map(day => <th key={day} scope="col" className="px-1 py-2 text-center font-medium">{day}</th>)}</tr></thead>
-              <tbody>{Array.from({ length: calendarCells.length / 7 }, (_, week) => <tr key={week} className="divide-x divide-slate-100 border-t border-slate-100">
-                {calendarCells.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
-                  if (!date) return <td key={`empty-${week}-${dayIndex}`} className="h-[76px] bg-slate-50/60" aria-hidden="true" />;
-                  const dayAbsences = absenceRequests.filter(item => String(item.from_date || '') <= date && String(item.to_date || '') >= date);
-                  const dayHolidays = absenceHolidays.filter(item => String(item.start_date || '') <= date && String(item.end_date || '') >= date);
-                  const dayLabel = new Date(`${date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                  return <td key={date} className="h-[76px] p-0.5 align-top sm:p-1">
-                    <button type="button" aria-pressed={selectedAbsenceDate === date}
-                      aria-label={`${dayLabel}, ${localizedEmployeeNumber(dayAbsences.length, locale)} ${tx('people on leave')}${dayHolidays.length ? `, ${dayHolidays.map(item => display(item.name)).join(', ')}` : ''}`}
-                      onClick={() => setSelectedAbsenceDate(date)}
-                      className={`flex h-full min-h-[72px] w-full flex-col items-start rounded-md p-1 text-left focus-visible:outline-2 focus-visible:outline-[#085587] sm:p-1.5 ${selectedAbsenceDate === date ? 'bg-[#E7F1F3] ring-1 ring-[#085587]' : 'hover:bg-slate-50'}`}>
-                      <span className="font-medium tabular-nums">{new Date(`${date}T12:00:00Z`).getUTCDate().toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}</span>
-                      {dayAbsences.length > 0 && <span className="mt-1 w-full truncate rounded bg-[#DCEFF4] px-1 py-0.5 text-[9px] font-medium leading-3 text-[#085587] sm:text-[10px]">{localizedEmployeeNumber(dayAbsences.length, locale)} {tx('people on leave')}</span>}
-                      {dayHolidays.length > 0 && <span className="mt-1 w-full truncate rounded bg-amber-50 px-1 py-0.5 text-[9px] leading-3 text-amber-800 sm:text-[10px]">{display(dayHolidays[0].name)}</span>}
-                    </button>
-                  </td>;
-                })}
-              </tr>)}</tbody>
-            </table>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <section aria-labelledby="leave-absence-day-heading" className="min-w-0 rounded-lg border border-slate-200 p-3">
-              <h4 id="leave-absence-day-heading" className="font-medium text-slate-800">{tx('Approved absences on')} {selectedAbsenceDateLabel}</h4>
-              {selectedDateAbsences.length ? <ul className="mt-2 divide-y divide-slate-100">{selectedDateAbsences.map((item, index) => <li key={String(item.id || index)} className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2 text-sm">
-                <span className="font-medium text-slate-800">{display(item.full_name)}</span><span className="text-slate-600">{display(item.leave_type_name)} · {calendarDateText(item.from_date)} – {calendarDateText(item.to_date)}</span>
-              </li>)}</ul> : <p className="mt-2 text-sm text-slate-600">{tx('No approved absences on this date.')}</p>}
-            </section>
-            <section aria-labelledby="leave-absence-holiday-heading" className="min-w-0 rounded-lg border border-slate-200 p-3">
-              <h4 id="leave-absence-holiday-heading" className="font-medium text-slate-800">{tx('Organization holidays on')} {selectedAbsenceDateLabel}</h4>
-              {selectedDateHolidays.length ? <ul className="mt-2 divide-y divide-slate-100">{selectedDateHolidays.map((item, index) => <li key={String(item.id || index)} className="py-2 text-sm text-slate-700">{display(item.name)} · {calendarDateText(item.start_date)} – {calendarDateText(item.end_date)}</li>)}</ul>
-                : <p className="mt-2 text-sm text-slate-600">{tx('No organization holidays on this date.')}</p>}
-            </section>
-          </div>
-        </>}
-      </section>
-      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
           <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
@@ -2561,6 +2502,66 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </table>
         </div>}
       </div>
+
+      <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div><h3 id="leave-absence-calendar-heading" className="font-semibold text-[#08263D]">{tx('Absence calendar')}</h3>
+            <p className="mt-1 text-xs text-slate-600">{tx('Only approved leave requests appear here. Pending requests remain in the review queue.')}</p></div>
+          <div className="flex flex-wrap items-end gap-2">
+            <button type="button" aria-label={tx('Previous month')} onClick={() => setAbsenceMonth(month => shiftLeaveCalendarMonth(month, -1))}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg" aria-controls="leave-absence-month-view">‹</button>
+            <div><label htmlFor="leave-absence-month" className="mb-1 block text-xs font-medium text-slate-600">{tx('Month')}</label>
+              <input id="leave-absence-month" type="month" required value={absenceMonth}
+                onChange={event => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) setAbsenceMonth(event.target.value); }}
+                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm" /></div>
+            <button type="button" aria-label={tx('Next month')} onClick={() => setAbsenceMonth(month => shiftLeaveCalendarMonth(month, 1))}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg" aria-controls="leave-absence-month-view">›</button>
+            <button type="button" onClick={() => setAbsenceMonth(leaveCalendarMonth())}
+              className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">{tx('Current month')}</button>
+          </div>
+        </div>
+        {absenceError && <StatusMessage error={absenceError} onRetry={() => void loadAbsenceSchedule(absenceMonth)} retryLabel={tx('Retry')} />}
+        {(absenceLoading || (!visibleAbsenceData && !absenceError)) && <p role="status" className="rounded-lg border bg-[#F8FAFA] p-4 text-sm">{tx('Loading absence calendar…')}</p>}
+        {visibleAbsenceData && !absenceLoading && <>
+          <div className="overflow-x-auto rounded-lg border border-slate-200" role="region" aria-label={`${tx('Absence calendar')} ${calendarMonthLabel}`} tabIndex={0}>
+            <table id="leave-absence-month-view" className="w-full min-w-[336px] table-fixed text-left text-sm" aria-label={`${tx('Absence calendar')} ${calendarMonthLabel}`}>
+              <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>{calendarWeekdays.map(day => <th key={day} scope="col" className="px-1 py-2 text-center font-medium">{day}</th>)}</tr></thead>
+              <tbody>{Array.from({ length: calendarCells.length / 7 }, (_, week) => <tr key={week} className="divide-x divide-slate-100 border-t border-slate-100">
+                {calendarCells.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
+                  if (!date) return <td key={`empty-${week}-${dayIndex}`} className="h-[76px] bg-slate-50/60" aria-hidden="true" />;
+                  const dayAbsences = absenceRequests.filter(item => String(item.from_date || '') <= date && String(item.to_date || '') >= date);
+                  const dayHolidays = absenceHolidays.filter(item => String(item.start_date || '') <= date && String(item.end_date || '') >= date);
+                  const dayLabel = new Date(`${date}T12:00:00`).toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                  return <td key={date} className="h-[76px] p-0.5 align-top sm:p-1">
+                    <button type="button" aria-pressed={selectedAbsenceDate === date}
+                      aria-label={`${dayLabel}, ${localizedEmployeeNumber(dayAbsences.length, locale)} ${tx('people on leave')}${dayHolidays.length ? `, ${dayHolidays.map(item => display(item.name)).join(', ')}` : ''}`}
+                      onClick={() => setSelectedAbsenceDate(date)}
+                      className={`flex h-full min-h-[72px] w-full flex-col items-start rounded-md p-1 text-left focus-visible:outline-2 focus-visible:outline-[#085587] sm:p-1.5 ${selectedAbsenceDate === date ? 'bg-[#E7F1F3] ring-1 ring-[#085587]' : 'hover:bg-slate-50'}`}>
+                      <span className="font-medium tabular-nums">{new Date(`${date}T12:00:00Z`).getUTCDate().toLocaleString(locale === 'bn' ? 'bn-BD' : 'en-US')}</span>
+                      {dayAbsences.length > 0 && <span className="mt-1 w-full truncate rounded bg-[#DCEFF4] px-1 py-0.5 text-[9px] font-medium leading-3 text-[#085587] sm:text-[10px]">{localizedEmployeeNumber(dayAbsences.length, locale)} {tx('people on leave')}</span>}
+                      {dayHolidays.length > 0 && <span className="mt-1 w-full truncate rounded bg-amber-50 px-1 py-0.5 text-[9px] leading-3 text-amber-800 sm:text-[10px]">{display(dayHolidays[0].name)}</span>}
+                    </button>
+                  </td>;
+                })}
+              </tr>)}</tbody>
+            </table>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <section aria-labelledby="leave-absence-day-heading" className="min-w-0 rounded-lg border border-slate-200 p-3">
+              <h4 id="leave-absence-day-heading" className="font-medium text-slate-800">{tx('Approved absences on')} {selectedAbsenceDateLabel}</h4>
+              {selectedDateAbsences.length ? <ul className="mt-2 divide-y divide-slate-100">{selectedDateAbsences.map((item, index) => <li key={String(item.id || index)} className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2 text-sm">
+                <span className="font-medium text-slate-800">{display(item.full_name)}</span><span className="text-slate-600">{display(item.leave_type_name)} · {calendarDateText(item.from_date)} – {calendarDateText(item.to_date)}</span>
+              </li>)}</ul> : <p className="mt-2 text-sm text-slate-600">{tx('No approved absences on this date.')}</p>}
+            </section>
+            <section aria-labelledby="leave-absence-holiday-heading" className="min-w-0 rounded-lg border border-slate-200 p-3">
+              <h4 id="leave-absence-holiday-heading" className="font-medium text-slate-800">{tx('Organization holidays on')} {selectedAbsenceDateLabel}</h4>
+              {selectedDateHolidays.length ? <ul className="mt-2 divide-y divide-slate-100">{selectedDateHolidays.map((item, index) => <li key={String(item.id || index)} className="py-2 text-sm text-slate-700">{display(item.name)} · {calendarDateText(item.start_date)} – {calendarDateText(item.end_date)}</li>)}</ul>
+                : <p className="mt-2 text-sm text-slate-600">{tx('No organization holidays on this date.')}</p>}
+            </section>
+          </div>
+        </>}
+      </section>
+      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
       {rejectingRequest && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget && !resolvingRequestId) { setRejectingRequest(null); setResolutionNote(''); } }}>
         <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="leave-rejection-heading" aria-describedby="leave-rejection-description"
