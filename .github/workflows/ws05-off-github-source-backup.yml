@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - work/ws05-free-tier-release-candidate-20261022
+      - integration/ws05-main-final-review-20261022
   workflow_dispatch:
 permissions:
   contents: read
