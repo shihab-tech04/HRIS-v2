@@ -96,6 +96,9 @@ jobs:
             await page.screenshot({ path: 'hris-offline-manager-bn-375.png', fullPage: true });
             await page.getByRole('button', { name: 'Switch language to English' }).click();
             await page.getByRole('button', { name: 'Employee view' }).click();
+            await page.getByRole('heading', { name: 'Review Employee' }).waitFor({ state: 'visible', timeout: 12000 });
+            if (await page.getByText('Employee services returned an invalid response.').count())
+              throw new Error('Offline Employee fixture violated expected dashboard RPC contract');
             await page.screenshot({ path: 'hris-offline-employee-375.png', fullPage: true });
             if (supabaseRequests.length) throw new Error('Offline review connected to production Supabase');
           } finally { await browser.close(); }
