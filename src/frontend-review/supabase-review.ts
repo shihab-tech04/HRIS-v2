@@ -22,6 +22,25 @@ export const supabasePublicKey = 'offline-no-key';
 export const supabase = {
   from: () => query(),
   rpc: (name: string) => {
+    if (name === 'hris_get_my_project_tasks') {
+      return Promise.resolve({ data: { tasks: [] }, error: null });
+    }
+    if (name === 'hris_get_my_learning_context') {
+      return Promise.resolve({ data: {
+        tenant_id: '00000000-0000-4000-8000-000000000001',
+        programs: [], enrollments: [],
+      }, error: null });
+    }
+    if (name === 'hris_get_my_appraisal_work') {
+      return Promise.resolve({ data: { appraisals: [] }, error: null });
+    }
+    if (name === 'hris_get_my_pending_requests') {
+      return Promise.resolve({ data: {
+        tenant_id: '00000000-0000-4000-8000-000000000001',
+        employee_id: '00000000-0000-4000-8000-000000000003',
+        requests: [],
+      }, error: null });
+    }
     if (name === 'hris_get_my_dashboard_data') {
       return Promise.resolve({ data: {
         dashboard_date: '2026-10-22', balance_year: 2026,
