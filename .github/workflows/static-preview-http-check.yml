@@ -16,7 +16,7 @@ jobs:
       - name: Check public HTML and relative CSS/JS assets (no credentials)
         shell: bash
         env:
-          REVIEW_COMMIT: '9ae7b9cd4f3569e768444daf0e269f2427cdd60f'
+          REVIEW_COMMIT: '9e6edbc9263e2379163b835ee3745183ec687719'
         run: |
           set -euo pipefail
           url="https://rawcdn.githack.com/shihab-tech04/HRIS-v2/${REVIEW_COMMIT}/review-site/index.html"
@@ -49,7 +49,7 @@ jobs:
       - run: npm install --include=optional --no-audit --no-fund
       - name: Run real Chromium on external static review URL
         env:
-          REVIEW_COMMIT: '9ae7b9cd4f3569e768444daf0e269f2427cdd60f'
+          REVIEW_COMMIT: '9e6edbc9263e2379163b835ee3745183ec687719'
         run: |
           npx playwright install --with-deps chromium
           node --input-type=module <<'NODE'
