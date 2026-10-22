@@ -5,6 +5,7 @@ on:
       - work/ws01-figma-attendance-shell-20261021
       - work/ws08-management-phase05-20261020
       - work/hris-materialized-multistream-20261022
+      - work/ws05-free-tier-release-candidate-20261022
   workflow_dispatch:
 permissions:
   contents: read
