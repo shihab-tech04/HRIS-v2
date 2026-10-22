@@ -503,6 +503,8 @@ const bengali: Record<string, string> = {
   'All visible statuses': 'সব দৃশ্যমান অবস্থা',
   'Apply Filter': 'ফিল্টার প্রয়োগ করুন',
   'Filters': 'ফিল্টার',
+  'More options': 'আরও বিকল্প',
+  'Request overview': 'আবেদনের সারসংক্ষেপ',
   'Sort by {column} {direction}': '{column} {direction} ক্রমানুসারে সাজান',
   'ascending': 'ঊর্ধ্বক্রমে',
   'descending': 'নিম্নক্রমে',

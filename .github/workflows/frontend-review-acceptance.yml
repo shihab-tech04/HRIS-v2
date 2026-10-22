@@ -74,15 +74,58 @@ jobs:
               value => { if (value !== 'page') throw new Error('Leave Requests navigation is not selected'); }
             );
             await page.getByText('Review Employee A', { exact: true }).first().waitFor({ state: 'visible', timeout: 12000 });
+            for (const name of ['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', 'Action']) {
+              const count = await page.getByRole('table', { name: 'Leave requests' })
+                .getByRole('columnheader', { name, exact: true }).count();
+              if (count !== 1) throw new Error('Approved Figma Leave Requests column absent: ' + name);
+            }
+            const reviewRow = page.getByRole('table', { name: 'Leave requests' }).getByRole('row')
+              .filter({ hasText: 'Review Employee A' });
+            if (!await reviewRow.getByText('2026-10-21').count())
+              throw new Error('Applying Date must bind to leave_requests.submitted_at');
+            if (!await reviewRow.getByText('Review-only fixture').count())
+              throw new Error('Remarks must bind to leave_requests.reason');
+            if (!await reviewRow.getByRole('button', { name: 'Approve' }).count()
+              || !await reviewRow.getByRole('button', { name: 'Reject' }).count())
+              throw new Error('Approved decisions are not accessible via Figma action column');
             if (await page.getByText('Leave service returned an invalid response.').count())
               throw new Error('Offline Leave fixture has invalid RPC shape');
             const leaveResults = page.getByRole('region', { name: 'Leave request results' });
             await leaveResults.waitFor({ state: 'visible' });
-            const leaveCalendar = page.getByRole('heading', { name: 'Absence calendar' });
-            const resultPrecedesCalendar = await leaveResults.evaluate(el =>
-              !!(el.compareDocumentPosition(document.getElementById('leave-absence-calendar-heading')) & Node.DOCUMENT_POSITION_FOLLOWING));
-            if (!resultPrecedesCalendar)
-              throw new Error('Leave Requests are positioned below the calendar, contradicting the approved request-table route');
+            await page.getByRole('searchbox', { name: 'Search requests' }).waitFor({ state: 'visible' });
+            if (await page.getByText('Pending requests', { exact: true }).count())
+              throw new Error('Leave Requests still displays expanded overview cards by default');
+            await page.getByRole('button', { name: 'Filters', exact: true }).click();
+            await page.getByLabel('From date', { exact: true }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Filters', exact: true }).click();
+            if (await page.getByLabel('From date', { exact: true }).count())
+              throw new Error('Advanced filters remain expanded on the compact request screen');
+            await page.getByRole('button', { name: 'More options', exact: true }).click();
+            await page.getByRole('navigation', { name: 'Leave management sections' }).getByRole('button', { name: 'Request overview' }).click();
+            await page.getByText('Pending requests', { exact: true }).waitFor({ state: 'visible' });
+            await page.getByRole('navigation', { name: 'Leave management sections' }).getByRole('button', { name: 'Request overview' }).click();
+            if (await page.getByText('Pending requests', { exact: true }).count())
+              throw new Error('Overview cannot be collapsed after inspection');
+            if (await page.getByRole('heading', { name: 'Absence calendar' }).count())
+              throw new Error('Default Leave Requests route still expands the calendar below the table');
+            if (await page.getByRole('heading', { name: 'Leave policy' }).count())
+              throw new Error('Default Leave Requests route still expands policy management below the table');
+            await page.getByRole('navigation', { name: 'Leave management sections' })
+              .getByRole('button', { name: 'Absence calendar' }).click();
+            await page.locator('#leave-absence-calendar-heading').waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
+            await leaveResults.waitFor({ state: 'visible' });
+            if (await page.getByRole('heading', { name: 'Absence calendar' }).count())
+              throw new Error('Calendar remains expanded after returning to Leave Requests');
+            await page.getByRole('navigation', { name: 'Leave management sections' })
+              .getByRole('button', { name: 'Leave policy' }).click();
+            await page.getByRole('heading', { name: 'Leave type policies', exact: true }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
+            await leaveResults.waitFor({ state: 'visible' });
+            // Figma screenshots must capture the default state, not expanded test-only menus.
+            await page.getByRole('button', { name: 'More options', exact: true }).click();
+            if (await page.getByRole('navigation', { name: 'Leave management sections' }).count())
+              throw new Error('Leave management options remain visible in default Figma screenshot');
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-leave-requests-1920.png', fullPage: true });
