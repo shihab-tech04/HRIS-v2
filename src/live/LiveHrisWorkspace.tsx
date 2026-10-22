@@ -1710,7 +1710,7 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
           </>}
         </div>
       </div>
-      <div id="attendance-correction-filters" hidden={!correctionFiltersOpen || ['approved', 'rejected'].includes(correctionStatusFilter)} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+      <div id="attendance-correction-filters" hidden={!correctionFiltersOpen} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
         {canManage && <div><label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="attendance-correction-status">{tx('Filter by status')}</label>
           <select id="attendance-correction-status" value={correctionStatusFilter} onChange={event => { setCorrectionStatusFilter(event.target.value); setSelectedCorrectionIds([]); setActionMessage(''); }}
             className="min-h-11 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 text-sm">
