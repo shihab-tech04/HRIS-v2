@@ -62,6 +62,8 @@ jobs:
             const failures = [];
             page.on('request', r => { if (r.url().includes('supabase.co')) dbRequests.push(r.url()); });
             page.on('pageerror', e => failures.push(e.message));
+            page.on('console', m => { if (m.type() === 'error') console.log('Browser console error:', m.text()); });
+            page.on('requestfailed', r => console.log('Failed browser request:', r.url(), r.failure()?.errorText));
             const result = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 50000 });
             if (result?.status() !== 200) throw new Error('Public preview HTML returned ' + result?.status());
             await page.locator('[data-frontend-review="offline"]').waitFor({ state: 'visible', timeout: 25000 });
