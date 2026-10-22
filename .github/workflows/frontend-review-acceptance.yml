@@ -39,8 +39,12 @@ jobs:
             const jsErrors = [];
             page.on('request', request => { if (request.url().includes('supabase.co')) supabaseRequests.push(request.url()); });
             page.on('pageerror', error => jsErrors.push(error.message));
-            await page.goto('http://127.0.0.1:4175/HRIS-v2/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.locator('[data-frontend-review="offline"]').waitFor({ state: 'visible', timeout: 20000 });
+            await page.goto('http://127.0.0.1:4175/HRIS-v2/app.html', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.locator('[data-frontend-review="offline"]').waitFor({ state: 'visible', timeout: 20000 }).catch(async error => {
+              console.error('Offline preview DOM:', (await page.content()).slice(0, 1300));
+              console.error('Browser errors:', jsErrors);
+              throw error;
+            });
             await page.getByRole('button', { name: 'Employee view' }).click();
             await page.getByRole('button', { name: 'Manager view' }).click();
             if (supabaseRequests.length) throw new Error('Production Supabase request emitted in offline review');
