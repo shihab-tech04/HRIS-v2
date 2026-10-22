@@ -1,0 +1,81 @@
+name: External static visual review URL verification (Main)
+on:
+  push:
+    branches: [review/hris-static-web-20261022]
+    paths:
+      - '.github/workflows/static-preview-http-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public HTML and relative CSS/JS assets (no credentials)
+        shell: bash
+        env:
+          REVIEW_COMMIT: '70274736c06802f23ef1f351b86109c0b782f23f'
+        run: |
+          set -euo pipefail
+          url="https://rawcdn.githack.com/shihab-tech04/HRIS-v2/${REVIEW_COMMIT}/review-site/index.html"
+          echo "Public review URL: ${url}"
+          status=''
+          for i in $(seq 1 12); do
+            if curl --fail --silent --show-error --location --max-time 15 -D /tmp/review.headers -o /tmp/review.html "${url}"; then status=ok; break; fi
+            sleep 5
+          done
+          test "${status}" = ok
+          grep -qi 'content-type: *text/html' /tmp/review.headers
+          grep -q 'HRIS frontend review' /tmp/review.html || true
+          grep -q 'src="./assets/' /tmp/review.html
+          grep -q 'href="./assets/' /tmp/review.html
+          for path in $(grep -oE '[.]/assets/[^"]+\.(js|css)' /tmp/review.html | sort -u); do
+            target="${url%/*}/${path#./}"
+            curl --fail --silent --show-error --location --max-time 25 -D /tmp/asset.headers -o /tmp/asset.body "${target}"
+            test -s /tmp/asset.body
+            if [[ "${path}" == *.js ]]; then
+              grep -qiE 'content-type: *(application|text)/javascript' /tmp/asset.headers
+            else
+              grep -qi 'content-type: *text/css' /tmp/asset.headers
+            fi
+            echo "Verified ${target}"
+          done
+          echo "Verified public HTML and module asset MIME types."
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --include=optional --no-audit --no-fund
+      - name: Run real Chromium on external static review URL
+        env:
+          REVIEW_COMMIT: '70274736c06802f23ef1f351b86109c0b782f23f'
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module <<'NODE'
+          import { chromium } from '@playwright/test';
+          const url = 'https://rawcdn.githack.com/shihab-tech04/HRIS-v2/' + process.env.REVIEW_COMMIT + '/review-site/index.html';
+          const browser = await chromium.launch();
+          try {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            const dbRequests = [];
+            const failures = [];
+            page.on('request', r => { if (r.url().includes('supabase.co')) dbRequests.push(r.url()); });
+            page.on('pageerror', e => failures.push(e.message));
+            const result = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 50000 });
+            if (result?.status() !== 200) throw new Error('Public preview HTML returned ' + result?.status());
+            await page.locator('[data-frontend-review="offline"]').waitFor({ state: 'visible', timeout: 25000 });
+            await page.getByRole('button', { name: 'Employee view' }).click();
+            await page.getByRole('heading', { name: 'Review Employee' }).waitFor();
+            await page.screenshot({ path: 'public-main-review.png', fullPage: true });
+            if (failures.length) throw new Error('Client errors: ' + failures.join('; '));
+            if (dbRequests.length) throw new Error('Supabase request leaked: ' + dbRequests.join('; '));
+            console.log('External public Main preview verified, no Supabase traffic.');
+          } finally { await browser.close(); }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verified-public-main-preview
+          path: public-main-review.png
+          if-no-files-found: ignore
