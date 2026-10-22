@@ -324,7 +324,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   const approvalRow = requestTable.getByRole('row', { name: /Synthetic missed punch approval/ });
   await approvalRow.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Attendance correction approved.' })).toHaveText('Attendance correction approved.');
-  await expect(approvalRow).toContainText(/approved/i);
+  // Approved corrections leave the pending-only Figma table; confirm the approved filter still exposes the resolved record.
+  await expect(approvalRow).toHaveCount(0);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const requestStatusFilter = page.getByLabel('Filter by status');
+  await requestStatusFilter.selectOption('approved');
+  await expect(requestTable.getByRole('row', { name: /Synthetic missed punch approval/ })).toContainText(/approved/i);
+  await requestStatusFilter.selectOption('pending');
   const rejectionRow = requestTable.getByRole('row', { name: /Synthetic missed punch rejection/ });
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const rejectionDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
@@ -344,8 +350,13 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Attendance correction rejected.' })).toHaveText('Attendance correction rejected.');
-  await expect(rejectionRow).toContainText(/rejected/i);
-  await expect(rejectionRow).toContainText('Decision note: Please include the missing punch time.');
+  // The pending queue removes rejected decisions; inspect the actual rejected Figma state.
+  await expect(rejectionRow).toHaveCount(0);
+  await requestStatusFilter.selectOption('rejected');
+  const resolvedRejectionRow = requestTable.getByRole('row', { name: /Synthetic missed punch rejection/ });
+  await expect(resolvedRejectionRow).toContainText(/rejected/i);
+  await expect(resolvedRejectionRow).toContainText('Please include the missing punch time.');
+
   expect(correctionDecisions).toEqual([
     { p_id: correctionRequests[0].id, p_decision: 'approved', p_note: null },
     { p_id: correctionRequests[1].id, p_decision: 'rejected', p_note: 'Please include the missing punch time.' },
