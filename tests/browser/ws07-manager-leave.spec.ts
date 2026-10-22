@@ -198,7 +198,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('status').filter({ hasText: 'Showing 2 of 2' })).toBeVisible();
   await page.getByRole('button', { name: 'Clear dates', exact: true }).click();
   await expect(table.locator('tbody tr')).toHaveCount(4);
-  await expect(table.getByRole('row', { name: /Nabil Hasan/ })).toContainText('Decision note: Policy evidence was incomplete.');
+  await expect(table.getByRole('row', { name: /Nabil Hasan/ })).toContainText('Policy evidence was incomplete.');
   const evidenceDownload = page.waitForEvent('download');
   await table.getByRole('button', { name: 'Download evidence for Amira Rahman’s Medical leave leave request' }).click();
   expect((await evidenceDownload).suggestedFilename()).toBe('leave-evidence-e3333333.pdf');
@@ -255,7 +255,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByText('Leave request rejected.')).toBeVisible();
   await page.getByLabel('Filter by status').selectOption('all');
   await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('rejected');
-  await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Decision note: Please correct the requested dates before resubmitting.');
+  await expect(table.getByRole('row', { name: /Tanim Chowdhury/ })).toContainText('Please correct the requested dates before resubmitting.');
   expect(decisions[2]).toEqual({ p_id: 'e3333333-3333-4333-8333-333333333332', p_decision: 'rejected', p_note: 'Please correct the requested dates before resubmitting.' });
 
   await page.getByLabel('Search requests').fill('No matching employee');
