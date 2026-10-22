@@ -97,6 +97,16 @@ jobs:
             await page.getByRole('button', { name: 'Switch language to English' }).click();
             await page.getByRole('button', { name: 'Employee view' }).click();
             await page.getByRole('heading', { name: 'Review Employee' }).waitFor({ state: 'visible', timeout: 12000 });
+            await page.waitForTimeout(300);
+            for (const errorText of [
+              'Unable to load your assigned work.',
+              'Unable to load upcoming training.',
+              'Unable to load your upcoming reviews.',
+              'Unable to load your pending requests.',
+            ]) {
+              if (await page.getByText(errorText, { exact: false }).count())
+                throw new Error('Employee review widget showed a fixture error: ' + errorText);
+            }
             if (await page.getByText('Employee services returned an invalid response.').count())
               throw new Error('Offline Employee fixture violated expected dashboard RPC contract');
             await page.screenshot({ path: 'hris-offline-employee-375.png', fullPage: true });
