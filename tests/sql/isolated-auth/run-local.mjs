@@ -4140,9 +4140,18 @@ const genderPolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
     annual_entitlement: 5, active: true },
 });
 
+const weekdayPreviewHolidayDate = (() => {
+  // The personal dashboard supplies upcoming holidays only. Keep the exclusion
+  // fixture on a future working weekday even when this regression runs later.
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + 2);
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+})();
 psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
   VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true),
-    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday','2026-10-21','2026-10-21','general',true);`);
+    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday','${weekdayPreviewHolidayDate}','${weekdayPreviewHolidayDate}','general',true);`);
 
 const personalLeaveBalanceResponse = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
@@ -4206,7 +4215,7 @@ try {
       HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS: String(personalLeaveBalance.used_days),
       HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS: String(personalLeaveBalance.pending_days),
       HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
-      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: '2026-10-21',
+      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: weekdayPreviewHolidayDate,
       HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE: '2026-10-25',
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
