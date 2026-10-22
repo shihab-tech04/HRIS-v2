@@ -57,7 +57,40 @@ jobs:
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-manager-1920.png', fullPage: true });
             await page.setViewportSize({ width: 375, height: 812 });
+            const tabs = page.getByRole('navigation', { name: 'Dashboard views' });
+            await tabs.waitFor({ state: 'visible' });
+            for (const button of await tabs.locator('button').all()) {
+              const box = await button.boundingBox();
+              if (!box || box.x < -1 || box.x + box.width > 376)
+                throw new Error('Mobile dashboard tab remains clipped');
+            }
+            const teamScroller = page.getByRole('region', { name: 'Scrollable team report totals' });
+            await teamScroller.waitFor({ state: 'visible' });
+            const before = await teamScroller.evaluate(el => ({
+              width: el.clientWidth, total: el.scrollWidth, position: el.scrollLeft,
+            }));
+            if (before.total <= before.width + 120) throw new Error('Team table lost expected horizontal reachability');
+            await teamScroller.focus();
+            await page.keyboard.press('ArrowRight');
+            await page.waitForTimeout(300);
+            const keyboardScroll = await teamScroller.evaluate(el => el.scrollLeft);
+            if (keyboardScroll <= before.position) throw new Error('Keyboard cannot scroll mobile team table horizontally');
+            await teamScroller.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+            const lastColumn = teamScroller.getByRole('button', { name: /View attendance details for/ }).first();
+            const action = await lastColumn.boundingBox();
+            const region = await teamScroller.boundingBox();
+            if (!action || !region || action.x + action.width > region.x + region.width + 2
+                || action.x < region.x - 1) throw new Error('Last team decision/detail action is unreachable');
+            await teamScroller.evaluate(el => { el.scrollLeft = 0; });
             await page.screenshot({ path: 'hris-offline-manager-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+            for (const button of await page.getByRole('navigation', { name: /Dashboard views|ড্যাশবোর্ড/ }).locator('button').all()) {
+              const box = await button.boundingBox();
+              if (!box || box.x < -1 || box.x + box.width > 376)
+                throw new Error('Bengali dashboard tab clipped at mobile width');
+            }
+            await page.screenshot({ path: 'hris-offline-manager-bn-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Switch language to English' }).click();
             await page.getByRole('button', { name: 'Employee view' }).click();
             await page.screenshot({ path: 'hris-offline-employee-375.png', fullPage: true });
             if (supabaseRequests.length) throw new Error('Offline review connected to production Supabase');
