@@ -66,6 +66,9 @@ jobs:
             if (await page.getByText('Attendance service returned an invalid response.').count())
               throw new Error('Offline Attendance fixture has invalid RPC shape');
             await page.screenshot({ path: 'hris-offline-attendance-information-1280.png', fullPage: true });
+            await page.setViewportSize({ width: 1920, height: 1080 });
+            await page.screenshot({ path: 'hris-offline-attendance-information-1920.png', fullPage: true });
+            await page.setViewportSize({ width: 1280, height: 800 });
             await leaveNav.getByRole('button', { name: 'Leave Requests' }).click();
             await leaveNav.getByRole('button', { name: 'Leave Requests' }).getAttribute('aria-current').then(
               value => { if (value !== 'page') throw new Error('Leave Requests navigation is not selected'); }
@@ -81,6 +84,8 @@ jobs:
             if (!resultPrecedesCalendar)
               throw new Error('Leave Requests are positioned below the calendar, contradicting the approved request-table route');
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
+            await page.setViewportSize({ width: 1920, height: 1080 });
+            await page.screenshot({ path: 'hris-offline-leave-requests-1920.png', fullPage: true });
             await page.setViewportSize({ width: 375, height: 812 });
             const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
             if (pageWidth > 375) throw new Error('Leave route causes document overflow at 375px: ' + pageWidth);
@@ -97,6 +102,9 @@ jobs:
             await leaveResults.evaluate(el => { el.scrollLeft = 0; });
             await page.evaluate(() => window.scrollTo(0, 0));
             await page.screenshot({ path: 'hris-offline-leave-requests-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+            await page.screenshot({ path: 'hris-offline-leave-requests-bn-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Switch language to English' }).click();
             await page.setViewportSize({ width: 1280, height: 800 });
             await page.locator('aside[aria-label="Primary HRIS navigation"]')
               .getByRole('button', { name: 'Dashboard' }).click();
