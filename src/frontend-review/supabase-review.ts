@@ -34,8 +34,21 @@ export const supabase = {
         check_in: '09:00', check_out: '17:30', status: 'present',
         office_hours: 8, working_hours: 8.5, deviation: 0.5,
       }));
+      const reviewCorrections = Array.from({ length: 8 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(2101 + index).padStart(12, '0')}`,
+        employee_id: `00000000-0000-4000-8000-${String(10 + index).padStart(12, '0')}`,
+        employee_number: `REVIEW-${String(index + 1).padStart(3, '0')}`,
+        full_name: `Review Employee ${String.fromCharCode(65 + index)}`,
+        attendance_date: '2026-10-20',
+        requested_check_in: '09:00', requested_check_out: '18:00',
+        requested_work_mode: null,
+        requested_at: '2026-10-21T09:30:00Z',
+        reason: ['Forgot to punch', 'Working from home', 'Clock-in correction', 'Client meeting',
+          'Time adjustment', 'Remote work', 'Office visit', 'Client visit'][index],
+        status: 'pending', resolution_note: null,
+      }));
       return Promise.resolve({ data: args?.p_report
-        ? reviewEmployees : { records: reviewEmployees, corrections: [] }, error: null });
+        ? reviewEmployees : { records: reviewEmployees, corrections: reviewCorrections }, error: null });
     }
     if (name === 'hris_get_tenant_leave_data') {
       const reviewRequests = [
