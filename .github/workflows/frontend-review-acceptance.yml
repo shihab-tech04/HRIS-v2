@@ -105,7 +105,7 @@ jobs:
               throw new Error('Calendar remains expanded after returning to Leave Requests');
             await page.getByRole('navigation', { name: 'Leave management sections' })
               .getByRole('button', { name: 'Leave policy' }).click();
-            await page.getByRole('heading', { name: 'Leave policy' }).waitFor({ state: 'visible' });
+            await page.getByRole('heading', { name: 'Leave type policies', exact: true }).waitFor({ state: 'visible' });
             await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
             await leaveResults.waitFor({ state: 'visible' });
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
