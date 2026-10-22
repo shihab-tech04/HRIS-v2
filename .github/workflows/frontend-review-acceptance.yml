@@ -1,0 +1,59 @@
+name: Integrated HRIS offline frontend review (no deploy)
+on:
+  push:
+    branches: [integration/hris-frontend-review-20261022]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --include=optional --no-audit --no-fund
+      - name: Frontend isolation contracts and TypeScript
+        run: node --test tests/contracts/frontend-review-isolation.test.mjs && npm run lint
+      - name: Build actual integrated UI using offline fixtures only
+        run: npm run build:frontend-review
+      - name: Verify compiled review cannot reach hosted Supabase
+        run: |
+          test -s dist/app.html
+          if grep -R -F 'oslgwxaqfbteqtwqvdzs.supabase.co' dist/assets; then
+            echo 'Production project URL reached offline bundle' >&2
+            exit 1
+          fi
+      - name: Chromium offline Manager/Employee navigation
+        run: |
+          npx playwright install --with-deps chromium
+          npx vite preview --host 127.0.0.1 --port 4175 --strictPort >"$RUNNER_TEMP/offline-review.log" 2>&1 &
+          node --input-type=module <<'NODE'
+          import { chromium } from '@playwright/test';
+          const browser = await chromium.launch();
+          try {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+            const supabaseRequests = [];
+            const jsErrors = [];
+            page.on('request', request => { if (request.url().includes('supabase.co')) supabaseRequests.push(request.url()); });
+            page.on('pageerror', error => jsErrors.push(error.message));
+            await page.goto('http://127.0.0.1:4175/HRIS-v2/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.locator('[data-frontend-review="offline"]').waitFor({ state: 'visible', timeout: 20000 });
+            await page.getByRole('button', { name: 'Employee view' }).click();
+            await page.getByRole('button', { name: 'Manager view' }).click();
+            if (supabaseRequests.length) throw new Error('Production Supabase request emitted in offline review');
+            if (jsErrors.length) throw new Error('Review runtime crashed: ' + jsErrors.join('; '));
+            await page.screenshot({ path: 'hris-offline-frontend-review.png', fullPage: true });
+          } finally { await browser.close(); }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hris-offline-review-build-and-screenshot
+          path: |
+            dist/
+            hris-offline-frontend-review.png
+          if-no-files-found: ignore
+          retention-days: 7
