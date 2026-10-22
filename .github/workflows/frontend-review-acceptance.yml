@@ -49,7 +49,18 @@ jobs:
             await page.getByRole('button', { name: 'Manager view' }).click();
             if (supabaseRequests.length) throw new Error('Production Supabase request emitted in offline review');
             if (jsErrors.length) throw new Error('Review runtime crashed: ' + jsErrors.join('; '));
-            await page.screenshot({ path: 'hris-offline-frontend-review.png', fullPage: true });
+            await page.getByText('Team Members').first().waitFor({ state: 'visible' });
+            if (await page.getByText('Unable to load the authorized dashboard.').count()) {
+              throw new Error('Offline dashboard showed an API error instead of synthetic fixtures');
+            }
+            await page.screenshot({ path: 'hris-offline-manager-1280.png', fullPage: true });
+            await page.setViewportSize({ width: 1920, height: 1080 });
+            await page.screenshot({ path: 'hris-offline-manager-1920.png', fullPage: true });
+            await page.setViewportSize({ width: 375, height: 812 });
+            await page.screenshot({ path: 'hris-offline-manager-375.png', fullPage: true });
+            await page.getByRole('button', { name: 'Employee view' }).click();
+            await page.screenshot({ path: 'hris-offline-employee-375.png', fullPage: true });
+            if (supabaseRequests.length) throw new Error('Offline review connected to production Supabase');
           } finally { await browser.close(); }
           NODE
       - uses: actions/upload-artifact@v4
@@ -58,6 +69,6 @@ jobs:
           name: hris-offline-review-build-and-screenshot
           path: |
             dist/
-            hris-offline-frontend-review.png
+            hris-offline-*.png
           if-no-files-found: ignore
           retention-days: 7
