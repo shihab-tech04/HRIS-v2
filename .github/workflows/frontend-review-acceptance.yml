@@ -86,6 +86,28 @@ jobs:
             if (!await firstCorrection.getByRole('button', { name: 'Approve' }).count() ||
                 !await firstCorrection.getByRole('button', { name: 'Reject' }).count())
               throw new Error('Attendance decisions missing or not permission-gated');
+            // Verify Figma's bulk-selection state without inventing an unaudited backend batch-RPC.
+            const selectAllCorrections = page.getByRole('checkbox', { name: 'Select all pending attendance corrections' });
+            await selectAllCorrections.check();
+            for (const action of ['Approve selected attendance corrections (unavailable)', 'Reject selected attendance corrections (unavailable)']) {
+              const button = page.getByRole('button', { name: action });
+              if (!await button.isDisabled())
+                throw new Error('Unapproved batch attendance mutation became enabled: ' + action);
+            }
+            await page.screenshot({ path: 'hris-offline-attendance-requests-bulk-1280.png', fullPage: true });
+            await selectAllCorrections.uncheck();
+            // Figma separately maps approved and rejected result states.
+            await page.getByRole('button', { name: 'Filters', exact: true }).click();
+            await page.getByLabel('Filter by status').selectOption('approved');
+            await correctionTable.getByRole('columnheader', { name: 'Status' }).waitFor();
+            await correctionTable.getByRole('row').filter({ hasText: 'Review Employee I' }).waitFor();
+            await page.screenshot({ path: 'hris-offline-attendance-requests-approved-1280.png', fullPage: true });
+            await page.getByRole('button', { name: 'Attendance Requests' }).last().click();
+            await page.getByLabel('Filter by status').selectOption('rejected');
+            await correctionTable.getByRole('row').filter({ hasText: 'Review Employee J' }).waitFor();
+            await page.screenshot({ path: 'hris-offline-attendance-requests-rejected-1280.png', fullPage: true });
+            await page.getByRole('button', { name: 'Attendance Requests' }).last().click();
+            await page.getByRole('button', { name: 'Filters', exact: true }).click();
             await page.screenshot({ path: 'hris-offline-attendance-requests-1280.png', fullPage: true });
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-attendance-requests-1920.png', fullPage: true });
