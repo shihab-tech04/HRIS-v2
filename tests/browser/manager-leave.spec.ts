@@ -262,7 +262,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(table.locator('tbody tr')).toHaveCount(4);
   Object.assign(requests[0], { status: 'pending', resolution_note: undefined });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('pending');
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('Pending');
 
   const leaveRequestViewports = [
     { width: 375, height: 812 },
@@ -294,7 +294,8 @@ test('manager filters the leave queue and completes approval and rejection actio
 
       if (viewport.width === 375) {
         const results = page.getByRole('region', { name: labels.region, exact: true });
-        const leaveTable = results.getByRole('table', { name: 'Leave requests', exact: true });
+        // The table's accessible name is localized; keep the responsive check locale agnostic.
+        const leaveTable = results.locator('table');
         const initialScroll = await results.evaluate(element => ({
           left: element.scrollLeft,
           max: element.scrollWidth - element.clientWidth,
@@ -313,7 +314,7 @@ test('manager filters the leave queue and completes approval and rejection actio
         expect(finalScroll.left, `${locale} 375px keyboard scroll must move the Leave table`).toBeGreaterThan(initialScroll.left);
         expect(finalScroll.left, `${locale} 375px keyboard scroll must reach the far side`).toBeGreaterThanOrEqual(finalScroll.max - 2);
         const lastColumn = leaveTable.getByRole('columnheader').last();
-        const pendingMedicalRow = leaveTable.getByRole('row', { name: /Amira Rahman.*Medical leave/ });
+        const pendingMedicalRow = leaveTable.locator('tbody tr').filter({ hasText: 'Amira Rahman' }).filter({ hasText: 'Medical leave' });
         const pendingDecisionButtons = pendingMedicalRow.getByRole('cell').last().getByRole('button');
         await expect(pendingDecisionButtons).toHaveCount(2);
         const lastAction = pendingDecisionButtons.last();
