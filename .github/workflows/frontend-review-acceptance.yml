@@ -82,6 +82,8 @@ jobs:
             if (!action || !region || action.x + action.width > region.x + region.width + 2
                 || action.x < region.x - 1) throw new Error('Last team decision/detail action is unreachable');
             await teamScroller.evaluate(el => { el.scrollLeft = 0; });
+            await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+            await page.waitForTimeout(150);
             await page.screenshot({ path: 'hris-offline-manager-375.png', fullPage: true });
             await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
             for (const button of await page.getByRole('navigation', { name: /Dashboard views|ড্যাশবোর্ড/ }).locator('button').all()) {
@@ -89,6 +91,8 @@ jobs:
               if (!box || box.x < -1 || box.x + box.width > 376)
                 throw new Error('Bengali dashboard tab clipped at mobile width');
             }
+            if (await page.getByText('Present, absent, and late counts use explicit attendance statuses.', { exact: false }).count())
+              throw new Error('Dashboard attendance explanation was not translated in Bengali');
             await page.screenshot({ path: 'hris-offline-manager-bn-375.png', fullPage: true });
             await page.getByRole('button', { name: 'Switch language to English' }).click();
             await page.getByRole('button', { name: 'Employee view' }).click();

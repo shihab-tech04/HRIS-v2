@@ -982,7 +982,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         </section>
       </div>}
       <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-        Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.
+        {tx('Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.')}
       </p>
     </>}
     </section>

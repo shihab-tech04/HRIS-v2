@@ -468,6 +468,7 @@ const bengali: Record<string, string> = {
   'Filtered total': 'ফিল্টার করা মোট',
   'Only aggregate counts are shown. Employees with no same-tenant team assignment appear as Unassigned.': 'শুধু সমষ্টিগত সংখ্যা দেখানো হয়েছে। একই প্রতিষ্ঠানের কোনো দলে নেই এমন কর্মচারীরা “দলবিহীন” হিসেবে দেখানো হয়।',
   'Team membership totals reflect current active employee records; attendance counts use the selected report date.': 'দলের সদস্যসংখ্যা বর্তমান সক্রিয় কর্মচারী রেকর্ড অনুযায়ী; উপস্থিতির সংখ্যা নির্বাচিত প্রতিবেদনের তারিখ অনুযায়ী।',
+  'Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.': 'উপস্থিত, অনুপস্থিত ও দেরির সংখ্যা নির্দিষ্ট উপস্থিতি-অবস্থা থেকে নেওয়া হয়। কর্মস্থলের ধরন সংরক্ষিত উপস্থিতি-মোড থেকে নেওয়া হয়; “ছুটিতে” হিসেবে আজকের তারিখে অনুমোদিত ছুটি গণনা করা হয়। সময়সূচিভিত্তিক দেরি বা নমুনা সংখ্যা ব্যবহার করা হয় না।',
   'Team report details': 'দলভিত্তিক প্রতিবেদনের বিস্তারিত',
   'Authorized employee-level attendance aggregates for the selected date.': 'নির্বাচিত তারিখে অনুমোদিত কর্মচারীভিত্তিক উপস্থিতির সমষ্টিগত তথ্য।',
   'Loading team details…': 'দলের বিস্তারিত লোড হচ্ছে…',
