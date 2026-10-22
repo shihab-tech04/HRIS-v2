@@ -1,7 +1,7 @@
 name: Integrated HRIS offline frontend review (no deploy)
 on:
   push:
-    branches: [integration/hris-frontend-review-20261022]
+    branches: [integration/hris-frontend-review-20261022, integration/ws02-security-proof-to-ws05-20261022]
   workflow_dispatch:
 permissions:
   contents: read
