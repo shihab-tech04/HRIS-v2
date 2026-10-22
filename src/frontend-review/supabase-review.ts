@@ -54,7 +54,7 @@ export const supabase = {
         attendance_date: '2026-10-20', requested_check_in: '09:00', requested_check_out: '18:00',
         requested_work_mode: null, requested_at: '2026-10-21T09:30:00Z',
         reason: index ? 'Rejected time request' : 'Approved time request',
-        status, resolution_note: 'Synthetic decision note',
+        status, resolution_note: null,
       })));
       return Promise.resolve({ data: args?.p_report
         ? reviewEmployees : { records: reviewEmployees, corrections: reviewCorrections }, error: null });
