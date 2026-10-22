@@ -1,0 +1,42 @@
+name: hris-main isolated verified source backup
+on:
+  push:
+    branches: [backup/hris-integration-20261022]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable-git-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify full history, bundle, checksum and offline restoration
+        shell: bash
+        env:
+          SOURCE_SHA: 'c97adb291b8d004f1e687afb9bafddd7da53dd2e'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git cat-file -e "$SOURCE_SHA^{commit}"
+          MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          git cat-file -e "$MAIN_SHA^{commit}"
+          git bundle create "$RUNNER_TEMP/hris-main-complete-history.git.bundle" --all HEAD
+          git bundle verify "$RUNNER_TEMP/hris-main-complete-history.git.bundle"
+          git clone -q "$RUNNER_TEMP/hris-main-complete-history.git.bundle" "$RUNNER_TEMP/restore-check"
+          git -C "$RUNNER_TEMP/restore-check" cat-file -e "$SOURCE_SHA^{commit}"
+          git -C "$RUNNER_TEMP/restore-check" cat-file -e "$MAIN_SHA^{commit}"
+          printf 'repository=%s\nsource_sha=%s\nbackup_branch_sha=%s\nproduction_main_sha=%s\n' 'shihab-tech04/HRIS-v2' "$SOURCE_SHA" "$GITHUB_SHA" "$MAIN_SHA" > "$RUNNER_TEMP/hris-main-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-complete-history.git.bundle hris-main-manifest.txt > hris-main-SHA256.txt && sha256sum -c hris-main-SHA256.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-main-verified-complete-source-history
+          path: |
+            ${{ runner.temp }}/hris-main-complete-history.git.bundle
+            ${{ runner.temp }}/hris-main-manifest.txt
+            ${{ runner.temp }}/hris-main-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
