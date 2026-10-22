@@ -2918,7 +2918,7 @@ function HrLeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; c
     return () => window.removeEventListener('hashchange', syncLeaveView);
   }, []);
 
-  const preserveOverviewSections = leaveView === 'requests' && (typeof window === 'undefined' || window.location.hash !== '#leave-requests');
+  const preserveOverviewSections = false; // Keep calendar and policy in their dedicated views; requests follow the approved table-first Figma frame.
   const resolvedRequestTable = leaveView === 'requests' && ['approved', 'rejected'].includes(statusFilter)
     && !loading && !error && filteredRequests.length > 0;
 
@@ -2971,6 +2971,11 @@ function HrLeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; c
         </button>}
       </div>
     </div>
+    {leaveView === 'requests' && <nav aria-label={tx('Leave management sections')} className="flex flex-wrap items-center gap-2 text-sm">
+      <button type="button" onClick={() => { window.location.hash = '#leave-calendar'; }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-[#085587] hover:bg-slate-50">{tx('Absence calendar')}</button>
+      {canManage && <button type="button" onClick={() => { window.location.hash = '#leave-policy'; }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-[#085587] hover:bg-slate-50">{tx('Leave policy')}</button>}
+    </nav>}
+    {leaveView !== 'requests' && <button type="button" onClick={() => { window.location.hash = '#leave-requests'; }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]">{tx('Leave Requests')}</button>}
     {leaveView === 'requests' && <div id="leave-request-filters" hidden={(!requestFiltersOpen && !preserveOverviewSections) || ['approved', 'rejected'].includes(statusFilter)} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
         <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
