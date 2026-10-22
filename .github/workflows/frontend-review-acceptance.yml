@@ -91,8 +91,8 @@ jobs:
             if (scrollerProgress <= 0) throw new Error('Leave table cannot scroll by keyboard at 375px');
             await leaveResults.evaluate(el => { el.scrollLeft = el.scrollWidth; });
             const approve = await leaveResults.getByRole('button', { name: 'Approve' }).first().boundingBox();
-            const region = await leaveResults.boundingBox();
-            if (!approve || !region || approve.x < region.x - 1 || approve.x + approve.width > region.x + region.width + 2)
+            const leaveRegion = await leaveResults.boundingBox();
+            if (!approve || !leaveRegion || approve.x < leaveRegion.x - 1 || approve.x + approve.width > leaveRegion.x + leaveRegion.width + 2)
               throw new Error('Leave decision action remains clipped after horizontal scroll');
             await leaveResults.evaluate(el => { el.scrollLeft = 0; });
             await page.evaluate(() => window.scrollTo(0, 0));
