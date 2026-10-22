@@ -92,11 +92,22 @@ jobs:
               throw new Error('Offline Leave fixture has invalid RPC shape');
             const leaveResults = page.getByRole('region', { name: 'Leave request results' });
             await leaveResults.waitFor({ state: 'visible' });
-            const leaveCalendar = page.getByRole('heading', { name: 'Absence calendar' });
-            const resultPrecedesCalendar = await leaveResults.evaluate(el =>
-              !!(el.compareDocumentPosition(document.getElementById('leave-absence-calendar-heading')) & Node.DOCUMENT_POSITION_FOLLOWING));
-            if (!resultPrecedesCalendar)
-              throw new Error('Leave Requests are positioned below the calendar, contradicting the approved request-table route');
+            if (await page.getByRole('heading', { name: 'Absence calendar' }).count())
+              throw new Error('Default Leave Requests route still expands the calendar below the table');
+            if (await page.getByRole('heading', { name: 'Leave policy' }).count())
+              throw new Error('Default Leave Requests route still expands policy management below the table');
+            await page.getByRole('navigation', { name: 'Leave management sections' })
+              .getByRole('button', { name: 'Absence calendar' }).click();
+            await page.getByRole('heading', { name: 'Absence calendar' }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
+            await leaveResults.waitFor({ state: 'visible' });
+            if (await page.getByRole('heading', { name: 'Absence calendar' }).count())
+              throw new Error('Calendar remains expanded after returning to Leave Requests');
+            await page.getByRole('navigation', { name: 'Leave management sections' })
+              .getByRole('button', { name: 'Leave policy' }).click();
+            await page.getByRole('heading', { name: 'Leave policy' }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
+            await leaveResults.waitFor({ state: 'visible' });
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-leave-requests-1920.png', fullPage: true });
