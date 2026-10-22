@@ -176,7 +176,7 @@ test('leave decisions remain permission-gated and call the scoped approval RPC',
   assert.doesNotMatch(workspace, /AdminLeaveApprovals/);
   assert.match(workspace, /canManage &&/);
   assert.match(workspace, /rpc\('admin_resolve_leave_request'/);
-  const leavePage = workspace.slice(workspace.indexOf('function LeaveWorkspace('), workspace.indexOf('function PersonalLeaveRequests('));
+  const leavePage = workspace.slice(workspace.indexOf('function LeaveWorkspace('), workspace.indexOf('function HrLeaveWorkspace('));
   assert.match(leavePage, /const filteredRequests = useMemo/);
   assert.match(leavePage, /const \[statusFilter, setStatusFilter\] = useState\('pending'\)/);
   assert.match(leavePage, /setStatusFilter\('pending'\);\s*\}, \[tenantId\]\)/);

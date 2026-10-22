@@ -436,6 +436,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     return <LiveHrisWorkspace
       userId={user.id}
       userEmail={user.email || 'HRIS user'}
+      tenantRole={activeMembership?.role || ''}
       tenantId={tenantId}
       tenantName={current.name}
       tenants={tenants}
@@ -454,6 +455,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     return <LiveHrisWorkspace
       userId={user.id}
       userEmail={user.email || 'HRIS user'}
+      tenantRole={activeMembership?.role || ''}
       tenantId=""
       tenantName="Platform administration"
       tenants={[]}
