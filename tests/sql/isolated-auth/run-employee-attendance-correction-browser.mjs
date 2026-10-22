@@ -208,8 +208,10 @@ try {
 
   const otherManager = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await signIn(otherManager, process.env.HRIS_LOCAL_CORRECTION_OTHER_MANAGER_EMAIL);
-  await otherManager.getByRole('button', { name: 'Attendance', exact: true }).click();
-  await otherManager.getByRole('heading', { name: 'Attendance Report', exact: true }).waitFor({ state: 'visible' });
+  await otherManager.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
+  await otherManager.getByRole('navigation', { name: 'Attendance and leave sections' })
+    .getByRole('button', { name: 'Attendance Requests', exact: true }).click();
+  await otherManager.getByRole('heading', { name: 'Attendance Requests', exact: true }).waitFor({ state: 'visible' });
   if (await otherManager.getByText(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT, { exact: true }).count()
       || await otherManager.getByText(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE, { exact: true }).count()) {
     throw new Error('A manager in another tenant could read the synthetic attendance correction requests.');
@@ -218,10 +220,12 @@ try {
 
   const manager = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await signIn(manager, process.env.HRIS_LOCAL_CORRECTION_MANAGER_EMAIL);
-  await manager.getByRole('button', { name: 'Attendance', exact: true }).click();
-  await manager.getByRole('heading', { name: 'Attendance Report', exact: true }).waitFor({ state: 'visible' });
+  await manager.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
+  await manager.getByRole('navigation', { name: 'Attendance and leave sections' })
+    .getByRole('button', { name: 'Attendance Requests', exact: true }).click();
+  await manager.getByRole('heading', { name: 'Attendance Requests', exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(manager, 'Manager attendance review desktop');
-  const correctionSection = manager.getByRole('heading', { name: 'Attendance correction requests', exact: true }).locator('xpath=..');
+  const correctionSection = manager.locator('#attendance-correction-requests');
   const rejectedManagerRow = correctionSection.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT });
   await rejectedManagerRow.getByRole('button', { name: 'Reject', exact: true }).click();
   const rejectDialog = manager.getByRole('dialog', { name: 'Reject attendance correction', exact: true });
