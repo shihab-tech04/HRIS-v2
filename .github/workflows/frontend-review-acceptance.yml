@@ -56,6 +56,21 @@ jobs:
             await page.screenshot({ path: 'hris-offline-manager-1280.png', fullPage: true });
             await page.setViewportSize({ width: 1920, height: 1080 });
             await page.screenshot({ path: 'hris-offline-manager-1920.png', fullPage: true });
+            // Verify the two other approved Main Figma routes in the same isolated shell.
+            await page.setViewportSize({ width: 1280, height: 800 });
+            await page.locator('aside[aria-label="Primary HRIS navigation"]')
+              .getByRole('button', { name: /Attendance & Leave/ }).click();
+            const leaveNav = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+            await leaveNav.getByRole('button', { name: 'Attendance Information' }).waitFor();
+            await page.screenshot({ path: 'hris-offline-attendance-information-1280.png', fullPage: true });
+            await leaveNav.getByRole('button', { name: 'Leave Requests' }).click();
+            await leaveNav.getByRole('button', { name: 'Leave Requests' }).getAttribute('aria-current').then(
+              value => { if (value !== 'page') throw new Error('Leave Requests navigation is not selected'); }
+            );
+            await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
+            await page.locator('aside[aria-label="Primary HRIS navigation"]')
+              .getByRole('button', { name: 'Dashboard' }).click();
+            await page.getByRole('heading', { name: 'Managerial Dashboard' }).first().waitFor();
             await page.setViewportSize({ width: 375, height: 812 });
             const tabs = page.getByRole('navigation', { name: 'Dashboard views' });
             await tabs.waitFor({ state: 'visible' });
