@@ -86,8 +86,17 @@ jobs:
             await page.getByRole('button', { name: 'Manager view' }).click();
             await page.locator('aside[aria-label="Primary HRIS navigation"]')
               .getByRole('button', { name: /Attendance & Leave/ }).click();
-            await page.getByRole('navigation', { name: 'Attendance and leave sections' })
-              .getByRole('button', { name: 'Leave Requests' }).click();
+            const attendanceNav = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+            await attendanceNav.getByRole('button', { name: 'Attendance Requests' }).click();
+            const corrections = page.getByRole('region', { name: 'Attendance correction request results' }).getByRole('table');
+            await corrections.getByRole('row').filter({ hasText: 'Review Employee A' }).waitFor();
+            for (const col of ['Name','Date','In Time','Out Time','Applying Date','Remarks','Action']) {
+              if (await corrections.getByRole('columnheader', { name: col, exact: true }).count() !== 1)
+                throw new Error('Figma Attendance Requests external column mismatch: '+col);
+            }
+            if (await corrections.getByRole('row').filter({ hasText: /Review Employee/ }).count() !== 8)
+              throw new Error('Hosted Attendance Requests missing synthetic queue rows');
+            await attendanceNav.getByRole('button', { name: 'Leave Requests' }).click();
             const table = page.getByRole('table', { name: 'Leave requests' });
             for (const col of ['Name','Applicable From','Applicable To','Leave Type','Applying Date','Remarks','Action']) {
               if (!await table.getByRole('columnheader', { name: col, exact: true }).count()) {
