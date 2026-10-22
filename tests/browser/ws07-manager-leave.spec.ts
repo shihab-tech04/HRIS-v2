@@ -161,8 +161,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(page.locator('#leave-absence-calendar-heading')).toHaveText('অনুপস্থিতির ক্যালেন্ডার');
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
-  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  // Date-range request filters belong to the Figma requests view, not the calendar.
   failAbsenceUntilRetry = true;
   await page.locator('#leave-absence-month').fill('2026-12');
   const bengaliCalendarError = page.getByRole('alert').filter({ hasText: 'অনুপস্থিতির ক্যালেন্ডার লোড করা যায়নি।' });
