@@ -112,7 +112,7 @@ jobs:
               throw new Error('Default Leave Requests route still expands policy management below the table');
             await page.getByRole('navigation', { name: 'Leave management sections' })
               .getByRole('button', { name: 'Absence calendar' }).click();
-            await page.getByRole('heading', { name: 'Absence calendar' }).waitFor({ state: 'visible' });
+            await page.locator('#leave-absence-calendar-heading').waitFor({ state: 'visible' });
             await page.getByRole('button', { name: 'Leave Requests', exact: true }).last().click();
             await leaveResults.waitFor({ state: 'visible' });
             if (await page.getByRole('heading', { name: 'Absence calendar' }).count())
