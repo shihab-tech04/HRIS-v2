@@ -65,14 +65,18 @@ VALUES ('bbbbbbbb-2222-4222-8222-222222222222','bbbbbbbb-0000-4000-8000-00000000
 -- Real migration, executed in disposable database only.
 \i supabase/migrations/20261022153000_hris_jobs_authenticated_tenant_read.sql
 
-SELECT CASE
- WHEN has_table_privilege('authenticated','public.jobs','SELECT')
-  AND NOT has_table_privilege('authenticated','public.job_applications','SELECT')
-  AND NOT has_table_privilege('anon','public.jobs','SELECT')
-  AND (SELECT relrowsecurity FROM pg_class WHERE oid='public.jobs'::regclass)
- THEN 'ACL_AND_RLS_PASS'
- ELSE cast(1/0 AS text)
-END AS access_contract;
+DO $acl$
+BEGIN
+  IF NOT has_table_privilege('authenticated','public.jobs','SELECT')
+    OR has_table_privilege('authenticated','public.job_applications','SELECT')
+    OR has_table_privilege('anon','public.jobs','SELECT')
+    OR NOT (SELECT relrowsecurity FROM pg_class WHERE oid='public.jobs'::regclass)
+  THEN
+    RAISE EXCEPTION 'ACL/RLS denied: jobs read must be scoped and applications private';
+  END IF;
+END
+$acl$;
+\echo ACL_AND_RLS_PASS
 
 -- Scenario 1: unauthenticated request is refused private jobs even with
 -- a configured staff tenant. A role alone is not a valid live session.
