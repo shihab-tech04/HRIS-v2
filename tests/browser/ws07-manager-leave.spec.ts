@@ -131,6 +131,9 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
   await page.getByRole('navigation', { name: 'Attendance and leave sections' }).getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+  await page.getByRole('button', { name: 'More options', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Leave management sections' })
+    .getByRole('button', { name: 'Absence calendar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
 
@@ -169,6 +172,9 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('region', { name: /অনুপস্থিতির ক্যালেন্ডার.*ডিসেম্বর/ })).toBeVisible();
   await page.getByRole('button', { name: 'Switch language to English' }).click();
 
+  await page.getByRole('navigation', { name: 'Leave management sections' })
+    .getByRole('button', { name: 'Leave Requests', exact: true }).click();
+  await page.locator('button[aria-controls="leave-request-advanced-filters"]').click();
   const table = page.getByRole('table', { name: 'Leave requests' });
   const requestFrom = page.locator('#leave-request-from');
   const requestTo = page.locator('#leave-request-to');
