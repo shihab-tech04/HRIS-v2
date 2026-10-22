@@ -2471,31 +2471,53 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
           <table className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label="Leave requests">
             <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
-              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">{label}</th>)}
+              {['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Action'] : [])].map(label => <th key={label} scope="col" className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">{label}</th>)}
             </tr></thead>
+
             <tbody>{filteredRequests.map((row, index) => <tr key={String(row.id || index)} className="h-20">
-              <td className="h-20 rounded-l-lg border-y border-l border-white bg-white px-4 py-4 align-middle font-medium text-[#424242]">{display(row.full_name)}</td><td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.leave_type_name)}</td>
-              <td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.from_date)}</td><td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.to_date)}</td>
-              <td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.requested_days)}</td><td className={`h-20 border-y border-white bg-white px-4 py-4 align-middle font-medium text-[#424242] ${!hasEvidence && !canManage ? 'rounded-r-lg border-r' : ''}`}>
-                <span>{display(row.status)}</span>
-                {Boolean(row.resolution_note) && <span className="mt-1 block whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(row.resolution_note)}</span>}
+              <td className="h-20 rounded-l-lg border-y border-l border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                <div className="flex min-w-[190px] items-center gap-3">
+                  <span aria-hidden="true" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#E6F0F6] text-sm font-semibold text-[#085587]">
+                    {String(row.full_name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || '–'}
+                  </span>
+                  <span className="min-w-0"><span className="block font-medium">{display(row.full_name)}</span>
+                    <span className="block text-xs text-slate-500">{display(row.status)} · {display(row.employee_number)}</span>
+                  </span>
+                </div>
               </td>
-              {hasEvidence && <td className={`h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242] ${!canManage ? 'rounded-r-lg border-r' : ''}`}>{String(row.attachment_url || '').trim()
-                ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
-                    aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
-                    onClick={() => void downloadEvidence(row)}
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
-                    {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
-                  </button> : '—'}</td>}
-              {canManage && <td className="h-20 rounded-r-lg border-y border-r border-white bg-white px-4 py-4 align-middle">
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">{display(row.from_date)}</td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                {display(row.to_date)}<span className="block text-xs text-slate-500">{display(row.requested_days)} {tx('Days')}</span>
+              </td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">{display(row.leave_type_name)}</td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                {row.submitted_at ? display(String(row.submitted_at).slice(0, 10)) : '—'}
+              </td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                <span className="block max-w-[210px] whitespace-normal">{display(row.reason)}</span>
+                {Boolean(row.resolution_note) && <span className="mt-1 block max-w-[210px] whitespace-normal text-xs text-slate-500">{display(row.resolution_note)}</span>}
+              </td>
+              {hasEvidence && <td className={`h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242] ${!canManage ? 'rounded-r-lg border-r' : ''}`}>
+                {String(row.attachment_url || '').trim()
+                  ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
+                      aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
+                      onClick={() => void downloadEvidence(row)}
+                      className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
+                      {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
+                    </button> : '—'}
+              </td>}
+              {canManage && <td className="h-20 rounded-r-lg border-y border-r border-white bg-white px-4 py-3 align-middle">
                 {row.status === 'pending' ? <div className="flex gap-2">
-                  <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'approved')}
-                    className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
-                    {resolvingRequestId === row.id ? 'Saving…' : 'Approve'}
+                  <button type="button" aria-label="Approve" title="Approve" disabled={Boolean(resolvingRequestId)}
+                    onClick={() => void resolveRequest(String(row.id), 'approved')}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#085587] bg-white text-[#085587] disabled:opacity-50">
+                    {resolvingRequestId === row.id ? <span className="text-xs">…</span> : <Check aria-hidden="true" className="h-5 w-5" />}
                   </button>
-                  <button type="button" disabled={Boolean(resolvingRequestId)}
-                    className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
-                    onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}>Reject</button>
+                  <button type="button" aria-label="Reject" title="Reject" disabled={Boolean(resolvingRequestId)}
+                    onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-rose-600 bg-white text-rose-700 disabled:opacity-50">
+                    <X aria-hidden="true" className="h-5 w-5" />
+                  </button>
                 </div> : '—'}
               </td>}
             </tr>)}</tbody>
