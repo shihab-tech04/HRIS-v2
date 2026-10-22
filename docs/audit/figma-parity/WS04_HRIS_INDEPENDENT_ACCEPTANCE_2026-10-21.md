@@ -57,7 +57,7 @@ The 10 mapped desktop frame/state rows use exact nodes [17:28320](https://www.fi
 
 ## Release integrity and ledger
 
-Exact current #45 run `39640469188` failed `git diff --exit-code -- index.html assets .nojekyll` at check step 9. The tracked entry references `assets/app-D0JtBbVh6.js`; that run generated `assets/app-DqsfAdd6.js`. Chromium and screenshot steps were skipped. This is a Pages build-entry integrity failure for WS05 tracking, not a visual finding. WS04 did not patch generated files or change product code.
+Exact current #45 run `39640469188` failed `git diff --exit-code -- index.html assets .nojekyll` at check step 9. The tracked entry references `assets/app-D0JtBbVh.js`; that run generated `assets/app-DqsfAdd6.js`. Chromium and screenshot steps were skipped. This is a Pages build-entry integrity failure for WS05 tracking, not a visual finding. WS04 did not patch generated files or change product code.
 
 The current per-state ledger contains **99 scoped findings**: **63 BLOCKED, 23 PASS, 12 FAIL, 1 NOT_APPLICABLE**. It pins exact source SHA, route/state, role, viewport/locale, Figma node, artifact digest, member screenshot SHA-256, measured result, owner, and closure gate. Findings remain open until the owner provides a corrected exact-head capture and exact-head CI, followed by WS04 review.
 
