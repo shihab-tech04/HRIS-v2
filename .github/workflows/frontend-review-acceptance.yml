@@ -62,11 +62,17 @@ jobs:
               .getByRole('button', { name: /Attendance & Leave/ }).click();
             const leaveNav = page.getByRole('navigation', { name: 'Attendance and leave sections' });
             await leaveNav.getByRole('button', { name: 'Attendance Information' }).waitFor();
+            await page.getByText('Review Employee A', { exact: true }).first().waitFor({ state: 'visible', timeout: 12000 });
+            if (await page.getByText('Attendance service returned an invalid response.').count())
+              throw new Error('Offline Attendance fixture has invalid RPC shape');
             await page.screenshot({ path: 'hris-offline-attendance-information-1280.png', fullPage: true });
             await leaveNav.getByRole('button', { name: 'Leave Requests' }).click();
             await leaveNav.getByRole('button', { name: 'Leave Requests' }).getAttribute('aria-current').then(
               value => { if (value !== 'page') throw new Error('Leave Requests navigation is not selected'); }
             );
+            await page.getByText('Review Employee A', { exact: true }).first().waitFor({ state: 'visible', timeout: 12000 });
+            if (await page.getByText('Leave service returned an invalid response.').count())
+              throw new Error('Offline Leave fixture has invalid RPC shape');
             await page.screenshot({ path: 'hris-offline-leave-requests-1280.png', fullPage: true });
             await page.locator('aside[aria-label="Primary HRIS navigation"]')
               .getByRole('button', { name: 'Dashboard' }).click();
