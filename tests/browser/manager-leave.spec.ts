@@ -131,8 +131,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
   await page.getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
+  // Approved Figma now defaults to the request queue; calendar content lives behind More options.
   const leaveTable = page.getByRole('table', { name: 'Leave requests' });
   await expect(leaveTable).toBeVisible();
   await expect(page.locator('#leave-request-status')).toHaveValue('pending');
@@ -159,6 +158,11 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Switch language to English' }).click();
 
+  await page.getByRole('button', { name: 'More options', exact: true }).click();
+  const leaveSections = page.getByRole('navigation', { name: 'Leave management sections' });
+  await leaveSections.getByRole('button', { name: 'Absence calendar', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Organization holidays', exact: true })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Organization holidays' }).getByRole('row', { name: /December synthetic holiday/ })).toContainText('2026-12-16');
   const calendarMonth = page.getByLabel('Month', { exact: true });
   await calendarMonth.fill('2026-11');
   await expect(page.getByRole('region', { name: 'Absence calendar November 2026' })).toBeVisible();
@@ -200,6 +204,9 @@ test('manager filters the leave queue and completes approval and rejection actio
   failAbsenceUntilRetry = false;
   await bengaliCalendarError.getByRole('button', { name: 'আবার চেষ্টা করুন' }).click();
   await expect(page.getByRole('region', { name: /অনুপস্থিতির ক্যালেন্ডার.*ডিসেম্বর/ })).toBeVisible();
+  await page.getByRole('navigation', { name: 'ছুটি ব্যবস্থাপনার বিভাগসমূহ' })
+    .getByRole('button', { name: 'ছুটির আবেদনসমূহ', exact: true }).click();
+  await page.locator('button[aria-controls="leave-request-advanced-filters"]').click();
   const table = page.getByRole('table', { name: 'Leave requests' });
   const requestFrom = page.locator('#leave-request-from');
   const requestTo = page.locator('#leave-request-to');
