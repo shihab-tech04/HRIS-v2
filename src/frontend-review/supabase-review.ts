@@ -22,6 +22,31 @@ export const supabasePublicKey = 'offline-no-key';
 export const supabase = {
   from: () => query(),
   rpc: (name: string) => {
+    if (name === 'hris_get_my_dashboard_data') {
+      return Promise.resolve({ data: {
+        dashboard_date: '2026-10-22', balance_year: 2026,
+        employee: {
+          id: '00000000-0000-4000-8000-000000000003',
+          full_name: 'Review Employee', employee_number: 'REVIEW-001',
+          designation_title: 'Design Review', department_name: 'Review Department',
+          team_name: 'Design Review', official_email: 'review@example.invalid',
+        },
+        attendance: {
+          records: [{ attendance_date: '2026-10-22', check_in: '09:00',
+            check_out: '17:30', work_hours: 8.5, work_mode: 'office',
+            status: 'present' }],
+        },
+        balances: [], requests: [], holidays: [], unavailable_leave_types: [],
+      }, error: null });
+    }
+    if (name === 'hris_get_my_attendance_period') {
+      return Promise.resolve({ data: {
+        tenant_id: '00000000-0000-4000-8000-000000000001',
+        month_start: '2026-10-01',
+        records: [{ attendance_date: '2026-10-22', check_in: '09:00',
+          check_out: '17:30', work_hours: 8.5, work_mode: 'office' }],
+      }, error: null });
+    }
     if (name === 'hris_get_tenant_dashboard_summary') {
       return Promise.resolve({ data: {
         dashboard_date: '2026-10-22', employees: 42, team_members: 18,
