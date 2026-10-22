@@ -6,12 +6,12 @@ const account = { id, aud:'authenticated', role:'authenticated', email:'syntheti
 const header = Buffer.from(JSON.stringify({typ:'JWT',alg:'HS256'})).toString('base64url');
 const payload = Buffer.from(JSON.stringify({
   sub:id,aud:'authenticated',role:'authenticated',email:account.email,
-  iss:'https://oslgwxaqfbteqtwqvdzs.supabase.co/auth/v1',
+  iss:'https://xfuxnljfrgvusbrpvxpa.supabase.co/auth/v1',
   exp:Math.floor(Date.now()/1000)+3600
 })).toString('base64url');
 const jwt = [header,payload,'synthetic-signature'].join('.');
 const sampleToken = 'synthetic-test-token-1234567890';
-const originalRecovery = 'https://oslgwxaqfbteqtwqvdzs.supabase.co/auth/v1/verify?token='
+const originalRecovery = 'https://xfuxnljfrgvusbrpvxpa.supabase.co/auth/v1/verify?token='
   + sampleToken + '&type=recovery&redirect_to=http%3A%2F%2Flocalhost%3A3000';
 
 function interceptRecovery(page: import('@playwright/test').Page, tokenCaptured: string[]) {
