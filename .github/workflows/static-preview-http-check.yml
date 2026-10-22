@@ -16,7 +16,7 @@ jobs:
       - name: Check public HTML and relative CSS/JS assets (no credentials)
         shell: bash
         env:
-          REVIEW_COMMIT: '70274736c06802f23ef1f351b86109c0b782f23f'
+          REVIEW_COMMIT: '0cc8d3ef3160b23af99195df90ebedf759c6fa5f'
         run: |
           set -euo pipefail
           url="https://rawcdn.githack.com/shihab-tech04/HRIS-v2/${REVIEW_COMMIT}/review-site/index.html"
@@ -49,7 +49,7 @@ jobs:
       - run: npm install --include=optional --no-audit --no-fund
       - name: Run real Chromium on external static review URL
         env:
-          REVIEW_COMMIT: '70274736c06802f23ef1f351b86109c0b782f23f'
+          REVIEW_COMMIT: '0cc8d3ef3160b23af99195df90ebedf759c6fa5f'
         run: |
           npx playwright install --with-deps chromium
           node --input-type=module <<'NODE'
@@ -83,6 +83,23 @@ jobs:
             await page.locator('[data-frontend-review="offline"]').waitFor({ state: 'visible', timeout: 5000 });
             await page.getByRole('button', { name: 'Employee view' }).click();
             await page.getByRole('heading', { name: 'Review Employee' }).waitFor();
+            await page.getByRole('button', { name: 'Manager view' }).click();
+            await page.locator('aside[aria-label="Primary HRIS navigation"]')
+              .getByRole('button', { name: /Attendance & Leave/ }).click();
+            await page.getByRole('navigation', { name: 'Attendance and leave sections' })
+              .getByRole('button', { name: 'Leave Requests' }).click();
+            const table = page.getByRole('table', { name: 'Leave requests' });
+            for (const col of ['Name','Applicable From','Applicable To','Leave Type','Applying Date','Remarks','Action']) {
+              if (!await table.getByRole('columnheader', { name: col, exact: true }).count()) {
+                throw new Error('Figma leave column missing in external hosted review: '+col);
+              }
+            }
+            const requestRow = table.getByRole('row').filter({ hasText: 'Review Employee A' });
+            if (!await requestRow.getByText('2026-10-21').count()
+              || !await requestRow.getByText('Review-only fixture').count()) {
+              throw new Error('External Figma review date/remarks source bindings missing');
+            }
+            await page.screenshot({ path: 'public-main-review.png', fullPage: true });
             await page.screenshot({ path: 'public-main-review.png', fullPage: true });
             if (failures.length) throw new Error('Client errors: ' + failures.join('; '));
             if (dbRequests.length) throw new Error('Supabase request leaked: ' + dbRequests.join('; '));
