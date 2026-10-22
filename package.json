@@ -12,7 +12,8 @@
     "check": "npm run lint && npm run test:contracts && npm run build",
     "test:contracts": "node --test tests/contracts/*.test.mjs",
     "test:candidate-c1-auth": "node tests/sql/candidate-c1/run-local-tenant-auth.mjs",
-    "test:e2e": "playwright test --project=chromium"
+    "test:e2e": "playwright test --project=chromium",
+    "build:frontend-review": "HRIS_FRONTEND_REVIEW=true VITE_HRIS_FRONTEND_REVIEW=true GITHUB_PAGES=true vite build"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

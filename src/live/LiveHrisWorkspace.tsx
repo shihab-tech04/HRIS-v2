@@ -808,11 +808,11 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         </div>}
       </div>
     </section>
-    <nav aria-label={tx('Dashboard views')} className="-mx-4 flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
-      <button type="button" disabled className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F]">
+    <nav aria-label={tx('Dashboard views')} className="-mx-4 grid min-h-[57px] min-w-0 grid-cols-2 border-b border-[#E9ECED] bg-white sm:-mx-6 sm:flex lg:-mx-6">
+      <button type="button" disabled className="inline-flex min-h-[57px] min-w-0 cursor-not-allowed items-center justify-center border-b-[3px] border-transparent px-2 py-1 text-center text-[13px] leading-snug text-[#49454F] sm:shrink-0 sm:px-6 sm:text-base">
         {tx('Personal Dashboard')}
       </button>
-      <button type="button" aria-current="page" className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-[#08558B] px-6 text-base text-[#49454F]">
+      <button type="button" aria-current="page" className="inline-flex min-h-[57px] min-w-0 items-center justify-center border-b-[3px] border-[#08558B] px-2 py-1 text-center text-[13px] leading-snug text-[#49454F] sm:shrink-0 sm:px-6 sm:text-base">
         {tx('Managerial Dashboard')}
       </button>
     </nav>
@@ -982,7 +982,7 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         </section>
       </div>}
       <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-        Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.
+        {tx('Present, absent, and late counts use explicit attendance statuses. Work location uses stored attendance modes; “On Leave” counts approved leave covering today. No schedule-based late marks or sample counts are substituted.')}
       </p>
     </>}
     </section>
@@ -2170,6 +2170,10 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   const [resolutionNote, setResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
+  const [requestFiltersOpen, setRequestFiltersOpen] = useState(false);
+  const [managementOptionsOpen, setManagementOptionsOpen] = useState(false);
+  const [requestOverviewOpen, setRequestOverviewOpen] = useState(false);
+  const [supplementView, setSupplementView] = useState<'requests' | 'calendar' | 'policy'>('requests');
   const [statusFilter, setStatusFilter] = useState('pending');
   const [requestFromDate, setRequestFromDate] = useState('');
   const [requestToDate, setRequestToDate] = useState('');
@@ -2422,25 +2426,128 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
 
   const hasEvidence = Boolean(visibleData?.requests.some(item => String(item.attachment_url || '').trim()));
 
-  return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full max-w-[1386px] space-y-4">
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{tx('Leave Requests')}</h2>
-        <p className="mt-1 text-sm text-slate-500">Tenant leave records returned by the authorized HRIS service</p></div>
-      <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
-        <RefreshCw className="h-4 w-4" /> Refresh
-      </button>
+  return <section aria-labelledby="leave-workspace-heading" className="mx-auto w-full max-w-[1386px] space-y-3">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 id="leave-workspace-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{tx(supplementView === 'calendar' ? 'Absence calendar' : supplementView === 'policy' ? 'Leave policy' : 'Leave Requests')}</h2>
+      <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+        {supplementView === 'requests' && <>
+          <label htmlFor="leave-request-search" className="sr-only">{tx('Search requests')}</label>
+          <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
+            placeholder={tx('Search requests')} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm sm:w-[280px]" />
+          <button type="button" aria-expanded={requestFiltersOpen} aria-controls="leave-request-advanced-filters"
+            onClick={() => setRequestFiltersOpen(value => !value)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]">{tx('Filters')}</button>
+        </>}
+        <button type="button" aria-expanded={managementOptionsOpen} aria-controls="leave-management-sections"
+          onClick={() => setManagementOptionsOpen(value => !value)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]">{tx('More options')}</button>
+        <button type="button" disabled={loading || absenceLoading} onClick={() => { void load(); void loadAbsenceSchedule(absenceMonth); }}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" /> {tx('Refresh')}
+        </button>
+      </div>
     </div>
+    {(managementOptionsOpen || supplementView !== 'requests') && <nav id="leave-management-sections" aria-label="Leave management sections" className="flex flex-wrap gap-2">
+      <button type="button" onClick={() => setSupplementView('requests')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'requests' ? 'page' : undefined}>{tx('Leave Requests')}</button>
+      <button type="button" onClick={() => setSupplementView('calendar')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'calendar' ? 'page' : undefined}>{tx('Absence calendar')}</button>
+      {canManage && <button type="button" onClick={() => setSupplementView('policy')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'policy' ? 'page' : undefined}>{tx('Leave policy')}</button>}
+      {supplementView === 'requests' && <button type="button" onClick={() => setRequestOverviewOpen(value => !value)} aria-expanded={requestOverviewOpen}
+        className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]">{tx('Request overview')}</button>}
+    </nav>}
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
     {evidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{evidenceError}</p>}
     {evidenceMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{evidenceMessage}</p>}
     {loading || (!visibleData && !error) ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading authorized leave records…</p> : visibleData && <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {supplementView === 'requests' && requestOverviewOpen && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Pending requests</p><p className="mt-2 text-2xl font-semibold">{pending.length}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Leave types</p><p className="mt-2 text-2xl font-semibold">{visibleData.leave_types.length}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-600">Holidays</p><p className="mt-2 text-2xl font-semibold">{visibleData.holidays.length}</p></div>
-      </div>
-      <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      </div>}
+    {supplementView === 'requests' && <div className="min-w-0 rounded-xl bg-transparent">
+        {requestFiltersOpen && <form id="leave-request-advanced-filters" onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
+          <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
+            <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-to" className="mb-1 block text-xs font-medium text-slate-600">{tx('To date')}</label>
+            <input id="leave-request-to" type="date" value={requestToDate} onChange={event => setRequestToDate(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+          </div>
+          <div><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Filter by status')}</label>
+            <select id="leave-request-status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+              <option value="all">{tx('All statuses')}</option>
+              {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{status.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</option>)}
+            </select>
+          </div>
+          <button type="submit" className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770]">{tx('Apply date range')}</button>
+          <button type="button" onClick={clearRequestDateRange} disabled={!requestFromDate && !requestToDate && !appliedRequestRange.from && !appliedRequestRange.to}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Clear dates')}</button>
+          {filterError && <p className="text-sm text-rose-700 sm:col-span-2 xl:col-span-6" role="alert">{filterError}</p>}
+          </form>}
+        <p className="sr-only" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>
+        {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : !filteredRequests.length
+          ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
+          <table className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label="Leave requests">
+            <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
+              {['Name', 'Applicable From', 'Applicable To', 'Leave Type', 'Applying Date', 'Remarks', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Action'] : [])].map(label => <th key={label} scope="col" className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">{label}</th>)}
+            </tr></thead>
+
+            <tbody>{filteredRequests.map((row, index) => <tr key={String(row.id || index)} className="h-20">
+              <td className="h-20 rounded-l-lg border-y border-l border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                <div className="flex min-w-[190px] items-center gap-3">
+                  <span aria-hidden="true" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#E6F0F6] text-sm font-semibold text-[#085587]">
+                    {String(row.full_name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || '–'}
+                  </span>
+                  <span className="min-w-0"><span className="block font-medium">{display(row.full_name)}</span>
+                    <span className="block text-xs text-slate-500">{display(row.status)} · {display(row.employee_number)}</span>
+                  </span>
+                </div>
+              </td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">{display(row.from_date)}</td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                {display(row.to_date)}<span className="block text-xs text-slate-500">{display(row.requested_days)} {tx('Days')}</span>
+              </td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">{display(row.leave_type_name)}</td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                {row.submitted_at ? display(String(row.submitted_at).slice(0, 10)) : '—'}
+              </td>
+              <td className="h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242]">
+                <span className="block max-w-[210px] whitespace-normal">{display(row.reason)}</span>
+                {Boolean(row.resolution_note) && <span className="mt-1 block max-w-[210px] whitespace-normal text-xs text-slate-500">{display(row.resolution_note)}</span>}
+              </td>
+              {hasEvidence && <td className={`h-20 border-y border-white bg-white px-4 py-3 align-middle text-[#424242] ${!canManage ? 'rounded-r-lg border-r' : ''}`}>
+                {String(row.attachment_url || '').trim()
+                  ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
+                      aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
+                      onClick={() => void downloadEvidence(row)}
+                      className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
+                      {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
+                    </button> : '—'}
+              </td>}
+              {canManage && <td className="h-20 rounded-r-lg border-y border-r border-white bg-white px-4 py-3 align-middle">
+                {row.status === 'pending' ? <div className="flex gap-2">
+                  <button type="button" aria-label="Approve" title="Approve" disabled={Boolean(resolvingRequestId)}
+                    onClick={() => void resolveRequest(String(row.id), 'approved')}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#00874D] disabled:opacity-50">
+                    <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#00874D] text-white">
+                      {resolvingRequestId === row.id ? <span className="text-xs">…</span> : <Check className="h-4 w-4" strokeWidth={3} />}
+                    </span>
+                  </button>
+                  <button type="button" aria-label="Reject" title="Reject" disabled={Boolean(resolvingRequestId)}
+                    onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-rose-600 disabled:opacity-50">
+                    <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#FF0000] text-white">
+                      <X className="h-4 w-4" strokeWidth={3} />
+                    </span>
+                  </button>
+                </div> : '—'}
+              </td>}
+            </tr>)}</tbody>
+          </table>
+        </div>}
+      </div>}
+
+      {supplementView === 'calendar' && <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h3 id="leave-absence-calendar-heading" className="font-semibold text-[#08263D]">{tx('Absence calendar')}</h3>
             <p className="mt-1 text-xs text-slate-600">{tx('Only approved leave requests appear here. Pending requests remain in the review queue.')}</p></div>
@@ -2497,70 +2604,8 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
             </section>
           </div>
         </>}
-      </section>
-      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <form onSubmit={applyRequestDateRange} className="grid grid-cols-1 items-end gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_minmax(132px,0.8fr)_minmax(132px,0.8fr)_minmax(170px,1fr)_auto_auto]">
-          <div className="min-w-0"><label htmlFor="leave-request-search" className="mb-1 block text-xs font-medium text-slate-600">{tx('Search requests')}</label>
-            <input id="leave-request-search" type="search" value={search} onChange={event => setSearch(event.target.value)}
-              placeholder={tx('Employee, leave type, date…')} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          </div>
-          <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
-            <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)}
-              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          </div>
-          <div><label htmlFor="leave-request-to" className="mb-1 block text-xs font-medium text-slate-600">{tx('To date')}</label>
-            <input id="leave-request-to" type="date" value={requestToDate} onChange={event => setRequestToDate(event.target.value)}
-              className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          </div>
-          <div><label htmlFor="leave-request-status" className="mb-1 block text-xs font-medium text-slate-600">{tx('Filter by status')}</label>
-            <select id="leave-request-status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}
-              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-              <option value="all">{tx('All statuses')}</option>
-              {statusOptions.map(status => <option key={status} value={status.toLocaleLowerCase()}>{status.replaceAll('_', ' ').replace(/^\w/, letter => letter.toUpperCase())}</option>)}
-            </select>
-          </div>
-          <button type="submit" className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#074770]">{tx('Apply date range')}</button>
-          <button type="button" onClick={clearRequestDateRange} disabled={!requestFromDate && !requestToDate && !appliedRequestRange.from && !appliedRequestRange.to}
-            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Clear dates')}</button>
-          {filterError && <p className="text-sm text-rose-700 sm:col-span-2 xl:col-span-6" role="alert">{filterError}</p>}
-          <p className="text-xs text-slate-500 sm:col-span-2 xl:col-span-6" role="status">{localizedProjectText(locale, 'Showing {shown} of {total}', { shown: filteredRequests.length, total: visibleData.requests.length })}</p>
-        </form>
-        {!visibleData.requests.length ? <p className="p-5 text-sm text-slate-600">No leave requests were returned for this tenant.</p> : !filteredRequests.length
-          ? <p className="p-5 text-sm text-slate-600">No requests match these filters.</p> : <div className="overflow-x-auto" role="region" aria-label="Leave request results" tabIndex={0}>
-          <table className="w-full min-w-[1383px] border-separate border-spacing-x-0 border-spacing-y-[6px] text-left text-sm" aria-label="Leave requests">
-            <thead className="bg-white text-[14px] text-[#9E9E9E]"><tr>
-              {['Employee', 'Leave type', 'From', 'To', 'Days', 'Status', ...(hasEvidence ? ['Evidence'] : []), ...(canManage ? ['Actions'] : [])].map(label => <th key={label} scope="col" className="h-[59px] bg-white px-4 py-0 font-normal first:rounded-l-lg last:rounded-r-lg">{label}</th>)}
-            </tr></thead>
-            <tbody>{filteredRequests.map((row, index) => <tr key={String(row.id || index)} className="h-20">
-              <td className="h-20 rounded-l-lg border-y border-l border-white bg-white px-4 py-4 align-middle font-medium text-[#424242]">{display(row.full_name)}</td><td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.leave_type_name)}</td>
-              <td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.from_date)}</td><td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.to_date)}</td>
-              <td className="h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242]">{display(row.requested_days)}</td><td className={`h-20 border-y border-white bg-white px-4 py-4 align-middle font-medium text-[#424242] ${!hasEvidence && !canManage ? 'rounded-r-lg border-r' : ''}`}>
-                <span>{display(row.status)}</span>
-                {Boolean(row.resolution_note) && <span className="mt-1 block whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(row.resolution_note)}</span>}
-              </td>
-              {hasEvidence && <td className={`h-20 border-y border-white bg-white px-4 py-4 align-middle text-[#424242] ${!canManage ? 'rounded-r-lg border-r' : ''}`}>{String(row.attachment_url || '').trim()
-                ? <button type="button" disabled={Boolean(downloadingEvidenceId)}
-                    aria-label={`Download evidence for ${display(row.full_name)}’s ${display(row.leave_type_name)} leave request`}
-                    onClick={() => void downloadEvidence(row)}
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 disabled:opacity-50">
-                    {downloadingEvidenceId === row.id ? 'Downloading…' : 'Download evidence'}
-                  </button> : '—'}</td>}
-              {canManage && <td className="h-20 rounded-r-lg border-y border-r border-white bg-white px-4 py-4 align-middle">
-                {row.status === 'pending' ? <div className="flex gap-2">
-                  <button type="button" disabled={Boolean(resolvingRequestId)} onClick={() => void resolveRequest(String(row.id), 'approved')}
-                    className="min-h-10 rounded-md bg-[#08558B] px-3 text-xs font-medium text-white disabled:opacity-50">
-                    {resolvingRequestId === row.id ? 'Saving…' : 'Approve'}
-                  </button>
-                  <button type="button" disabled={Boolean(resolvingRequestId)}
-                    className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium disabled:opacity-50"
-                    onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}>Reject</button>
-                </div> : '—'}
-              </td>}
-            </tr>)}</tbody>
-          </table>
-        </div>}
-      </div>
+      </section>}
+      {supplementView === 'policy' && canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
       {rejectingRequest && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget && !resolvingRequestId) { setRejectingRequest(null); setResolutionNote(''); } }}>
         <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="leave-rejection-heading" aria-describedby="leave-rejection-description"
@@ -2584,7 +2629,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </div>
         </div>
       </div>}
-      <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {supplementView === 'calendar' && <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-4"><h3 id="organization-holidays-heading" className="font-semibold text-slate-900">Organization holidays</h3>
           <p className="mt-1 text-xs text-slate-500">Holiday dates returned by this organization’s leave service</p></div>
         {!visibleData.holidays.length ? <p className="p-5 text-sm text-slate-600">No holidays were returned for this organization.</p> :
@@ -2599,7 +2644,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
               </tr>)}</tbody>
             </table>
           </div>}
-      </section>
+      </section>}
     </>}
   </section>;
 }
@@ -2895,7 +2940,7 @@ function HrLeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; c
     return () => window.removeEventListener('hashchange', syncLeaveView);
   }, []);
 
-  const preserveOverviewSections = leaveView === 'requests' && (typeof window === 'undefined' || window.location.hash !== '#leave-requests');
+  const preserveOverviewSections = false; // Keep calendar and policy in their dedicated views; requests follow the approved table-first Figma frame.
   const resolvedRequestTable = leaveView === 'requests' && ['approved', 'rejected'].includes(statusFilter)
     && !loading && !error && filteredRequests.length > 0;
 
@@ -2948,6 +2993,11 @@ function HrLeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; c
         </button>}
       </div>
     </div>
+    {leaveView === 'requests' && <nav aria-label={tx('Leave management sections')} className="flex flex-wrap items-center gap-2 text-sm">
+      <button type="button" onClick={() => { window.location.hash = '#leave-calendar'; }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-[#085587] hover:bg-slate-50">{tx('Absence calendar')}</button>
+      {canManage && <button type="button" onClick={() => { window.location.hash = '#leave-policy'; }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-[#085587] hover:bg-slate-50">{tx('Leave policy')}</button>}
+    </nav>}
+    {leaveView !== 'requests' && <button type="button" onClick={() => { window.location.hash = '#leave-requests'; }} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]">{tx('Leave Requests')}</button>}
     {leaveView === 'requests' && <div id="leave-request-filters" hidden={(!requestFiltersOpen && !preserveOverviewSections) || ['approved', 'rejected'].includes(statusFilter)} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="leave-request-from" className="mb-1 block text-xs font-medium text-slate-600">{tx('From date')}</label>
         <input id="leave-request-from" type="date" value={requestFromDate} onChange={event => setRequestFromDate(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
@@ -5105,7 +5155,7 @@ export function LiveHrisWorkspace({
             </section>
           ) : current && page !== 'dashboard' && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><span>{tenantName}</span><span aria-hidden="true">/</span><span className="text-slate-700">{current.label}</span></div>}
           {page === 'dashboard' && permissions.dashboard && <LiveDashboard tenantId={tenantId} onOpen={navigate} canReport={permissions.attendanceReport} locale={locale} />}
-          {page === 'attendance' && permissions.attendance && (useHrOperationsView
+          {page === 'attendance' && permissions.attendance && ((useHrOperationsView || attendanceView === 'requests')
             ? <HrAttendanceReport tenantId={tenantId} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView} />
             : <AttendanceReport tenantId={tenantId} tenantTimeZone={tenantTimeZone} canView={permissions.attendanceView} canReport={permissions.attendanceReport} canManage={permissions.attendanceManage} locale={locale} view={attendanceView} />
           )}
