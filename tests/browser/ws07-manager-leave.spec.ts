@@ -159,7 +159,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('heading', { name: /Organization holidays on/ }).locator('..')).toContainText('Synthetic holiday');
   expect(absenceWindows).toContainEqual({ p_tenant_id: tenantId, p_start: '2026-10-01', p_end: '2026-10-31' });
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
-  await expect(page.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' })).toBeVisible();
+  await expect(page.locator('#leave-absence-calendar-heading')).toHaveText('অনুপস্থিতির ক্যালেন্ডার');
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
   await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
