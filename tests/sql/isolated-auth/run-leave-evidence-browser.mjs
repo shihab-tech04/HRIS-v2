@@ -388,7 +388,11 @@ try {
   await routeOnlyLocalServices(managerContext);
   const manager = await managerContext.newPage();
   await signIn(manager, process.env.HRIS_LOCAL_LEAVE_MANAGER_EMAIL);
-  await navigateTo(manager, 'Leave');
+  // Manager leave requests now live under the approved combined Attendance & Leave shell.
+  // Exercise the real tab route rather than relying on the former standalone Leave item.
+  await navigateTo(manager, 'Attendance & Leave');
+  await manager.getByRole('navigation', { name: 'Attendance and leave sections' })
+    .getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await manager.getByRole('heading', { name: 'Leave Requests' }).waitFor({ state: 'visible' });
   const leaveTable = manager.getByRole('table', { name: 'Leave requests' });
   await leaveTable.waitFor({ state: 'visible', timeout: 10000 }).catch(async cause => {
