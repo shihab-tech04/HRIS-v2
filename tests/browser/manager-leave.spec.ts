@@ -188,8 +188,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await expect(page.locator('#leave-absence-calendar-heading')).toBeVisible();
   await expect(page.getByRole('button', { name: 'আগের মাস' })).toBeVisible();
-  await expect(page.getByLabel('শুরুর তারিখ', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('শেষ তারিখ', { exact: true })).toBeVisible();
+  // Request-only date filters are asserted after returning to the requests tab below.
   await page.evaluate(() => window.scrollTo(0, 0));
   for (const width of [1920, 1280, 768, 375]) {
     await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
