@@ -1,0 +1,42 @@
+name: WS05 verified source bundle for independent off-GitHub backup
+on:
+  push:
+    branches:
+      - work/ws05-free-tier-release-candidate-20261022
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  immutable-source-bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bundle HEAD and complete reachable repository history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse --is-shallow-repository | grep -Fx false
+          git cat-file -e "${GITHUB_SHA}^{commit}"
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          git cat-file -e "${main_sha}^{commit}"
+          git bundle create "$RUNNER_TEMP/hris-ws05-release.git.bundle" --all HEAD
+          git bundle verify "$RUNNER_TEMP/hris-ws05-release.git.bundle"
+          git clone -q "$RUNNER_TEMP/hris-ws05-release.git.bundle" "$RUNNER_TEMP/hris-restore-check"
+          git -C "$RUNNER_TEMP/hris-restore-check" cat-file -e "${GITHUB_SHA}^{commit}"
+          git -C "$RUNNER_TEMP/hris-restore-check" cat-file -e "${main_sha}^{commit}"
+          printf 'release_sha=%s\nmain_sha=%s\n' "$GITHUB_SHA" "$main_sha" > "$RUNNER_TEMP/hris-ws05-source-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-ws05-release.git.bundle hris-ws05-source-manifest.txt > hris-ws05-source.sha256)
+      - name: Upload portable bundle, checksums, and restoration manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-ws05-independent-source-transfer
+          path: |
+            ${{ runner.temp }}/hris-ws05-release.git.bundle
+            ${{ runner.temp }}/hris-ws05-source.sha256
+            ${{ runner.temp }}/hris-ws05-source-manifest.txt
+          retention-days: 30
+          if-no-files-found: error
