@@ -18,11 +18,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-      - name: Install deterministic dependencies
-        run: npm ci
+      - name: Install QA dependencies (this source branch has no npm lock file)
+        run: npm install --include=optional --no-audit --no-fund
       - name: Type-check
         run: npm run lint
+      - name: Run source contract tests
+        run: npm run test:contracts
       - name: Build new-Supabase QA bundle (no Pages deployment)
         run: npx vite build --mode qa
       - name: Verify new target URL and public key are compiled
