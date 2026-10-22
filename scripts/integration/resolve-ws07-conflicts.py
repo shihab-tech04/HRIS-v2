@@ -204,11 +204,10 @@ ws07_manager_test = ws07_manager_test.replace(".toContainText('Rejected')", ".to
 ws08_locale = git_source(WS08, "src/live/project-locale.ts")
 leave_line = next(line for line in ws08_locale.splitlines() if line.strip().startswith("'Leave Requests':"))
 approved_bn_heading = re.search(r"'Leave Requests': '([^']+)'", leave_line).group(1)
-ws07_manager_test = re.sub(
-    r"(?<=heading: ')[^']+(?=', region: 'Leave request results')",
-    lambda _match: approved_bn_heading,
+ws07_manager_test = replace_exact(
     ws07_manager_test,
-    count=1
+    "heading: 'ছুটির আবেদন', region: 'Leave request results'",
+    f"heading: '{approved_bn_heading}', region: 'Leave request results'"
 )
 
 Path("tests/browser/ws07-manager-leave.spec.ts").write_text(ws07_manager_test)
