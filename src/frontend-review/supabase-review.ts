@@ -21,7 +21,34 @@ export const supabaseUrl = 'offline-review';
 export const supabasePublicKey = 'offline-no-key';
 export const supabase = {
   from: () => query(),
-  rpc: (name: string) => query(!/^(hris_get_|get_|employee_get_|admin_get_|admin_list_|candidate_get_|candidate_public_|platform_hris_list_|has_|is_)/.test(name)),
+  rpc: (name: string) => {
+    if (name === 'hris_get_tenant_dashboard_summary') {
+      return Promise.resolve({ data: {
+        dashboard_date: '2026-10-22', employees: 42, team_members: 18,
+        present_today: 15, absent_today: 2, wfo_today: 9, wfh_today: 5,
+        client_meeting_today: 1, on_leave_today: 1, late_today: 2,
+        attendance_corrections_pending: 3, leave_pending: 4,
+        attendance_last_7_days: [
+          { date: '2026-10-16', records: 11 }, { date: '2026-10-17', records: 13 },
+          { date: '2026-10-18', records: 15 }, { date: '2026-10-19', records: 12 },
+          { date: '2026-10-20', records: 16 }, { date: '2026-10-21', records: 14 },
+          { date: '2026-10-22', records: 15 },
+        ],
+      }, error: null });
+    }
+    if (name === 'hris_get_tenant_dashboard_team_report') {
+      return Promise.resolve({ data: {
+        dashboard_date: '2026-10-22',
+        teams: [{ team_id: 'offline-review-team', team_name: 'Design Review',
+          present_members: 15, absent_members: 2, total_members: 18,
+          work_from_office: 9, work_from_home: 5, client_meeting: 1 }],
+      }, error: null });
+    }
+    if (name === 'hris_get_tenant_dashboard_team_details') {
+      return Promise.resolve({ data: { report_date: '2026-10-22', details: [] }, error: null });
+    }
+    return query(!/^(hris_get_|get_|employee_get_|admin_get_|admin_list_|candidate_get_|candidate_public_|platform_hris_list_|has_|is_)/.test(name));
+  },
   auth: {
     getUser: async () => ({ data: { user: null }, error: blocked }),
     getSession: async () => ({ data: { session: null }, error: null }),
