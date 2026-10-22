@@ -262,7 +262,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(table.locator('tbody tr')).toHaveCount(4);
   Object.assign(requests[0], { status: 'pending', resolution_note: undefined });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('Pending');
+  await expect(table.getByRole('row', { name: /Amira Rahman.*Medical leave/ })).toContainText('pending');
 
   const leaveRequestViewports = [
     { width: 375, height: 812 },
