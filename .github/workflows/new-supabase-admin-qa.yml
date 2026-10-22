@@ -40,6 +40,27 @@ jobs:
           }
           console.log('QA bundle destination and public key verified (key not printed).');
           NODE
+      - name: Install isolated Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Exercise new-database QA sign-in view at three viewports
+        run: |
+          set -euo pipefail
+          npx vite preview --base=/HRIS-v2/ --host 127.0.0.1 --port 4179 --strictPort >"$RUNNER_TEMP/new-supabase-qa-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4179/HRIS-v2/app.html >/dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/qa-new-supabase-browser.mjs
+      - name: Upload isolated browser evidence (no authentication secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-new-supabase-admin-qa-browser
+          path: ui-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Save standalone QA build evidence
         uses: actions/upload-artifact@v4
         with:
