@@ -134,6 +134,7 @@ test('manager filters the leave queue and completes approval and rejection actio
   // Approved Figma now defaults to the request queue; calendar content lives behind More options.
   const leaveTable = page.getByRole('table', { name: 'Leave requests' });
   await expect(leaveTable).toBeVisible();
+  await page.locator('button[aria-controls="leave-request-advanced-filters"]').click();
   await expect(page.locator('#leave-request-status')).toHaveValue('pending');
   await expect(leaveTable.locator('tbody tr')).toHaveCount(2);
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -206,7 +207,6 @@ test('manager filters the leave queue and completes approval and rejection actio
   await expect(page.getByRole('region', { name: /অনুপস্থিতির ক্যালেন্ডার.*ডিসেম্বর/ })).toBeVisible();
   await page.getByRole('navigation', { name: 'ছুটি ব্যবস্থাপনার বিভাগসমূহ' })
     .getByRole('button', { name: 'ছুটির আবেদনসমূহ', exact: true }).click();
-  await page.locator('button[aria-controls="leave-request-advanced-filters"]').click();
   const table = page.getByRole('table', { name: 'Leave requests' });
   const requestFrom = page.locator('#leave-request-from');
   const requestTo = page.locator('#leave-request-to');
