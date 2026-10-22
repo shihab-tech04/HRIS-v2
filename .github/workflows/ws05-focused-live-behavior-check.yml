@@ -1,0 +1,38 @@
+name: WS05 focused Main authenticated-browser regressions (synthetic, no deploy)
+on:
+  push:
+    branches: [integration/ws02-security-proof-to-ws05-20261022]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  main-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install dependencies and typecheck
+        run: npm install --include=optional --no-audit --no-fund && npm run lint
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run four exact-head legacy/Figma bridged behavior tests
+        run: >
+          npx playwright test --project=chromium
+          tests/browser/attendance-information.spec.ts
+          tests/browser/manager-leave.spec.ts
+          tests/browser/ws07-manager-leave.spec.ts
+          tests/browser/recovery-link-fallback.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: focused-integration-failure-evidence
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
