@@ -2528,13 +2528,17 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
                 {row.status === 'pending' ? <div className="flex gap-2">
                   <button type="button" aria-label="Approve" title="Approve" disabled={Boolean(resolvingRequestId)}
                     onClick={() => void resolveRequest(String(row.id), 'approved')}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#085587] bg-white text-[#085587] disabled:opacity-50">
-                    {resolvingRequestId === row.id ? <span className="text-xs">…</span> : <Check aria-hidden="true" className="h-5 w-5" />}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#00874D] disabled:opacity-50">
+                    <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#00874D] text-white">
+                      {resolvingRequestId === row.id ? <span className="text-xs">…</span> : <Check className="h-4 w-4" strokeWidth={3} />}
+                    </span>
                   </button>
                   <button type="button" aria-label="Reject" title="Reject" disabled={Boolean(resolvingRequestId)}
                     onClick={event => { rejectionTriggerRef.current = event.currentTarget; setResolutionNote(''); setError(''); setActionMessage(''); setRejectingRequest(row); }}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-rose-600 bg-white text-rose-700 disabled:opacity-50">
-                    <X aria-hidden="true" className="h-5 w-5" />
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-rose-600 disabled:opacity-50">
+                    <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[#FF0000] text-white">
+                      <X className="h-4 w-4" strokeWidth={3} />
+                    </span>
                   </button>
                 </div> : '—'}
               </td>}
