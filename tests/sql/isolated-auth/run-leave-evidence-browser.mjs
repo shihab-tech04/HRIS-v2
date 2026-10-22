@@ -515,6 +515,9 @@ try {
   const resolved = await approvalResponse;
   if (!resolved.ok()) throw new Error(`Same-tenant manager approval returned ${resolved.status()}.`);
   await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
+  // A resolved row leaves the Manager's Pending queue. Verify it remains in All statuses.
+  await managerRow.waitFor({ state: 'hidden' });
+  await manager.getByLabel('Filter by status', { exact: true }).selectOption('all');
   await managerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
 
   const uiApprovalResponse = manager.waitForResponse(response =>
