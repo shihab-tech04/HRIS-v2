@@ -2170,6 +2170,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
   const [resolutionNote, setResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [search, setSearch] = useState('');
+  const [supplementView, setSupplementView] = useState<'requests' | 'calendar' | 'policy'>('requests');
   const [statusFilter, setStatusFilter] = useState('pending');
   const [requestFromDate, setRequestFromDate] = useState('');
   const [requestToDate, setRequestToDate] = useState('');
@@ -2430,6 +2431,11 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         <RefreshCw className="h-4 w-4" /> Refresh
       </button>
     </div>
+    <nav aria-label="Leave management sections" className="flex flex-wrap gap-2">
+      <button type="button" onClick={() => setSupplementView('requests')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'requests' ? 'page' : undefined}>{tx('Leave Requests')}</button>
+      <button type="button" onClick={() => setSupplementView('calendar')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'calendar' ? 'page' : undefined}>{tx('Absence calendar')}</button>
+      {canManage && <button type="button" onClick={() => setSupplementView('policy')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#085587]" aria-current={supplementView === 'policy' ? 'page' : undefined}>{tx('Leave policy')}</button>}
+    </nav>
     {error && <StatusMessage error={error} onRetry={() => void load()} />}
     {actionMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{actionMessage}</p>}
     {evidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{evidenceError}</p>}
@@ -2525,7 +2531,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
         </div>}
       </div>
 
-      <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      {supplementView === 'calendar' && <section aria-labelledby="leave-absence-calendar-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h3 id="leave-absence-calendar-heading" className="font-semibold text-[#08263D]">{tx('Absence calendar')}</h3>
             <p className="mt-1 text-xs text-slate-600">{tx('Only approved leave requests appear here. Pending requests remain in the review queue.')}</p></div>
@@ -2582,8 +2588,8 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
             </section>
           </div>
         </>}
-      </section>
-      {canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
+      </section>}
+      {supplementView === 'policy' && canManage && <LeaveTypePolicyManager tenantId={tenantId} leaveTypes={visibleData.leave_types} locale={locale} onRefresh={() => load(appliedRequestRange, false)} />}
       {rejectingRequest && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-3" role="presentation"
         onMouseDown={event => { if (event.target === event.currentTarget && !resolvingRequestId) { setRejectingRequest(null); setResolutionNote(''); } }}>
         <div ref={rejectionDialogRef} role="dialog" aria-modal="true" aria-labelledby="leave-rejection-heading" aria-describedby="leave-rejection-description"
@@ -2607,7 +2613,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
           </div>
         </div>
       </div>}
-      <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {supplementView === 'calendar' && <section aria-labelledby="organization-holidays-heading" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-4"><h3 id="organization-holidays-heading" className="font-semibold text-slate-900">Organization holidays</h3>
           <p className="mt-1 text-xs text-slate-500">Holiday dates returned by this organization’s leave service</p></div>
         {!visibleData.holidays.length ? <p className="p-5 text-sm text-slate-600">No holidays were returned for this organization.</p> :
@@ -2622,7 +2628,7 @@ function LeaveWorkspace({ tenantId, canManage, locale }: { tenantId: string; can
               </tr>)}</tbody>
             </table>
           </div>}
-      </section>
+      </section>}
     </>}
   </section>;
 }
