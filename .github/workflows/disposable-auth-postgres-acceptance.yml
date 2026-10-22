@@ -1,7 +1,7 @@
 name: Disposable Auth, Postgres and browser acceptance (no deployment)
 on:
   push:
-    branches: [development/hris-checkpoints, release/hris-stable-20261017]
+    branches: [development/hris-checkpoints, release/hris-stable-20261017, work/ws05-free-tier-release-candidate-20261022]
   workflow_dispatch:
     inputs:
       candidate_ref:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   isolated-hris:
-    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
+    if: github.ref == 'refs/heads/work/ws05-free-tier-release-candidate-20261022' || github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
