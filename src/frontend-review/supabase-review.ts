@@ -21,7 +21,42 @@ export const supabaseUrl = 'offline-review';
 export const supabasePublicKey = 'offline-no-key';
 export const supabase = {
   from: () => query(),
-  rpc: (name: string) => {
+  rpc: (name: string, args?: { p_report?: boolean }) => {
+    if (name === 'hris_get_tenant_attendance_data') {
+      const reviewEmployees = Array.from({ length: 6 }, (_, index) => ({
+        employee_id: `00000000-0000-4000-8000-${String(index + 10).padStart(12, '0')}`,
+        employee_number: `REVIEW-${String(index + 1).padStart(3, '0')}`,
+        full_name: `Review Employee ${String.fromCharCode(65 + index)}`,
+        designation_title: index === 0 ? 'Design Reviewer' : 'Review Associate',
+        team_name: index < 3 ? 'Design Review' : 'Review Operations',
+        department_name: 'Review Department',
+        attendance_date: '2026-10-22', work_mode: index % 2 ? 'home' : 'office',
+        check_in: '09:00', check_out: '17:30', status: 'present',
+        office_hours: 8, working_hours: 8.5, deviation: 0.5,
+      }));
+      return Promise.resolve({ data: args?.p_report
+        ? reviewEmployees : { records: reviewEmployees, corrections: [] }, error: null });
+    }
+    if (name === 'hris_get_tenant_leave_data') {
+      const reviewRequests = [
+        { id: '00000000-0000-4000-8000-000000001101',
+          employee_id: '00000000-0000-4000-8000-000000000010',
+          employee_number: 'REVIEW-001', full_name: 'Review Employee A',
+          leave_type_name: 'Annual Leave', leave_type_code: 'AL',
+          from_date: '2026-10-23', to_date: '2026-10-24',
+          reason: 'Review-only fixture', status: 'pending', attachment_url: null },
+        { id: '00000000-0000-4000-8000-000000001102',
+          employee_id: '00000000-0000-4000-8000-000000000011',
+          employee_number: 'REVIEW-002', full_name: 'Review Employee B',
+          leave_type_name: 'Sick Leave', leave_type_code: 'SL',
+          from_date: '2026-10-19', to_date: '2026-10-20',
+          reason: 'Review-only fixture', status: 'approved', attachment_url: null },
+      ];
+      return Promise.resolve({ data: { requests: reviewRequests,
+        leave_types: [{ id: '00000000-0000-4000-8000-000000002001', name: 'Annual Leave' },
+          { id: '00000000-0000-4000-8000-000000002002', name: 'Sick Leave' }],
+        holidays: [] }, error: null });
+    }
     if (name === 'hris_get_my_project_tasks') {
       return Promise.resolve({ data: { tasks: [] }, error: null });
     }
