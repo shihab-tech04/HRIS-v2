@@ -808,11 +808,11 @@ function LiveDashboard({ tenantId, onOpen, canReport, locale }: { tenantId: stri
         </div>}
       </div>
     </section>
-    <nav aria-label={tx('Dashboard views')} className="-mx-4 flex min-h-[57px] min-w-0 gap-0 overflow-x-auto border-b border-[#E9ECED] bg-white sm:-mx-6 lg:-mx-6">
-      <button type="button" disabled className="inline-flex min-h-[57px] shrink-0 cursor-not-allowed items-center border-b-[3px] border-transparent px-6 text-base text-[#49454F]">
+    <nav aria-label={tx('Dashboard views')} className="-mx-4 grid min-h-[57px] min-w-0 grid-cols-2 border-b border-[#E9ECED] bg-white sm:-mx-6 sm:flex lg:-mx-6">
+      <button type="button" disabled className="inline-flex min-h-[57px] min-w-0 cursor-not-allowed items-center justify-center border-b-[3px] border-transparent px-2 py-1 text-center text-[13px] leading-snug text-[#49454F] sm:shrink-0 sm:px-6 sm:text-base">
         {tx('Personal Dashboard')}
       </button>
-      <button type="button" aria-current="page" className="inline-flex min-h-[57px] shrink-0 items-center border-b-[3px] border-[#08558B] px-6 text-base text-[#49454F]">
+      <button type="button" aria-current="page" className="inline-flex min-h-[57px] min-w-0 items-center justify-center border-b-[3px] border-[#08558B] px-2 py-1 text-center text-[13px] leading-snug text-[#49454F] sm:shrink-0 sm:px-6 sm:text-base">
         {tx('Managerial Dashboard')}
       </button>
     </nav>
