@@ -88,6 +88,23 @@ jobs:
             if (!await reviewRow.getByRole('button', { name: 'Approve' }).count()
               || !await reviewRow.getByRole('button', { name: 'Reject' }).count())
               throw new Error('Approved decisions are not accessible via Figma action column');
+            // Match approved Figma and shared HR Operations: small solid circles within accessible touch targets.
+            for (const [action, expected] of [['Approve', 'rgb(0, 135, 77)'], ['Reject', 'rgb(255, 0, 0)']]) {
+              const target = reviewRow.getByRole('button', { name: action, exact: true });
+              const detail = await target.evaluate(el => {
+                const circle = el.querySelector('span');
+                return { color: circle ? getComputedStyle(circle).backgroundColor : '',
+                  width: circle?.getBoundingClientRect().width ?? 0,
+                  touchTarget: el.getBoundingClientRect().width };
+              });
+              if (detail.color !== expected || Math.abs(detail.width - 24) > 1 || detail.touchTarget < 40)
+                throw new Error('Figma leave decision circle regression: ' + action + ' ' + JSON.stringify(detail));
+            }
+            await reviewRow.getByRole('button', { name: 'Reject' }).click();
+            await page.getByRole('dialog', { name: 'Reject leave request' }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+            if (await page.getByRole('dialog', { name: 'Reject leave request' }).count())
+              throw new Error('Leave rejection dialog did not close on Cancel');
             if (await page.getByText('Leave service returned an invalid response.').count())
               throw new Error('Offline Leave fixture has invalid RPC shape');
             const leaveResults = page.getByRole('region', { name: 'Leave request results' });
