@@ -23,7 +23,7 @@ export function FrontendReviewApp() {
     : managerPermissions;
   return <div data-frontend-review="offline" className="min-h-screen bg-[#F5F8FA]">
     <div role="status" className="sticky top-0 z-50 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 text-sm">
-      <span className="font-medium text-[#085587]">HRIS frontend review — offline; production records and actions disabled</span>
+      <span className="font-medium text-[#085587]">HRIS frontend review — synthetic metrics; production records and actions disabled</span>
       <div className="flex items-center gap-2" role="group" aria-label="Review role">
         <button type="button" onClick={() => setRole('manager')} aria-pressed={!isEmployee}
           className="rounded-md border border-slate-300 px-3 py-1 aria-pressed:bg-[#085587] aria-pressed:text-white">Manager view</button>
