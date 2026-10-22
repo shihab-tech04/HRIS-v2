@@ -33,6 +33,10 @@ jobs:
         run: |
           npm run lint
           npm run build
+          first_digest="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second_digest="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first_digest" = "$second_digest" || { echo 'Non-reproducible Pages bundle; refuse commit'; exit 1; }
           cmp dist/index.html index.html
           diff -qr dist/assets assets
           git diff --check
