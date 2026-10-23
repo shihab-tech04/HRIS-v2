@@ -2,7 +2,7 @@ name: WS05 exact-source Pages reproducibility check (no deployment)
 on:
   push:
     branches:
-      - integration/ws05-pages-exact-review-20261023
+      - integration/ws05-pages-assets-reconciliation-20261023
 permissions:
   contents: read
 jobs:
@@ -39,4 +39,8 @@ jobs:
           cmp dist/index.html index.html
           diff -qr dist/assets assets
           git diff --check
-          echo "Exact-source Pages entry and assets match compiled build."
+          # The build sync script copies output into index.html and assets/;
+          # compare those resulting paths against the COMMITTED tree, not only dist.
+          git diff --exit-code -- index.html assets
+          test -z "$(git ls-files --others --exclude-standard -- index.html assets)"
+          echo "Generated Pages files are byte-identical to the committed source tree."
