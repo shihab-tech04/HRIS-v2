@@ -142,6 +142,13 @@ CREATE POLICY hris_private_storage_tenant_read_guard
     OR private.hris_storage_owner_tenant_read(bucket_id,name)
   );
 
+-- The earlier employee-documents migration intentionally used an
+-- owner-only RESTRICTIVE SELECT guard because no tenant-safe staff resolver
+-- existed. It would intersect and block approved same-tenant reviewers.
+-- Retire it ONLY after installing the stronger tenant-qualified restrictive
+-- guard above, atomically in this same transaction.
+DROP POLICY IF EXISTS employee_documents_storage_owner_guard ON storage.objects;
+
 -- Fail closed if the stored object is not linked to a real owner/tenant.
 -- A signed URL may be issued only after SELECT authorization; once issued
 -- it is a bearer URL until expiry, so consumers must keep expiry short.
