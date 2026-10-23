@@ -468,7 +468,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
 
       {tabs.map(tab => <div key={tab.id} id={`employee-figma-panel-${tab.id}`} role="tabpanel" aria-labelledby={`employee-figma-tab-${tab.id}`}
         tabIndex={panel === tab.id ? 0 : -1} hidden={panel !== tab.id} data-figma-node={tab.figma}
-        className="!mt-[23px] min-w-0 focus-visible:outline-2 focus-visible:outline-[#085587]">
+        className="!mt-[22px] min-w-0 focus-visible:outline-2 focus-visible:outline-[#085587]">
         {tab.id === 'personal' && <section className="space-y-6 rounded-2xl bg-white p-4 sm:p-6 lg:p-8" aria-labelledby="employee-figma-content-title">
           <div className="border-b border-[#E7EEF2] pb-[27px]">
             <h2 id="employee-figma-content-title" className="text-lg font-bold text-[#49454F]">{words.profileContentHeading}</h2>
