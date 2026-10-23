@@ -1,0 +1,67 @@
+name: WS05 isolated Pages artifact reconciliation (review branch only)
+on:
+  push:
+    branches:
+      - integration/ws05-pages-assets-reconciliation-20261023
+permissions:
+  contents: write
+concurrency:
+  group: ws05-pages-artifact-reconciliation
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/integration/ws05-pages-assets-reconciliation-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact isolated review branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Use pinned Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install committed dependencies and compile source
+        run: |
+          set -euo pipefail
+          npm ci --include=optional --no-audit --no-fund
+          npm run lint
+      - name: Build reproducibly without any deployment
+        env:
+          GITHUB_PAGES: 'true'
+        run: |
+          set -euo pipefail
+          npm run build
+          first_digest="$(find dist -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second_digest="$(find dist -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first_digest" = "$second_digest"
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+          echo "Deterministic compiled Pages output: $first_digest"
+      - name: Commit only generated Pages entry and assets on this review branch
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/integration/ws05-pages-assets-reconciliation-20261023'
+          git add -A -- index.html assets
+          git diff --cached --name-only | while IFS= read -r path; do
+            case "$path" in
+              index.html|assets/*) ;;
+              *) echo "Unapproved staged path: $path"; exit 1 ;;
+            esac
+          done
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore(ws05): synchronize deterministic compiled Pages assets in review only'
+            git push origin HEAD:refs/heads/integration/ws05-pages-assets-reconciliation-20261023
+          fi
+      - name: Prove committed asset parity after recompile
+        env:
+          GITHUB_PAGES: 'true'
+        run: |
+          set -euo pipefail
+          npm run build
+          git diff --exit-code -- index.html assets
+          test -z "$(git ls-files --others --exclude-standard -- index.html assets)"
+          node --test tests/contracts/disposable-acceptance-workflow.test.mjs
+          echo "Committed Pages assets match reproducible compiled source."
