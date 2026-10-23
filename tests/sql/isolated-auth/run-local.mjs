@@ -326,6 +326,8 @@ let learningEvidenceBucketSafeToClean = false;
 let createdEmployeeDocumentsBucket = false;
 let employeeDocumentsBucketSafeToClean = false;
 const employeeDocumentStoragePaths = [];
+const candidateTenantGuardStoragePaths = [];
+let createdCandidateTenantGuardBucket = false;
 let attendanceCorrectionBrowserFixtureId = null;
 let attendanceCorrectionBrowserDate = null;
 let attendanceCorrectionBrowserReasons = [];
@@ -481,6 +483,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql'),
   path.join(here, 'overgrant-leave-types-for-hosted-parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261023130800_hris_private_storage_tenant_read_guard.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -1010,9 +1013,16 @@ const documentStorageOwner = await employeeA.client.storage.from('employee-docum
 const documentStoragePeer = await employeeB.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
 const documentStorageManager = await managerA.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
 const documentStorageGlobalOnly = await globalOnly.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
-record('Employee-document object reads stay owner-only until a tenant-safe storage path contract exists',
-  !documentStorageOwner.error && Boolean(documentStoragePeer.error)
-    && Boolean(documentStorageManager.error) && Boolean(documentStorageGlobalOnly.error));
+const documentStorageForeignManager = await managerB.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
+const documentStorageManagerSigned = await managerA.client.storage.from('employee-documents').createSignedUrl(employeeDocumentStoragePath, 60);
+const documentStorageForeignSigned = await managerB.client.storage.from('employee-documents').createSignedUrl(employeeDocumentStoragePath, 60);
+const documentStorageAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('employee-documents').download(employeeDocumentStoragePath);
+record('Private employee Storage permits own and authorized same-tenant manager downloads and signed URLs only',
+  !documentStorageOwner.error && !documentStorageManager.error
+    && !documentStorageManagerSigned.error && Boolean(documentStorageManagerSigned.data?.signedUrl)
+    && Boolean(documentStoragePeer.error) && Boolean(documentStorageForeignManager.error)
+    && Boolean(documentStorageForeignSigned.error)
+    && Boolean(documentStorageGlobalOnly.error) && Boolean(documentStorageAnonymous.error));
 const ownEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
 const otherTenantEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantB });
 const crossTenantEmployeeDocuments = await employeeB.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
@@ -2587,6 +2597,55 @@ INSERT INTO public.candidate_application_stage_history(id,application_id,stage,n
   ('${recruitmentIds.historyA1}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'submitted','private-reviewer-note-a','recruitment','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T09:01:00Z'),
   ('${recruitmentIds.historyA1Second}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'screening','candidate-visible-milestone-note-a','recruitment','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T10:01:00Z'),
   ('${recruitmentIds.historyB}'::uuid,'${recruitmentIds.applicationB}'::uuid,'submitted','private-reviewer-note-b','recruitment','66666666-6666-4666-8666-666666666601'::uuid,'2026-10-12T11:01:00Z');`);
+
+// Actual local GoTrue + Storage HTTP calls, not simulated JWT claims.
+const candidateBucketBeforeGuardTest = await adminAuth.storage.getBucket('candidate-documents');
+if (candidateBucketBeforeGuardTest.error) {
+  if (String(candidateBucketBeforeGuardTest.error.statusCode) !== '404') {
+    throw candidateBucketBeforeGuardTest.error;
+  }
+  const createdBucket = await adminAuth.storage.createBucket('candidate-documents', {
+    public: false, fileSizeLimit: 10485760, allowedMimeTypes: ['application/pdf'],
+  });
+  if (createdBucket.error) throw createdBucket.error;
+  createdCandidateTenantGuardBucket = true;
+} else if (candidateBucketBeforeGuardTest.data.public) {
+  throw new Error('Refusing synthetic acceptance: Candidate Storage bucket is public.');
+}
+const candidateGuardAPath = `${assessmentCandidateA.userId}/ws02-tenant-guard-a.pdf`;
+const candidateGuardBPath = `${assessmentCandidateB.userId}/ws02-tenant-guard-b.pdf`;
+for (const objectPath of [candidateGuardAPath, candidateGuardBPath]) {
+  const upload = await adminAuth.storage.from('candidate-documents').upload(
+    objectPath, new Blob(['%PDF-1.4\\nWS02 isolated candidate document\\n'], { type: 'application/pdf' }),
+    { contentType: 'application/pdf', upsert: false },
+  );
+  if (upload.error) throw upload.error;
+  candidateTenantGuardStoragePaths.push(objectPath);
+}
+const [candidateOwnerDownloadA, candidateOwnerDownloadB, candidateForeignDownload,
+  candidateRecruiterLocal, candidateRecruiterForeign, candidateAnonDownload,
+  candidateOwnSigned, candidateForeignSigned, candidateRecruiterSigned, candidateRecruiterForeignSigned] = await Promise.all([
+  assessmentCandidateA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+  assessmentCandidateB.client.storage.from('candidate-documents').download(candidateGuardBPath),
+  assessmentCandidateA.client.storage.from('candidate-documents').download(candidateGuardBPath),
+  recruitmentManagerA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+  recruitmentManagerA.client.storage.from('candidate-documents').download(candidateGuardBPath),
+  createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('candidate-documents').download(candidateGuardAPath),
+  assessmentCandidateA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardAPath, 60),
+  assessmentCandidateA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardBPath, 60),
+  recruitmentManagerA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardAPath, 60),
+  recruitmentManagerA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardBPath, 60),
+]);
+record('WS02 private candidate files: real Auth owners and same-tenant recruiters pass; foreign candidate, tenant and anon fail',
+  !candidateOwnerDownloadA.error && !candidateOwnerDownloadB.error
+    && !candidateRecruiterLocal.error && !candidateOwnSigned.error
+    && !candidateRecruiterSigned.error
+    && Boolean(candidateForeignDownload.error) && Boolean(candidateRecruiterForeign.error)
+    && Boolean(candidateAnonDownload.error) && Boolean(candidateForeignSigned.error)
+    && Boolean(candidateRecruiterForeignSigned.error),
+  JSON.stringify({ owners:true, foreignCandidateDenied: Boolean(candidateForeignDownload.error),
+    recruiterForeignDenied:Boolean(candidateRecruiterForeign.error),
+    signedForeignDenied:Boolean(candidateRecruiterForeignSigned.error) }));
 
 const recruitmentA = await managerA.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
 const recruitmentB = await managerB.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantB });
@@ -8424,6 +8483,15 @@ if (failed.length) process.exitCode = 1;
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');
     if (deletedBucket.error) throw deletedBucket.error;
+  }
+  if (candidateTenantGuardStoragePaths.length) {
+    const candidateStorage = adminAuth.storage.from('candidate-documents');
+    const removed = await candidateStorage.remove(candidateTenantGuardStoragePaths);
+    if (removed.error) throw removed.error;
+  }
+  if (createdCandidateTenantGuardBucket) {
+    const deleted = await adminAuth.storage.deleteBucket('candidate-documents');
+    if (deleted.error) throw deleted.error;
   }
   const employeeDocumentStorage = adminAuth.storage.from('employee-documents');
   if (employeeDocumentsBucketSafeToClean && employeeDocumentStoragePaths.length) {
