@@ -665,6 +665,15 @@ try {
   await managerRow.waitFor({ state: 'visible' });
   await rejectionRow.waitFor({ state: 'visible' });
 
+  // The approved HRIS shell keeps Absence calendar in its own authorized section.
+  // Open it through the real navigation before interacting with month controls.
+  const absenceCalendarLink = manager.getByRole('button', { name: 'Absence calendar', exact: true });
+  if (!(await absenceCalendarLink.isVisible())) {
+    const moreOptionsButton = manager.getByRole('button', { name: 'More options', exact: true });
+    if (await moreOptionsButton.isVisible()) await moreOptionsButton.click();
+  }
+  await absenceCalendarLink.click();
+  await manager.getByRole('heading', { name: 'Absence calendar', exact: true }).waitFor({ state: 'visible' });
   const calendarMonth = manager.locator('#leave-absence-month');
   await calendarMonth.fill('2026-11');
   await manager.getByRole('region', { name: 'Absence calendar November 2026' }).waitFor({ state: 'visible' });
