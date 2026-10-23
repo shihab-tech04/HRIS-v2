@@ -20,6 +20,8 @@ jobs:
       MAIN_RELEASE_SHA: aa6a5f7399fc5ec1a319a2c922c86fe8ccd225d4
       CANDIDATE_RELEASE_SHA: 0c15cb5c5fe6cabefa45ff37b394184faeb3e5a7
       CI: 'true'
+      WS06_CAPTURE_PROFILE_SCREENSHOTS: '1'
+      WS06_CAPTURE_DIRECTORY: 'docs/evidence/ws04-exact-release/profile'
     steps:
       - name: Checkout pinned WS05 exact Main release, not QA branch code
         uses: actions/checkout@v4
