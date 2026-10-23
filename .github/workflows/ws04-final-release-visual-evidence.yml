@@ -87,3 +87,81 @@ jobs:
             exact-main/test-results
           if-no-files-found: error
           retention-days: 30
+
+  exact-candidate-public-visual-evidence:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.number == 45 && github.head_ref == 'audit/hris-figma-parity-20261020')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: '1'
+      CANDIDATE_RELEASE_SHA: 0c15cb5c5fe6cabefa45ff37b394184faeb3e5a7
+    steps:
+      - name: Checkout immutable WS05 Candidate source
+        uses: actions/checkout@v4
+        with:
+          repository: shihab-tech04/HRIS-Candidate-v2
+          ref: 0c15cb5c5fe6cabefa45ff37b394184faeb3e5a7
+          persist-credentials: false
+          path: exact-candidate
+      - name: Verify source identity and production public-only contract
+        working-directory: exact-candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_RELEASE_SHA"
+          grep -Fq "VITE_CANDIDATE_PUBLIC_ONLY: 'true'" .github/workflows/release-preview.yml
+          grep -Fq "VITE_ENABLE_DEMO_MODE: 'false'" .github/workflows/release-preview.yml
+          grep -Fq "xfuxnljfrgvusbrpvxpa.supabase.co" .github/workflows/release-preview.yml
+      - name: Install Node and locked Candidate test dependencies
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies for read-only public visual smoke
+        working-directory: exact-candidate
+        run: npm install --include=optional --no-audit --no-fund
+      - name: Build public-only Candidate with isolated intercepted read source
+        working-directory: exact-candidate
+        run: |
+          VITE_CANDIDATE_PUBLIC_ONLY=true \
+          VITE_ENABLE_DEMO_MODE=false \
+          VITE_SUPABASE_URL=http://127.0.0.1:4175 \
+          VITE_SUPABASE_ANON_KEY=ci-only-placeholder \
+            npx vite build --base=/HRIS-Candidate-v2/
+          test -s dist/index.html
+      - name: Capture exact Candidate responsive EN/BN empty/error/loading screenshots
+        working-directory: exact-candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock --include=optional --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+          npx vite preview --base=/HRIS-Candidate-v2/ --host 127.0.0.1 --port 4175 --strictPort >"$RUNNER_TEMP/ws04-candidate-preview.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for n in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4175/HRIS-Candidate-v2/ >/dev/null; then break; fi
+            sleep 1
+          done
+          CANDIDATE_UI_EVIDENCE_DIR=ui-evidence node scripts/candidate-public-visual-smoke.mjs
+      - name: Stamp Candidate evidence provenance and hashes
+        if: always()
+        working-directory: exact-candidate
+        run: |
+          mkdir -p ui-evidence
+          {
+            echo "candidate_release_sha=$CANDIDATE_RELEASE_SHA"
+            echo "workflow_run_id=$GITHUB_RUN_ID"
+            echo "utc_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "source=production_public_only_source_with_isolated_intercepted_vacancy_API"
+            echo "live_hosted_auth_certified=false"
+            echo "figma_parity_certified=false"
+          } > ui-evidence/ws04-provenance.txt
+          find ui-evidence -name '*.png' -type f -print0 | sort -z | xargs -0 -r sha256sum > ui-evidence/ws04-png-sha256.txt
+      - name: Upload Candidate exact-head screenshots (no deployment)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws04-exact-candidate-0c15cb5c-public-screenshots
+          path: exact-candidate/ui-evidence/
+          if-no-files-found: error
+          retention-days: 30
