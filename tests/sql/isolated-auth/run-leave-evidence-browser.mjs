@@ -532,7 +532,15 @@ try {
   await manager.getByRole('status').filter({ hasText: 'Leave request approved.' }).waitFor({ state: 'visible' });
   // A resolved row leaves the Manager's Pending queue. Verify it remains in All statuses.
   await managerRow.waitFor({ state: 'hidden' });
-  await manager.getByLabel('Filter by status', { exact: true }).selectOption('all');
+  // The approved Manager workspace keeps advanced status filters collapsed by default.
+  // Open the actual filter disclosure; never bypass the user-facing control.
+  const statusSelect = manager.getByLabel('Filter by status', { exact: true });
+  if (!(await statusSelect.isVisible())) {
+    const filterDisclosure = manager.getByRole('button', { name: 'Filters', exact: true });
+    await filterDisclosure.click();
+  }
+  await statusSelect.waitFor({ state: 'visible', timeout: 10000 });
+  await statusSelect.selectOption('all');
   await managerRow.getByRole('cell').filter({ hasText: 'approved' }).waitFor({ state: 'visible' });
 
   const uiApprovalResponse = manager.waitForResponse(response =>
