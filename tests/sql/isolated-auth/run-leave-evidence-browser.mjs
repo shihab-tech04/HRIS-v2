@@ -673,7 +673,7 @@ try {
     if (await moreOptionsButton.isVisible()) await moreOptionsButton.click();
   }
   await absenceCalendarLink.click();
-  await manager.getByRole('heading', { name: 'Absence calendar', exact: true }).waitFor({ state: 'visible' });
+  await manager.getByRole('heading', { name: 'Absence calendar', exact: true, level: 2 }).waitFor({ state: 'visible' });
   const calendarMonth = manager.locator('#leave-absence-month');
   await calendarMonth.fill('2026-11');
   await manager.getByRole('region', { name: 'Absence calendar November 2026' }).waitFor({ state: 'visible' });
@@ -727,7 +727,7 @@ try {
   await assertNoHorizontalOverflow(manager, 'Manager leave requests desktop');
   await manager.getByRole('button', { name: 'Switch language to Bengali' }).click();
   await manager.setViewportSize({ width: 375, height: 812 });
-  await manager.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার' }).waitFor({ state: 'visible' });
+  await manager.getByRole('heading', { name: 'অনুপস্থিতির ক্যালেন্ডার', level: 2 }).waitFor({ state: 'visible' });
   await manager.getByLabel('মাস', { exact: true }).waitFor({ state: 'visible' });
   await manager.getByRole('button', { name: 'আগের মাস' }).waitFor({ state: 'visible' });
   await assertNoHorizontalOverflow(manager, 'Manager absence calendar Bengali mobile');
