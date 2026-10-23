@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Tracked Pages assets are generated output, never Tailwind class sources. */
+@source not "../assets";
 
 @layer base {
   :root {
