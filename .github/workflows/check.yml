@@ -1,5 +1,7 @@
 name: Verify HRIS build and browser smoke
 on:
+  pull_request:
+    branches: [main, integration/ws05-main-final-review-20261022]
   push:
     branches: [release/hris-stable-20261017]
   workflow_dispatch:
@@ -7,7 +9,7 @@ permissions:
   contents: read
 jobs:
   check:
-    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
+    if: github.event_name == 'pull_request' || if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
