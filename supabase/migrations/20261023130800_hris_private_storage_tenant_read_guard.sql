@@ -47,7 +47,8 @@ AS $body$
         FROM public.candidate_profiles c
         JOIN public.tenants t ON t.id=c.tenant_id AND t.is_active IS TRUE
         WHERE c.user_id::text=split_part(p_object_name,'/',1)
-          AND c.profile_status='active'
+          -- Tenant-scoped recruitment permission may include retained documents
+          -- after candidate deactivation. Auth+owner/tenant predicates still apply.
           AND (
             c.user_id=auth.uid()
             OR public.has_tenant_permission(c.tenant_id,'recruitment.view')
@@ -58,7 +59,8 @@ AS $body$
         SELECT 1 FROM public.employees e
         JOIN public.tenants t ON t.id=e.tenant_id AND t.is_active IS TRUE
         WHERE e.user_id::text=split_part(p_object_name,'/',1)
-          AND e.employment_status NOT IN ('resigned','terminated')
+          -- Retained staff evidence remains available to authorized same-tenant
+          -- reviewers; self-service owner access uses the active employee resolver.
           AND (
             e.id=public.hris_own_employee_for_tenant(e.tenant_id)
             OR (
@@ -77,7 +79,8 @@ AS $body$
         SELECT 1 FROM public.employees e
         JOIN public.tenants t ON t.id=e.tenant_id AND t.is_active IS TRUE
         WHERE e.user_id::text=split_part(p_object_name,'/',1)
-          AND e.employment_status NOT IN ('resigned','terminated')
+          -- Retained staff evidence remains available to authorized same-tenant
+          -- reviewers; self-service owner access uses the active employee resolver.
           AND (
             e.id=public.hris_own_employee_for_tenant(e.tenant_id)
             OR (
