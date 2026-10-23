@@ -36,11 +36,11 @@ test('isolated acceptance seeds the legacy exposure and proves tenant, self, gra
   assert.match(runner, /Anonymous clients cannot read employee-document metadata/);
   assert.match(storageGuard, /CREATE POLICY hris_private_storage_tenant_read_guard/);
   assert.match(storageGuard, /AS RESTRICTIVE FOR SELECT TO authenticated/);
-  assert.match(storageGuard, /public\\.has_tenant_permission\\(e\\.tenant_id,'employees\\.view'\\)/);
-  assert.match(storageGuard, /d\\.employee_id=e\\.id AND d\\.file_url=p_object_name/);
-  assert.match(storageGuard, /c\\.tenant_id=e\\.tenant_id[\\s\\S]+?c\\.evidence_path=p_object_name/);
-  assert.match(storageGuard, /c\\.user_id::text=split_part\\(p_object_name,'\\/',1\\)/);
-  assert.match(storageGuard, /REVOKE ALL ON FUNCTION private\\.hris_storage_owner_tenant_read\\(text,text\\)/);
+  assert.match(storageGuard, /public\.has_tenant_permission\(e\.tenant_id,'employees\.view'\)/);
+  assert.match(storageGuard, /d\.employee_id=e\.id AND d\.file_url=p_object_name/);
+  assert.match(storageGuard, /c\.tenant_id=e\.tenant_id[\s\S]+?c\.evidence_path=p_object_name/);
+  assert.match(storageGuard, /c\.user_id::text=split_part\(p_object_name,'\/',1\)/);
+  assert.match(storageGuard, /REVOKE ALL ON FUNCTION private\.hris_storage_owner_tenant_read\(text,text\)/);
   assert.match(runner, /Private employee Storage permits own and authorized same-tenant manager downloads and signed URLs only/);
   assert.match(runner, /WS02 attendance evidence: actual sessions enforce owner, manager tenant and signed-link issuance/);
   assert.match(runner, /WS02 private candidate files: real Auth owners and same-tenant recruiters pass/);
