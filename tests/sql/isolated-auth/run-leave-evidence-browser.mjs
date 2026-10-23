@@ -487,7 +487,9 @@ try {
   await manager.getByRole('button', { name: 'Refresh leave type policies' }).click();
   await manager.getByRole('row', { name: /Synthetic browser leave policy.*11\.5.*3/ }).waitFor({ state: 'visible' });
   // The request table is intentionally hidden while its separate policy view is active.
-  await manager.getByRole('button', { name: 'Leave Requests', exact: true }).click();
+  // Select the in-workspace tab, not the similarly named top-level attendance route.
+  await manager.getByRole('navigation', { name: 'Leave management sections' })
+    .getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await leaveTable.waitFor({ state: 'visible' });
   const managerRows = await leaveTable.locator('tbody tr').allInnerTexts();
   const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-19/ });
