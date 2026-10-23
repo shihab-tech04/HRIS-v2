@@ -1032,6 +1032,32 @@ const employeeStorageAccessResults = {
 record('Private employee Storage permits own and authorized same-tenant manager downloads and signed URLs only',
   Object.values(employeeStorageAccessResults).every(Boolean),
   JSON.stringify(employeeStorageAccessResults));
+// Authenticated tenant reviewers must retain access to business-linked
+// historical documents. The departed employee's own self-service must
+// fail closed. Update and restore only a disposable synthetic fixture.
+let formerEmployeeDocumentResult = {};
+psqlSync(`UPDATE public.employees SET employment_status='terminated'
+  WHERE id='55555555-5555-4555-8555-555555555555'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid;`);
+try {
+  const [formerManager, formerOwner, formerForeign] = await Promise.all([
+    managerA.client.storage.from('employee-documents').download(employeeDocumentStoragePath),
+    employeeA.client.storage.from('employee-documents').download(employeeDocumentStoragePath),
+    managerB.client.storage.from('employee-documents').download(employeeDocumentStoragePath),
+  ]);
+  formerEmployeeDocumentResult = {
+    tenantReviewerAllowed: !formerManager.error,
+    terminatedOwnerDenied: Boolean(formerOwner.error),
+    foreignTenantDenied: Boolean(formerForeign.error),
+  };
+} finally {
+  psqlSync(`UPDATE public.employees SET employment_status='active'
+    WHERE id='55555555-5555-4555-8555-555555555555'::uuid
+      AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('WS02 historical employee evidence remains tenant-reviewable while terminated owner and foreign tenant are denied',
+  Object.values(formerEmployeeDocumentResult).every(Boolean),
+  JSON.stringify(formerEmployeeDocumentResult));
 // Exercise the approved attendance-correction evidence_path contract with
 // real tenant A/B Auth sessions through Storage, then restore the fixture row.
 const attendanceGuardBucketBefore = await adminAuth.storage.getBucket('attendance-evidence');
@@ -2709,6 +2735,31 @@ record('WS02 private candidate files: real Auth owners and same-tenant recruiter
   JSON.stringify({ owners:true, foreignCandidateDenied: Boolean(candidateForeignDownload.error),
     recruiterForeignDenied:Boolean(candidateRecruiterForeign.error),
     signedForeignDenied:Boolean(candidateRecruiterForeignSigned.error) }));
+// An authorized same-tenant recruiter may retrieve retained candidate
+// evidence after profile deactivation, without creating cross-tenant access.
+let archivedCandidateStorageResult = {};
+psqlSync(`UPDATE public.candidate_profiles SET profile_status='disabled'
+  WHERE user_id=${sqlLiteral(assessmentCandidateA.userId)}::uuid
+    AND tenant_id='${ids.tenantA}'::uuid;`);
+try {
+  const [retainedRecruiter, retainedOwner, retainedForeign] = await Promise.all([
+    recruitmentManagerA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+    assessmentCandidateA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+    managerB.client.storage.from('candidate-documents').download(candidateGuardAPath),
+  ]);
+  archivedCandidateStorageResult = {
+    tenantRecruiterAllowed: !retainedRecruiter.error,
+    candidateOwnerAllowed: !retainedOwner.error,
+    foreignTenantDenied: Boolean(retainedForeign.error),
+  };
+} finally {
+  psqlSync(`UPDATE public.candidate_profiles SET profile_status='active'
+    WHERE user_id=${sqlLiteral(assessmentCandidateA.userId)}::uuid
+      AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('WS02 archived candidate evidence remains owner/tenant-reviewable without foreign access',
+  Object.values(archivedCandidateStorageResult).every(Boolean),
+  JSON.stringify(archivedCandidateStorageResult));
 
 const recruitmentA = await managerA.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
 const recruitmentB = await managerB.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantB });
