@@ -637,7 +637,9 @@ try {
   if (!rejected.ok()) throw new Error(`Same-tenant manager rejection returned ${rejected.status()}.`);
   await manager.getByRole('status').filter({ hasText: 'Leave request rejected.' }).waitFor({ state: 'visible' });
   await rejectionRow.getByRole('cell').filter({ hasText: 'rejected' }).waitFor({ state: 'visible' });
-  await rejectionRow.getByText(`Decision note: ${process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE}`).waitFor({ state: 'visible' });
+  // The approved Figma Leave Requests row displays the persisted note without a redundant prefix.
+  // Match the complete saved note, after status and RPC checks, without changing the UI.
+  await rejectionRow.getByText(process.env.HRIS_LOCAL_LEAVE_REJECTION_NOTE, { exact: true }).waitFor({ state: 'visible' });
 
   const managerRangeResponse = manager.waitForResponse(response => {
     if (response.request().method() !== 'POST'
