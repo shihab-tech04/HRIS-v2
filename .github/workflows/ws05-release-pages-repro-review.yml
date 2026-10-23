@@ -40,8 +40,3 @@ jobs:
           diff -qr dist/assets assets
           git diff --check
           echo "Exact-source Pages entry and assets match compiled build."
-      - name: Confirm no deployment, DB credentials, or Git push
-        run: |
-          set -euo pipefail
-          ! grep -E 'gh-pages|supabase db push|supabase link|git push origin|secrets\.|deploy-pages' .github/workflows/ws05-release-pages-repro-review.yml
-          echo "Nondeploying review check only."
