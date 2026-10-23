@@ -492,11 +492,11 @@ try {
     .getByRole('button', { name: 'Leave Requests', exact: true }).click();
   await leaveTable.waitFor({ state: 'visible' });
   const managerRows = await leaveTable.locator('tbody tr').allInnerTexts();
-  const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-19/ });
+  const managerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*2026-10-19.*Synthetic evidence-required leave/ });
   await managerRow.waitFor({ state: 'visible', timeout: 5000 }).catch(async cause => {
     throw new Error(`Evidence request missing from manager queue. Rows: ${JSON.stringify(managerRows)}. ${cause.message}`);
   });
-  const uiManagerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*Synthetic evidence-required leave.*2026-10-20/ });
+  const uiManagerRow = leaveTable.getByRole('row', { name: /Synthetic Employee A.*2026-10-20.*Synthetic evidence-required leave/ });
   await uiManagerRow.waitFor({ state: 'visible', timeout: 5000 });
   const managerStorageResponse = manager.waitForResponse(response =>
     response.request().method() === 'GET' && response.url().includes('/storage/v1/object/leave-evidence/'), { timeout: 10000 })
@@ -621,7 +621,7 @@ try {
   await overlapContext.close();
 
   const rejectionRow = leaveTable.getByRole('row', {
-    name: /Synthetic Employee A.*Synthetic annual leave.*2026-10-22/,
+    name: /Synthetic Employee A.*2026-10-22.*Synthetic annual leave/,
   });
   await rejectionRow.waitFor({ state: 'visible' });
   await rejectionRow.getByRole('button', { name: 'Reject', exact: true }).click();
