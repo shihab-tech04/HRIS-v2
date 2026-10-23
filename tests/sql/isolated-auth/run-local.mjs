@@ -1019,12 +1019,19 @@ const documentStorageForeignManager = await managerB.client.storage.from('employ
 const documentStorageManagerSigned = await managerA.client.storage.from('employee-documents').createSignedUrl(employeeDocumentStoragePath, 60);
 const documentStorageForeignSigned = await managerB.client.storage.from('employee-documents').createSignedUrl(employeeDocumentStoragePath, 60);
 const documentStorageAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('employee-documents').download(employeeDocumentStoragePath);
+const employeeStorageAccessResults = {
+  ownerAllowed: !documentStorageOwner.error,
+  sameTenantManagerAllowed: !documentStorageManager.error,
+  sameTenantSignedAllowed: !documentStorageManagerSigned.error && Boolean(documentStorageManagerSigned.data?.signedUrl),
+  foreignEmployeeDenied: Boolean(documentStoragePeer.error),
+  foreignManagerDenied: Boolean(documentStorageForeignManager.error),
+  foreignSignedDenied: Boolean(documentStorageForeignSigned.error),
+  globalOnlyDenied: Boolean(documentStorageGlobalOnly.error),
+  anonymousDenied: Boolean(documentStorageAnonymous.error),
+};
 record('Private employee Storage permits own and authorized same-tenant manager downloads and signed URLs only',
-  !documentStorageOwner.error && !documentStorageManager.error
-    && !documentStorageManagerSigned.error && Boolean(documentStorageManagerSigned.data?.signedUrl)
-    && Boolean(documentStoragePeer.error) && Boolean(documentStorageForeignManager.error)
-    && Boolean(documentStorageForeignSigned.error)
-    && Boolean(documentStorageGlobalOnly.error) && Boolean(documentStorageAnonymous.error));
+  Object.values(employeeStorageAccessResults).every(Boolean),
+  JSON.stringify(employeeStorageAccessResults));
 // Exercise the approved attendance-correction evidence_path contract with
 // real tenant A/B Auth sessions through Storage, then restore the fixture row.
 const attendanceGuardBucketBefore = await adminAuth.storage.getBucket('attendance-evidence');
