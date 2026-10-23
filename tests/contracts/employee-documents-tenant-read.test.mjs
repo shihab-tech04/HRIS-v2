@@ -36,6 +36,7 @@ test('isolated acceptance seeds the legacy exposure and proves tenant, self, gra
   assert.match(runner, /Anonymous clients cannot read employee-document metadata/);
   assert.match(storageGuard, /CREATE POLICY hris_private_storage_tenant_read_guard/);
   assert.match(storageGuard, /AS RESTRICTIVE FOR SELECT TO authenticated/);
+  assert.match(storageGuard, /DROP POLICY IF EXISTS employee_documents_storage_owner_guard ON storage\.objects/);
   assert.match(storageGuard, /public\.has_tenant_permission\(e\.tenant_id,'employees\.view'\)/);
   assert.match(storageGuard, /d\.employee_id=e\.id AND d\.file_url=p_object_name/);
   assert.match(storageGuard, /c\.tenant_id=e\.tenant_id[\s\S]+?c\.evidence_path=p_object_name/);
