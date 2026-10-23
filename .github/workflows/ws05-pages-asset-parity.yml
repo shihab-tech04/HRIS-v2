@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - work/ws05-free-tier-release-candidate-20261022
+      - integration/ws05-main-final-review-20261022
     paths-ignore:
       - 'assets/**'
       - 'index.html'
@@ -44,7 +45,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/work/ws05-free-tier-release-candidate-20261022"
+          case "$GITHUB_REF" in
+            refs/heads/work/ws05-free-tier-release-candidate-20261022|refs/heads/integration/ws05-main-final-review-20261022) ;;
+            *) echo "Not an approved WS05 branch; refuse generated asset commit"; exit 1 ;;
+          esac
           git add -A -- package-lock.json index.html assets .nojekyll
           if git diff --cached --quiet; then
             echo "Already reproducible; no generated asset commit needed."
@@ -53,4 +57,4 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'WS05: synchronize reproducible Pages assets on release candidate'
-          git push origin HEAD:refs/heads/work/ws05-free-tier-release-candidate-20261022
+          git push origin "HEAD:$GITHUB_REF"
