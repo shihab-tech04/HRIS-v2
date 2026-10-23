@@ -328,6 +328,8 @@ let employeeDocumentsBucketSafeToClean = false;
 const employeeDocumentStoragePaths = [];
 const candidateTenantGuardStoragePaths = [];
 let createdCandidateTenantGuardBucket = false;
+let createdAttendanceTenantGuardBucket = false;
+const attendanceTenantGuardStoragePaths = [];
 let attendanceCorrectionBrowserFixtureId = null;
 let attendanceCorrectionBrowserDate = null;
 let attendanceCorrectionBrowserReasons = [];
@@ -1023,6 +1025,60 @@ record('Private employee Storage permits own and authorized same-tenant manager 
     && Boolean(documentStoragePeer.error) && Boolean(documentStorageForeignManager.error)
     && Boolean(documentStorageForeignSigned.error)
     && Boolean(documentStorageGlobalOnly.error) && Boolean(documentStorageAnonymous.error));
+// Exercise the approved attendance-correction evidence_path contract with
+// real tenant A/B Auth sessions through Storage, then restore the fixture row.
+const attendanceGuardBucketBefore = await adminAuth.storage.getBucket('attendance-evidence');
+if (attendanceGuardBucketBefore.error) {
+  if (String(attendanceGuardBucketBefore.error.statusCode) !== '404') {
+    throw attendanceGuardBucketBefore.error;
+  }
+  const created = await adminAuth.storage.createBucket('attendance-evidence', {
+    public: false, fileSizeLimit: 10485760, allowedMimeTypes: ['application/pdf'],
+  });
+  if (created.error) throw created.error;
+  createdAttendanceTenantGuardBucket = true;
+} else if (attendanceGuardBucketBefore.data.public) {
+  throw new Error('Refusing isolated attendance evidence test: bucket is public.');
+}
+const evidenceObjectA = `${employeeA.userId}/ws02-attendance-a.pdf`;
+const evidenceObjectB = `${employeeB.userId}/ws02-attendance-b.pdf`;
+for (const objectPath of [evidenceObjectA,evidenceObjectB]) {
+  const uploaded = await adminAuth.storage.from('attendance-evidence').upload(
+    objectPath, new Blob(['%PDF-1.4\\nSynthetic attendance evidence\\n'], { type:'application/pdf' }),
+    { contentType:'application/pdf', upsert:false },
+  );
+  if (uploaded.error) throw uploaded.error;
+  attendanceTenantGuardStoragePaths.push(objectPath);
+}
+psqlSync(`UPDATE public.attendance_corrections SET evidence_path=${sqlLiteral(evidenceObjectA)}
+  WHERE id='cccccccc-0000-4000-8000-000000000001'::uuid AND tenant_id='${ids.tenantA}'::uuid;
+  UPDATE public.attendance_corrections SET evidence_path=${sqlLiteral(evidenceObjectB)}
+  WHERE id='cccccccc-0000-4000-8000-000000000003'::uuid AND tenant_id='${ids.tenantB}'::uuid;`);
+try {
+  const [ownerA, ownerB, managerLocalA, managerLocalB, managerForeign,
+    employeeForeign, anonEvidence, signedLocal, signedForeign] = await Promise.all([
+    employeeA.client.storage.from('attendance-evidence').download(evidenceObjectA),
+    employeeB.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    managerA.client.storage.from('attendance-evidence').download(evidenceObjectA),
+    managerB.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    managerA.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    employeeA.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('attendance-evidence').download(evidenceObjectA),
+    managerA.client.storage.from('attendance-evidence').createSignedUrl(evidenceObjectA,60),
+    managerA.client.storage.from('attendance-evidence').createSignedUrl(evidenceObjectB,60),
+  ]);
+  record('WS02 attendance evidence: actual sessions enforce owner, manager tenant and signed-link issuance',
+    !ownerA.error && !ownerB.error && !managerLocalA.error && !managerLocalB.error
+      && !signedLocal.error && Boolean(signedLocal.data?.signedUrl)
+      && Boolean(managerForeign.error) && Boolean(employeeForeign.error)
+      && Boolean(anonEvidence.error) && Boolean(signedForeign.error));
+} finally {
+  psqlSync(`UPDATE public.attendance_corrections SET evidence_path=NULL
+    WHERE id='cccccccc-0000-4000-8000-000000000001'::uuid AND tenant_id='${ids.tenantA}'::uuid;
+    UPDATE public.attendance_corrections SET evidence_path=NULL
+    WHERE id='cccccccc-0000-4000-8000-000000000003'::uuid AND tenant_id='${ids.tenantB}'::uuid;`);
+}
+
 const ownEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
 const otherTenantEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantB });
 const crossTenantEmployeeDocuments = await employeeB.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
@@ -8483,6 +8539,15 @@ if (failed.length) process.exitCode = 1;
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');
     if (deletedBucket.error) throw deletedBucket.error;
+  }
+  if (attendanceTenantGuardStoragePaths.length) {
+    const attendanceStorage = adminAuth.storage.from('attendance-evidence');
+    const removed = await attendanceStorage.remove(attendanceTenantGuardStoragePaths);
+    if (removed.error) throw removed.error;
+  }
+  if (createdAttendanceTenantGuardBucket) {
+    const deleted = await adminAuth.storage.deleteBucket('attendance-evidence');
+    if (deleted.error) throw deleted.error;
   }
   if (candidateTenantGuardStoragePaths.length) {
     const candidateStorage = adminAuth.storage.from('candidate-documents');
