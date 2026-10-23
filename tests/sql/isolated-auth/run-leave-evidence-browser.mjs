@@ -401,7 +401,15 @@ try {
   });
   // The Figma-aligned Leave Requests route keeps policy management in its own section.
   // Visit that section explicitly before exercising the real persistence and retry flow.
-  await manager.getByRole('button', { name: 'Leave policy', exact: true }).click();
+  // Figma's Manager leave workspace collapses secondary routes behind More options.
+  // Do not bypass the permission gate: reveal the existing authorized link first.
+  const leavePolicyButton = manager.getByRole('button', { name: 'Leave policy', exact: true });
+  if (!(await leavePolicyButton.isVisible())) {
+    const moreOptionsButton = manager.getByRole('button', { name: 'More options', exact: true });
+    if (await moreOptionsButton.isVisible()) await moreOptionsButton.click();
+  }
+  await leavePolicyButton.waitFor({ state: 'visible', timeout: 10000 });
+  await leavePolicyButton.click();
   await manager.getByRole('heading', { name: 'Leave policy' }).waitFor({ state: 'visible' });
   const policyFormButton = manager.getByRole('button', { name: 'Add leave type', exact: true }).first();
   await policyFormButton.click();
