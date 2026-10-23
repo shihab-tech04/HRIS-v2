@@ -4285,9 +4285,26 @@ const genderPolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
     annual_entitlement: 5, active: true },
 });
 
+// The dashboard API intentionally projects only upcoming holidays (end_date >= its
+// organization-local today). Test a genuinely upcoming weekday; the old 2026-10-21
+// fixture became historic on 2026-10-22 and could never reach the preview.
+const nextLocalWeekday = weekday => {
+  const todayWeekday = new Date(`${localCurrentDate}T00:00:00Z`).getUTCDay();
+  const daysAhead = ((weekday - todayWeekday + 6) % 7) + 1;
+  return addCalendarDays(localCurrentDate, daysAhead);
+};
+const previewHolidayDate = nextLocalWeekday(3); // next Wednesday, never today
+const previewWeekendDate = nextLocalWeekday(0); // next Sunday, employee weekly off
 psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
   VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true),
-    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday','2026-10-21','2026-10-21','general',true);`);
+    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday',${sqlLiteral(previewHolidayDate)}::date,${sqlLiteral(previewHolidayDate)}::date,'general',true);`);
+const scopedDashboardHolidays = queryAs(employeeA,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
+const includedPreviewHoliday = Array.isArray(scopedDashboardHolidays?.holidays)
+  && scopedDashboardHolidays.holidays.some(row => row?.name === 'Synthetic weekday leave preview holiday'
+    && row.start_date === previewHolidayDate && row.end_date === previewHolidayDate);
+record('E08-08 future weekday holiday exists in the real scoped employee dashboard before browser preview',
+  includedPreviewHoliday, JSON.stringify({ date: previewHolidayDate, present: includedPreviewHoliday }));
 
 const personalLeaveBalanceResponse = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
@@ -4351,8 +4368,8 @@ try {
       HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS: String(personalLeaveBalance.used_days),
       HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS: String(personalLeaveBalance.pending_days),
       HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
-      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: '2026-10-21',
-      HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE: '2026-10-25',
+      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: previewHolidayDate,
+      HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE: previewWeekendDate,
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
       HRIS_LOCAL_DOCUMENT_TENANT_ID: ids.tenantA,
