@@ -64,7 +64,7 @@ test('E08-10 maps employee-visible overlap detection to the existing tenant-auth
   assert.match(locale, /'These dates overlap with an existing pending or approved leave request\.':/);
   assert.match(browser, /E08_OVERLAP_BROWSER_ACCEPTANCE=PASS/);
   assert.match(browser, /const overlapHistory = overlapEmployee\.getByRole\('table'/);
-  assert.match(browser, /Synthetic evidence-required leave\.\*2026-10-20/);
+  assert.match(browser, /2026-10-20\.\*Synthetic evidence-required leave/);
   assert.match(runtime, /E08-10 employee sees the overlap in their own history and the server rejects a duplicate without creating a row/);
 });
 
