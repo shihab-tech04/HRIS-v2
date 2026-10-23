@@ -1,5 +1,7 @@
 name: Verify HRIS build and browser smoke
 on:
+  pull_request:
+    branches: [main, integration/ws05-main-final-review-20261022]
   push:
     branches: [release/hris-stable-20261017]
   workflow_dispatch:
@@ -7,14 +9,27 @@ permissions:
   contents: read
 jobs:
   check:
-    if: github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/development/hris-checkpoints' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/')) || (github.event_name == 'push' && github.ref == 'refs/heads/release/hris-stable-20261017')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Checkout the matching Candidate release for cross-repository contracts
-        if: github.ref == 'refs/heads/release/hris-stable-20261017'
-        run: git clone --depth 1 --branch release/candidate-stable-20261017 https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/release/hris-stable-20261017'
+        run: |
+          branch=integration/ws05-candidate-final-review-20261022
+          expected_sha=b5a9d19bd28e88a87bc72770f10d76be6a546b5f
+          if [ "$GITHUB_REF" = 'refs/heads/release/hris-stable-20261017' ]; then
+            branch=release/candidate-stable-20261017
+            expected_sha=
+          fi
+          git clone --depth 1 --branch "$branch" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          actual_sha="$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)"
+          echo "Candidate contract ref: $branch at $actual_sha"
+          if [ -n "$expected_sha" ] && [ "$actual_sha" != "$expected_sha" ]; then
+            echo "::error::Candidate release commit drift: expected $expected_sha, observed $actual_sha" >&2
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
