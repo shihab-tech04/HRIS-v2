@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - work/ws02-production-view-security-20261021
+      - integration/ws05-jobs-tenant-parity-review-20261023
   workflow_dispatch:
 permissions:
   contents: read
