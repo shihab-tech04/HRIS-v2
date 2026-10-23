@@ -1,6 +1,6 @@
 // Verify the real employee submission/evidence and manager decision journey
 // against the disposable local Auth, Postgres, RPC, and private Storage stack.
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createServer as createNetServer } from 'node:net';
@@ -265,16 +265,27 @@ try {
     await requestDialog.locator('#personal-leave-from').fill(date);
     await requestDialog.locator('#personal-leave-to').fill(date);
   };
+  // The preview is derived from asynchronous Auth/RPC leave-policy data.
+  // Wait for the exact calculation instead of capturing the prior render.
+  // A wrong final value still fails closed within a bounded timeout.
+  const settledPreviewDays = async (expected, context) => {
+    try {
+      await expect.poll(async () => Number(await previewValue.innerText()), {
+        message: context, timeout: 7000,
+      }).toBe(expected);
+    } catch {
+      throw new Error(`${context}: ${Number(await previewValue.innerText())}.`);
+    }
+    return Number(await previewValue.innerText());
+  };
   await setPreviewDate(process.env.HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE);
-  const holidayDays = Number(await previewValue.innerText());
-  if (holidayDays !== 0) throw new Error(`Tenant-wide weekday holiday was not excluded from the leave preview: ${holidayDays}.`);
+  const holidayDays = await settledPreviewDays(0, 'Tenant-wide weekday holiday was not excluded from the leave preview');
   await setPreviewDate(process.env.HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE);
-  const weekendDays = Number(await previewValue.innerText());
-  if (weekendDays !== 0) throw new Error(`The employee weekly-off day was not excluded from the leave preview: ${weekendDays}.`);
+  const weekendDays = await settledPreviewDays(0, 'The employee weekly-off day was not excluded from the leave preview');
   await setPreviewDate('2026-10-20');
-  const requestedDaysPreview = Number(await previewValue.innerText());
+  const requestedDaysPreview = await settledPreviewDays(1, 'The full-day leave preview did not match the selected working date');
   await requestDialog.locator('#personal-leave-portion').selectOption('first_half');
-  const requestedHalfDayPreview = Number(await previewValue.innerText());
+  const requestedHalfDayPreview = await settledPreviewDays(0.5, 'The half-day preview did not match the selected working date');
   await requestDialog.locator('#personal-leave-portion').selectOption('full');
   if (requestedDaysPreview !== 1 || requestedHalfDayPreview !== 0.5) {
     throw new Error(`The full/half-day estimate does not match the selected working date: ${JSON.stringify({ requestedDaysPreview, requestedHalfDayPreview })}.`);

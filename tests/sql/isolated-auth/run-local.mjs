@@ -326,6 +326,10 @@ let learningEvidenceBucketSafeToClean = false;
 let createdEmployeeDocumentsBucket = false;
 let employeeDocumentsBucketSafeToClean = false;
 const employeeDocumentStoragePaths = [];
+const candidateTenantGuardStoragePaths = [];
+let createdCandidateTenantGuardBucket = false;
+let createdAttendanceTenantGuardBucket = false;
+const attendanceTenantGuardStoragePaths = [];
 let attendanceCorrectionBrowserFixtureId = null;
 let attendanceCorrectionBrowserDate = null;
 let attendanceCorrectionBrowserReasons = [];
@@ -479,6 +483,9 @@ for (const file of [
   // in the isolated schema as well as production before Phase 03/04 guards install.
   path.join(mainRoot, 'supabase/migrations/20261019070000_hris_restore_expense_travel_links_source_parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261020121500_hris_candidate_activation_employee_id.sql'),
+  path.join(here, 'overgrant-leave-types-for-hosted-parity.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261023130800_hris_private_storage_tenant_read_guard.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -1008,9 +1015,103 @@ const documentStorageOwner = await employeeA.client.storage.from('employee-docum
 const documentStoragePeer = await employeeB.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
 const documentStorageManager = await managerA.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
 const documentStorageGlobalOnly = await globalOnly.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
-record('Employee-document object reads stay owner-only until a tenant-safe storage path contract exists',
-  !documentStorageOwner.error && Boolean(documentStoragePeer.error)
-    && Boolean(documentStorageManager.error) && Boolean(documentStorageGlobalOnly.error));
+const documentStorageForeignManager = await managerB.client.storage.from('employee-documents').download(employeeDocumentStoragePath);
+const documentStorageManagerSigned = await managerA.client.storage.from('employee-documents').createSignedUrl(employeeDocumentStoragePath, 60);
+const documentStorageForeignSigned = await managerB.client.storage.from('employee-documents').createSignedUrl(employeeDocumentStoragePath, 60);
+const documentStorageAnonymous = await createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('employee-documents').download(employeeDocumentStoragePath);
+const employeeStorageAccessResults = {
+  ownerAllowed: !documentStorageOwner.error,
+  sameTenantManagerAllowed: !documentStorageManager.error,
+  sameTenantSignedAllowed: !documentStorageManagerSigned.error && Boolean(documentStorageManagerSigned.data?.signedUrl),
+  foreignEmployeeDenied: Boolean(documentStoragePeer.error),
+  foreignManagerDenied: Boolean(documentStorageForeignManager.error),
+  foreignSignedDenied: Boolean(documentStorageForeignSigned.error),
+  globalOnlyDenied: Boolean(documentStorageGlobalOnly.error),
+  anonymousDenied: Boolean(documentStorageAnonymous.error),
+};
+record('Private employee Storage permits own and authorized same-tenant manager downloads and signed URLs only',
+  Object.values(employeeStorageAccessResults).every(Boolean),
+  JSON.stringify(employeeStorageAccessResults));
+// Authenticated tenant reviewers must retain access to business-linked
+// historical documents. The departed employee's own self-service must
+// fail closed. Update and restore only a disposable synthetic fixture.
+let formerEmployeeDocumentResult = {};
+psqlSync(`UPDATE public.employees SET employment_status='terminated'
+  WHERE id='55555555-5555-4555-8555-555555555555'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid;`);
+try {
+  const [formerManager, formerOwner, formerForeign] = await Promise.all([
+    managerA.client.storage.from('employee-documents').download(employeeDocumentStoragePath),
+    employeeA.client.storage.from('employee-documents').download(employeeDocumentStoragePath),
+    managerB.client.storage.from('employee-documents').download(employeeDocumentStoragePath),
+  ]);
+  formerEmployeeDocumentResult = {
+    tenantReviewerAllowed: !formerManager.error,
+    terminatedOwnerDenied: Boolean(formerOwner.error),
+    foreignTenantDenied: Boolean(formerForeign.error),
+  };
+} finally {
+  psqlSync(`UPDATE public.employees SET employment_status='active'
+    WHERE id='55555555-5555-4555-8555-555555555555'::uuid
+      AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('WS02 historical employee evidence remains tenant-reviewable while terminated owner and foreign tenant are denied',
+  Object.values(formerEmployeeDocumentResult).every(Boolean),
+  JSON.stringify(formerEmployeeDocumentResult));
+// Exercise the approved attendance-correction evidence_path contract with
+// real tenant A/B Auth sessions through Storage, then restore the fixture row.
+const attendanceGuardBucketBefore = await adminAuth.storage.getBucket('attendance-evidence');
+if (attendanceGuardBucketBefore.error) {
+  if (String(attendanceGuardBucketBefore.error.statusCode) !== '404') {
+    throw attendanceGuardBucketBefore.error;
+  }
+  const created = await adminAuth.storage.createBucket('attendance-evidence', {
+    public: false, fileSizeLimit: 10485760, allowedMimeTypes: ['application/pdf'],
+  });
+  if (created.error) throw created.error;
+  createdAttendanceTenantGuardBucket = true;
+} else if (attendanceGuardBucketBefore.data.public) {
+  throw new Error('Refusing isolated attendance evidence test: bucket is public.');
+}
+const evidenceObjectA = `${employeeA.userId}/ws02-attendance-a.pdf`;
+const evidenceObjectB = `${employeeB.userId}/ws02-attendance-b.pdf`;
+for (const objectPath of [evidenceObjectA,evidenceObjectB]) {
+  const uploaded = await adminAuth.storage.from('attendance-evidence').upload(
+    objectPath, new Blob(['%PDF-1.4\\nSynthetic attendance evidence\\n'], { type:'application/pdf' }),
+    { contentType:'application/pdf', upsert:false },
+  );
+  if (uploaded.error) throw uploaded.error;
+  attendanceTenantGuardStoragePaths.push(objectPath);
+}
+psqlSync(`UPDATE public.attendance_corrections SET evidence_path=${sqlLiteral(evidenceObjectA)}
+  WHERE id='cccccccc-0000-4000-8000-000000000001'::uuid AND tenant_id='${ids.tenantA}'::uuid;
+  UPDATE public.attendance_corrections SET evidence_path=${sqlLiteral(evidenceObjectB)}
+  WHERE id='cccccccc-0000-4000-8000-000000000003'::uuid AND tenant_id='${ids.tenantB}'::uuid;`);
+try {
+  const [ownerA, ownerB, managerLocalA, managerLocalB, managerForeign,
+    employeeForeign, anonEvidence, signedLocal, signedForeign] = await Promise.all([
+    employeeA.client.storage.from('attendance-evidence').download(evidenceObjectA),
+    employeeB.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    managerA.client.storage.from('attendance-evidence').download(evidenceObjectA),
+    managerB.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    managerA.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    employeeA.client.storage.from('attendance-evidence').download(evidenceObjectB),
+    createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('attendance-evidence').download(evidenceObjectA),
+    managerA.client.storage.from('attendance-evidence').createSignedUrl(evidenceObjectA,60),
+    managerA.client.storage.from('attendance-evidence').createSignedUrl(evidenceObjectB,60),
+  ]);
+  record('WS02 attendance evidence: actual sessions enforce owner, manager tenant and signed-link issuance',
+    !ownerA.error && !ownerB.error && !managerLocalA.error && !managerLocalB.error
+      && !signedLocal.error && Boolean(signedLocal.data?.signedUrl)
+      && Boolean(managerForeign.error) && Boolean(employeeForeign.error)
+      && Boolean(anonEvidence.error) && Boolean(signedForeign.error));
+} finally {
+  psqlSync(`UPDATE public.attendance_corrections SET evidence_path=NULL
+    WHERE id='cccccccc-0000-4000-8000-000000000001'::uuid AND tenant_id='${ids.tenantA}'::uuid;
+    UPDATE public.attendance_corrections SET evidence_path=NULL
+    WHERE id='cccccccc-0000-4000-8000-000000000003'::uuid AND tenant_id='${ids.tenantB}'::uuid;`);
+}
+
 const ownEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
 const otherTenantEmployeeDocuments = await employeeA.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantB });
 const crossTenantEmployeeDocuments = await employeeB.client.rpc('hris_get_my_employee_documents', { p_tenant_id: ids.tenantA });
@@ -2586,6 +2687,80 @@ INSERT INTO public.candidate_application_stage_history(id,application_id,stage,n
   ('${recruitmentIds.historyA1Second}'::uuid,'${recruitmentIds.applicationA1}'::uuid,'screening','candidate-visible-milestone-note-a','recruitment','55555555-5555-4555-8555-555555555501'::uuid,'2026-10-12T10:01:00Z'),
   ('${recruitmentIds.historyB}'::uuid,'${recruitmentIds.applicationB}'::uuid,'submitted','private-reviewer-note-b','recruitment','66666666-6666-4666-8666-666666666601'::uuid,'2026-10-12T11:01:00Z');`);
 
+// Actual local GoTrue + Storage HTTP calls, not simulated JWT claims.
+const candidateBucketBeforeGuardTest = await adminAuth.storage.getBucket('candidate-documents');
+if (candidateBucketBeforeGuardTest.error) {
+  if (String(candidateBucketBeforeGuardTest.error.statusCode) !== '404') {
+    throw candidateBucketBeforeGuardTest.error;
+  }
+  const createdBucket = await adminAuth.storage.createBucket('candidate-documents', {
+    public: false, fileSizeLimit: 10485760, allowedMimeTypes: ['application/pdf'],
+  });
+  if (createdBucket.error) throw createdBucket.error;
+  createdCandidateTenantGuardBucket = true;
+} else if (candidateBucketBeforeGuardTest.data.public) {
+  throw new Error('Refusing synthetic acceptance: Candidate Storage bucket is public.');
+}
+const candidateGuardAPath = `${assessmentCandidateA.userId}/ws02-tenant-guard-a.pdf`;
+const candidateGuardBPath = `${assessmentCandidateB.userId}/ws02-tenant-guard-b.pdf`;
+for (const objectPath of [candidateGuardAPath, candidateGuardBPath]) {
+  const upload = await adminAuth.storage.from('candidate-documents').upload(
+    objectPath, new Blob(['%PDF-1.4\\nWS02 isolated candidate document\\n'], { type: 'application/pdf' }),
+    { contentType: 'application/pdf', upsert: false },
+  );
+  if (upload.error) throw upload.error;
+  candidateTenantGuardStoragePaths.push(objectPath);
+}
+const [candidateOwnerDownloadA, candidateOwnerDownloadB, candidateForeignDownload,
+  candidateRecruiterLocal, candidateRecruiterForeign, candidateAnonDownload,
+  candidateOwnSigned, candidateForeignSigned, candidateRecruiterSigned, candidateRecruiterForeignSigned] = await Promise.all([
+  assessmentCandidateA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+  assessmentCandidateB.client.storage.from('candidate-documents').download(candidateGuardBPath),
+  assessmentCandidateA.client.storage.from('candidate-documents').download(candidateGuardBPath),
+  recruitmentManagerA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+  recruitmentManagerA.client.storage.from('candidate-documents').download(candidateGuardBPath),
+  createClient(services.API_URL, services.ANON_KEY, authOptions).storage.from('candidate-documents').download(candidateGuardAPath),
+  assessmentCandidateA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardAPath, 60),
+  assessmentCandidateA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardBPath, 60),
+  recruitmentManagerA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardAPath, 60),
+  recruitmentManagerA.client.storage.from('candidate-documents').createSignedUrl(candidateGuardBPath, 60),
+]);
+record('WS02 private candidate files: real Auth owners and same-tenant recruiters pass; foreign candidate, tenant and anon fail',
+  !candidateOwnerDownloadA.error && !candidateOwnerDownloadB.error
+    && !candidateRecruiterLocal.error && !candidateOwnSigned.error
+    && !candidateRecruiterSigned.error
+    && Boolean(candidateForeignDownload.error) && Boolean(candidateRecruiterForeign.error)
+    && Boolean(candidateAnonDownload.error) && Boolean(candidateForeignSigned.error)
+    && Boolean(candidateRecruiterForeignSigned.error),
+  JSON.stringify({ owners:true, foreignCandidateDenied: Boolean(candidateForeignDownload.error),
+    recruiterForeignDenied:Boolean(candidateRecruiterForeign.error),
+    signedForeignDenied:Boolean(candidateRecruiterForeignSigned.error) }));
+// An authorized same-tenant recruiter may retrieve retained candidate
+// evidence after profile deactivation, without creating cross-tenant access.
+let archivedCandidateStorageResult = {};
+psqlSync(`UPDATE public.candidate_profiles SET profile_status='disabled'
+  WHERE user_id=${sqlLiteral(assessmentCandidateA.userId)}::uuid
+    AND tenant_id='${ids.tenantA}'::uuid;`);
+try {
+  const [retainedRecruiter, retainedOwner, retainedForeign] = await Promise.all([
+    recruitmentManagerA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+    assessmentCandidateA.client.storage.from('candidate-documents').download(candidateGuardAPath),
+    managerB.client.storage.from('candidate-documents').download(candidateGuardAPath),
+  ]);
+  archivedCandidateStorageResult = {
+    tenantRecruiterAllowed: !retainedRecruiter.error,
+    candidateOwnerAllowed: !retainedOwner.error,
+    foreignTenantDenied: Boolean(retainedForeign.error),
+  };
+} finally {
+  psqlSync(`UPDATE public.candidate_profiles SET profile_status='active'
+    WHERE user_id=${sqlLiteral(assessmentCandidateA.userId)}::uuid
+      AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('WS02 archived candidate evidence remains owner/tenant-reviewable without foreign access',
+  Object.values(archivedCandidateStorageResult).every(Boolean),
+  JSON.stringify(archivedCandidateStorageResult));
+
 const recruitmentA = await managerA.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantA });
 const recruitmentB = await managerB.client.rpc('hris_get_recruitment_pipeline', { p_tenant_id: ids.tenantB });
 const recruitmentFiltered = await managerA.client.rpc('hris_get_recruitment_pipeline', {
@@ -3618,6 +3793,27 @@ record('Synthetic user received a real active local Supabase Auth session and pe
   authStatus.uid === managerA.userId && Boolean(authStatus.session_id)
   && authStatus.live === true && authStatus.leave_manage === true);
 
+const employeeAuthClaims = JSON.parse(Buffer.from(employeeA.accessToken.split('.')[1], 'base64url').toString('utf8'));
+const employeeAuthSessionId = employeeAuthClaims.session_id;
+const employeeAuthSessionBeforeExpiryCheck = queryAdmin(`SELECT jsonb_build_object('not_after',not_after)
+  FROM auth.sessions WHERE id=${sqlLiteral(employeeAuthSessionId)}::uuid
+    AND user_id=${sqlLiteral(employeeA.userId)}::uuid`);
+if (!employeeAuthSessionBeforeExpiryCheck) throw new Error('The disposable employee Auth session was not found.');
+let expiredEmployeeDashboard;
+try {
+  psqlSync(`UPDATE auth.sessions SET not_after=now()-interval '1 second'
+    WHERE id=${sqlLiteral(employeeAuthSessionId)}::uuid AND user_id=${sqlLiteral(employeeA.userId)}::uuid`);
+  expiredEmployeeDashboard = await employeeA.client.rpc('hris_get_my_dashboard_data', { p_tenant_id: ids.tenantA });
+} finally {
+  const originalNotAfter = employeeAuthSessionBeforeExpiryCheck.not_after;
+  psqlSync(`UPDATE auth.sessions SET not_after=${originalNotAfter === null
+    ? 'NULL' : `${sqlLiteral(originalNotAfter)}::timestamptz`}
+    WHERE id=${sqlLiteral(employeeAuthSessionId)}::uuid AND user_id=${sqlLiteral(employeeA.userId)}::uuid`);
+}
+record('An expired Auth session is denied by the employee dashboard server guard',
+  Boolean(expiredEmployeeDashboard?.error?.code === '42501'),
+  expiredEmployeeDashboard?.error?.code || 'unexpected successful read');
+
 const functionGrantMatrix = queryAdmin(`SELECT jsonb_object_agg(fn,jsonb_build_object(
   'anon',has_function_privilege('anon',fn,'EXECUTE'),
   'authenticated',has_function_privilege('authenticated',fn,'EXECUTE'),
@@ -4140,9 +4336,26 @@ const genderPolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
     annual_entitlement: 5, active: true },
 });
 
+// The dashboard API intentionally projects only upcoming holidays (end_date >= its
+// organization-local today). Test a genuinely upcoming weekday; the old 2026-10-21
+// fixture became historic on 2026-10-22 and could never reach the preview.
+const nextLocalWeekday = weekday => {
+  const todayWeekday = new Date(`${localCurrentDate}T00:00:00Z`).getUTCDay();
+  const daysAhead = ((weekday - todayWeekday + 6) % 7) + 1;
+  return addCalendarDays(localCurrentDate, daysAhead);
+};
+const previewHolidayDate = nextLocalWeekday(3); // next Wednesday, never today
+const previewWeekendDate = nextLocalWeekday(0); // next Sunday, employee weekly off
 psqlSync(`INSERT INTO public.holidays(tenant_id,name,start_date,end_date,holiday_type,active)
   VALUES ('${ids.tenantA}'::uuid,'Synthetic personal calendar holiday','2026-10-31','2026-10-31','general',true),
-    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday','2026-10-21','2026-10-21','general',true);`);
+    ('${ids.tenantA}'::uuid,'Synthetic weekday leave preview holiday',${sqlLiteral(previewHolidayDate)}::date,${sqlLiteral(previewHolidayDate)}::date,'general',true);`);
+const scopedDashboardHolidays = queryAs(employeeA,
+  `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
+const includedPreviewHoliday = Array.isArray(scopedDashboardHolidays?.holidays)
+  && scopedDashboardHolidays.holidays.some(row => row?.name === 'Synthetic weekday leave preview holiday'
+    && row.start_date === previewHolidayDate && row.end_date === previewHolidayDate);
+record('E08-08 future weekday holiday exists in the real scoped employee dashboard before browser preview',
+  includedPreviewHoliday, JSON.stringify({ date: previewHolidayDate, present: includedPreviewHoliday }));
 
 const personalLeaveBalanceResponse = queryAs(employeeA,
   `SELECT public.hris_get_my_dashboard_data('${ids.tenantA}'::uuid)`);
@@ -4206,8 +4419,8 @@ try {
       HRIS_LOCAL_LEAVE_BALANCE_USED_DAYS: String(personalLeaveBalance.used_days),
       HRIS_LOCAL_LEAVE_BALANCE_PENDING_DAYS: String(personalLeaveBalance.pending_days),
       HRIS_LOCAL_LEAVE_CALENDAR_HOLIDAY_DATE: '2026-10-31',
-      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: '2026-10-21',
-      HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE: '2026-10-25',
+      HRIS_LOCAL_LEAVE_PREVIEW_HOLIDAY_DATE: previewHolidayDate,
+      HRIS_LOCAL_LEAVE_PREVIEW_WEEKEND_DATE: previewWeekendDate,
       HRIS_LOCAL_LEAVE_REJECTION_NOTE: leaveRejectionNote,
       HRIS_LOCAL_LEAVE_REJECTION_REQUEST_ID: leaveRejectionRequestId,
       HRIS_LOCAL_DOCUMENT_TENANT_ID: ids.tenantA,
@@ -5626,6 +5839,32 @@ const policyCrossTenant = await managerB.client.rpc('hris_save_leave_type', {
 });
 const directLeavePolicyWrite = await managerA.client.from('leave_types')
   .update({ annual_entitlement: 100 }).eq('tenant_id', ids.tenantA).eq('id', policyId);
+const anonymousLeavePolicyWrite = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .from('leave_types').update({ annual_entitlement: 101 }).eq('tenant_id', ids.tenantA).eq('id', policyId);
+const leaveTypeAclState = queryAdmin(`SELECT jsonb_build_object(
+  'rls_enabled',(SELECT relrowsecurity FROM pg_class WHERE oid='public.leave_types'::regclass),
+  'anon_select',has_table_privilege('anon','public.leave_types','SELECT'),
+  'anon_dml',has_table_privilege('anon','public.leave_types','INSERT')
+    OR has_table_privilege('anon','public.leave_types','UPDATE') OR has_table_privilege('anon','public.leave_types','DELETE'),
+  'anon_maintenance',has_table_privilege('anon','public.leave_types','TRUNCATE')
+    OR has_table_privilege('anon','public.leave_types','REFERENCES')
+    OR has_table_privilege('anon','public.leave_types','TRIGGER') OR has_table_privilege('anon','public.leave_types','MAINTAIN'),
+  'authenticated_select',has_table_privilege('authenticated','public.leave_types','SELECT'),
+  'authenticated_dml',has_table_privilege('authenticated','public.leave_types','INSERT')
+    OR has_table_privilege('authenticated','public.leave_types','UPDATE') OR has_table_privilege('authenticated','public.leave_types','DELETE'),
+  'authenticated_maintenance',has_table_privilege('authenticated','public.leave_types','TRUNCATE')
+    OR has_table_privilege('authenticated','public.leave_types','REFERENCES')
+    OR has_table_privilege('authenticated','public.leave_types','TRIGGER') OR has_table_privilege('authenticated','public.leave_types','MAINTAIN'),
+  'service_role_dml',has_table_privilege('service_role','public.leave_types','INSERT')
+    AND has_table_privilege('service_role','public.leave_types','UPDATE')
+    AND has_table_privilege('service_role','public.leave_types','DELETE')
+)`);
+record('Hosted-equivalent leave_types overgrants are removed while authenticated SELECT and explicit service_role access remain',
+  leaveTypeAclState.rls_enabled === true && leaveTypeAclState.anon_select === false
+    && leaveTypeAclState.anon_dml === false && leaveTypeAclState.anon_maintenance === false
+    && leaveTypeAclState.authenticated_select === true && leaveTypeAclState.authenticated_dml === false
+    && leaveTypeAclState.authenticated_maintenance === false && leaveTypeAclState.service_role_dml === true,
+  JSON.stringify(leaveTypeAclState));
 record('Tenant leave managers can configure existing leave policy fields with idempotent create, optimistic edits, audit, and employee visibility',
   !policyCreate.error && policyCreate.data?.id === policyId
     && !policyRetryCreate.error && policyRetryCreate.data?.id === policyId
@@ -5649,10 +5888,11 @@ record('Leave policy writes require active same-tenant leave.manage and cannot b
     && Boolean(policyReadOnlyViewer.error?.code === '42501')
     && Boolean(policyGlobalOnly.error?.code === '42501')
     && Boolean(policyCrossTenant.error?.code === '42501')
-    && Boolean(directLeavePolicyWrite.error),
+    && Boolean(directLeavePolicyWrite.error) && Boolean(anonymousLeavePolicyWrite.error),
   JSON.stringify({ employee: policyNoPermission.error?.code,
     viewer: policyReadOnlyViewer.error?.code, globalOnly: policyGlobalOnly.error?.code,
-    crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code }));
+    crossTenant: policyCrossTenant.error?.code, directWrite: directLeavePolicyWrite.error?.code,
+    anonymousWrite: anonymousLeavePolicyWrite.error?.code }));
 
 const noticePolicyId = '99999999-9999-4999-8999-999999999912';
 const noticePolicyCreate = await managerA.client.rpc('hris_save_leave_type', {
@@ -8374,6 +8614,24 @@ if (failed.length) process.exitCode = 1;
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');
     if (deletedBucket.error) throw deletedBucket.error;
+  }
+  if (attendanceTenantGuardStoragePaths.length) {
+    const attendanceStorage = adminAuth.storage.from('attendance-evidence');
+    const removed = await attendanceStorage.remove(attendanceTenantGuardStoragePaths);
+    if (removed.error) throw removed.error;
+  }
+  if (createdAttendanceTenantGuardBucket) {
+    const deleted = await adminAuth.storage.deleteBucket('attendance-evidence');
+    if (deleted.error) throw deleted.error;
+  }
+  if (candidateTenantGuardStoragePaths.length) {
+    const candidateStorage = adminAuth.storage.from('candidate-documents');
+    const removed = await candidateStorage.remove(candidateTenantGuardStoragePaths);
+    if (removed.error) throw removed.error;
+  }
+  if (createdCandidateTenantGuardBucket) {
+    const deleted = await adminAuth.storage.deleteBucket('candidate-documents');
+    if (deleted.error) throw deleted.error;
   }
   const employeeDocumentStorage = adminAuth.storage.from('employee-documents');
   if (employeeDocumentsBucketSafeToClean && employeeDocumentStoragePaths.length) {

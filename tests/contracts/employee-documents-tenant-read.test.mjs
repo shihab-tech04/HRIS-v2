@@ -6,6 +6,7 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../../supabase/migrations/20261016223226_employee_documents_tenant_read.sql');
 const fixture = read('../sql/isolated-auth/fixture.sql');
 const runner = read('../sql/isolated-auth/run-local.mjs');
+const storageGuard = read('../../supabase/migrations/20261023130800_hris_private_storage_tenant_read_guard.sql');
 
 test('employee document metadata uses linked employee and active tenant membership authorization', () => {
   assert.match(migration, /CREATE OR REPLACE FUNCTION private\.hris_employee_document_own_read\(p_employee_id uuid\)/);
@@ -33,5 +34,15 @@ test('isolated acceptance seeds the legacy exposure and proves tenant, self, gra
   assert.match(runner, /authenticated_trigger/);
   assert.match(runner, /authenticated_references/);
   assert.match(runner, /Anonymous clients cannot read employee-document metadata/);
-  assert.match(runner, /object reads stay owner-only until a tenant-safe storage path contract exists/);
+  assert.match(storageGuard, /CREATE POLICY hris_private_storage_tenant_read_guard/);
+  assert.match(storageGuard, /AS RESTRICTIVE FOR SELECT TO authenticated/);
+  assert.match(storageGuard, /DROP POLICY IF EXISTS employee_documents_storage_owner_guard ON storage\.objects/);
+  assert.match(storageGuard, /public\.has_tenant_permission\(e\.tenant_id,'employees\.view'\)/);
+  assert.match(storageGuard, /d\.employee_id=e\.id AND d\.file_url=p_object_name/);
+  assert.match(storageGuard, /c\.tenant_id=e\.tenant_id[\s\S]+?c\.evidence_path=p_object_name/);
+  assert.match(storageGuard, /c\.user_id::text=split_part\(p_object_name,'\/',1\)/);
+  assert.match(storageGuard, /REVOKE ALL ON FUNCTION private\.hris_storage_owner_tenant_read\(text,text\)/);
+  assert.match(runner, /Private employee Storage permits own and authorized same-tenant manager downloads and signed URLs only/);
+  assert.match(runner, /WS02 attendance evidence: actual sessions enforce owner, manager tenant and signed-link issuance/);
+  assert.match(runner, /WS02 private candidate files: real Auth owners and same-tenant recruiters pass/);
 });

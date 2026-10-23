@@ -72,6 +72,10 @@ CREATE POLICY employee_family_admin_read ON public.employee_family_members
   USING (public.has_permission('employees.view') OR public.has_permission('employees.manage'));
 GRANT USAGE ON SCHEMA public, auth TO authenticated, anon;
 GRANT SELECT ON public.employee_family_members TO authenticated;
+-- Reproduce the hosted broad client ACL before the source migration revokes it.
+GRANT ALL PRIVILEGES ON TABLE public.employee_family_members TO PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.employee_family_members TO service_role;
 
 CREATE FUNCTION public.check_employee_family(passed boolean, description text)
 RETURNS void LANGUAGE plpgsql AS $$
