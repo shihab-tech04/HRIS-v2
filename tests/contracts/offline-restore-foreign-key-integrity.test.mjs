@@ -15,6 +15,6 @@ test('offline PG17 archive restores pre-data, data, then post-data with real con
   // qualified recovery result is permissible until Auth/source drift is fixed.
   assert.match(file,/ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION/);
   assert.match(file,/PINNED_LEGACY_FK_DRIFT_VERIFIED/);
-  assert.match(file,/NOT convalidated/);
+  assert.match(file,/NOT con\.convalidated/);
   assert.doesNotMatch(file,/--disable-triggers|session_replication_role\s*=\s*replica|HRIS_DB_PASSWORD|aws-\d+-ap-northeast-2/);
 });
