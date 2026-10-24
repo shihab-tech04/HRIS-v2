@@ -30,9 +30,9 @@ test('job circular changes preserve official linked identities and structured qu
     'skills','responsibilities','requirements','benefits','required_documents']) {
     assert.ok(manager.includes(field), 'missing approved SQL field: ' + field);
   }
-  assert.match(manager, /screening_questions: editing\\?\\.is_published/);
-  assert.match(manager, /\\? editing\\.screening_questions/);
-  assert.match(manager, /: screeningQuestions\\.map\\(question =>/);
+  assert.match(manager, /screening_questions: editing\?\.is_published/);
+  assert.match(manager, /\? editing\.screening_questions/);
+  assert.match(manager, /: screeningQuestions\.map\(question =>/);
   assert.match(manager, /team_id: editing\?\.team_id \|\| null/);
   assert.match(manager, /designation_id: editing\?\.designation_id \|\| null/);
   assert.match(manager, /requisition_id: editing\?\.requisition_id \|\| null/);
