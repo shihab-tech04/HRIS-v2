@@ -4,10 +4,15 @@ import { readFileSync } from 'node:fs';
 
 const manager = readFileSync(new URL('../../src/live/JobCircularManager.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../../src/live/LiveSystemWorkspace.tsx', import.meta.url), 'utf8');
+const live = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
+const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const candidate = readFileSync(new URL('../../../HRIS-Candidate-v2/src/lib/api.ts', import.meta.url), 'utf8');
 
 test('job postings screen provides an authenticated HR job circular editor', () => {
   assert.match(workspace, /selected\.id === 'jobs' \? <JobCircularManager tenantId=\{tenantId\} refreshKey=\{revision\}/);
+  assert.match(live, /id: 'job-circulars', label: 'Job circulars'/);
+  assert.match(live, /page === 'job-circulars' && permissions\.recruitmentManage && <JobCircularManager tenantId=\{tenantId\}/);
+  assert.match(locale, /'Job circulars': 'চাকরির বিজ্ঞপ্তি'/);
   assert.match(manager, /rpc\('has_tenant_permission',\s*\{/);
   assert.match(manager, /p_permission_id: 'recruitment\.manage'/);
   assert.match(manager, /canManage && <button type="button" onClick=\{openCreate\}/);
