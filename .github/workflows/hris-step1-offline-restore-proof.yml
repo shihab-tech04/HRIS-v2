@@ -22,8 +22,8 @@ jobs:
     timeout-minutes: 55
     env:
       SUPABASE_TELEMETRY_DISABLED: '1'
-      SUPABASE_HOME: ${{ runner.temp }}/hris-supabase-home
-      HRIS_RESTORE_WORKDIR: ${{ runner.temp }}/synesis-local-hris-restore
+      SUPABASE_HOME: /tmp/hris-supabase-home
+      HRIS_RESTORE_WORKDIR: /tmp/synesis-local-hris-restore
     steps:
       - name: Fetch exact encrypted backup from trusted completed run
         uses: actions/download-artifact@v4
