@@ -1,0 +1,375 @@
+# Independent restore of an existing encrypted HRIS backup. Never connects to a hosted DB.
+# The locally bootstrapped supabase_admin superuser, not production credentials,
+# performs the isolated restore of source objects with privileged GUC settings.
+# Runs once on the trusted main merge of THIS workflow file; manual dispatch for retry.
+name: "HRIS Step 3 - Isolated Phase 11 Tasks and Peer Reviews SQL proof"
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hris-step2-projects-migration-proof.yml'
+      - 'supabase/migrations/20261024143000_hris_projects_forward_port_20261013.sql'
+      - 'supabase/migrations/20261024143100_hris_project_roles_forward_port_20261013.sql'
+      - 'supabase/migrations/2026102418350*_hris_*_forward_port.sql'
+      - '.github/workflows/hris-step3-phase11-migration-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hris-step3-phase11-migration-proof
+  cancel-in-progress: false
+
+jobs:
+  restore-proof:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      SUPABASE_TELEMETRY_DISABLED: '1'
+      SUPABASE_HOME: /tmp/hris-supabase-home
+      HRIS_RESTORE_WORKDIR: /tmp/synesis-local-hris-restore
+    steps:
+      - name: Fetch exact encrypted backup from trusted completed run
+        uses: actions/download-artifact@v4
+        with:
+          name: hris-db-encrypted-40084995271
+          run-id: 40084995271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/hris-restore-source
+
+      - name: Verify encryption archive and authenticate decryption
+        shell: bash
+        env:
+          HRIS_BACKUP_PASSPHRASE: ${{ secrets.HRIS_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test "${#HRIS_BACKUP_PASSPHRASE}" -ge 32 || { echo "::error::Backup passphrase unavailable"; exit 1; }
+          src="${RUNNER_TEMP}/hris-restore-source"
+          test -s "$src/hris-replacement-40084995271.pgcustom.gpg"
+          (cd "$src" && sha256sum --check --status encrypted.sha256)
+          grep -Fxq "source_project=xfuxnljfrgvusbrpvxpa" "$src/backup-manifest.txt"
+          grep -Fxq "github_run_id=40084995271" "$src/backup-manifest.txt"
+          plain="${RUNNER_TEMP}/hris-recovered.pgcustom"
+          gpg --batch --yes --quiet --pinentry-mode loopback \
+            --passphrase-fd 3 --output "$plain" --decrypt \
+            "$src/hris-replacement-40084995271.pgcustom.gpg" 3<<<"$HRIS_BACKUP_PASSPHRASE"
+          test -s "$plain"
+          expected="$(sed -n 's/^plaintext_archive_sha256=//p' "$src/backup-manifest.txt")"
+          test "${#expected}" = 64
+          printf '%s  %s\n' "$expected" "$plain" | sha256sum --check --status
+          docker run --rm --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" postgres:17-alpine \
+            pg_restore --list /restore/hris-recovered.pgcustom > "${RUNNER_TEMP}/hris-restore-inventory.txt"
+          test "$(wc -l < "${RUNNER_TEMP}/hris-restore-inventory.txt")" -gt 100
+          echo "PASS: pinned encrypted backup decrypted; SHA-256 and pg_restore inventory verified."
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+
+      - name: Create isolated local Supabase PostgreSQL 17 environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HRIS_RESTORE_WORKDIR"
+          supabase init --workdir "$HRIS_RESTORE_WORKDIR" --force >/dev/null
+          sed -i 's/^port = 54321$/port = 55421/' "$HRIS_RESTORE_WORKDIR/supabase/config.toml"
+          sed -i 's/^port = 54322$/port = 55422/' "$HRIS_RESTORE_WORKDIR/supabase/config.toml"
+          if ! supabase start --workdir "$HRIS_RESTORE_WORKDIR" \
+            --exclude studio,edge-runtime,logflare,vector,supavisor >"${RUNNER_TEMP}/hris-local-start.log" 2>&1; then
+            echo "::error::Isolated local Supabase failed to start. No hosted database was accessed."
+            exit 1
+          fi
+          echo "Isolated local Supabase ready; never uses hosted project credentials."
+
+      - name: Restore source archive in isolated local PostgreSQL, then verify critical data
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Full restore must use a fresh empty database, not the local Supabase
+          # bootstrap 'postgres' DB whose pre-existing system objects can collide.
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            createdb --host 127.0.0.1 --port 55422 --username postgres hris_recovered_isolated
+
+          # The platform's source archive contains functions with privileged
+          # per-function GUCs (e.g. log_min_messages). PostgreSQL correctly
+          # rejects those under the restricted postgres role even in a
+          # disposable database. Use the local-only Supabase bootstrap admin
+          # role *only after* confirming its superuser flag and credentials.
+          # This does not grant anything on the hosted Supabase instance.
+          if ! docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 \
+              -c "SELECT CASE WHEN current_setting('is_superuser')='on' THEN 'ISOLATED_SUPERUSER_VERIFIED' ELSE 'DENIED' END;" \
+            | grep -Fx 'ISOLATED_SUPERUSER_VERIFIED'; then
+            echo "::error::No verified local-only superuser restore role. Hosted access unchanged."
+            exit 1
+          fi
+
+          # Pin the WHOLE existing referential drift, rather than patching one
+          # Auth foreign key per failed restore. These 17 definitions and counts
+          # were read from replacement DB catalog/data, SELECT-only. Never touch hosted.
+          # The exact original FK definitions (including deletion actions) are preserved.
+          pinned_auth_fks="${RUNNER_TEMP}/hris-pinned-auth-fks.tsv"
+          cat > "$pinned_auth_fks" <<'PINNED_AUTH_FKS'
+          admin_audit_logs|actor_id|admin_audit_logs_actor_id_fkey|59|58|FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          confirmation_reviews|resolved_by|confirmation_reviews_resolved_by_fkey|2|2|FOREIGN KEY (resolved_by) REFERENCES auth.users(id)
+          employee_lifecycle_events|performed_by|employee_lifecycle_events_performed_by_fkey|5|5|FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          employee_referrals|submitted_by|employee_referrals_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          employees|user_id|employees_user_id_fkey|1|1|FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          hr_policies|created_by|hr_policies_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          leave_requests|submitted_by|leave_requests_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          manpower_requisitions|requested_by|manpower_requisitions_requested_by_fkey|1|1|FOREIGN KEY (requested_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          manpower_requisitions|resolved_by|manpower_requisitions_resolved_by_fkey|1|1|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          notices|created_by|notices_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          pay_periods|created_by|pay_periods_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          pay_periods|released_by|pay_periods_released_by_fkey|1|1|FOREIGN KEY (released_by) REFERENCES auth.users(id)
+          performance_cycles|created_by|performance_cycles_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          performance_goals|created_by|performance_goals_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          project_performance_reviews|evaluated_by|project_performance_reviews_evaluated_by_fkey|1|1|FOREIGN KEY (evaluated_by) REFERENCES auth.users(id)
+          service_requests|resolved_by|service_requests_resolved_by_fkey|1|1|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          service_requests|submitted_by|service_requests_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          PINNED_AUTH_FKS
+          if [[ "$(wc -l < "$pinned_auth_fks")" -ne 17 ]]; then
+            echo "::error::Pinned historical Auth FK inventory must contain exactly 17 entries."
+            exit 1
+          fi
+          archive_toc="${RUNNER_TEMP}/hris-restore-inventory.txt"
+          excluded_fk="${RUNNER_TEMP}/hris-legacy-audit-fk-postdata.toc"
+          cp "$archive_toc" "$excluded_fk"
+          while IFS='|' read -r table column fk expected_nonnull expected_orphan definition; do
+            if [[ ! "$table" =~ ^[a-z_]+$ || ! "$column" =~ ^[a-z_]+$ || ! "$fk" =~ ^[a-z_]+$ ]]; then
+              echo "::error::Unexpected FK identifier in pinned source inventory."
+              exit 1
+            fi
+            count="$(grep -Ec "FK CONSTRAINT.*${fk}" "$archive_toc" || true)"
+            if [[ "$count" != 1 ]]; then
+              echo "::error::Pinned archive FK inventory mismatch: ${fk}"
+              exit 1
+            fi
+            sed -E "/FK CONSTRAINT.*${fk}/s/^/;/" "$excluded_fk" > "${excluded_fk}.new"
+            mv "${excluded_fk}.new" "$excluded_fk"
+          done < "$pinned_auth_fks"
+          echo "Pinned 17 historical Auth FKs excluded from validation during isolated archive replay."
+          restore_failed_section=''
+          restore_log="${RUNNER_TEMP}/hris-restore-log.txt"
+          : >"$restore_log"
+          for section in pre-data data post-data; do
+            section_args=()
+            if [[ "$section" == "post-data" ]]; then
+              section_args=(--use-list=/restore/hris-legacy-audit-fk-postdata.toc)
+            fi
+            if ! docker run --rm --network host \
+              --env PGPASSWORD=postgres \
+              --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
+              postgres:17-alpine \
+              pg_restore --host 127.0.0.1 --port 55422 --username supabase_admin \
+                --dbname hris_recovered_isolated --no-owner --no-acl \
+                --section="$section" --exit-on-error "${section_args[@]}" --verbose \
+                /restore/hris-recovered.pgcustom >>"$restore_log" 2>&1; then
+              restore_failed_section="$section"
+              break
+            fi
+          done
+          if [[ -n "$restore_failed_section" ]]; then
+            echo "::notice::Isolated restore failed in section: $restore_failed_section"
+            # Emit only the first short PostgreSQL error (not SQL/data/row details).
+            # Mask emails, UUIDs and quoted literal text before public CI output.
+            first_error="$(grep -m1 'ERROR:' "${RUNNER_TEMP}/hris-restore-log.txt" || true)"
+            if [[ -n "$first_error" ]]; then
+              safe_error="$(printf '%s' "$first_error" | sed -E \
+                -e 's/[[:alnum:]._%+-]+@[[:alnum:].-]+/[EMAIL]/g' \
+                -e 's/[[:xdigit:]]{8}(-[[:xdigit:]]{4}){3}-[[:xdigit:]]{12}/[UUID]/g' \
+                -e "s/'[^']*'/[LITERAL]/g" | cut -c1-200)"
+              echo "::notice::Sanitized first PostgreSQL error: $safe_error"
+            fi
+            # Print only a classification, not source SQL or private data.
+            if grep -Eiq 'already exists|duplicate object' "${RUNNER_TEMP}/hris-restore-log.txt"; then
+              echo "::error::Isolated restore encountered existing-object conflict."
+            elif grep -Eiq 'does not exist|not installed|could not open extension' "${RUNNER_TEMP}/hris-restore-log.txt"; then
+              echo "::error::Isolated restore requires unavailable Supabase-managed dependency."
+            elif grep -Eiq 'permission denied|must be owner|superuser' "${RUNNER_TEMP}/hris-restore-log.txt"; then
+              echo "::error::Isolated restore encountered privilege mismatch."
+            else
+              echo "::error::Isolated restore failed; encrypted backup integrity remains separately verified."
+            fi
+            exit 1
+          fi
+          # Fail closed if historical references drift from this EXACT pinned archive.
+          # No deletion, reassignment, invention of auth users or trigger/constraint bypass.
+          while IFS='|' read -r table column fk expected_nonnull expected_orphan definition; do
+            probe_sql="SELECT COUNT(*) FILTER (WHERE src.${column} IS NOT NULL)::text || '|' || COUNT(*) FILTER (WHERE src.${column} IS NOT NULL AND u.id IS NULL)::text FROM public.${table} src LEFT JOIN auth.users u ON u.id=src.${column};"
+            observed="$(docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe_sql")"
+            if [[ "$observed" != "$expected_nonnull|$expected_orphan" ]]; then
+              echo "::error::Pinned source nonnull/orphan counts changed for ${table}.${column}."
+              exit 1
+            fi
+          done < "$pinned_auth_fks"
+          echo "PINNED_LEGACY_FK_DRIFT_VERIFIED"
+
+          # Recreate those exact FKs as NOT VALID solely in the disposable restore:
+          # future inserts/updates remain enforced, historical references are retained.
+          while IFS='|' read -r table column fk expected_nonnull expected_orphan definition; do
+            docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
+              -c "ALTER TABLE public.${table} ADD CONSTRAINT ${fk} ${definition} NOT VALID;"
+          done < "$pinned_auth_fks"
+          echo "RECOVERY_EXCEPTION: 79 pinned historical orphan references preserved in 17 Auth FKs (NOT VALID on isolated restore only)."
+
+          probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
+             AND to_regclass('public.admin_users') IS NOT NULL
+             AND to_regclass('public.employees') IS NOT NULL
+             AND to_regclass('auth.users') IS NOT NULL
+             AND (SELECT COUNT(*) FROM public.tenants) >= 1
+             AND (SELECT COUNT(*) FROM public.admin_users) >= 1
+             AND (SELECT COUNT(*) FROM auth.users) = 1
+             AND (SELECT COUNT(*) FROM public.admin_audit_logs a
+                  LEFT JOIN auth.users u ON u.id=a.actor_id
+                  WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=58
+             AND to_regclass('supabase_migrations.schema_migrations') IS NOT NULL
+             AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations) >= 110
+             AND (SELECT COUNT(*) FROM pg_constraint con
+                  JOIN pg_class rel ON rel.oid=con.conrelid
+                  JOIN pg_namespace ns ON ns.oid=rel.relnamespace
+                  WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
+                    AND ns.nspname='public') = 57
+             AND (SELECT COUNT(*) FROM pg_constraint con
+                  JOIN pg_class rel ON rel.oid=con.conrelid
+                  JOIN pg_namespace ns ON ns.oid=rel.relnamespace
+                  WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
+                    AND ns.nspname='public' AND NOT con.convalidated) = 17
+             THEN 'ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION'
+             ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
+            | grep -Fx "ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION"
+          echo "PASS: isolated PG17 restoration with 17 pinned Auth FK exceptions; NOT a clean constraint-validating source clone."
+          echo "Not a live HRIS functional acceptance or Supabase Storage files/secrets restore."
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Apply reviewed forward-only Projects migrations to disposable PostgreSQL 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is an ephemeral local DATABASE. Never pass production credentials.
+          # Source HEAD must be protected main; never checkout untrusted PR here.
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "${GITHUB_REPOSITORY}" = "shihab-tech04/HRIS-v2"
+          for obj in projects project_allocations; do
+            if docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 \
+              -c "SELECT to_regclass('public.${obj}') IS NOT NULL" | grep -Fx t; then
+              echo "::error::Projects forward migration is not starting from absent source object."
+              exit 1
+            fi
+          done
+          for migration in \
+            20261024143000_hris_projects_forward_port_20261013.sql \
+            20261024143100_hris_project_roles_forward_port_20261013.sql; do
+            echo "Testing forward-only migration: $migration"
+            if ! docker run --rm --network host --env PGPASSWORD=postgres \
+              --mount "type=bind,src=$GITHUB_WORKSPACE/supabase/migrations,dst=/migrations,readonly" \
+              postgres:17-alpine psql \
+              --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
+              --single-transaction -f "/migrations/$migration" \
+              >"${RUNNER_TEMP}/hris-projects-migration.log" 2>&1; then
+              echo "::error::Projects SQL forward migration failed in disposable PG17; no hosted changes."
+              exit 1
+            fi
+          done
+          # Only the two Phase 10 migrations are tested in this gate. Task,
+          # timesheet and Candidate verticals require separate replay proof.
+          sql="SELECT CASE WHEN
+            to_regclass('public.projects') IS NOT NULL
+            AND to_regclass('public.project_allocations') IS NOT NULL
+            AND to_regprocedure('public.hris_get_tenant_project_workspace(uuid)') IS NOT NULL
+            AND to_regprocedure('public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)') IS NOT NULL
+            AND to_regprocedure('public.hris_assign_tenant_project_allocation(uuid,uuid,uuid,text,numeric,date,date)') IS NOT NULL
+            AND to_regprocedure('public.hris_release_tenant_project_allocation(uuid,uuid)') IS NOT NULL
+            AND (SELECT relrowsecurity FROM pg_class WHERE oid='public.projects'::regclass)
+            AND (SELECT relrowsecurity FROM pg_class WHERE oid='public.project_allocations'::regclass)
+            AND NOT has_table_privilege('anon', 'public.projects','SELECT')
+            AND NOT has_table_privilege('authenticated', 'public.projects','INSERT')
+            AND NOT has_table_privilege('authenticated', 'public.project_allocations','INSERT')
+            AND NOT has_function_privilege('anon',
+              'public.hris_create_tenant_project(uuid,text,text,text,text,uuid,date,date,text)', 'EXECUTE')
+            AND NOT has_function_privilege('anon',
+              'public.hris_get_tenant_project_workspace(uuid)', 'EXECUTE')
+            THEN 'ISOLATED_PROJECTS_PHASE10_FORWARD_MIGRATIONS_PASS'
+            ELSE 'ISOLATED_PROJECTS_PHASE10_CONTRACT_FAIL' END;"
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$sql" \
+            | grep -Fx "ISOLATED_PROJECTS_PHASE10_FORWARD_MIGRATIONS_PASS"
+          echo "PASS: Phase 10 Projects SQL and RLS/grant contract tested on QUALIFIED isolated backup restore. No hosted writes."
+
+      - name: Apply five canonical Phase 11 task and peer-review migrations to isolated PG17
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_REPOSITORY" = "shihab-tech04/HRIS-v2"
+          for object in project_tasks project_task_assignments project_task_peer_reviews hris_in_app_notifications; do
+            result="$(docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 \
+              -c "SELECT to_regclass('public.${object}') IS NULL;")"
+            test "$result" = "t" || { echo "::error::Phase 11 expected absent object: $object"; exit 1; }
+          done
+          for migration in \
+            20261024183501_hris_project_tasks_forward_port.sql \
+            20261024183502_hris_peer_review_eligibility_forward_port.sql \
+            20261024183503_hris_peer_review_notifications_forward_port.sql \
+            20261024183504_hris_project_task_edit_forward_port.sql \
+            20261024183505_hris_project_manager_portfolio_forward_port.sql; do
+            echo "Testing canonical Phase 11 SQL: $migration"
+            if ! docker run --rm --network host --env PGPASSWORD=postgres \
+              --mount "type=bind,src=$GITHUB_WORKSPACE/supabase/migrations,dst=/migrations,readonly" \
+              postgres:17-alpine psql \
+              --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
+              --single-transaction -f "/migrations/$migration" \
+              >"${RUNNER_TEMP}/hris-phase11-private-migration.log" 2>&1; then
+              echo "::error::Phase 11 migration failed on disposable PG17. No hosted writes."
+              exit 1
+            fi
+          done
+          query="SELECT CASE WHEN to_regclass('public.project_tasks') IS NOT NULL
+            AND to_regclass('public.project_task_assignments') IS NOT NULL
+            AND to_regclass('public.project_task_peer_reviews') IS NOT NULL
+            AND to_regclass('public.hris_in_app_notifications') IS NOT NULL
+            AND to_regprocedure('public.hris_get_my_project_task_portfolio(uuid)') IS NOT NULL
+            AND to_regprocedure('public.hris_update_project_task(uuid,uuid,text,text,date)') IS NOT NULL
+            AND to_regprocedure('public.hris_submit_project_peer_review(uuid,uuid,jsonb,text[],text)') IS NOT NULL
+            AND (SELECT bool_and(c.relrowsecurity) FROM pg_class c
+              WHERE c.oid IN ('public.project_tasks'::regclass,'public.project_task_assignments'::regclass,
+              'public.project_task_peer_reviews'::regclass,'public.hris_in_app_notifications'::regclass))
+            AND NOT has_table_privilege('anon','public.project_tasks','SELECT')
+            AND NOT has_table_privilege('authenticated','public.project_tasks','INSERT')
+            AND NOT has_table_privilege('authenticated','public.project_task_peer_reviews','INSERT')
+            AND NOT has_function_privilege('anon','public.hris_get_my_project_task_portfolio(uuid)','EXECUTE')
+            THEN 'ISOLATED_PHASE11_TASKS_AND_REVIEWS_PASS' ELSE 'PHASE11_CONTRACT_FAIL' END;"
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+            --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$query" \
+            | grep -Fx 'ISOLATED_PHASE11_TASKS_AND_REVIEWS_PASS'
+          echo "PASS: five Phase 11 SQL migrations with RLS/privilege checks on disposable PG17. No hosted writes."
+
+      - name: Stop disposable local Supabase only
+        if: always()
+        shell: bash
+        run: |
+          supabase stop --workdir "$HRIS_RESTORE_WORKDIR" --no-backup >/dev/null 2>&1 || true
+          rm -f "${RUNNER_TEMP}/hris-recovered.pgcustom" || true
