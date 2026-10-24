@@ -30,8 +30,8 @@ jobs:
       - name: Fetch exact encrypted backup from trusted completed run
         uses: actions/download-artifact@v4
         with:
-          name: hris-db-encrypted-40084995271
-          run-id: 40084995271
+          name: hris-db-encrypted-40105833572
+          run-id: 40105833572
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ${{ runner.temp }}/hris-restore-source
 
@@ -44,14 +44,14 @@ jobs:
           umask 077
           test "${#HRIS_BACKUP_PASSPHRASE}" -ge 32 || { echo "::error::Backup passphrase unavailable"; exit 1; }
           src="${RUNNER_TEMP}/hris-restore-source"
-          test -s "$src/hris-replacement-40084995271.pgcustom.gpg"
+          test -s "$src/hris-replacement-40105833572.pgcustom.gpg"
           (cd "$src" && sha256sum --check --status encrypted.sha256)
           grep -Fxq "source_project=xfuxnljfrgvusbrpvxpa" "$src/backup-manifest.txt"
-          grep -Fxq "github_run_id=40084995271" "$src/backup-manifest.txt"
+          grep -Fxq "github_run_id=40105833572" "$src/backup-manifest.txt"
           plain="${RUNNER_TEMP}/hris-recovered.pgcustom"
           gpg --batch --yes --quiet --pinentry-mode loopback \
             --passphrase-fd 3 --output "$plain" --decrypt \
-            "$src/hris-replacement-40084995271.pgcustom.gpg" 3<<<"$HRIS_BACKUP_PASSPHRASE"
+            "$src/hris-replacement-40105833572.pgcustom.gpg" 3<<<"$HRIS_BACKUP_PASSPHRASE"
           test -s "$plain"
           expected="$(sed -n 's/^plaintext_archive_sha256=//p' "$src/backup-manifest.txt")"
           test "${#expected}" = 64
