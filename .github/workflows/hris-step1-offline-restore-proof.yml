@@ -86,13 +86,24 @@ jobs:
           # bootstrap 'postgres' DB whose pre-existing system objects can collide.
           docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
             createdb --host 127.0.0.1 --port 55422 --username postgres hris_recovered_isolated
-          if ! docker run --rm --network host \
-            --env PGPASSWORD=postgres \
-            --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
-            postgres:17-alpine \
-            pg_restore --host 127.0.0.1 --port 55422 --username postgres \
-              --dbname hris_recovered_isolated --no-owner --no-acl \
-              --exit-on-error --verbose /restore/hris-recovered.pgcustom \
+          # Supabase's normal postgres role is deliberately not superuser.
+          # Full recovery requires its isolated, internal bootstrap admin role.
+          dbcontainer="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -1)"
+          if [[ -z "$dbcontainer" || "$dbcontainer" != *"synesis-local-hris-restore"* ]]; then
+            echo "::error::Expected isolated local Supabase DB container not found."
+            exit 1
+          fi
+          local_superuser="$(docker exec "$dbcontainer" psql -U supabase_admin -d postgres \
+            -X -A -t -v ON_ERROR_STOP=1 \
+            -c "SELECT CASE WHEN rolsuper THEN 'LOCAL_SUPERUSER_VERIFIED' ELSE 'LOCAL_SUPERUSER_DENIED' END FROM pg_roles WHERE rolname='supabase_admin'")"
+          if [[ "$local_superuser" != "LOCAL_SUPERUSER_VERIFIED" ]]; then
+            echo "::error::Disposable bootstrap admin cannot perform the recovery role."
+            exit 1
+          fi
+          if ! docker exec -i "$dbcontainer" \
+            pg_restore --username supabase_admin --dbname hris_recovered_isolated \
+              --no-owner --no-acl --exit-on-error --verbose \
+              <"${RUNNER_TEMP}/hris-recovered.pgcustom" \
               >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
             # Emit only the first short PostgreSQL error (not SQL/data/row details).
             # Mask emails, UUIDs and quoted literal text before public CI output.
@@ -122,9 +133,9 @@ jobs:
              AND (SELECT COUNT(*) FROM public.tenants) >= 1
              AND (SELECT COUNT(*) FROM public.admin_users) >= 1
              THEN 'ISOLATED_RESTORE_VERIFIED' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
-          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
-            psql --host 127.0.0.1 --port 55422 --username postgres \
-              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
+          docker exec "$dbcontainer" \
+            psql --username supabase_admin --dbname hris_recovered_isolated \
+              -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
             | grep -Fx "ISOLATED_RESTORE_VERIFIED"
           echo "PASS: isolated restore completed and application tables/data verified."
           echo "Not a live HRIS functional acceptance or Supabase Storage files/secrets restore."
