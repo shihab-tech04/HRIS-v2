@@ -94,6 +94,16 @@ jobs:
               --dbname hris_recovered_isolated --no-owner --no-acl \
               --exit-on-error --verbose /restore/hris-recovered.pgcustom \
               >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
+            # Emit only the first short PostgreSQL error (not SQL/data/row details).
+            # Mask emails, UUIDs and quoted literal text before public CI output.
+            first_error="$(grep -m1 'ERROR:' "${RUNNER_TEMP}/hris-restore-log.txt" || true)"
+            if [[ -n "$first_error" ]]; then
+              safe_error="$(printf '%s' "$first_error" | sed -E \
+                -e 's/[[:alnum:]._%+-]+@[[:alnum:].-]+/[EMAIL]/g' \
+                -e 's/[[:xdigit:]]{8}(-[[:xdigit:]]{4}){3}-[[:xdigit:]]{12}/[UUID]/g' \
+                -e "s/'[^']*'/[LITERAL]/g" | cut -c1-200)"
+              echo "::notice::Sanitized first PostgreSQL error: $safe_error"
+            fi
             # Print only a classification, not source SQL or private data.
             if grep -Eiq 'already exists|duplicate object' "${RUNNER_TEMP}/hris-restore-log.txt"; then
               echo "::error::Isolated restore encountered existing-object conflict."
