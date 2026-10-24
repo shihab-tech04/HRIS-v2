@@ -90,8 +90,32 @@ jobs:
               --dbname postgres --no-owner --no-acl --clean --if-exists \
               --exit-on-error --verbose /restore/hris-recovered.pgcustom \
               >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
-            echo "::error::Isolated restore FAILED. Full restore not certified; no hosted writes."
-            # Avoid dumping private schema/data/SQL errors into public CI logs.
+            # Classify the first failing pg_restore operation without exposing SQL,
+            # table names, PII, pg_dump contents, passwords, or the raw log.
+            # One code per failure; the private log is removed with the runner.
+            restore_log="${RUNNER_TEMP}/hris-restore-log.txt"
+            if grep -Eqi 'could not connect|connection to server.*failed|connection refused' "$restore_log"; then
+              reason=LOCAL_DATABASE_CONNECTION
+            elif grep -Eqi 'authentication failed|no password supplied' "$restore_log"; then
+              reason=LOCAL_DATABASE_AUTH
+            elif grep -Eqi 'cannot drop|dependent objects|other objects depend|cannot delete' "$restore_log"; then
+              reason=PREINSTALLED_LOCAL_OBJECT_DEPENDENCY
+            elif grep -Eqi 'already exists|duplicate (object|table|key)' "$restore_log"; then
+              reason=RESTORE_OBJECT_COLLISION
+            elif grep -Eqi 'permission denied|must be owner|not owner|insufficient privilege' "$restore_log"; then
+              reason=LOCAL_DATABASE_OWNERSHIP_OR_GRANT
+            elif grep -Eqi 'extension .* is not available|could not open extension control' "$restore_log"; then
+              reason=LOCAL_EXTENSION_UNAVAILABLE
+            elif grep -Eqi 'does not exist|undefined function|undefined object' "$restore_log"; then
+              reason=RESTORE_MISSING_DEPENDENCY
+            elif grep -Eqi 'invalid input syntax|invalid value|violates .* constraint' "$restore_log"; then
+              reason=RESTORED_DATA_INCOMPATIBILITY
+            else
+              reason=UNCLASSIFIED_RESTORE_ERROR
+            fi
+            printf 'ISOLATED_RESTORE_FAILURE_CLASS=%s\n' "$reason"
+            echo "::error::Isolated restore FAILED ($reason). Full restore not certified; no hosted writes."
+            # Never publish the underlying SQL/pg_restore log.
             exit 1
           fi
           probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
