@@ -18,7 +18,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.ref == 'refs/heads/release/hris-stable-20261017'
         run: |
           branch=main
-          expected_sha=72a24b0a5d272dfbd92b6bd5f10afa0d86f0d059
+          expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d
           if [ "$GITHUB_REF" = 'refs/heads/release/hris-stable-20261017' ]; then
             branch=release/candidate-stable-20261017
             expected_sha=
