@@ -1,4 +1,6 @@
 # Independent restore of an existing encrypted HRIS backup. Never connects to a hosted DB.
+# The locally bootstrapped supabase_admin superuser, not production credentials,
+# performs the isolated restore of source objects with privileged GUC settings.
 # Runs once on the trusted main merge of THIS workflow file; manual dispatch for retry.
 name: "HRIS Step 1 - Isolated PostgreSQL restore proof"
 on:
@@ -86,11 +88,27 @@ jobs:
           # bootstrap 'postgres' DB whose pre-existing system objects can collide.
           docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
             createdb --host 127.0.0.1 --port 55422 --username postgres hris_recovered_isolated
+
+          # The platform's source archive contains functions with privileged
+          # per-function GUCs (e.g. log_min_messages). PostgreSQL correctly
+          # rejects those under the restricted postgres role even in a
+          # disposable database. Use the local-only Supabase bootstrap admin
+          # role *only after* confirming its superuser flag and credentials.
+          # This does not grant anything on the hosted Supabase instance.
+          if ! docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 \
+              -c "SELECT CASE WHEN current_setting('is_superuser')='on' THEN 'ISOLATED_SUPERUSER_VERIFIED' ELSE 'DENIED' END;" \
+            | grep -Fx 'ISOLATED_SUPERUSER_VERIFIED'; then
+            echo "::error::No verified local-only superuser restore role. Hosted access unchanged."
+            exit 1
+          fi
+
           if ! docker run --rm --network host \
             --env PGPASSWORD=postgres \
             --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
             postgres:17-alpine \
-            pg_restore --host 127.0.0.1 --port 55422 --username postgres \
+            pg_restore --host 127.0.0.1 --port 55422 --username supabase_admin \
               --dbname hris_recovered_isolated --no-owner --no-acl \
               --exit-on-error --verbose /restore/hris-recovered.pgcustom \
               >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
