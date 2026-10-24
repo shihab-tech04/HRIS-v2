@@ -38,6 +38,7 @@ import { ServiceRequestReview } from './ServiceRequestReview';
 import { OrganizationPerformance } from './OrganizationPerformance';
 import { OrganizationEmployeeDirectory } from './OrganizationEmployeeDirectory';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
+import { JobCircularManager } from './JobCircularManager';
 import { CandidatePreboardingQueue } from './CandidatePreboardingQueue';
 import { EmployeeReferrals } from './EmployeeReferrals';
 import { PlatformTenantWorkspace } from './PlatformTenantWorkspace';
@@ -82,7 +83,7 @@ type PermissionSet = {
   payrollManage: boolean;
   selfServiceManage: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-profile' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'job-circulars' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-profile' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -4890,6 +4891,7 @@ export function LiveHrisWorkspace({
     if (permissions.selfServiceManage) items.push({ id: 'profile-change-review', label: 'Profile corrections', icon: <FileText className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.performance) items.push({ id: 'performance', label: 'Performance', icon: <Target className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.recruitment) items.push({ id: 'recruitment', label: 'Candidate pipeline', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    if (permissions.recruitmentManage) items.push({ id: 'job-circulars', label: 'Job circulars', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.referrals) items.push({ id: 'referrals', label: 'Employee referrals', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.holidayManage) items.push({ id: 'holidays', label: 'Holiday calendar', icon: <CalendarDays className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.learningManage) {
@@ -5172,6 +5174,7 @@ export function LiveHrisWorkspace({
           {page === 'profile-change-review' && permissions.selfServiceManage && <ProfileChangeReview tenantId={tenantId} locale={locale} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} locale={locale} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} canManageApplicationStages={permissions.recruitmentManage} />}
+          {page === 'job-circulars' && permissions.recruitmentManage && <JobCircularManager tenantId={tenantId} refreshKey={0} />}
           {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
           {page === 'holidays' && permissions.holidayManage && <OrganizationHolidayCalendar tenantId={tenantId} locale={locale} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} locale={locale} />}

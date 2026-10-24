@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { RecruitmentPipeline } from './RecruitmentPipeline';
+import { JobCircularManager } from './JobCircularManager';
 
 type RowData = Record<string, unknown>;
 type ProfileChangeRow = {
@@ -144,7 +145,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
     let active = true;
     setRows([]);
     setError('');
-    if (!selected.table || !selected.fields) return () => { active = false; };
+    if (selected.id === 'jobs' || !selected.table || !selected.fields) return () => { active = false; };
     setLoading(true);
     void Promise.resolve(supabase.from(selected.table).select(selected.fields).eq('tenant_id', tenantId).limit(50))
       .then(({ data, error: requestError }) => {
@@ -220,7 +221,7 @@ export function LiveSystemWorkspace({ tenantId, tenantName }: { tenantId: string
             <p className="text-sm text-slate-600 mt-2">All HRIS areas are listed in the navigation. A filled marker indicates an RLS-filtered live record view. An empty marker indicates a workflow that is not yet integrated. No sample data or simulated saves are displayed.</p>
             <p className="text-sm text-slate-600 mt-2">Employee, Manager, HOD, HR, Admin, Super Admin and CEO workflows require their own verified role-based journeys. Viewing this system index does not impersonate those roles.</p>
           </section>
-        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} /> : selected.id === 'profileChanges' ? <ProfileChangeReview tenantId={tenantId} revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        </> : selected.id === 'candidate' ? <RecruitmentPipeline tenantId={tenantId} /> : selected.id === 'jobs' ? <JobCircularManager tenantId={tenantId} refreshKey={revision} /> : selected.id === 'profileChanges' ? <ProfileChangeReview tenantId={tenantId} revision={revision} /> : selected.table ? <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
             <h3 className="font-semibold">Authorized records</h3>
             <p className="text-xs text-slate-500">RLS protected · up to 50 records · read only</p>

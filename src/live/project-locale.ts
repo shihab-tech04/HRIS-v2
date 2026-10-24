@@ -1,6 +1,7 @@
 export type Locale = 'en' | 'bn';
 
 const bengali: Record<string, string> = {
+  'Job circulars': 'চাকরির বিজ্ঞপ্তি',
   'My Profile': 'আমার প্রোফাইল',
   'Leave management sections': 'ছুটি ব্যবস্থাপনার বিভাগসমূহ',
   'Platform tenants': 'প্ল্যাটফর্মের প্রতিষ্ঠানসমূহ',
