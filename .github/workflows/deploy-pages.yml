@@ -18,6 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout the deployed Candidate source for cross-repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=72a24b0a5d272dfbd92b6bd5f10afa0d86f0d059
+          candidate_dir="$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git clone --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$candidate_dir"
+          git -C "$candidate_dir" fetch --no-tags --depth=1 origin "$expected_sha"
+          git -C "$candidate_dir" checkout --detach "$expected_sha"
+          actual_sha="$(git -C "$candidate_dir" rev-parse HEAD)"
+          echo "Candidate production contract ref: main at $actual_sha"
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "::error::Candidate release commit drift: expected $expected_sha, observed $actual_sha" >&2
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
