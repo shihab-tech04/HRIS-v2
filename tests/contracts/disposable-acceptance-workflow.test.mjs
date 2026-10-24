@@ -25,6 +25,7 @@ test('disposable Auth/Postgres/browser acceptance uses trusted standard runners 
   assert.match(localRunner, /path\.resolve\('\/tmp\/synesis-local-hris-test'\)/);
   assert.match(localRunner, /allowedTestWorkdirs\.has\(workdir\)/);
   assert.match(workflow, /node tests\/sql\/isolated-auth\/run-local\.mjs/);
+  assert.match(workflow, /node tests\/sql\/isolated-auth\/hris-release-rpc-acceptance\.mjs/);
   assert.match(workflow, /supabase db advisors --local --type security --level error --fail-on none --workdir/);
   assert.match(workflow, /supabase stop --workdir .*--no-backup/);
   assert.doesNotMatch(workflow, /pull_request_target|deploy-pages|supabase\.co|secrets\./i);
