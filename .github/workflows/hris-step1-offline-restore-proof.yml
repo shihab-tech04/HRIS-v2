@@ -137,7 +137,7 @@ jobs:
               postgres:17-alpine \
               pg_restore --host 127.0.0.1 --port 55422 --username supabase_admin \
                 --dbname hris_recovered_isolated --no-owner --no-acl \
-                --section="$section" "${section_args[@]}" --exit-on-error --verbose \
+                --section="$section" --exit-on-error "${section_args[@]}" --verbose \
                 /restore/hris-recovered.pgcustom >>"$restore_log" 2>&1; then
               restore_failed_section="$section"
               break
