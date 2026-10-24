@@ -190,7 +190,7 @@ BEGIN
   FROM public.onboarding_handoffs h
   JOIN public.job_applications a ON a.id=h.application_id AND a.tenant_id=p_tenant_id
   JOIN public.jobs j ON j.id=a.job_id AND j.tenant_id=p_tenant_id
-  WHERE h.candidate_submitted_at IS NOT NULL AND h.status IN ('in_progress','completed');
+  WHERE h.candidate_submitted_at IS NOT NULL AND h.status IN ('in_progress','completed','submitted_for_verification');
   RETURN v_rows;
 END
 $function$;
