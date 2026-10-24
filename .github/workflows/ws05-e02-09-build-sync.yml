@@ -1,0 +1,44 @@
+name: WS05 E02-09 scoped Pages asset sync (review branch only)
+on:
+  push:
+    branches:
+      - proposal/ws05-e02-09-integrated-20261024
+    paths:
+      - '.github/workflows/ws05-e02-09-build-sync.yml'
+      - 'src/live/EmployeeProfileFigma.tsx'
+      - 'tests/browser/employee-profile-harness.tsx'
+      - 'tests/browser/employee-profile-figma.spec.ts'
+      - 'supabase/migrations/20261024082000_employee_employment_details_e02_09.sql'
+permissions:
+  contents: write
+concurrency:
+  group: ws05-e02-09-build-sync
+  cancel-in-progress: false
+jobs:
+  sync-build:
+    if: github.actor == 'shihab-tech04' && github.ref == 'refs/heads/proposal/ws05-e02-09-integrated-20261024'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --include=optional --no-audit --no-fund
+      - name: Regenerate only tracked GitHub Pages frontend assets
+        run: npm run build
+      - name: Check in deterministic generated assets on this proposal branch only
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/proposal/ws05-e02-09-integrated-20261024
+          git add -A -- index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo "No generated asset delta"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(E02-09): synchronize tracked Pages assets for reviewed proposal"
+          git push origin HEAD:refs/heads/proposal/ws05-e02-09-integrated-20261024
