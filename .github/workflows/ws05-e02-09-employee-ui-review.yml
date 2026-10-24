@@ -1,0 +1,35 @@
+name: E02-09 Employee Profile UI owner review (no deploy)
+on:
+  pull_request:
+    branches:
+      - work/ws06-employee-profile-figma-20261021
+    paths:
+      - 'src/live/EmployeeProfileFigma.tsx'
+      - 'tests/browser/employee-profile-harness.tsx'
+      - 'tests/browser/employee-profile-figma.spec.ts'
+      - '.github/workflows/ws05-e02-09-employee-ui-review.yml'
+permissions:
+  contents: read
+jobs:
+  employee-e02-09:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --include=optional --no-audit --no-fund
+      - run: npm install --no-save --no-package-lock --include=optional --no-audit --no-fund @typescript/typescript-linux-x64@7.0.2
+      - name: Restore sibling Candidate source for existing contracts
+        run: git clone --quiet --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git ../HRIS-Candidate-v2
+      # The full repository RPC inventory will be rerun by WS05 only after
+      # WS02 merges its separate E02-09 SQL source (PR #75).
+      - name: Typecheck and frontend build
+        run: npm run lint && npm run build
+      - name: Existing employee employment identity contracts
+        run: node --test tests/contracts/employee-identity-card.test.mjs
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: E02-09 browser and Figma acceptance
+        run: npm run test:e2e -- tests/browser/employee-profile-figma.spec.ts
