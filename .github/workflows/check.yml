@@ -17,15 +17,15 @@ jobs:
       - name: Checkout the matching Candidate release for cross-repository contracts
         if: github.event_name == 'pull_request' || github.ref == 'refs/heads/release/hris-stable-20261017'
         run: |
-          branch=integration/ws05-candidate-final-review-20261022
-          expected_sha=412c2137e19ffbb5e7a5e8ad3a4e505bfbaaca03
+          branch=main
+          expected_sha=72a24b0a5d272dfbd92b6bd5f10afa0d86f0d059
           if [ "$GITHUB_REF" = 'refs/heads/release/hris-stable-20261017' ]; then
             branch=release/candidate-stable-20261017
             expected_sha=
           fi
           git clone --depth 1 --branch "$branch" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
-          # Pin the verified Candidate runtime while its integration branch can advance.
-          # Do not silently accept unreviewed newer Candidate commits.
+          # Pin the currently deployed Candidate runtime for exact cross-repository checks.
+          # Do not silently accept a newer Candidate commit before its Pages release.
           if [ -n "$expected_sha" ]; then
             git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
             git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
