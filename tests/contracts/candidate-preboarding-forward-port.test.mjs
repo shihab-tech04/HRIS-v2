@@ -12,8 +12,17 @@ test('preboarding structural alterations copied exactly from canonical source',(
 test('three missing RPC source definitions retained without rewriting existing offer RPC or RLS policies',()=>{
  const start='CREATE OR REPLACE FUNCTION public.candidate_get_my_preboarding_handoff';
  const end='REVOKE ALL ON FUNCTION public.candidate_respond_offer_record';
- const expected=segment(original,start,end).trim();
+ const expected=segment(original,start,end)
+   .replace(
+     "WHERE step=ANY(v_handoff.candidate_completed_steps || ARRAY[p_step_key]::text[]));",
+     "WHERE step=p_step_key\n      OR step=ANY(COALESCE(v_handoff.candidate_completed_steps,ARRAY[]::text[])));"
+   )
+   .replace(
+     "WHERE h.candidate_submitted_at IS NOT NULL AND h.status IN ('in_progress','completed');",
+     "WHERE h.candidate_submitted_at IS NOT NULL AND h.status IN ('in_progress','completed','submitted_for_verification');"
+   ).trim();
  assert.ok(staged.includes(expected));
+ assert.match(staged,/h\.status IN \('in_progress','completed','submitted_for_verification'\)/);
  assert.equal((staged.match(/CREATE OR REPLACE FUNCTION public\./g)||[]).length,3);
  assert.doesNotMatch(staged,/CREATE OR REPLACE FUNCTION public\.candidate_respond_offer_record|DROP POLICY|CREATE POLICY/);
  for(const name of ['candidate_get_my_preboarding_handoff','candidate_save_my_preboarding_step','hris_get_candidate_preboarding_queue']){

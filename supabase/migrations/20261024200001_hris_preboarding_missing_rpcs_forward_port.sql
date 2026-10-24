@@ -148,7 +148,8 @@ BEGIN
   END IF;
 
   v_steps:=ARRAY(SELECT step FROM unnest(ARRAY['step_identity','step_emergency','step_payroll','step_policies']::text[]) AS steps(step)
-    WHERE step=ANY(v_handoff.candidate_completed_steps || ARRAY[p_step_key]::text[]));
+    WHERE step=p_step_key
+      OR step=ANY(COALESCE(v_handoff.candidate_completed_steps,ARRAY[]::text[])));
 
   UPDATE public.onboarding_handoffs h SET
     candidate_personal_data=h.candidate_personal_data || v_clean,
@@ -189,7 +190,7 @@ BEGIN
   FROM public.onboarding_handoffs h
   JOIN public.job_applications a ON a.id=h.application_id AND a.tenant_id=p_tenant_id
   JOIN public.jobs j ON j.id=a.job_id AND j.tenant_id=p_tenant_id
-  WHERE h.candidate_submitted_at IS NOT NULL AND h.status IN ('in_progress','completed');
+  WHERE h.candidate_submitted_at IS NOT NULL AND h.status IN ('in_progress','completed','submitted_for_verification');
   RETURN v_rows;
 END
 $function$;

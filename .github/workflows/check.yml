@@ -46,6 +46,8 @@ jobs:
       - name: Contract source checks (not RLS runtime tests)
         run: npm run test:contracts
       - name: Build HRIS bundle
+        env:
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
         run: npm run build
       - name: Verify the branch-served Pages entry matches the production build
         run: git diff --exit-code -- index.html assets .nojekyll

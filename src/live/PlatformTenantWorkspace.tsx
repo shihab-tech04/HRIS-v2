@@ -6,6 +6,7 @@ import {
   listPlatformTenantModules,
   listPlatformTenants,
   platformTenantFeatureAvailable,
+  invitePlatformTenantAdministrator,
   provisionPlatformTenantByEmail,
   setPlatformTenantModule,
   setPlatformTenantAdministratorByEmail,
@@ -21,11 +22,13 @@ type TenantForm = {
   name: string;
   timezone: string;
   defaultLocale: 'en' | 'bn';
-  existingAdminEmail: string;
+  administratorMode: 'existing' | 'invite';
+  adminEmail: string;
 };
 
 const emptyTenantForm = (): TenantForm => ({
-  code: '', slug: '', name: '', timezone: 'Asia/Dhaka', defaultLocale: 'en', existingAdminEmail: '',
+  code: '', slug: '', name: '', timezone: 'Asia/Dhaka', defaultLocale: 'en',
+  administratorMode: 'existing', adminEmail: '',
 });
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const optionalModuleLabels: Record<TenantOptionalModuleKey, string> = {
@@ -145,18 +148,34 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
 
   async function createTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!emailPattern.test(createForm.existingAdminEmail.trim())) {
-      setError(tx('Enter the email of an existing confirmed Auth account for the first administrator.'));
+    if (!emailPattern.test(createForm.adminEmail.trim())) {
+      setError(tx('Enter a valid email address for the first administrator.'));
+      return;
+    }
+    const tenantInput = {
+      code: createForm.code.trim().toUpperCase(),
+      slug: createForm.slug.trim().toLowerCase(),
+      name: createForm.name.trim(),
+      timezone: createForm.timezone.trim(),
+      defaultLocale: createForm.defaultLocale,
+    };
+    if (createForm.administratorMode === 'invite') {
+      await runAction('create',
+        tx('Invitation request sent. The tenant will be created inactive after the administrator accepts.'),
+        async () => {
+          await invitePlatformTenantAdministrator({
+            ...tenantInput,
+            email: createForm.adminEmail.trim(),
+          });
+          setCreateForm(emptyTenantForm());
+          setCreateOpen(false);
+        });
       return;
     }
     await runAction('create', tx('Tenant created and left inactive pending security certification.'), async () => {
       await provisionPlatformTenantByEmail({
-        ...createForm,
-        code: createForm.code.trim().toUpperCase(),
-        slug: createForm.slug.trim().toLowerCase(),
-        name: createForm.name.trim(),
-        timezone: createForm.timezone.trim(),
-        existingAdminEmail: createForm.existingAdminEmail.trim(),
+        ...tenantInput,
+        existingAdminEmail: createForm.adminEmail.trim(),
       });
       setCreateForm(emptyTenantForm());
       setCreateOpen(false);
@@ -265,17 +284,20 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
           </div>
 
           {createOpen && <form onSubmit={event => void createTenant(event)} className="mt-5 rounded-lg border border-[#DCE8ED] bg-[#F7FAFB] p-4 sm:p-5">
-            <div className="mb-4"><h3 className="font-semibold text-[#1E1B39]">{tx('Create tenant')}</h3><p className="mt-1 text-xs text-slate-600">{tx('Provisioning creates an inactive tenant and assigns one already-confirmed Auth account as its first administrator.')}</p></div>
+            <div className="mb-4"><h3 className="font-semibold text-[#1E1B39]">{tx('Create tenant')}</h3><p className="mt-1 text-xs text-slate-600">{tx('Choose an existing confirmed account to provision now, or invite a new administrator. Invited tenants are created only after acceptance and remain inactive pending security certification.')}</p></div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <Field id="platform-tenant-code" label={tx('Tenant code')} value={createForm.code} maxLength={24} pattern="[A-Za-z0-9_]{2,24}" placeholder="ACME_BD" onChange={code => setCreateForm(form => ({ ...form, code }))} />
               <Field id="platform-tenant-slug" label={tx('URL key')} value={createForm.slug} maxLength={80} pattern="[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*" placeholder="acme-bangladesh" onChange={slug => setCreateForm(form => ({ ...form, slug }))} />
               <Field id="platform-tenant-name" label={tx('Organization name')} value={createForm.name} maxLength={180} minLength={2} placeholder="Acme Bangladesh" onChange={name => setCreateForm(form => ({ ...form, name }))} />
               <Field id="platform-tenant-timezone" label={tx('IANA time zone')} value={createForm.timezone} placeholder="Asia/Dhaka" onChange={timezone => setCreateForm(form => ({ ...form, timezone }))} />
               <label className="block text-sm font-medium text-slate-700" htmlFor="platform-tenant-locale">{tx('Default language')}<select id="platform-tenant-locale" value={createForm.defaultLocale} onChange={event => setCreateForm(form => ({ ...form, defaultLocale: event.target.value as 'en' | 'bn' }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal"><option value="en">English</option><option value="bn">বাংলা</option></select></label>
-              <Field id="platform-first-admin-email" type="email" autoComplete="email" label={tx('First administrator email')} value={createForm.existingAdminEmail} maxLength={320} placeholder="admin@example.com" onChange={existingAdminEmail => setCreateForm(form => ({ ...form, existingAdminEmail }))} />
+              <label className="block min-w-0 text-sm font-medium text-slate-700" htmlFor="platform-admin-mode">{tx('Administrator setup')}<select id="platform-admin-mode" value={createForm.administratorMode} onChange={event => setCreateForm(form => ({ ...form, administratorMode: event.target.value as 'existing' | 'invite' }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal"><option value="existing">{tx('Existing confirmed account')}</option><option value="invite">{tx('Invite a new administrator')}</option></select></label>
+              <Field id="platform-first-admin-email" type="email" autoComplete="email" label={tx(createForm.administratorMode === 'invite' ? 'Invitee email' : 'First administrator email')} value={createForm.adminEmail} maxLength={320} placeholder="admin@example.com" onChange={adminEmail => setCreateForm(form => ({ ...form, adminEmail }))} />
             </div>
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">{tx('Enter the exact email address of an existing, confirmed Auth account. Only a Super Admin can resolve it; this form does not expose an account directory or send invitations.')}</p>
-            <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => { setCreateOpen(false); setCreateForm(emptyTenantForm()); setError(''); }} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium disabled:opacity-50">{tx('Cancel')}</button><button type="submit" disabled={Boolean(busy)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />{busy === 'create' ? tx('Creating…') : tx('Create inactive tenant')}</button></div>
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">{tx(createForm.administratorMode === 'invite'
+              ? 'Only an active platform Super Admin can send this email invitation. The recipient must accept it using the same confirmed email; the tenant stays inactive until security certification.'
+              : 'Enter the exact email address of an existing, confirmed Auth account. Only an authorized Super Admin can resolve it. This existing-account workflow does not expose an account directory or send invitations.')}</p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => { setCreateOpen(false); setCreateForm(emptyTenantForm()); setError(''); }} disabled={Boolean(busy)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium disabled:opacity-50">{tx('Cancel')}</button><button type="submit" disabled={Boolean(busy)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />{busy === 'create' ? tx(createForm.administratorMode === 'invite' ? 'Sending invitation…' : 'Creating…') : tx(createForm.administratorMode === 'invite' ? 'Send invitation' : 'Create inactive tenant')}</button></div>
           </form>}
 
           {loading && tenants.length > 0 && <p role="status" className="mt-4 text-sm text-slate-500">{tx('Refreshing tenant records…')}</p>}
