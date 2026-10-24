@@ -38,6 +38,7 @@ const copy = {
     employmentType: 'Employment Type',
     workLocation: 'Work Location',
     lineManager: 'Line Manager',
+    grade: 'Grade',
     team: 'Team',
     profileContentHeading: 'Personal, Contact, Verification & Educational Information',
     personalDetails: 'Personal Details',
@@ -135,6 +136,7 @@ const copy = {
     employmentType: 'কর্মসংস্থানের ধরন',
     workLocation: 'কর্মস্থল',
     lineManager: 'লাইন ম্যানেজার',
+    grade: 'গ্রেড',
     team: 'টিম',
     profileContentHeading: 'ব্যক্তিগত, যোগাযোগ, যাচাইকরণ ও শিক্ষাগত তথ্য',
     personalDetails: 'ব্যক্তিগত বিবরণ',
@@ -254,6 +256,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const [panel, setPanel] = useState<Panel>('personal');
   const [loadedTenantId, setLoadedTenantId] = useState(tenantId);
   const [employee, setEmployee] = useState<Profile | null>(null);
+  const [employment, setEmployment] = useState<Profile | null>(null);
   const [status, setStatus] = useState<LoadState>('loading');
   const [revision, setRevision] = useState(0);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -262,6 +265,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     let current = true;
     setLoadedTenantId(tenantId);
     setEmployee(null);
+    setEmployment(null);
     setStatus('loading');
     void (async () => {
       try {
@@ -279,7 +283,32 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         if (typeof rawEmployee !== 'object' || Array.isArray(rawEmployee)) throw new Error('Invalid employee profile record');
         const profile = rawEmployee as Profile;
         if (typeof profile.tenant_id === 'string' && profile.tenant_id !== tenantId) throw new Error('Tenant mismatch');
+        // E02-09 is separately scoped to the authenticated employee.
+        // Until WS02 approves/installs the contract, leave unsupported fields unavailable.
+        let workDetails: Profile | null = null;
+        try {
+          const { data: detailsData, error: detailsError } = await supabase.rpc(
+            'employee_get_my_employment_info_v1', { p_tenant_id: tenantId },
+          );
+          if (!detailsError && Array.isArray(detailsData) && detailsData.length === 1) {
+            const details: unknown = detailsData[0];
+            if (details && typeof details === 'object' && !Array.isArray(details)) {
+              const record = details as Profile;
+              const allowed = [
+                'joining_date', 'employment_type', 'designation_title', 'department_name',
+                'manager_name', 'work_location_name', 'grade_name',
+              ];
+              workDetails = Object.fromEntries(
+                allowed.filter(key => typeof record[key] === 'string' && Boolean((record[key] as string).trim()))
+                  .map(key => [key, record[key]]),
+              );
+            }
+          }
+        } catch {
+          // Never bypass the approved RPC with private table reads.
+        }
         if (current) {
+          setEmployment(workDetails);
           setEmployee(profile);
           setStatus('ready');
         }
@@ -293,7 +322,8 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const currentTenant = loadedTenantId === tenantId;
   const currentEmployee = currentTenant ? employee : null;
   const currentStatus = currentTenant ? status : 'loading';
-  const value = (key: string) => textValue(currentEmployee?.[key], words.unavailable);
+  const value = (key: string) => textValue(currentEmployee?.[key] ?? (currentTenant ? employment?.[key] : null), words.unavailable);
+  const employmentValue = (key: string) => textValue(currentTenant ? employment?.[key] : null, words.unavailable);
   const name = value('full_name');
   const initials = name === words.unavailable
     ? '—'
@@ -345,7 +375,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     { id: 'phone-number', label: words.phoneNumber, value: unavailable },
     { id: 'personal-email', label: words.personalEmail, value: unavailable },
     { id: 'official-phone', label: words.officialPhone, value: value('official_phone') },
-    { id: 'work-location', label: words.workLocation, value: unavailable },
+    { id: 'work-location', label: words.workLocation, value: employmentValue('work_location_name') },
     { id: 'present-address', label: words.presentAddress, value: unavailable },
     { id: 'permanent-address', label: words.permanentAddress, value: unavailable },
   ];
@@ -445,11 +475,14 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         </dl>
         <dl data-figma-node="66:72070" className="grid min-w-0 content-start gap-3 rounded-lg bg-white p-4 lg:col-start-2 xl:col-start-3">
           {[
-            { id: 'joining-date', label: words.joiningDate, value: unavailable },
-            { id: 'employment-type', label: words.employmentType, value: unavailable },
-            { id: 'work-location', label: words.workLocation, value: unavailable },
-            { id: 'line-manager', label: words.lineManager, value: unavailable },
+            { id: 'joining-date', label: words.joiningDate, value: employmentValue('joining_date') },
+            { id: 'employment-type', label: words.employmentType, value: employmentValue('employment_type') },
+            { id: 'work-location', label: words.workLocation, value: employmentValue('work_location_name') },
+            { id: 'line-manager', label: words.lineManager, value: employmentValue('manager_name') },
             { id: 'team', label: words.team, value: value('team_name') },
+            ...(currentTenant && typeof employment?.grade_name === 'string' && employment.grade_name.trim()
+              ? [{ id: 'grade', label: words.grade, value: employmentValue('grade_name') }]
+              : []),
           ].map(field => <div key={field.id} className="grid min-w-0 grid-cols-[minmax(118px,0.52fr)_minmax(0,1fr)] items-center gap-x-3">
             <dt className="min-w-0 break-words text-sm text-[#969696]">{field.label}</dt>
             <dd className="min-w-0 break-words text-sm text-[#3D3D3D]">{field.value}</dd>

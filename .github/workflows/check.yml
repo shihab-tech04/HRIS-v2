@@ -24,6 +24,12 @@ jobs:
             expected_sha=
           fi
           git clone --depth 1 --branch "$branch" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          # Pin the verified Candidate runtime while its integration branch can advance.
+          # Do not silently accept unreviewed newer Candidate commits.
+          if [ -n "$expected_sha" ]; then
+            git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
+            git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
+          fi
           actual_sha="$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)"
           echo "Candidate contract ref: $branch at $actual_sha"
           if [ -n "$expected_sha" ] && [ "$actual_sha" != "$expected_sha" ]; then
