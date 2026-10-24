@@ -1,0 +1,39 @@
+name: WS07 job draft contract Pages asset sync
+on:
+  push:
+    branches:
+      - work/ws07-job-draft-sql-contract-parity-20261024
+permissions:
+  contents: write
+jobs:
+  synchronize-job-contract-assets:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/work/ws07-job-draft-sql-contract-parity-20261024'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Generate source-matched Pages artifacts
+        run: |
+          npm install --include=optional --no-audit --no-fund
+          npm run lint
+          npm run test:contracts
+          npm run build
+      - name: Persist only compiled Pages files to feature branch
+        run: |
+          set -euo pipefail
+          test -s index.html
+          test -d assets
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html assets/ .nojekyll
+          if git diff --cached --quiet; then
+            echo 'Assets already in parity'
+            exit 0
+          fi
+          git commit -m 'chore(ws07): sync job draft contract Pages bundle'
+          git push origin HEAD:work/ws07-job-draft-sql-contract-parity-20261024
