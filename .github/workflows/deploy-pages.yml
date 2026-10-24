@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           candidate_branch=main
-          expected_sha=72a24b0a5d272dfbd92b6bd5f10afa0d86f0d059
+          expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d
           git clone --depth 1 --branch "$candidate_branch" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
           git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
           git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
