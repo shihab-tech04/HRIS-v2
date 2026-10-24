@@ -74,6 +74,8 @@ if (existingUsers.data.users.length !== 0 || Number(psql('SELECT count(*) FROM a
 
 const createdUserIds = [];
 const uploadedPaths = [];
+const invitationIds = [];
+const invitationTenantIds = [];
 let createdBucket = false;
 const password = randomBytes(24).toString('base64url');
 const tenantA = '11111111-1111-4111-8111-111111111111';
@@ -102,6 +104,9 @@ try {
   applySql('supabase/migrations/20261024191001_hris_candidate_application_document_forward_port.sql');
   applySql('supabase/migrations/20261024200001_hris_preboarding_missing_rpcs_forward_port.sql');
   applySql('supabase/migrations/20261024210001_hris_recruitment_pipeline_forward_port.sql');
+  applySql('supabase/staging/phase2a/tenant_provisioning.staging.sql');
+  applySql('supabase/staging/phase2b/platform_tenant_admin_email.staging.sql');
+  applySql('supabase/migrations/20261024220001_platform_tenant_invitations.sql');
   psql("NOTIFY pgrst, 'reload schema';");
   await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -115,7 +120,14 @@ try {
     + " AND NOT has_function_privilege('anon','public.candidate_add_application_document(text,text,text,text)','EXECUTE')"
     + " AND NOT has_function_privilege('anon','public.candidate_get_my_preboarding_handoff(uuid)','EXECUTE')"
     + " AND NOT has_function_privilege('anon','public.candidate_save_my_preboarding_step(uuid,text,jsonb)','EXECUTE')"
-    + " AND NOT has_function_privilege('anon','public.hris_get_candidate_preboarding_queue(uuid)','EXECUTE'))::text;";
+    + " AND NOT has_function_privilege('anon','public.hris_get_candidate_preboarding_queue(uuid)','EXECUTE'),"
+    + "'invite_create',to_regprocedure('public.platform_hris_create_tenant_invitation(text,text,text,text,text,text)') IS NOT NULL,"
+    + "'invite_accept',to_regprocedure('public.platform_hris_accept_tenant_invitation(uuid)') IS NOT NULL,"
+    + "'invite_service_only',NOT has_function_privilege('authenticated','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE'),"
+    + "'invite_private_table',NOT has_table_privilege('authenticated','private.platform_tenant_invitations','SELECT')"
+    + " AND NOT has_table_privilege('anon','private.platform_tenant_invitations','SELECT'))::text;";
   const contractState = JSON.parse(psql(contractSql));
   record('All five forward-ported signatures exist and anonymous execute remains denied',
     Object.values(contractState).every(value => value === true));
@@ -142,6 +154,7 @@ try {
     candidateB: 'release-candidate-b-' + suffix + '@hris.test',
     recruiterA: 'release-recruiter-a-' + suffix + '@hris.test',
     recruiterB: 'release-recruiter-b-' + suffix + '@hris.test',
+    superAdmin: 'release-super-admin-' + suffix + '@hris.test',
   };
   const users = {};
   for (const key of Object.keys(emails)) {
@@ -162,7 +175,8 @@ try {
 
   psql("INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin) VALUES "
     + "(" + sqlLiteral(users.recruiterA.id) + "::uuid,'Synthetic release recruiter A',true,false),"
-    + "(" + sqlLiteral(users.recruiterB.id) + "::uuid,'Synthetic release recruiter B',true,false);"
+    + "(" + sqlLiteral(users.recruiterB.id) + "::uuid,'Synthetic release recruiter B',true,false),"
+    + "(" + sqlLiteral(users.superAdmin.id) + "::uuid,'Synthetic release platform Super Admin',true,true);"
     + "INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status) VALUES "
     + "(" + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(users.recruiterA.id) + "::uuid,'qa_tenant_recruitment_manager_a','active'),"
     + "(" + sqlLiteral(tenantB) + "::uuid," + sqlLiteral(users.recruiterB.id) + "::uuid,'qa_tenant_manager_b','active');"
@@ -174,6 +188,90 @@ try {
     + "INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,stage,applied_at) VALUES "
     + "(" + sqlLiteral(applicationId) + "::uuid," + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(jobId) + "::uuid,"
     + sqlLiteral(users.candidateA.id) + "::uuid,'Synthetic Release Candidate'," + sqlLiteral(emails.candidateA) + ",'submitted',now());");
+
+  const invitationEmail = 'release-invitee-' + suffix + '@hris.test';
+  const invitationCreated = await clients.superAdmin.rpc('platform_hris_create_tenant_invitation', {
+    p_code: 'QA_INV_' + suffix.replaceAll('-', '').slice(0, 12).toUpperCase(),
+    p_slug: 'qa-invite-' + suffix.slice(0, 8),
+    p_name: 'Synthetic invitation tenant',
+    p_timezone: 'Asia/Dhaka',
+    p_default_locale: 'en',
+    p_admin_email: invitationEmail,
+  });
+  if (invitationCreated.error || typeof invitationCreated.data?.invitation_id !== 'string') {
+    throw invitationCreated.error || new Error('Super Admin did not create a tenant invitation request.');
+  }
+  const invitationId = invitationCreated.data.invitation_id;
+  invitationIds.push(invitationId);
+  const invitationAuth = await admin.auth.admin.inviteUserByEmail(invitationEmail);
+  if (invitationAuth.error || !invitationAuth.data.user?.id) {
+    throw invitationAuth.error || new Error('Local Auth did not create an invited administrator.');
+  }
+  const invitee = invitationAuth.data.user;
+  createdUserIds.push(invitee.id);
+  const markedSent = await admin.rpc('platform_hris_mark_tenant_invitation_sent', {
+    p_invitation_id: invitationId,
+    p_auth_user_id: invitee.id,
+  });
+  if (markedSent.error || markedSent.data !== true) {
+    throw markedSent.error || new Error('Service-only invitation delivery record was not finalized.');
+  }
+  const unauthenticatedInvite = await anon.rpc('platform_hris_create_tenant_invitation', {
+    p_code: 'QA_ANON_' + suffix.replaceAll('-', '').slice(0, 10).toUpperCase(),
+    p_slug: 'qa-anon-' + suffix.slice(0, 8), p_name: 'Denied anonymous invitation',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_email: invitationEmail,
+  });
+  const ordinaryAdminInvite = await clients.recruiterA.rpc('platform_hris_create_tenant_invitation', {
+    p_code: 'QA_USER_' + suffix.replaceAll('-', '').slice(0, 10).toUpperCase(),
+    p_slug: 'qa-user-' + suffix.slice(0, 8), p_name: 'Denied ordinary administrator invitation',
+    p_timezone: 'Asia/Dhaka', p_default_locale: 'en', p_admin_email: invitationEmail,
+  });
+  const wrongAccountAcceptance = await clients.candidateA.rpc('platform_hris_accept_tenant_invitation', {
+    p_invitation_id: invitationId,
+  });
+  const setInviteePassword = await admin.auth.admin.updateUserById(invitee.id, {
+    email_confirm: true, password,
+  });
+  if (setInviteePassword.error) throw setInviteePassword.error;
+  const inviteeClient = createClient(services.API_URL, services.ANON_KEY, authOptions);
+  const inviteeSession = await inviteeClient.auth.signInWithPassword({ email: invitationEmail, password });
+  if (inviteeSession.error || !inviteeSession.data.user) {
+    throw inviteeSession.error || new Error('Invited administrator did not receive a local Auth session.');
+  }
+  const acceptedInvitation = await inviteeClient.rpc('platform_hris_accept_tenant_invitation', {
+    p_invitation_id: invitationId,
+  });
+  if (acceptedInvitation.error || acceptedInvitation.data?.accepted !== true
+    || acceptedInvitation.data?.is_active !== false
+    || typeof acceptedInvitation.data?.tenant_id !== 'string') {
+    throw acceptedInvitation.error || new Error('Invited administrator could not provision an inactive tenant.');
+  }
+  const invitedTenantId = acceptedInvitation.data.tenant_id;
+  invitationTenantIds.push(invitedTenantId);
+  const replayedAcceptance = await inviteeClient.rpc('platform_hris_accept_tenant_invitation', {
+    p_invitation_id: invitationId,
+  });
+  const inactiveTenantRead = await inviteeClient.from('tenants').select('id')
+    .eq('id', invitedTenantId);
+  const invitationAudit = psql("SELECT count(*) FROM public.admin_audit_logs WHERE action='PLATFORM_TENANT_INVITATION_ACCEPTED' AND target_id="
+    + sqlLiteral(invitedTenantId) + ";");
+  record('Super Admin invite uses local Auth, accepts only for the invited email, and provisions an inactive tenant once',
+    invitationCreated.data.email === invitationEmail
+      && markedSent.data === true
+      && Boolean(unauthenticatedInvite.error)
+      && ordinaryAdminInvite.error?.code === '42501'
+      && wrongAccountAcceptance.error?.code === '42501'
+      && !acceptedInvitation.error
+      && replayedAcceptance.data?.tenant_id === invitedTenantId
+      && inactiveTenantRead.data?.length === 0
+      && invitationAudit === '1',
+    JSON.stringify({ requestCreated: true, serviceMarkedSent: markedSent.data === true,
+      anonymousDenied: Boolean(unauthenticatedInvite.error),
+      ordinaryAdminDenied: ordinaryAdminInvite.error?.code === '42501',
+      wrongInviteeDenied: wrongAccountAcceptance.error?.code === '42501',
+      createdInactive: acceptedInvitation.data?.is_active === false,
+      replayIdempotent: replayedAcceptance.data?.tenant_id === invitedTenantId,
+      tenantDataHiddenWhileInactive: inactiveTenantRead.data?.length === 0 }));
 
   const pipeline = await clients.recruiterA.rpc('hris_get_recruitment_pipeline', {
     p_tenant_id: tenantA, p_search: 'Synthetic HRIS Release Role',
@@ -336,6 +434,19 @@ try {
     if (removed.error) throw removed.error;
   }
   const ids = createdUserIds.map(sqlLiteral).join(',');
+  if (invitationIds.length) {
+    const invitationSql = invitationIds.map(sqlLiteral).join(',');
+    psql("DELETE FROM public.admin_audit_logs WHERE target_type='platform_tenant_invitations' AND target_id IN ("
+      + invitationSql + ");"
+      + "DELETE FROM private.platform_tenant_invitations WHERE id IN (" + invitationSql + ");");
+  }
+  if (invitationTenantIds.length) {
+    const tenantSql = invitationTenantIds.map(sqlLiteral).join(',');
+    psql("DELETE FROM public.admin_audit_logs WHERE actor_id IN (" + ids + ") OR target_id IN ("
+      + tenantSql + ");"
+      + "DELETE FROM public.tenant_memberships WHERE tenant_id IN (" + tenantSql + ");"
+      + "DELETE FROM public.tenants WHERE id IN (" + tenantSql + ");");
+  }
   if (createdUserIds.length) {
     psql("DELETE FROM public.candidate_notifications WHERE related_application_id=" + sqlLiteral(applicationId) + "::uuid;"
       + "DELETE FROM public.candidate_application_stage_history WHERE application_id=" + sqlLiteral(applicationId) + "::uuid;"
@@ -344,6 +455,7 @@ try {
       + "DELETE FROM public.job_applications WHERE id=" + sqlLiteral(applicationId) + "::uuid;"
       + "DELETE FROM public.jobs WHERE id=" + sqlLiteral(jobId) + "::uuid;"
       + "DELETE FROM public.candidate_profiles WHERE user_id IN (" + ids + ");"
+      + "DELETE FROM public.admin_audit_logs WHERE actor_id IN (" + ids + ");"
       + "DELETE FROM public.admin_users WHERE user_id IN (" + ids + ");"
       + "DELETE FROM public.tenant_memberships WHERE user_id IN (" + ids + ");"
       + "DELETE FROM public.user_roles WHERE user_id IN (" + ids + ");");

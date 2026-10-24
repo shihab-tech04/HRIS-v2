@@ -22,6 +22,16 @@ export type ProvisionTenantByEmailInput = {
   code: string; slug: string; name: string; timezone: string;
   defaultLocale: 'en' | 'bn'; existingAdminEmail: string;
 };
+export type PlatformTenantInvitationInput = {
+  code: string; slug: string; name: string; timezone: string;
+  defaultLocale: 'en' | 'bn'; email: string;
+};
+export type AcceptedPlatformTenantInvitation = {
+  tenant_id: string;
+  tenant_name: string;
+  is_active: boolean;
+  accepted: true;
+};
 function requireStagingFeature() {
   if (!platformTenantFeatureAvailable) throw new Error('Platform tenant administration is not activated for this deployment.');
 }
@@ -58,6 +68,41 @@ export async function provisionPlatformTenantByEmail(input: ProvisionTenantByEma
   if (error) throw error;
   if (typeof data !== 'string') throw new Error('Tenant creation did not return a tenant ID.');
   return data;
+}
+export async function invitePlatformTenantAdministrator(input: PlatformTenantInvitationInput): Promise<void> {
+  requireStagingFeature();
+  const { data, error } = await supabase.functions.invoke('platform-tenant-invite', {
+    body: {
+      code: input.code,
+      slug: input.slug,
+      name: input.name,
+      timezone: input.timezone,
+      defaultLocale: input.defaultLocale,
+      email: input.email.trim(),
+    },
+  });
+  if (error) throw error;
+  if (!data || data.success !== true || typeof data.invitation_id !== 'string') {
+    throw new Error(typeof data?.error === 'string'
+      ? data.error
+      : 'The administrator invitation could not be sent.');
+  }
+}
+export async function acceptPlatformTenantInvitation(
+  invitationId: string,
+): Promise<AcceptedPlatformTenantInvitation> {
+  const { data, error } = await supabase.rpc('platform_hris_accept_tenant_invitation', {
+    p_invitation_id: invitationId,
+  });
+  if (error) throw error;
+  if (!data || typeof data !== 'object'
+    || typeof data.tenant_id !== 'string'
+    || typeof data.tenant_name !== 'string'
+    || typeof data.is_active !== 'boolean'
+    || data.accepted !== true) {
+    throw new Error('The invitation response was incomplete.');
+  }
+  return data as AcceptedPlatformTenantInvitation;
 }
 export async function updatePlatformTenantMetadata(
  id: string, name: string, timezone: string, defaultLocale: 'en'|'bn'

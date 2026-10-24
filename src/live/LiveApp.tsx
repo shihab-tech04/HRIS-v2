@@ -5,7 +5,7 @@ import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-re
 import { supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveHrisWorkspace } from './LiveHrisWorkspace';
-import { platformTenantFeatureAvailable } from './platformTenantApi';
+import { acceptPlatformTenantInvitation, platformTenantFeatureAvailable } from './platformTenantApi';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
@@ -40,10 +40,11 @@ const noWorkspacePermissions: WorkspacePermissions = {
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
-function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
+function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError, contextMessage }: {
   onSuccess: (value: User) => void;
   onRecoveryVerified: (value: User) => void;
   recoveryLinkError?: string;
+  contextMessage?: string;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -108,6 +109,7 @@ function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
       <p className="text-xs font-semibold text-blue-900">Synesis HRIS 360°</p>
       <h1 className="text-2xl font-bold mt-2">Sign in to your workspace</h1>
       <p className="text-sm text-slate-600 mt-2">Use an existing authorized Supabase account. Live records are restricted by the database permissions.</p>
+      {contextMessage && <p role="status" className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">{contextMessage}</p>}
       <form onSubmit={submit} className="space-y-4 mt-6">
         <div><label className="block text-sm font-medium mb-1" htmlFor="hris-email">Email</label><input required id="hris-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} className="w-full min-h-11 px-3 rounded-md border border-slate-300 focus:outline-2 focus:outline-blue-700" /></div>
         <div><label className="block text-sm font-medium mb-1" htmlFor="hris-password">Password</label><input required id="hris-password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="w-full min-h-11 px-3 rounded-md border border-slate-300 focus:outline-2 focus:outline-blue-700" /></div>
@@ -150,6 +152,70 @@ function PasswordUpdate({ onComplete }: { onComplete: () => void }) {
   </section></main>;
 }
 
+function PlatformInvitationAcceptance({ tenantName, error, onSignOut }: {
+  tenantName?: string; error?: boolean; onSignOut: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  async function savePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password.length < 12) { setFormError('Use at least 12 characters.'); return; }
+    if (password !== confirmation) { setFormError('Passwords do not match.'); return; }
+    setBusy(true);
+    setFormError('');
+    try {
+      const updated = await supabase.auth.updateUser({ password });
+      if (updated.error) throw updated.error;
+      setPassword('');
+      setConfirmation('');
+      setPasswordSaved(true);
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : 'Could not save the account password.');
+    } finally { setBusy(false); }
+  }
+
+  return <main className="min-h-screen grid place-items-center bg-slate-50 px-4 py-8">
+    <section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#085587]">Platform invitation</p>
+      <h1 className="mt-2 text-2xl font-semibold text-slate-900">{error ? 'Invitation could not be accepted' : 'Invitation accepted'}</h1>
+      {error ? <>
+        <p role="alert" className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+          This invitation is invalid, expired, or belongs to another account. Sign in with the invited email or ask the platform Super Admin to issue a fresh invitation.
+        </p>
+        <button type="button" onClick={onSignOut} className="mt-5 min-h-11 rounded-md border border-slate-300 px-4 text-sm font-medium">Return to sign in</button>
+      </> : <>
+        <p role="status" className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          {tenantName || 'Your organization'} is prepared and remains inactive pending security certification. Tenant records are unavailable until the platform Super Admin activates it.
+        </p>
+        {!passwordSaved ? <>
+          <p className="mt-4 text-sm text-slate-600">Choose a password for future sign-in. Use at least 12 characters.</p>
+          <form onSubmit={event => void savePassword(event)} className="mt-4 space-y-3">
+            <label className="block text-sm font-medium text-slate-700" htmlFor="invitation-password">New password
+              <input id="invitation-password" type="password" autoComplete="new-password" required minLength={12}
+                value={password} onChange={event => setPassword(event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3" />
+            </label>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="invitation-password-confirm">Confirm password
+              <input id="invitation-password-confirm" type="password" autoComplete="new-password" required minLength={12}
+                value={confirmation} onChange={event => setConfirmation(event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3" />
+            </label>
+            {formError && <p role="alert" className="text-sm text-rose-800">{formError}</p>}
+            <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+              {busy ? 'Saving password…' : 'Save password'}
+            </button>
+          </form>
+        </> : <p role="status" className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Password saved. Keep this page open to retain the invitation status. The organization will become available after certification and activation.</p>}
+        <button type="button" onClick={onSignOut} className="mt-4 min-h-11 rounded-md border border-slate-300 px-4 text-sm font-medium">Sign out</button>
+      </>}
+    </section>
+  </main>;
+}
+
 export function LiveApp({ preview }: { preview: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
@@ -181,6 +247,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const lastAccessUserId = useRef<string | null>(null);
   const [error, setError] = useState('');
+  const platformInvitationId = new URLSearchParams(window.location.search).get('platform_invitation') || '';
+  const [invitationAcceptance, setInvitationAcceptance] = useState<{
+    id: string; status: 'accepting' | 'accepted' | 'error';
+    tenantName?: string; tenantActive?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -201,6 +272,32 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     });
     return () => { active = false; authListener.subscription.unsubscribe(); };
   }, []);
+
+  useEffect(() => {
+    if (!platformInvitationId || !user) return;
+    let active = true;
+    setInvitationAcceptance({ id: platformInvitationId, status: 'accepting' });
+    void acceptPlatformTenantInvitation(platformInvitationId).then(result => {
+      if (!active) return;
+      if (result.is_active) {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('platform_invitation');
+        window.history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+        setInvitationAcceptance(null);
+        setRefreshKey(key => key + 1);
+        return;
+      }
+      setInvitationAcceptance({
+        id: platformInvitationId,
+        status: 'accepted',
+        tenantName: result.tenant_name,
+        tenantActive: false,
+      });
+    }).catch(() => {
+      if (active) setInvitationAcceptance({ id: platformInvitationId, status: 'error' });
+    });
+    return () => { active = false; };
+  }, [platformInvitationId, user?.id]);
 
   // The original Supabase email template currently redirects to localhost.
   // Our fragment-based fallback uses a one-time recovery token without sending it to GitHub Pages.
@@ -401,6 +498,13 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     if (result.error) setError(result.error.message);
     else setUser(null);
   }
+  async function finishInvitationAndSignOut() {
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('platform_invitation');
+    window.history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+    setInvitationAcceptance(null);
+    await signOut();
+  }
 
   if (checking) return <main className="min-h-screen grid place-items-center"><p>Checking session…</p></main>;
   if (passwordRecovery) return <PasswordUpdate onComplete={() => { setPasswordRecovery(false); setUser(null); }} />;
@@ -423,7 +527,20 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         </div>
       );
     }
-    return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError} onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
+    return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError}
+      contextMessage={platformInvitationId ? 'Sign in with the same email address that received the platform invitation. The invitation will be checked after sign-in.' : undefined}
+      onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
+  }
+  if (platformInvitationId) {
+    if (!invitationAcceptance || invitationAcceptance.id !== platformInvitationId
+      || invitationAcceptance.status === 'accepting') {
+      return <main className="min-h-screen grid place-items-center bg-slate-50"><p role="status">Verifying your platform invitation…</p></main>;
+    }
+    return <PlatformInvitationAcceptance
+      tenantName={invitationAcceptance.tenantName}
+      error={invitationAcceptance.status === 'error'}
+      onSignOut={() => { void finishInvitationAndSignOut(); }}
+    />;
   }
   const current = tenants.find(t => t.id === tenantId);
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
@@ -481,7 +598,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       </div>
       {membershipLoading && <p role="status" className="text-sm mb-4">Loading permitted organizations…</p>}
       {error && <p role="alert" className="p-3 mb-4 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm">{error}</p>}
-      {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No authorized HRIS organization</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but no active tenant membership, linked employee, or authorized Synesis administrator scope was found. Contact your system administrator. No sample organization is substituted.</p></section>}
+      {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No authorized HRIS organization</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but no active tenant membership, linked employee, or authorized Synesis administrator scope was found. A prepared tenant may remain unavailable while security certification is pending. Contact your platform administrator. No sample organization is substituted.</p></section>}
       {current && <>
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
           {canAdminSelectedTenant && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}

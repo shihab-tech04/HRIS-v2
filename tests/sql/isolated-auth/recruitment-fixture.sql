@@ -119,6 +119,7 @@ CREATE TABLE public.onboarding_handoffs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   application_id uuid NOT NULL UNIQUE,
   status text NOT NULL DEFAULT 'in_progress',
+  created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
