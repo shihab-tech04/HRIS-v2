@@ -1,0 +1,69 @@
+name: HRIS New Supabase Admin QA Build (non-deploying)
+on:
+  push:
+    branches:
+      - qa/new-supabase-admin-20261022
+permissions:
+  contents: read
+jobs:
+  qa-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout QA-only source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install QA dependencies (this source branch has no npm lock file)
+        run: npm install --include=optional --no-audit --no-fund
+      - name: Type-check
+        run: npm run lint
+      - name: Run source contract tests
+        run: npm run test:contracts
+      - name: Build new-Supabase QA bundle (no Pages deployment)
+        run: npx vite build --mode qa
+      - name: Verify new target URL and public key are compiled
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          function jsFiles(root) {
+            return fs.readdirSync(root, {withFileTypes:true}).flatMap(x => x.isDirectory() ? jsFiles(path.join(root,x.name)) : x.name.endsWith('.js') ? [path.join(root,x.name)] : []);
+          }
+          const bundle=jsFiles('dist').map(p=>fs.readFileSync(p,'utf8')).join('\n');
+          if(!bundle.includes('xfuxnljfrgvusbrpvxpa.supabase.co') || !bundle.includes('sb_publishable_')) {
+            throw new Error('QA bundle did not contain the authorized destination Supabase URL + publishable key');
+          }
+          console.log('QA bundle destination and public key verified (key not printed).');
+          NODE
+      - name: Install isolated Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Exercise new-database QA sign-in view at three viewports
+        run: |
+          set -euo pipefail
+          npx vite preview --base=/HRIS-v2/ --host 127.0.0.1 --port 4179 --strictPort >"$RUNNER_TEMP/new-supabase-qa-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4179/HRIS-v2/app.html >/dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/qa-new-supabase-browser.mjs
+      - name: Upload isolated browser evidence (no authentication secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-new-supabase-admin-qa-browser
+          path: ui-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Save standalone QA build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-new-supabase-admin-qa-build
+          path: dist/
+          if-no-files-found: error
