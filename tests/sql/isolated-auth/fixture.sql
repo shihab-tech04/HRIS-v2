@@ -132,7 +132,7 @@ DROP TABLE IF EXISTS public.admin_users CASCADE;
 DROP TABLE IF EXISTS public.tenants CASCADE;
 
 CREATE TABLE public.tenants (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   slug text NOT NULL UNIQUE,
   code text NOT NULL UNIQUE,
   name text NOT NULL,
