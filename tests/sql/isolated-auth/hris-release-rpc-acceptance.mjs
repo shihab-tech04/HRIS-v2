@@ -123,9 +123,8 @@ try {
   // The hosted replacement already has this minimum scoped role/grant. Seed
   // the same authorization prerequisite in this isolated database only; the
   // disposable stack intentionally does not copy hosted RBAC rows.
-  psql("INSERT INTO public.roles(id,name,description,active,is_system) "
-    + "VALUES('hr_admin','Tenant HR administrator',"
-    + "'Synthetic isolated tenant-scoped organization administration',true,false) "
+  psql("INSERT INTO public.roles(id,name,active) "
+    + "VALUES('hr_admin','Tenant HR administrator',true) "
     + "ON CONFLICT (id) DO NOTHING;"
     + "INSERT INTO public.role_permissions(role_id,permission_id) "
     + "SELECT 'hr_admin','organization.manage' WHERE NOT EXISTS ("
