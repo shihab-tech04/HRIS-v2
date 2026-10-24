@@ -97,7 +97,27 @@
       "20261013130829",
       "20261013132335",
       "20261016033936"
-    ]
+    ],
+    "phase_b_security_postconditions": {
+      "source_file": "tests/sql/hosted-parity/phase-b-target-postconditions.sql",
+      "executed_read_only": "2026-10-24",
+      "pass_count": 5,
+      "fail_count": 9,
+      "total": 14,
+      "failed_gate_codes": [
+        "02",
+        "03",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11"
+      ],
+      "gate": "BLOCKED",
+      "runtime_auth_two_tenant_acceptance": "NOT_VERIFIED"
+    }
   },
   "count_reconciliation": {
     "requested_157": "OPEN",
