@@ -1,0 +1,43 @@
+name: One-time latest exact-main HRIS Pages release after PG17 QA
+on:
+  push:
+    branches: [release/main-approved-source-20261024]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch-approved-release:
+    if: github.ref == 'refs/heads/release/main-approved-source-20261024'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Guard current Main SHA and the unchanged approved release workflow
+        shell: bash
+        env:
+          EXPECTED_MAIN: '444461870cac710e1c9cb850bc59eedbb86dd629'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_MAIN"
+          git cat-file -e "FETCH_HEAD:tests/sql/isolated-auth/membership-rebind-fixture.sql"
+          git cat-file -e "FETCH_HEAD:supabase/staging/hosted-membership-transition/20261024_super_admin_membership_rebind.staging.sql"
+          git show "FETCH_HEAD:.github/workflows/deploy-pages.yml" > "$RUNNER_TEMP/approved-deploy.yml"
+          grep -F "github.ref == 'refs/heads/main' && inputs.release_approved == true" "$RUNNER_TEMP/approved-deploy.yml"
+      - name: Dispatch existing reviewed Main-only production build/browser workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GH_REPO/actions/workflows/deploy-pages.yml/dispatches" \
+            --input - <<'JSON'
+          {"ref":"main","inputs":{"release_approved":true}}
+          JSON
+          echo 'Main approved deployment dispatched; final PASS is owned by the existing hosted workflow.'
