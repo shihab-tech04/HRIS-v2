@@ -109,17 +109,35 @@ jobs:
           # a one-pass table-data restore; pre-data -> data -> post-data ensures
           # constraints are created after their referenced rows are loaded.
           # Fail-closed: we DO NOT turn off FK enforcement or ignore errors.
+          # Replacement source has 58 preexisting audit actor references to
+          # deleted historical Auth users, even with convalidated=true.
+          # Keep every original row/UUID intact. The one legacy FK is replayed
+          # below as NOT VALID (still enforced for future writes), rather than
+          # silently dropping audit history or fabricating Auth users.
+          archive_toc="${RUNNER_TEMP}/hris-restore-inventory.txt"
+          excluded_fk="${RUNNER_TEMP}/hris-legacy-audit-fk-postdata.toc"
+          match_count="$(grep -Ec 'FK CONSTRAINT.*admin_audit_logs_actor_id_fkey' "$archive_toc" || true)"
+          if [[ "$match_count" != 1 ]]; then
+            echo "::error::Pinned archive lacks exactly one expected audit FK item."
+            exit 1
+          fi
+          sed -E '/FK CONSTRAINT.*admin_audit_logs_actor_id_fkey/s/^/;/' "$archive_toc" >"$excluded_fk"
+
           restore_failed_section=''
           restore_log="${RUNNER_TEMP}/hris-restore-log.txt"
           : >"$restore_log"
           for section in pre-data data post-data; do
+            section_args=()
+            if [[ "$section" == "post-data" ]]; then
+              section_args=(--use-list=/restore/hris-legacy-audit-fk-postdata.toc)
+            fi
             if ! docker run --rm --network host \
               --env PGPASSWORD=postgres \
               --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
               postgres:17-alpine \
               pg_restore --host 127.0.0.1 --port 55422 --username supabase_admin \
                 --dbname hris_recovered_isolated --no-owner --no-acl \
-                --section="$section" --exit-on-error --verbose \
+                --section="$section" "${section_args[@]}" --exit-on-error --verbose \
                 /restore/hris-recovered.pgcustom >>"$restore_log" 2>&1; then
               restore_failed_section="$section"
               break
@@ -149,6 +167,28 @@ jobs:
             fi
             exit 1
           fi
+          # Explicitly verify exact pinned-source legacy drift before altering
+          # *only this disposable database's* FK validity state.
+          legacy_probe="SELECT CASE WHEN
+            (SELECT COUNT(*) FROM public.admin_audit_logs)=61
+            AND (SELECT COUNT(*) FROM public.admin_audit_logs WHERE actor_id IS NOT NULL)=59
+            AND (SELECT COUNT(*) FROM auth.users)=1
+            AND (SELECT COUNT(*) FROM public.admin_audit_logs a
+                 LEFT JOIN auth.users u ON u.id=a.actor_id
+                 WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=58
+            THEN 'PINNED_LEGACY_FK_DRIFT_VERIFIED' ELSE 'LEGACY_DRIFT_MISMATCH' END;"
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$legacy_probe" \
+            | grep -Fx "PINNED_LEGACY_FK_DRIFT_VERIFIED"
+
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -v ON_ERROR_STOP=1 \
+              -c 'ALTER TABLE public.admin_audit_logs ADD CONSTRAINT admin_audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL NOT VALID;' \
+              >/dev/null
+          echo "RECOVERY_EXCEPTION: legacy 58 orphaned audit actor references retained unchanged; FK NOT VALID on isolated restore only."
+
           probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
              AND to_regclass('public.admin_users') IS NOT NULL
              AND to_regclass('public.employees') IS NOT NULL
@@ -156,17 +196,21 @@ jobs:
              AND (SELECT COUNT(*) FROM public.admin_users) >= 1
              AND to_regclass('auth.users') IS NOT NULL
              AND (SELECT COUNT(*) FROM auth.users) >= 1
-             AND NOT EXISTS (SELECT 1 FROM public.admin_audit_logs a
-                               LEFT JOIN auth.users u ON u.id=a.actor_id
-                              WHERE a.actor_id IS NOT NULL AND u.id IS NULL)
+             AND (SELECT COUNT(*) FROM public.admin_audit_logs a
+                  LEFT JOIN auth.users u ON u.id=a.actor_id
+                  WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=58
+             AND EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid='public.admin_audit_logs'::regclass
+                    AND conname='admin_audit_logs_actor_id_fkey'
+                    AND contype='f' AND NOT convalidated)
              AND to_regclass('supabase_migrations.schema_migrations') IS NOT NULL
              AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations) >= 110
-             THEN 'ISOLATED_RESTORE_VERIFIED' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
+             THEN 'ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
           docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
             psql --host 127.0.0.1 --port 55422 --username postgres \
               --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
-            | grep -Fx "ISOLATED_RESTORE_VERIFIED"
-          echo "PASS: isolated restore completed and application tables/data verified."
+            | grep -Fx "ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION"
+          echo "PASS: isolated restore with pinned 58-row historical FK exception, NOT a clean byte-for-byte schema restoration."
           echo "Not a live HRIS functional acceptance or Supabase Storage files/secrets restore."
 
       - name: Stop disposable local Supabase only
