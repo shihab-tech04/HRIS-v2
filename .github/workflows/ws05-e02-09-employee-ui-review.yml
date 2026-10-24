@@ -23,8 +23,12 @@ jobs:
       - run: npm install --no-save --no-package-lock --include=optional --no-audit --no-fund @typescript/typescript-linux-x64@7.0.2
       - name: Restore sibling Candidate source for existing contracts
         run: git clone --quiet --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git ../HRIS-Candidate-v2
-      - name: Typecheck, contracts and build
-        run: npm run check
+      # The full repository RPC inventory will be rerun by WS05 only after
+      # WS02 merges its separate E02-09 SQL source (PR #75).
+      - name: Typecheck and frontend build
+        run: npm run lint && npm run build
+      - name: Existing employee employment identity contracts
+        run: node --test tests/contracts/employee-identity-card.test.mjs
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: E02-09 browser and Figma acceptance
