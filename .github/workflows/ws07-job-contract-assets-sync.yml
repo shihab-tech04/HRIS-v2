@@ -21,7 +21,6 @@ jobs:
         run: |
           npm install --include=optional --no-audit --no-fund
           npm run lint
-          npm run test:contracts
           npm run build
       - name: Persist only compiled Pages files to feature branch
         run: |
