@@ -11,6 +11,10 @@ test('offline PG17 archive restores pre-data, data, then post-data with real con
   assert.match(file,/FROM auth\.users/);
   assert.match(file,/admin_audit_logs a[\s\S]*LEFT JOIN auth\.users u ON u\.id=a\.actor_id/);
   assert.match(file,/supabase_migrations\.schema_migrations/);
-  assert.match(file,/ISOLATED_RESTORE_VERIFIED/);
+  // The hosted source has 58 historic orphan actors. Only an explicitly
+  // qualified recovery result is permissible until Auth/source drift is fixed.
+  assert.match(file,/ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION/);
+  assert.match(file,/PINNED_LEGACY_FK_DRIFT_VERIFIED/);
+  assert.match(file,/NOT convalidated/);
   assert.doesNotMatch(file,/--disable-triggers|session_replication_role\s*=\s*replica|HRIS_DB_PASSWORD|aws-\d+-ap-northeast-2/);
 });
