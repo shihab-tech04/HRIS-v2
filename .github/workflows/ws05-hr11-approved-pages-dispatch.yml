@@ -21,13 +21,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=f0440303bf6c1b7ab8eda053152be3c3c2ac503b
+          base=e956ee3a86580835bb0f4061e43447642afad274
           git merge-base --is-ancestor "$base" HEAD
           changed="$(git diff --name-only "$base" HEAD)"
           test "$changed" = '.github/workflows/ws05-hr11-approved-pages-dispatch.yml'
           grep -Fq 'workflow_dispatch:' .github/workflows/deploy-pages.yml
           grep -Fq 'inputs.release_approved == true' .github/workflows/deploy-pages.yml
           grep -Fq "actions/deploy-pages@v4" .github/workflows/deploy-pages.yml
+          grep -Fq 'expected_sha=412c2137e19ffbb5e7a5e8ad3a4e505bfbaaca03' .github/workflows/deploy-pages.yml
+          grep -Fq 'test "$actual_sha" = "$expected_sha"' .github/workflows/deploy-pages.yml
           grep -Fq "application_deadline: draft.deadline || null" src/live/JobCircularManager.tsx
           grep -Fq "['full-time','part-time','contract','internship']" src/live/JobCircularManager.tsx
           test -s index.html
