@@ -2,6 +2,14 @@ name: WS02 Super Admin Auth rebound isolated PostgreSQL 17 acceptance
 on:
   push:
     branches: [work/ws02-membership-rebind-pg17-acceptance-20261024]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/ws02-membership-rebind-pg17-20261024.yml'
+      - 'tests/sql/isolated-auth/membership-rebind-fixture.sql'
+      - 'tests/sql/isolated-auth/verify-membership-rebind.sql'
+      - 'supabase/staging/hosted-membership-transition/20261024_super_admin_membership_rebind.staging.sql'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
