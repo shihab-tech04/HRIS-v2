@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           git fetch --no-tags --depth=1 origin main
           test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_MAIN"
-          git show "FETCH_HEAD:docs/programme/HRIS_360_EXECUTION_ACCEPTANCE_LEDGER_20261024.json" | head -c 1 | grep -Fq '{'
+          git cat-file -e "FETCH_HEAD:docs/programme/HRIS_360_EXECUTION_ACCEPTANCE_LEDGER_20261024.json"
           git cat-file -e "FETCH_HEAD:supabase/staging/hosted-membership-transition/20261024_super_admin_membership_rebind.staging.sql"
           git show "FETCH_HEAD:.github/workflows/deploy-pages.yml" | grep -F "github.ref == 'refs/heads/main' && inputs.release_approved == true"
       - name: Dispatch the existing protected main-only approved GitHub Pages workflow
