@@ -466,11 +466,18 @@ try {
       tax_identification_number: 'TEST-TIN-001' }],
     ['step_policies', { policies_accepted: true }],
   ];
+  const stepProgress = [];
   for (const [step, payload] of steps) {
     const saved = await clients.candidateA.rpc('candidate_save_my_preboarding_step', {
       p_application_id: applicationId, p_step_key: step, p_payload: payload,
     });
     if (saved.error) throw saved.error;
+    stepProgress.push({
+      step,
+      completedSteps: saved.data?.candidate_completed_steps?.length || 0,
+      submitted: Boolean(saved.data?.candidate_submitted_at),
+      status: saved.data?.status,
+    });
   }
   const queue = await clients.recruiterA.rpc('hris_get_candidate_preboarding_queue', { p_tenant_id: tenantA });
   const foreignQueue = await clients.recruiterB.rpc('hris_get_candidate_preboarding_queue', { p_tenant_id: tenantA });
@@ -484,8 +491,9 @@ try {
       && row?.candidate_personal_data?.national_id === 'SYNTHETIC-ID'
       && foreignQueue.error?.code === '42501'
       && Boolean(directRead.error) && Boolean(anonymousHandoff.error),
-    JSON.stringify({ accepted: !accepted.error, completedSteps: row?.candidate_completed_steps?.length || 0,
-      submitted: Boolean(row?.candidate_submitted_at),
+    JSON.stringify({ accepted: !accepted.error, queueRows: queue.data?.length || 0,
+      completedSteps: row?.candidate_completed_steps?.length || 0,
+      submitted: Boolean(row?.candidate_submitted_at), stepProgress,
       foreignRecruiterDenied: foreignQueue.error?.code === '42501',
       directTableDenied: Boolean(directRead.error), anonymousDenied: Boolean(anonymousHandoff.error) }));
 } catch (error) {
