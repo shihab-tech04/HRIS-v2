@@ -30,7 +30,9 @@ test('job circular changes preserve official linked identities and structured qu
     'skills','responsibilities','requirements','benefits','required_documents']) {
     assert.ok(manager.includes(field), 'missing approved SQL field: ' + field);
   }
-  assert.match(manager, /screening_questions: editing\?\.screening_questions \|\| \[\]/);
+  assert.match(manager, /screening_questions: editing\\?\\.is_published/);
+  assert.match(manager, /\\? editing\\.screening_questions/);
+  assert.match(manager, /: screeningQuestions\\.map\\(question =>/);
   assert.match(manager, /team_id: editing\?\.team_id \|\| null/);
   assert.match(manager, /designation_id: editing\?\.designation_id \|\| null/);
   assert.match(manager, /requisition_id: editing\?\.requisition_id \|\| null/);
@@ -53,4 +55,30 @@ test('public Candidate vacancy retrieval remains backed by published SQL view, n
   assert.match(candidate, /\.eq\('is_active', true\)/);
   assert.match(candidate, /if \(!DEMO_MODE\) throw new Error\('Unable to verify published vacancies/);
   assert.match(candidate, /published_salary_min: undefined, published_salary_max: undefined, salary_currency: undefined/);
+});
+
+
+test('screening editor matches hosted SQL and Candidate question contracts', () => {
+  for (const type of ['short_text','long_text','number','yes_no','single_select','multi_select','date']) {
+    assert.ok(manager.includes("'" + type + "'"), 'missing supported SQL answer kind: ' + type);
+  }
+  assert.match(manager, /function validateQuestions\(questions: ScreeningQuestion\[\]\)/);
+  assert.match(manager, /needsOptions\(question\.type\)/);
+  assert.match(manager, /questionText: question\.questionText\.trim\(\)/);
+  assert.match(manager, /id: crypto\.randomUUID\(\)/);
+  assert.match(manager, /setScreeningQuestions\(restoreQuestions\(job\.screening_questions \|\| \[\]\)\)/);
+  assert.match(manager, /disabled=\{saving \|\| Boolean\(editing\?\.is_published\)\}/);
+  assert.match(manager, /screening_questions: editing\?\.is_published/);
+  assert.match(candidate, /question: String\(q\.questionText \|\| q\.question \|\| ''\)/);
+  assert.match(candidate, /options: Array\.isArray\(q\.options\)/);
+});
+
+test('screening editor translates active EN/BN UI, preserving Candidate public-only gate', () => {
+  assert.match(live, /<JobCircularManager tenantId=\{tenantId\} refreshKey=\{0\} locale=\{locale\}/);
+  for (const word of ['Application screening questions', 'Add question', 'Question text *',
+    'Answer type', 'Answer options (one per line) *', 'Required answer', 'Remove question']) {
+    assert.ok(locale.includes("'" + word + "':"), 'missing Bengali translation: ' + word);
+  }
+  assert.match(manager, /projectText\(locale, english\)/);
+  assert.doesNotMatch(manager, /style=\{/);
 });
