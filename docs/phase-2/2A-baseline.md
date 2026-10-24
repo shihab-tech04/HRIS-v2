@@ -2,7 +2,7 @@
 
 **Baseline** main 80f2a98876081850124b5252bd96a83ebcaf4468, 2026-10-11.
 **Database** hrmis-saas / oslgwxaqfbteqtwqvdzs, read-only inspection; 89 public tables all with RLS.
-**Status** STAGING CONTRACT PREPARED, NOT APPLIED OR SECURITY CERTIFIED.
+**Status** STAGING CONTRACT PASSED LOCAL AUTH/RLS AND BROWSER ACCEPTANCE (2026-10-14); NOT APPLIED TO PRODUCTION OR CERTIFIED FOR RELEASE.
 
 ## Existing behavior and defects
 
@@ -21,21 +21,23 @@
 - Atomic create of inactive tenant, existing activated administrator membership, and server-authored audit row.
 - Protected tenant-list, metadata update and admin assignment/revocation RPCs; explicit authenticated EXECUTE, revoked from PUBLIC and anon.
 - New tenants stay INACTIVE until the system-wide RLS and privileged RPC reviews are complete.
-- src/live/platformTenantApi.ts is an unmounted adapter; it requires deliberate staging VITE_ENABLE_PLATFORM_TENANTS=true. No production route or preview behavior changed.
+- src/live/platformTenantApi.ts is wired to the existing HRIS shell behind deliberate `VITE_ENABLE_PLATFORM_TENANTS=true`; navigation also requires active Super Admin state and the page rechecks authority through the server RPC. The flag remains off in production configuration.
 
-## Stage tests — NOT EXECUTED
+## Local stage acceptance — 2026-10-14
 
-1. Use a disposable isolated PostgreSQL/Supabase project with real synthetic Auth identities. Existing hrmis-saas is production and must not be the test environment.
-2. Apply the staging SQL; verify function definitions, execute grants, security advisors, no altered pre-existing records.
-3. Platform session: create tenant → inactive record → admin membership → audit → reload → metadata update → database read-back.
-4. Negative cases: unauthorized employee, another tenant administrator, anonymous caller, direct RPC attack, revoked/expired sessions, duplicate code/slug and invalid timezone. Confirm atomic rollback and no leaked records.
-5. Assign/revoke admin, block last-admin removal, verify actor/target in audit and concurrency.
-6. Run old Phase 1 tests at all nine widths, EN/BN and accessibility, then add real authenticated staging browser journeys.
+- Applied the staged contract to the free disposable local Supabase project `synesis-hris-phase2a-20261014`, using real GoTrue-created identities. Production `hrmis-saas` was not contacted.
+- `tests/sql/phase2a/run-local.mjs`: **44 passed, 0 failed**, including server-side Super Admin authorization, ordinary and anonymous denial, direct-table RLS filtering, atomic validation, inactive persistence, admin assignment/revocation, last-admin protection, audit attribution, and revoked-session rejection.
+- The same runner drove the actual app with authenticated desktop and mobile browser sessions, verified tenant and metadata read-back, and checked error, cancellation, refresh, ordinary-user denial, and responsive overflow behavior.
+- Regression evidence: project-workspace browser suite **7 passed, 0 failed**; `npm run check` completed with TypeScript pass, **143 contract tests passed, 0 failed**, and a successful build.
+- Detailed evidence: `docs/evidence/phase2a-platform-tenants-20261014.md`.
 
 ## Open/blocked items
 
+- **19 October additional fail-closed repair (staged only):** provisioning and tenant-admin appointment now reject a missing, inactive or unprivileged `hr_admin` registry role (required `organization.manage`) before inserting a membership. The isolated fixtures explicitly model the registry. This prevents a legacy allow-list membership from being mistaken for an effective tenant permission. It does **not** seed live roles, choose the full administrator permission bundle, authorize a production backfill, or certify Phase 03.
+
 - Tenant activation/deactivation remains **BLOCKED** until comprehensive tenant-scoped authorization/RLS is ready (2C); hiding a menu is not a backend denial.
-- UI controls for platform tenants are not enabled until staging RPC passes; no fake Save success.
+- Platform tenant UI remains behind the explicit staging feature flag; the local acceptance does not certify the production release.
+- The current approved contract requires a known existing Auth UUID for administrator assignment. Account search, invitations, and account creation remain outside this phase; identity lookup is an operational dependency.
 - Invitations and account creation (2B), generalized multi-role RBAC (2C), module engine (2D), masters (2E), workflow engine (2F), audit certification (2G) are not claimed.
 - Production database schema/data and previously solved Phase 1 UX remain untouched.
 - Rollback staging functions only after reviewing dependencies; preserve locale data unless separately approved.

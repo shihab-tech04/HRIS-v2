@@ -24,6 +24,7 @@ import { AuditAndCompliance } from './views/admin/AuditAndCompliance';
 
 import { X, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
 import { LiveApp } from './live/LiveApp';
+import { FrontendReviewApp } from './frontend-review/FrontendReviewApp';
 
 const MainShell: React.FC = () => {
   const {
@@ -173,5 +174,6 @@ const MainShell: React.FC = () => {
 };
 
 export default function App() {
+  if (import.meta.env.VITE_HRIS_FRONTEND_REVIEW === 'true') return <FrontendReviewApp />;
   return <LiveApp preview={<HRISProvider><MainShell /></HRISProvider>} />;
 }

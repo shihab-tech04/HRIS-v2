@@ -1,0 +1,53 @@
+{
+  "checkpoint": "2026-10-13 23:35 Asia/Dhaka",
+  "destination": {
+    "name": "HRMIS Preservation 2026-10-11",
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "owner": "shihabshajib01@gmail.com",
+    "owner_verified": true,
+    "upload_permission_verified_by_successful_upload": true
+  },
+  "archives": [
+    {
+      "application": "Main",
+      "file_name": "Synesis-HRIS-v2-20261013_2335-65dfd36.zip",
+      "source_commit": "65dfd368590fb7570670946912fefdadfb5c062b",
+      "local_path": "/private/tmp/synesis-hris-checkpoint-20261013_2335/Synesis-HRIS-v2-20261013_2335-65dfd36.zip",
+      "local_size_bytes": 2730905,
+      "local_sha256": "29f13ea808cb827ebfcd6e89962d42f21530aaa1ce4f75b64f63c9dfc2721d85",
+      "local_zip_integrity": "passed",
+      "drive_file_id": "132YpML9NefaJ6GlGdqM3UuD3n41I7Qf9",
+      "drive_url": "https://drive.google.com/file/d/132YpML9NefaJ6GlGdqM3UuD3n41I7Qf9/view?usp=drivesdk",
+      "drive_parent_matches_destination": true,
+      "drive_size_bytes": 2730905,
+      "remote_sha256": null,
+      "remote_sha256_status": "not verified; connector returned a streamed signed file reference but no materialized local path or bytes"
+    },
+    {
+      "application": "Candidate",
+      "file_name": "Synesis-HRIS-Candidate-v2-20261013_2327-217bfea.zip",
+      "source_commit": "217bfeadd520f09d30e36b18af0589ac2ad6cee9",
+      "local_path": "/private/tmp/synesis-hris-checkpoint-20261013_2327/Synesis-HRIS-Candidate-v2-20261013_2327-217bfea.zip",
+      "local_size_bytes": 2717044,
+      "local_sha256": "9ea347763845da19f92629a7cf865e84a3ed9354a59f1c5607c570cdbe6e26e8",
+      "local_zip_integrity": "passed",
+      "drive_file_id": "1GsOyZiG7BSAl7CTgzfJzemd6Uu6ZkrCt",
+      "drive_url": "https://drive.google.com/file/d/1GsOyZiG7BSAl7CTgzfJzemd6Uu6ZkrCt/view?usp=drivesdk",
+      "drive_parent_matches_destination": true,
+      "drive_size_bytes": 2717044,
+      "remote_sha256": null,
+      "remote_sha256_status": "not verified; connector returned a streamed signed file reference but no materialized local path or bytes"
+    }
+  ],
+  "verification": {
+    "drive_upload_completed": true,
+    "metadata_and_raw_fetch_sizes_match_local": true,
+    "remote_sha_claimed": false,
+    "production_changed": false,
+    "paid_services_activated": false,
+    "github_pushed": false,
+    "deployed": false
+  },
+  "acceptance_evidence": "docs/programme/ACCEPTANCE_EVIDENCE_20261013_2335.md",
+  "execution_checkpoint": "docs/programme/EXECUTION_CHECKPOINT_20261013_2335.md"
+}

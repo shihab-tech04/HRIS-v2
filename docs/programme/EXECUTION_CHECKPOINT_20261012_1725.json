@@ -1,0 +1,76 @@
+{
+  "recorded_at": "2026-10-12T17:25:00+06:00",
+  "phase": "08",
+  "module": "Shift roster schedule (read-only)",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "previous_checkpoint_commit": "bc4c0c411db1079f368fc4c9542f3cb4ddfe70e7",
+  "feature_commit": "cb1e8de08ac8100463c5182b87119f4d29cb95ee",
+  "diff_since_previous_checkpoint": {
+    "paths": 20,
+    "insertions": 447,
+    "deletions": 28
+  },
+  "diff_since_2026_10_12_1420_drive_baseline": {
+    "base_commit": "4ded5f13f1ef2bf17237f347bfac9811283c52dc",
+    "paths": 69,
+    "insertions": 6310,
+    "deletions": 55
+  },
+  "source_and_test_paths_changed_since_previous_checkpoint": [
+    "src/live/LiveHrisWorkspace.tsx",
+    "supabase/migrations/20261012111928_hris_tenant_shift_roster_read.sql",
+    "tests/sql/isolated-auth/fixture.sql",
+    "tests/sql/isolated-auth/run-local.mjs",
+    "tests/browser/shift-roster.spec.ts",
+    "tests/contracts/shift-roster.test.mjs"
+  ],
+  "visual_evidence_paths": [
+    "docs/evidence/shift-roster-desktop-20261012.png",
+    "docs/evidence/shift-roster-mobile-20261012.png"
+  ],
+  "implemented": [
+    "Authenticated read-only tenant shift roster page",
+    "Tenant-checked hris_get_tenant_shift_roster_data RPC",
+    "Date range, employee/shift search, refresh, CSV export, responsive horizontal table",
+    "Contract, browser and isolated local Auth/RLS coverage"
+  ],
+  "tests": {
+    "typescript": { "passed": 1, "failed": 0 },
+    "contracts": { "passed": 28, "failed": 0 },
+    "vite_build": { "passed": 1, "failed": 0, "warning": "Existing minified chunk exceeds 500 kB" },
+    "isolated_local_auth_rls": { "passed": 50, "failed": 0 },
+    "chromium_full_suite": { "passed": 38, "failed": 0 },
+    "shift_roster_browser": { "passed": 1, "failed": 0 },
+    "git_diff_check": { "passed": 1, "failed": 0 }
+  },
+  "previously_failing_tenant_security_cases": {
+    "passed": 5,
+    "failed": 0,
+    "cases": [
+      "Tenant B cannot read Tenant A attendance",
+      "Tenant A cannot read Tenant B attendance",
+      "Tenant B cannot call Tenant A dashboard/attendance/leave RPCs",
+      "Tenant B cannot approve Tenant A leave",
+      "Tenant B cannot approve Tenant A attendance"
+    ]
+  },
+  "canonical_story_catalogue": {
+    "reported_count": 1047,
+    "reported_module_count": 153,
+    "expected_sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "verified_source_available": false,
+    "fully_mapped_and_accepted": 0,
+    "pending": 1047,
+    "reason": "Mounted Project sources directory is empty; no story IDs or criteria inferred."
+  },
+  "active_blocker": "Canonical source file is not readable from mounted Project sources; story-level mapping remains blocked.",
+  "next_executable_action": "Continue Phase 08 with attendance.manage-gated shift assignment, respecting the existing tenant/employee/date unique key and validating it on isolated local Auth/RLS.",
+  "release": {
+    "status": "NOT FOR RELEASE",
+    "production_data_or_permissions_changed": false,
+    "paid_supabase_service_created": false,
+    "github_push_performed": false,
+    "deployment_performed": false,
+    "drive_checkpoint_upload_status_at_snapshot": "pending owner/write/readback verification"
+  }
+}

@@ -1,25 +1,28 @@
 name: Publish HRIS on GitHub Pages
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Confirm that the owner has explicitly approved this production release.
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: github-pages
   cancel-in-progress: true
 jobs:
   build:
+    if: github.ref == 'refs/heads/main' && inputs.release_approved == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.21.0'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --include=optional --no-audit --no-fund
       - name: TypeScript and static contract checks
         run: npm run lint && npm run test:contracts
       - name: Build GitHub Pages application
@@ -38,7 +41,11 @@ jobs:
           path: dist
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main' && inputs.release_approved == true
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
     steps:
@@ -69,9 +76,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24.21.0'
       - name: Install live browser verification dependencies
-        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+        run: npm install --include=optional --no-audit --no-fund && npx playwright install --with-deps chromium
       - name: Verify published login and recovery screen with Chromium
         run: |
           node --input-type=module <<'NODE'

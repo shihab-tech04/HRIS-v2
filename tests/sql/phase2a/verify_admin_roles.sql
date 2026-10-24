@@ -29,6 +29,74 @@ SELECT public.check_phase2a(
  AND m.status='active')=1,
  'Last active administrator cannot be revoked');
 
+BEGIN;
+UPDATE auth.users SET banned_until=now()+interval '1 day'
+ WHERE id='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+SET ROLE authenticated;
+DO $$
+BEGIN
+ BEGIN
+  PERFORM public.platform_hris_set_tenant_admin(
+   (SELECT id FROM public.tenants WHERE slug='qa-one'),
+   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',true);
+  RAISE EXCEPTION 'Banned account reactivated as tenant administrator';
+ EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+ END;
+END $$;
+RESET ROLE;
+ROLLBACK;
+
+BEGIN;
+UPDATE auth.users SET deleted_at=now()
+ WHERE id='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+SET ROLE authenticated;
+DO $$
+BEGIN
+ BEGIN
+  PERFORM public.platform_hris_set_tenant_admin(
+   (SELECT id FROM public.tenants WHERE slug='qa-one'),
+   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',true);
+  RAISE EXCEPTION 'Deleted account reactivated as tenant administrator';
+ EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+ END;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT public.check_phase2a(
+ (SELECT status FROM public.tenant_memberships
+  WHERE user_id='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+   AND tenant_id=(SELECT id FROM public.tenants WHERE slug='qa-one'))='inactive',
+ 'Banned and deleted accounts cannot regain administrator membership');
+
+-- A previously valid role can lose its grants; do not reactivate an admin
+-- membership under an unprivileged registry entry.
+BEGIN;
+DELETE FROM public.role_permissions
+ WHERE role_id='hr_admin' AND permission_id='organization.manage';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+SELECT set_config('request.test.session_active','yes',false);
+DO $$
+BEGIN
+ BEGIN
+  PERFORM public.platform_hris_set_tenant_admin(
+   (SELECT id FROM public.tenants WHERE slug='qa-one'),
+   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',true);
+  RAISE EXCEPTION 'Admin appointed without a scoped role permission';
+ EXCEPTION WHEN SQLSTATE '55000' THEN NULL;
+ END;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT public.check_phase2a(
+ (SELECT count(*) FROM public.tenant_memberships m JOIN public.tenants t
+  ON t.id=m.tenant_id WHERE t.slug='qa-one'
+    AND m.user_id='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    AND m.status='active')=0
+ AND (SELECT count(*) FROM public.role_permissions
+  WHERE role_id='hr_admin' AND permission_id='organization.manage')=1,
+ 'Removed role permission blocks administrator appointment atomically');
+
 -- Existing recruiter identity cannot be silently converted into admin.
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
  VALUES((SELECT id FROM public.tenants WHERE slug='qa-one'),

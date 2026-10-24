@@ -1,0 +1,44 @@
+{
+  "recorded_at": "2026-10-12T16:10:22+06:00",
+  "status": "RECOVERABLE_LOCAL_CHECKPOINT_NOT_FOR_RELEASE",
+  "application": "Main HRIS",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "source_commit": "86ce4e6aa5cd18c3525b3427398b037456eb57c8",
+  "drive_baseline": {
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "checkpoint_local_time": "2026-10-12 14:20 Asia/Dhaka",
+    "source_manifest_counts": {
+      "main": 91,
+      "candidate": 58
+    },
+    "main_existing_files_with_changed_sha256": 8,
+    "current_main_files_absent_from_baseline_manifest": 15,
+    "candidate_changed": false
+  },
+  "committed_change_summary": {
+    "files": 23,
+    "insertions": 2981,
+    "deletions": 205
+  },
+  "verification": {
+    "typescript": "PASS",
+    "contract_tests": "24/24 PASS",
+    "vite_build": "PASS_WITH_EXISTING_671KB_CHUNK_WARNING",
+    "isolated_local_auth_rls": "42/42 PASS",
+    "mobile_employee_leave_chromium": "1/1 PASS at 375x812; mocked backend; external requests blocked",
+    "git_diff_check": "PASS"
+  },
+  "story_acceptance": {
+    "accepted": 0,
+    "pending": 1047,
+    "reason": "canonical story catalogue unavailable"
+  },
+  "production_mutations": {
+    "database": false,
+    "auth_settings": false,
+    "github_push_or_pr": false,
+    "deployment": false,
+    "paid_supabase_services": false
+  },
+  "release_status": "NOT_ACCEPTED_NOT_FOR_RELEASE"
+}

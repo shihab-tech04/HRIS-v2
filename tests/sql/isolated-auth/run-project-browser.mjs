@@ -1,0 +1,386 @@
+// Runs the real HRIS UI against the disposable local Supabase stack. Called
+// only from run-local.mjs after its Auth and database fixture is established.
+import { chromium } from '@playwright/test';
+import { spawn } from 'node:child_process';
+
+const required = [
+  'HRIS_LOCAL_SUPABASE_URL', 'HRIS_LOCAL_SUPABASE_ANON_KEY', 'HRIS_LOCAL_TEST_PASSWORD',
+  'HRIS_LOCAL_PM_EMAIL', 'HRIS_LOCAL_REVIEWER_EMAIL', 'HRIS_LOCAL_REVIEWEE_EMAIL', 'HRIS_LOCAL_TENANT_ID',
+  'HRIS_LOCAL_PROJECT_ID', 'HRIS_LOCAL_PROJECT_CODE', 'HRIS_LOCAL_INITIAL_ALLOCATION_ID',
+  'HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID', 'HRIS_LOCAL_TASK_TITLE',
+];
+for (const key of required) if (!process.env[key]) throw new Error(`Missing integration setting ${key}.`);
+
+const repo = process.cwd();
+const port = '48371';
+const origin = `http://127.0.0.1:${port}`;
+let authOutcome = 'no password-token response observed';
+const server = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', port, '--strictPort'], {
+  cwd: repo,
+  env: {
+    ...process.env,
+    VITE_SUPABASE_URL: process.env.HRIS_LOCAL_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY: process.env.HRIS_LOCAL_SUPABASE_ANON_KEY,
+  },
+  stdio: 'ignore',
+});
+
+let browser;
+async function waitForServer() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (server.exitCode !== null) throw new Error(`Local Vite server exited with ${server.exitCode}.`);
+    try {
+      const response = await fetch(origin);
+      if (response.ok) {
+        const html = await response.text();
+        if (!html.includes('Synesis HRIS 360°')) {
+          throw new Error(`Port ${port} is serving a different application; refusing browser integration.`);
+        }
+        return;
+      }
+    } catch { /* the server is still starting */ }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error('Timed out waiting for the local HRIS UI server.');
+}
+
+async function signIn(page, email) {
+  await page.goto(origin);
+  const emailInput = page.getByLabel('Email', { exact: true });
+  try { await emailInput.waitFor({ state: 'visible', timeout: 10000 }); }
+  catch {
+    const visibleText = await page.locator('body').innerText().catch(() => '');
+    throw new Error(`Local sign-in form did not render at ${page.url()} (${await page.title()}). Page text: ${visibleText.slice(0, 700)}`);
+  }
+  await emailInput.fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(process.env.HRIS_LOCAL_TEST_PASSWORD);
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (response.request().method() !== 'POST' || url.pathname !== '/auth/v1/token' || url.searchParams.get('grant_type') !== 'password') return;
+    authOutcome = `HTTP ${response.status()}`;
+    void response.json().then(body => {
+      const code = String(body.error_code || body.code || body.error || '');
+      const message = String(body.msg || body.message || '').replace(email, '[synthetic account]');
+      authOutcome += `${code ? `, ${code}` : ''}${message ? `: ${message.slice(0, 180)}` : ''}`;
+    }).catch(() => {});
+  });
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  try {
+    if ((await page.evaluate(() => window.innerWidth)) < 1024) {
+      await page.getByRole('button', { name: 'Open navigation menu' }).waitFor({ state: 'visible', timeout: 10000 });
+    } else {
+      await page.getByRole('navigation', { name: 'HRIS modules' }).waitFor({ state: 'visible', timeout: 10000 });
+    }
+  } catch {
+    const headings = (await page.getByRole('heading').allTextContents()).join(' | ').slice(0, 240);
+    const alerts = (await page.getByRole('alert').allInnerTexts()).join(' | ').replace(email, '[synthetic account]').slice(0, 240);
+    throw new Error(`Project browser sign-in did not reach workspace: ${authOutcome}; headings=${headings || '[none]'}; alerts=${alerts || '[none]'}.`);
+  }
+}
+
+async function navigateTo(page, label) {
+  const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
+  if (!(await navigation.isVisible())) {
+    await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  }
+  await navigation.getByRole('button', { name: label, exact: true }).click();
+}
+
+async function assertVisibleText(locator, text) {
+  await locator.waitFor({ state: 'visible' });
+  const deadline = Date.now() + 15000;
+  let actual = '';
+  while (Date.now() < deadline) {
+    actual = await locator.innerText().catch(() => '');
+    if (actual.includes(text)) return;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  throw new Error(`Expected UI text ${JSON.stringify(text)}; received ${JSON.stringify(actual)}.`);
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const dimensions = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+  }));
+  if (dimensions.document > dimensions.viewport) {
+    throw new Error(`${label} overflowed ${dimensions.viewport}px to ${dimensions.document}px.`);
+  }
+}
+
+try {
+  await waitForServer();
+  browser = await chromium.launch({ headless: true });
+  let failTaskEditOnce = true;
+  let taskEditCalls = 0;
+  let failPortfolioOnce = true;
+  let portfolioCalls = 0;
+  const pmPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  await pmPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_update_project_task')
+        && route.request().method() === 'POST') {
+      taskEditCalls += 1;
+      if (failTaskEditOnce) {
+        failTaskEditOnce = false;
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Temporary task edit outage.' }) });
+      }
+    }
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_task_portfolio')
+        && route.request().method() === 'POST') {
+      portfolioCalls += 1;
+      if (failPortfolioOnce) {
+        failPortfolioOnce = false;
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Temporary task portfolio outage.' }) });
+      }
+    }
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(pmPage, process.env.HRIS_LOCAL_PM_EMAIL);
+  await navigateTo(pmPage, 'Project Workspace');
+  await assertNoHorizontalOverflow(pmPage, 'Mobile Project Workspace');
+  const project = pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first();
+  await project.waitFor({ state: 'visible' });
+  const manager = project.getByRole('region', { name: 'Project task management' });
+  await manager.getByRole('button', { name: 'New task' }).click();
+  await manager.getByLabel('Task title *').fill(process.env.HRIS_LOCAL_TASK_TITLE);
+  await manager.locator('fieldset label').filter({ hasText: 'Synthetic Employee A' }).getByRole('checkbox').check();
+  await manager.getByRole('button', { name: 'Create task' }).click();
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task creation');
+
+  const task = manager.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await assertVisibleText(task, 'Synthetic Employee A');
+  await task.getByRole('button', { name: 'Edit task' }).click();
+  const taskEdit = task.getByRole('form', { name: `Edit task ${process.env.HRIS_LOCAL_TASK_TITLE}` });
+  const revisedTaskTitle = `${process.env.HRIS_LOCAL_TASK_TITLE} updated`;
+  await taskEdit.getByLabel('Task title *').fill(revisedTaskTitle);
+  await taskEdit.getByLabel('Due date').fill('2098-08-20');
+  await taskEdit.getByLabel('Description').fill('Updated details persisted after retry.');
+  await taskEdit.getByRole('button', { name: 'Save task' }).click();
+  await assertVisibleText(taskEdit.getByRole('alert'), 'Temporary task edit outage.');
+  if (taskEditCalls !== 1) throw new Error(`Expected one simulated task edit outage; calls=${taskEditCalls}.`);
+  await taskEdit.getByRole('button', { name: 'Retry save' }).click();
+  await assertVisibleText(task, revisedTaskTitle);
+  await assertVisibleText(task, 'Updated details persisted after retry.');
+  await assertVisibleText(task, 'Due: 2098-08-20');
+  if (taskEditCalls !== 2) throw new Error(`Expected task edit retry to persist once; calls=${taskEditCalls}.`);
+  await task.getByLabel(`Add member to ${revisedTaskTitle}`)
+    .selectOption(process.env.HRIS_LOCAL_COLLABORATOR_ALLOCATION_ID);
+  await task.getByRole('button', { name: 'Add member', exact: true }).click();
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task member assignment');
+  await assertVisibleText(task, 'Synthetic Absent Employee A');
+  await task.getByRole('button', { name: 'Start task' }).click();
+  await assertVisibleText(task, 'In progress');
+
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).click();
+  const releaseDialog = pmPage.getByRole('alertdialog');
+  await assertVisibleText(releaseDialog, 'Collaborators whose assignments overlapped will receive required peer reviews. The release will not wait for feedback.');
+  const releaseCancel = releaseDialog.getByRole('button', { name: 'Cancel' });
+  const releaseConfirm = releaseDialog.getByRole('button', { name: 'Confirm release' });
+  if (!(await releaseCancel.evaluate(element => element === document.activeElement))) throw new Error('Release dialog did not move keyboard focus to its safe initial action.');
+  await pmPage.keyboard.press('Shift+Tab');
+  if (!(await releaseConfirm.evaluate(element => element === document.activeElement))) throw new Error('Shift+Tab escaped the release dialog instead of wrapping to its last action.');
+  await pmPage.keyboard.press('Tab');
+  if (!(await releaseCancel.evaluate(element => element === document.activeElement))) throw new Error('Tab escaped the release dialog instead of wrapping to its first action.');
+  await releaseDialog.getByRole('button', { name: 'Cancel' }).click();
+  await releaseDialog.waitFor({ state: 'detached' });
+  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).waitFor({ state: 'visible' });
+  await task.getByRole('button', { name: 'Release Synthetic Absent Employee A from ' + revisedTaskTitle }).click();
+  await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm release' }).click();
+  await assertVisibleText(task, 'Feedback Pending · 1 required reviews');
+  await task.getByRole('button', { name: 'Mark complete' }).click();
+  const completionDialog = pmPage.getByRole('alertdialog');
+  const completionCancel = completionDialog.getByRole('button', { name: 'Cancel' });
+  const completionConfirm = completionDialog.getByRole('button', { name: 'Confirm completion' });
+  await pmPage.keyboard.press('Tab');
+  if (!(await completionConfirm.evaluate(element => element === document.activeElement))) throw new Error('Completion dialog did not keep forward keyboard focus inside the dialog.');
+  await pmPage.keyboard.press('Tab');
+  if (!(await completionCancel.evaluate(element => element === document.activeElement))) throw new Error('Completion dialog did not wrap forward keyboard focus to its first action.');
+  await pmPage.keyboard.press('Escape');
+  await completionDialog.waitFor({ state: 'detached' });
+  await pmPage.waitForFunction(title => document.activeElement?.textContent?.trim() === title, revisedTaskTitle);
+  await assertVisibleText(task, 'In progress');
+  await task.getByRole('button', { name: 'Mark complete' }).click();
+  await pmPage.getByRole('alertdialog').getByRole('button', { name: 'Confirm completion' }).click();
+  await assertVisibleText(task, 'Feedback Pending · 2 required reviews');
+  await assertVisibleText(manager.getByRole('status').filter({ hasText: 'Task completed.' }), 'Task completed.');
+  if ((await task.innerText()).includes('Mark complete')) throw new Error('The UI left the completed task actionable.');
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task completion and feedback state');
+  await pmPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const managerBn = project.getByRole('region', { name: 'প্রকল্পের কাজ ব্যবস্থাপনা' });
+  await managerBn.getByRole('heading', { name: 'প্রকল্পের কাজ', exact: true }).waitFor({ state: 'visible' });
+  const taskBn = managerBn.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await assertVisibleText(taskBn, 'মতামত অপেক্ষমাণ · 2 টি প্রয়োজনীয় পর্যালোচনা');
+  if (await pmPage.evaluate(() => document.documentElement.lang) !== 'bn') throw new Error('Bengali selection did not set the document language.');
+  if (await pmPage.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') throw new Error('Bengali locale did not persist.');
+  await assertNoHorizontalOverflow(pmPage, 'Mobile Bengali task and feedback state');
+  await pmPage.getByRole('button', { name: 'Switch language to English' }).click();
+  await assertVisibleText(manager.getByRole('heading', { name: 'Project tasks', exact: true }), 'Project tasks');
+  await pmPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(pmPage, 'Desktop task completion and feedback state');
+
+  await pmPage.getByRole('button', { name: 'Task portfolio' }).click();
+  const portfolio = pmPage.getByRole('heading', { name: 'Task portfolio', exact: true });
+  await portfolio.waitFor({ state: 'visible' });
+  await assertVisibleText(pmPage.getByRole('alert'), 'Temporary task portfolio outage.');
+  if (portfolioCalls !== 1) throw new Error(`Expected one simulated portfolio outage; calls=${portfolioCalls}.`);
+  await pmPage.getByRole('button', { name: 'Retry' }).click();
+  await assertVisibleText(pmPage.getByRole('region', { name: new RegExp(process.env.HRIS_LOCAL_PROJECT_CODE) }), revisedTaskTitle);
+  const projectPortfolio = pmPage.getByRole('region', { name: new RegExp(process.env.HRIS_LOCAL_PROJECT_CODE) });
+  await assertVisibleText(projectPortfolio, 'Feedback Pending · 2 reviews');
+  await pmPage.getByLabel('Task status').selectOption('feedback_pending');
+  await assertVisibleText(projectPortfolio, revisedTaskTitle);
+  await projectPortfolio.getByRole('button', { name: 'Open project tasks' }).click();
+  await assertVisibleText(pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first(), revisedTaskTitle);
+  await assertVisibleText(pmPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_PROJECT_CODE }).first(), 'Feedback Pending · 2 required reviews');
+  if (portfolioCalls !== 2) throw new Error(`Expected portfolio retry to load persisted task data once; calls=${portfolioCalls}.`);
+  await pmPage.setViewportSize({ width: 375, height: 812 });
+  await assertNoHorizontalOverflow(pmPage, 'Mobile task portfolio and navigation');
+  await pmPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(pmPage, 'Desktop task portfolio and navigation');
+
+  const reviewerPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  let notificationOutagePending = true;
+  let notificationOutages = 0;
+  let notificationReads = 0;
+  let inboxOutagePending = true;
+  let inboxOutages = 0;
+  let inboxReadCalls = 0;
+  await reviewerPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_notifications')
+        && route.request().method() === 'POST') {
+      notificationReads += 1;
+      if (notificationOutagePending) {
+        notificationOutagePending = false;
+        notificationOutages += 1;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic notification inbox outage.' }) });
+        return;
+      }
+    }
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+        && url.pathname.endsWith('/rest/v1/rpc/hris_get_my_project_peer_reviews')
+        && route.request().method() === 'POST') {
+      inboxReadCalls += 1;
+      if (inboxOutagePending) {
+        inboxOutagePending = false;
+        inboxOutages += 1;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Synthetic peer-review inbox outage.' }) });
+        return;
+      }
+    }
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(reviewerPage, process.env.HRIS_LOCAL_REVIEWER_EMAIL);
+  await navigateTo(reviewerPage, 'Notifications');
+  await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review notifications');
+  await reviewerPage.getByRole('heading', { name: 'Notifications', exact: true }).waitFor({ state: 'visible' });
+  const notificationRetry = reviewerPage.getByRole('button', { name: 'Retry', exact: true });
+  await notificationRetry.waitFor({ state: 'visible' });
+  if (notificationOutages !== 1 || notificationReads !== 1) throw new Error(`Expected one isolated notification outage before recovery; outages=${notificationOutages}, reads=${notificationReads}.`);
+  await notificationRetry.click();
+  const reviewNotification = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await reviewNotification.waitFor({ state: 'visible' });
+  const unreadBadge = reviewerPage.getByText(/^\d+ unread project review alerts$/);
+  const unreadBeforeSubmit = Number((await unreadBadge.innerText()).split(' ')[0]);
+  await assertVisibleText(reviewNotification, 'Peer review for Synthetic Employee A');
+  await reviewNotification.getByRole('button', { name: 'Open review' }).click();
+  await navigateTo(reviewerPage, 'My Projects');
+  await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review inbox');
+  await reviewerPage.getByRole('heading', { name: 'My project work' }).waitFor({ state: 'visible' });
+  const inboxRetry = reviewerPage.getByRole('button', { name: 'Retry', exact: true });
+  await inboxRetry.waitFor({ state: 'visible' });
+  if (inboxOutages !== 1 || inboxReadCalls !== 1) throw new Error(`Expected one isolated peer-review inbox outage before recovery; outages=${inboxOutages}, reads=${inboxReadCalls}.`);
+  await inboxRetry.click();
+  const review = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await review.waitFor({ state: 'visible' });
+  await review.getByRole('button', { name: 'Submit review' }).click();
+  await assertVisibleText(reviewerPage.getByRole('alert'), 'Choose a score or Not Observed for Quality of Work.');
+  await review.waitFor({ state: 'visible' });
+  await review.getByLabel('Quality of Work').selectOption('not_observed');
+  await review.getByLabel('Collaboration & Teamwork').selectOption('5');
+  await review.getByLabel('Delivery & Reliability').selectOption('4');
+  await review.getByLabel('Ownership & Communication').selectOption('3');
+  await review.getByLabel('Comments (optional)').fill('Local Supabase browser integration review.');
+  await review.getByRole('button', { name: 'Submit review' }).click();
+  await assertVisibleText(reviewerPage.getByRole('status').filter({ hasText: 'Review for Synthetic Employee A submitted.' }),
+    'Review for Synthetic Employee A submitted.');
+  await assertNoHorizontalOverflow(reviewerPage, 'Mobile peer-review submission');
+  await review.waitFor({ state: 'detached' });
+  await navigateTo(reviewerPage, 'Notifications');
+  const completedNotification = reviewerPage.locator('article').filter({ hasText: process.env.HRIS_LOCAL_TASK_TITLE });
+  await assertVisibleText(completedNotification, 'Review for Synthetic Employee A completed');
+  const unreadAfterSubmit = Number((await unreadBadge.innerText()).split(' ')[0]);
+  if (unreadAfterSubmit !== unreadBeforeSubmit - 1) {
+    throw new Error(`Submitting the displayed peer review should clear one unread alert; before=${unreadBeforeSubmit}, after=${unreadAfterSubmit}.`);
+  }
+  if (notificationReads < 3) throw new Error(`Expected notification outage, retry, and post-submit reload; reads=${notificationReads}.`);
+  await reviewerPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(reviewerPage, 'Desktop peer-review notifications and completion');
+  if (inboxReadCalls < 3) throw new Error(`Expected outage, successful retry, and post-submit reload; inbox reads=${inboxReadCalls}.`);
+
+  const learnerNotificationsPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  await learnerNotificationsPage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(learnerNotificationsPage, process.env.HRIS_LOCAL_REVIEWEE_EMAIL);
+  await navigateTo(learnerNotificationsPage, 'Notifications');
+  const learningUpdate = learnerNotificationsPage.locator('[data-notification-source="learning_completion"]')
+    .filter({ hasText: 'QA A Direct Learning' }).first();
+  await assertVisibleText(learningUpdate, 'Learning completion verified');
+  await learnerNotificationsPage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await learningUpdate.getByRole('heading', { name: 'শেখার সমাপ্তি যাচাই হয়েছে', exact: true }).waitFor({ state: 'visible' });
+  await learnerNotificationsPage.getByRole('button', { name: 'Switch language to English' }).click();
+  await learningUpdate.getByRole('button', { name: 'Open learning', exact: true }).click();
+  await learnerNotificationsPage.getByRole('heading', { name: 'My Learning', exact: true }).waitFor({ state: 'visible' });
+  await assertNoHorizontalOverflow(learnerNotificationsPage, 'Mobile learning notification handoff');
+  await learnerNotificationsPage.setViewportSize({ width: 1280, height: 900 });
+  await assertNoHorizontalOverflow(learnerNotificationsPage, 'Desktop learning notification handoff');
+
+  const revieweePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await revieweePage.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === 'fonts.googleapis.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return route.abort();
+  });
+  await signIn(revieweePage, process.env.HRIS_LOCAL_REVIEWEE_EMAIL);
+  await navigateTo(revieweePage, 'My Performance');
+  const history = revieweePage.getByRole('region', { name: 'Project peer-review history' });
+  await assertVisibleText(history, process.env.HRIS_LOCAL_TASK_TITLE);
+  await assertVisibleText(history, 'Feedback from Synthetic Absent Employee A');
+  await assertVisibleText(history, 'Not Observed');
+  await assertVisibleText(history, '5/5');
+
+  await revieweePage.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const historyBn = revieweePage.getByRole('region', { name: 'প্রকল্পের সহকর্মী পর্যালোচনার ইতিহাস' });
+  await assertVisibleText(historyBn, 'কাজের মান');
+  await assertVisibleText(historyBn, 'পর্যবেক্ষণ করা হয়নি');
+  await assertVisibleText(historyBn, 'মতামত দিয়েছেন Synthetic Absent Employee A');
+  if (await revieweePage.evaluate(() => document.documentElement.lang) !== 'bn') throw new Error('Review-history screen did not declare Bengali as the document language.');
+  if (await revieweePage.evaluate(() => localStorage.getItem('synesis-hris-locale')) !== 'bn') throw new Error('Review-history Bengali locale did not persist.');
+
+  await revieweePage.setViewportSize({ width: 375, height: 812 });
+  const width = await revieweePage.evaluate(() => document.documentElement.scrollWidth);
+  if (width > 375) throw new Error(`Project review UI overflowed a 375px viewport to ${width}px.`);
+  await revieweePage.getByRole('button', { name: 'Switch language to English' }).click();
+  if (await revieweePage.evaluate(() => document.documentElement.lang) !== 'en') throw new Error('Switching back to English did not update the document language.');
+  console.log('Mobile/desktop browser-to-local-Supabase task creation/edit retry, task completion, peer-review inbox, Learning Completion notifications, EN/BN handoff, and performance-history journey passed.');
+} finally {
+  if (browser) await browser.close();
+  if (server.exitCode === null) {
+    server.kill('SIGTERM');
+    await new Promise(resolve => server.once('exit', resolve));
+  }
+}

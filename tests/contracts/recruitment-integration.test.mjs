@@ -1,54 +1,74 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 
 const pipeline = readFileSync('src/live/RecruitmentPipeline.tsx', 'utf8');
-const workspace = readFileSync('src/live/LiveSystemWorkspace.tsx', 'utf8');
+const assessments = readFileSync('src/live/CandidateAssessments.tsx', 'utf8');
+const recruitmentUi = `${pipeline}\n${assessments}`;
+const workspace = readFileSync('src/live/LiveHrisWorkspace.tsx', 'utf8');
 const app = readFileSync('src/live/LiveApp.tsx', 'utf8');
+const migrations = readdirSync('supabase/migrations')
+  .filter(file => file.endsWith('.sql'))
+  .map(file => readFileSync(path.join('supabase/migrations', file), 'utf8'))
+  .join('\n');
+const recruitmentRead = readFileSync('supabase/migrations/20261013130829_hris_recruitment_pipeline_read.sql', 'utf8');
+const stageTransition = readFileSync('supabase/migrations/20261014012249_recruiter_application_stage_transition.sql', 'utf8');
 
-test('recruiter reads require recruitment permission and the audited HRIS RPC', () => {
-  assert.match(pipeline, /has_permission',\s*\{\s*p_permission_id:\s*'recruitment\.view'/);
-  assert.match(pipeline, /has_permission',\s*\{\s*p_permission_id:\s*'recruitment\.manage'/);
-  assert.match(pipeline, /if\s*\(!canView\s*&&\s*!canManage\)/);
-  assert.match(pipeline, /rpc\('admin_get_recruitment_data'\)/);
+ test('recruiter reads use an active tenant permission and a minimized server projection', () => {
+  assert.match(app, /supabase\.rpc\('has_tenant_permission',\s*\{\s*p_tenant_id:\s*membership\.tenant_id/);
+  assert.match(app, /'recruitment\.view',\s*'recruitment\.manage'/);
+  assert.match(pipeline, /rpc\('hris_get_recruitment_pipeline',\s*\{\s*p_tenant_id:\s*requestTenantId/);
+  assert.match(workspace, /page === 'recruitment' && permissions\.recruitment/);
+  assert.match(recruitmentRead, /public\.is_live_session\(\)/);
+  assert.match(recruitmentRead, /public\.hris_admin_can_read_tenant\(p_tenant_id, 'recruitment\.view'\)/);
+  assert.doesNotMatch(recruitmentRead, /'cv_url'|'cover_letter'|'application_data'|'review_note'|'reviewed_by'/);
   assert.doesNotMatch(pipeline, /\.from\(['"](?:job_applications|candidates|candidate_profiles)['"]\)/);
-  assert.match(workspace, /selected\.id\s*===\s*'candidate'\s*\?\s*<RecruitmentPipeline/);
 });
 
-test('recruiter stage changes use the permission-checked audit RPC and supported stages', () => {
-  assert.match(pipeline, /rpc\('admin_update_application_stage',\s*\{\s*p_application_id:\s*application\.id,\s*p_stage:\s*stage,\s*p_note:/);
+test('application stage transitions use the tenant-locked audit RPC and manager gate', () => {
+  assert.match(pipeline, /rpc\('hris_update_candidate_application_stage',\s*\{\s*p_tenant_id:\s*tenantId,\s*p_application_id:\s*application\.application_id,\s*p_stage:\s*nextStage/);
+  assert.match(pipeline, /canManageApplicationStages && <ApplicationStageForm/);
+  assert.match(stageTransition, /public\.has_tenant_permission\(p_tenant_id, 'recruitment\.manage'\)/);
+  assert.match(stageTransition, /FOR UPDATE/);
+  assert.match(stageTransition, /candidate_application_stage_history/);
+  assert.match(pipeline, /'under_review'/);
   assert.match(pipeline, /'screening'/);
-  assert.match(pipeline, /'shortlisted'/);
-  assert.match(pipeline, /'final_review'/);
   assert.match(pipeline, /'rejected'/);
-  assert.match(pipeline, /access\s*!==\s*'manage'\s*\|\|\s*!stage/);
-  assert.match(pipeline, /Stage changes are checked and audited by HRIS/);
 });
 
-test('interviews and panel assessments persist through the live recruiter RPCs', () => {
-  assert.match(pipeline, /rpc\('admin_schedule_interview',\s*\{\s*p_application_id:\s*application\.id,\s*p_payload:/);
-  assert.match(pipeline, /rpc\('admin_assign_assessment',\s*\{\s*p_application_id:\s*application\.id,\s*p_payload:/);
-  assert.match(pipeline, /rpc\('admin_review_assessment',\s*\{\s*p_assessment_id:\s*assessment\.id,\s*p_note:/);
-  assert.match(pipeline, /access\s*!==\s*'manage'\s*\|\|\s*assessment\.status\s*!==\s*'submitted'/);
-  assert.match(pipeline, /interviewDrafts\[application\.id\]/);
-  assert.match(pipeline, /Assessment and panel review/);
-  assert.match(pipeline, /Candidate submission:/);
-  assert.match(pipeline, /Panel evaluation note/);
+test('interview scheduling, completion, panel notes, and assessment reviews persist through tenant RPCs', () => {
+  for (const rpc of [
+    'hris_schedule_candidate_interview',
+    'hris_complete_candidate_interview',
+    'hris_save_candidate_interview_panel_notes',
+    'hris_get_candidate_interview_responses',
+    'hris_assign_candidate_assessment',
+    'hris_review_candidate_assessment',
+  ]) assert.ok(recruitmentUi.includes(`rpc('${rpc}'`), `missing UI RPC ${rpc}`);
+  for (const rpc of [
+    'hris_schedule_candidate_interview',
+    'hris_complete_candidate_interview',
+    'hris_save_candidate_interview_panel_notes',
+    'hris_get_candidate_interview_responses',
+    'hris_assign_candidate_assessment',
+    'hris_review_candidate_assessment',
+  ]) assert.ok(migrations.includes(`FUNCTION public.${rpc}(`), `missing SQL RPC ${rpc}`);
+  assert.match(pipeline, /Interview responses/);
+  assert.match(pipeline, /Internal panel notes/);
+  assert.match(assessments, /tx\('Candidate submission'\)/);
 });
 
-test('candidate CVs stay private and are opened through short-lived owner-scoped links', () => {
-  assert.match(pipeline, /segments\[0\]\s*!==\s*owner/);
-  assert.match(pipeline, /segment === '\.' \|\| segment === '\.\.'/);
-  assert.match(pipeline, /from\('candidate-documents'\)\s*\.\s*createSignedUrl\(path,\s*60\)/);
-  assert.doesNotMatch(pipeline, /getPublicUrl\(/);
-  assert.match(pipeline, /target="_blank"\s+rel="noopener noreferrer"/);
+test('recruitment pipeline omits candidate files and reviewer-private history fields', () => {
+  assert.doesNotMatch(recruitmentRead, /'cv_url'|'document_url'|'cover_letter'|'application_data'|'review_note'|'reviewed_by'|'actor_user_id'/);
+  assert.doesNotMatch(pipeline, /createSignedUrl\(|getPublicUrl\(|cv_url|cover_letter|application_data/);
+  assert.match(recruitmentRead, /'milestones'[\s\S]*?'stage'[\s\S]*?'created_at'/);
 });
 
-test('recruitment and profile-review workspace access are active-admin and Synesis scoped', () => {
-  assert.match(app, /adminResult\.data\?\.active\s*===\s*true\s*&&\s*\n\s*permissions\.slice\(5,\s*7\)/);
-  assert.match(app, /const profileChangeReviewWorkspaceAllowed\s*=\s*adminResult\.data\?\.active\s*===\s*true/);
-  assert.match(app, /\(recruitmentAllowed\s*\|\|\s*profileChangeReviewAllowed\)\s*&&\s*tenants\.some\(t\s*=>\s*t\.id\s*===\s*tenantId\s*&&\s*t\.slug\s*===\s*'synesis-it'\)/);
-  assert.match(app, /eq\('slug','synesis-it'\)/);
-  assert.match(app, /view\s*===\s*'admin'\s*&&\s*!canAdminSelectedTenant/);
-  assert.match(app, /canUseSystemWorkspace\s*&&\s*<button onClick=\{\(\)\s*=>\s*setView\('system'\)\}/);
+test('recruitment workspace visibility and mutations use the selected active-tenant permission set', () => {
+  assert.match(app, /supabase\.rpc\('has_tenant_permission',\s*\{\s*p_tenant_id:\s*membership\.tenant_id/);
+  assert.match(app, /recruitment:\s*grants\.get\('recruitment\.view'\) === true \|\| grants\.get\('recruitment\.manage'\) === true/);
+  assert.match(app, /recruitmentManage:\s*grants\.get\('recruitment\.manage'\) === true/);
+  assert.match(workspace, /if \(permissions\.recruitment\) items\.push\(\{ id: 'recruitment'/);
+  assert.match(workspace, /canManageApplicationStages=\{permissions\.recruitmentManage\}/);
 });

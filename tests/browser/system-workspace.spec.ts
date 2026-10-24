@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const tenantId = 'e2222222-2222-4222-8222-222222222222';
@@ -12,9 +13,7 @@ const jwtPayload = Buffer.from(JSON.stringify({ sub: userId, aud: 'authenticated
   exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
 const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
-async function interceptAuth(page: import('@playwright/test').Page): Promise<() => Record<string, unknown> | null> {
-  let pendingProfileChange = true;
-  let profileChangeReviewPayload: Record<string, unknown> | null = null;
+async function interceptAuth(page: import('@playwright/test').Page, teamTenantFilters: string[] = []) {
   await page.route('**/auth/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/token')) {
@@ -32,69 +31,134 @@ async function interceptAuth(page: import('@playwright/test').Page): Promise<() 
   await page.route('**/rest/v1/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
-    const table = url.pathname.split('/').pop();
+    const endpoint = url.pathname.split('/').pop() ?? '';
+    if (endpoint === 'teams') teamTenantFilters.push(url.searchParams.get('tenant_id') || '');
+    if (url.pathname.includes('/rpc/')) {
+      const rpcData: Record<string, unknown> = {
+        has_tenant_permission: true,
+        hris_get_tenant_dashboard_summary: {
+          team_members: 1, employees: 1, attendance_today: 1,
+          present_today: 1, absent_today: 0, wfo_today: 1, wfh_today: 0,
+          client_meeting_today: 0, on_leave_today: 0, late_today: 0,
+          attendance_corrections_pending: 0, leave_pending: 0, approvals_pending: 0,
+          attendance_last_7_days: [], attendance_last_30_days: [],
+        },
+      };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rpcData[endpoint] ?? {}) });
+      return;
+    }
     const requested = url.searchParams.get('select') || '';
     let data: unknown = [];
-    if (url.pathname.endsWith('/rpc/admin_list_profile_change_requests')) data = pendingProfileChange ? [{ id: 'pf-1', employee_id: 'emp-1', employee_number: 'TEST-01', full_name: 'Synthetic Test Employee', field_key: 'official_email', requested_value: 'new.employee@example.org', reason: 'Employee contact address changed.', submitted_at: '2026-10-16T12:00:00.000Z' }] : [];
-    else if (url.pathname.endsWith('/rpc/admin_review_profile_change_request')) {
-      profileChangeReviewPayload = JSON.parse(request.postData() || '{}');
-      pendingProfileChange = false;
-      data = { success: true, status: 'approved' };
-    }
-    else if (table === 'tenant_memberships') data = [];
-    else if (table === 'employees') {
+    if (endpoint === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'qa_tenant_superadmin', status: 'active' }];
+    else if (endpoint === 'employees') {
       data = requested.includes('full_name')
         ? [{ id: 'emp-1', full_name: 'Synthetic Test Employee', employee_number: 'TEST-01', employment_status: 'active' }]
         : [];
     }
-    else if (table === 'admin_users') data = { active: true, is_super_admin: true };
-    else if (table === 'tenants') data = requested === 'id'
+    else if (endpoint === 'admin_users') data = { active: true, is_super_admin: true };
+    else if (endpoint === 'tenants') data = requested === 'id'
       ? { id: tenantId } : [{ id: tenantId, name: 'Synthetic Synesis', slug: 'synesis-it', timezone: 'Asia/Dhaka' }];
-    else if (table === 'has_permission') data = true;
-    else if (table === 'departments') data = [{ id: 'dept-1', name: 'Engineering', code: 'ENG', active: true }];
+    else if (endpoint === 'departments') data = [
+      { id: 'dept-1', name: 'Engineering' },
+      { id: 'dept-2', name: 'Customer Success' },
+    ];
+    else if (endpoint === 'teams') data = [
+      { id: 'team-1', name: 'Design Systems', code: 'DS', department_id: 'dept-1', active: true },
+      { id: 'team-2', name: 'Client Operations', code: '=OPS', department_id: 'dept-2', active: false },
+    ];
     if (request.method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
       return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
-  return () => profileChangeReviewPayload;
 }
 
-test('authorized Super Admin opens real system navigation, not fixture preview', async ({ page }) => {
-  const getProfileChangeReviewPayload = await interceptAuth(page);
+test('Super Admin with active tenant membership opens the authorized HRIS workspace', async ({ page }) => {
+  await interceptAuth(page);
   await page.goto('/');
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  await expect(page.getByText('Authenticated · synthetic-superadmin@example.org')).toBeVisible();
+  await page.getByRole('button', { name: 'Account options' }).click();
+  await expect(page.getByText('synthetic-superadmin@example.org')).toBeVisible();
+  await expect(page.getByText('Super Administrator')).toBeVisible();
+  await page.getByRole('button', { name: 'Account options' }).click();
   const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
   await expect(moduleNav).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'System overview' })).toBeVisible();
-  await expect(moduleNav.getByRole('button', { name: /Employee directory/ })).toBeVisible();
-  await expect(moduleNav.getByRole('button', { name: /Performance goals/ })).toBeVisible();
-  await expect(moduleNav.getByRole('button', { name: /Compensation management/ })).toBeVisible();
-  await expect(page.getByText('No sample data or simulated saves are displayed.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Managerial Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today’s Attendance Summary' })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Attendance/ })).toBeVisible();
+  await expect(moduleNav.getByRole('button', { name: /Leave/ })).toBeVisible();
+  await expect(page.getByText(/No schedule-based late marks or sample counts are substituted/)).toBeVisible();
 
-  await moduleNav.getByRole('button', { name: /Employee directory/ }).click();
-  await expect(page.getByText('Synthetic Test Employee')).toBeVisible();
-  await expect(page.getByText('TEST-01')).toBeVisible();
+  // The shared shell groups Attendance and Leave under one module entry.
+  // Select the Leave Requests subsection to verify its authorized route.
+  await moduleNav.getByRole('button', { name: 'Attendance & Leave' }).click();
+  const attendanceLeaveSections = page.getByRole('navigation', { name: 'Attendance and leave sections' });
+  await expect(attendanceLeaveSections.getByRole('button', { name: 'Attendance Information' })).toHaveAttribute('aria-current', 'page');
+  await attendanceLeaveSections.getByRole('button', { name: 'Leave Requests' }).click();
+  await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+  await expect(attendanceLeaveSections.getByRole('button', { name: 'Leave Requests' })).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(/#leave-requests$/);
+  await page.reload();
+  await expect(page).toHaveURL(/#leave-requests$/);
+  await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
 
-  await moduleNav.getByRole('button', { name: /Profile correction requests/ }).click();
-  await expect(page.getByRole('heading', { name: 'Profile correction requests', exact: true })).toBeVisible();
-  const changeRequests = page.getByRole('region', { name: 'Profile correction requests' });
-  await expect(changeRequests.getByText('new.employee@example.org')).toBeVisible();
-  await changeRequests.getByLabel('Reviewer note (optional)').fill('Verified against employee documents.');
-  await changeRequests.getByRole('button', { name: 'Approve change' }).click();
-  await expect(changeRequests.getByText('Request approved.', { exact: true })).toBeVisible();
-  await expect(changeRequests.getByText('No pending profile correction requests.')).toBeVisible();
-  expect(getProfileChangeReviewPayload()).toEqual({
-    p_id: 'pf-1',
-    p_decision: 'approved',
-    p_note: 'Verified against employee documents.',
-  });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const leaveHeading = page.getByRole('heading', { name: 'ছুটির আবেদনসমূহ' });
+  const localizedLeaveTab = attendanceLeaveSections.getByRole('button', { name: 'ছুটির আবেদনসমূহ' });
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 1117 });
+    await expect(leaveHeading).toBeVisible();
+    await expect(localizedLeaveTab).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+  }
+});
 
-  await moduleNav.getByRole('button', { name: /Compensation management/ }).click();
-  await expect(page.getByRole('heading', { name: 'Workflow integration pending' })).toBeVisible();
+test('organization Teams directory filters only the active tenant rows', async ({ page }) => {
+  const teamTenantFilters: string[] = [];
+  await interceptAuth(page, teamTenantFilters);
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  const moduleNav = page.getByRole('navigation', { name: 'HRIS modules' });
+  const teamsNav = moduleNav.getByRole('button', { name: 'Teams', exact: true });
+  await expect(teamsNav).toBeVisible();
+  await teamsNav.click();
+  await expect(page.getByRole('heading', { name: 'Teams', exact: true })).toBeVisible();
+  const table = page.getByRole('table', { name: 'Organization teams' });
+  await expect(table.getByRole('row')).toHaveCount(2);
+  await expect(table).toContainText('Design Systems');
+  await expect(table).not.toContainText('Client Operations');
+  await expect(table).toContainText('Engineering');
+
+  await page.getByLabel('Team status').selectOption('all');
+  await page.getByLabel('Search teams').fill('Customer Success');
+  await expect(table.getByRole('row')).toHaveCount(2);
+  await expect(table).toContainText('Client Operations');
+  await expect(table).not.toContainText('Design Systems');
+
+  await page.getByLabel('Team status').selectOption('inactive');
+  await expect(table).toContainText('Inactive');
+  const downloadReady = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  const download = await downloadReady;
+  expect(download.suggestedFilename()).toMatch(/^organization-teams-\d{4}-\d{2}-\d{2}\.csv$/);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const csv = await readFile(downloadPath!, 'utf8');
+  expect(csv).toContain('"Client Operations","\'=OPS","Customer Success","Inactive"');
+  expect(csv).not.toContain('Design Systems');
+  expect(teamTenantFilters.length).toBeGreaterThan(0);
+  expect(teamTenantFilters.every(value => value === `eq.${tenantId}`)).toBe(true);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByRole('heading', { name: 'Teams', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const tableRegion = page.getByRole('region', { name: 'Scrollable teams table' });
+  expect(await tableRegion.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
 });

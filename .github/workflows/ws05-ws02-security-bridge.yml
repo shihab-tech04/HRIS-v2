@@ -1,0 +1,52 @@
+name: WS05 bridge - WS02 exact two-tenant security proof (no deploy)
+on:
+  push:
+    branches: [integration/ws02-security-proof-to-ws05-20261022]
+  pull_request:
+    branches: [work/ws05-free-tier-release-candidate-20261022]
+permissions:
+  contents: read
+jobs:
+  ws02-bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_employee_addresses
+          POSTGRES_USER: test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_runner -d hris_employee_addresses"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exact WS02 source contract checks
+        run: node --test tests/contracts/employee-addresses-tenant-security.test.mjs
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Real PostgreSQL 17 two-tenant address and ACL acceptance
+        shell: bash
+        env:
+          PGHOST: '127.0.0.1'
+          PGPORT: '5432'
+          PGUSER: test_runner
+          PGPASSWORD: synthetic_test_only
+          PGDATABASE: hris_employee_addresses
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-addresses/fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016150216_employee_get_my_addresses.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016151101_employee_addresses_self_read_policy.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261021060748_employee_addresses_tenant_read_guard.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-addresses/verify.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016151112_employee_get_my_addresses_cleanup.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-addresses/verify-cleanup.sql
+          echo "Passed only on disposable PostgreSQL 17. No hosted database calls, deploy or release."

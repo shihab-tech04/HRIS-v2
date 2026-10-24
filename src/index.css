@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Tracked Pages assets are generated output, never Tailwind class sources. */
+@source not "../assets";
 
 @layer base {
   :root {
@@ -7,6 +9,8 @@
     --color-brand-primary: #085587;
     --color-brand-hover: #074770;
     --color-brand-light: #F0F7FB;
+    /* Approved Figma Primary-600 from node 17:28320; shell-only accent. */
+    --color-figma-primary-600: #08558B;
   }
   
   body {
@@ -20,6 +24,14 @@
   code, pre, .font-mono {
     font-family: var(--font-mono);
   }
+}
+
+/* Figma node 17:28321 separates its report header from the first row by 17px;
+   data rows and the Attendance Information table retain their 6px gutters. */
+.aggregate-attendance-table tbody::before {
+  content: '';
+  display: table-row;
+  height: 5px;
 }
 
 /* Custom scrollbars for high-density tables and SQL viewers */

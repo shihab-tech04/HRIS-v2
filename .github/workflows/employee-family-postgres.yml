@@ -1,15 +1,15 @@
 name: HRIS employee family privacy checks
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'release/hris-stable-20261017']
     paths:
-      - 'supabase/migrations/20261016160100_employee_family_members_self_read_policy.sql'
+      - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
       - 'tests/sql/employee-family/**'
       - '.github/workflows/employee-family-postgres.yml'
   push:
-    branches: [main]
+    branches: [main, 'release/hris-stable-20261017']
     paths:
-      - 'supabase/migrations/20261016160100_employee_family_members_self_read_policy.sql'
+      - 'supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql'
       - 'tests/sql/employee-family/**'
       - '.github/workflows/employee-family-postgres.yml'
   workflow_dispatch:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 jobs:
   employee-family-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
       database:
@@ -47,6 +47,6 @@ jobs:
         run: |
           set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-family/fixture.sql
-          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016160100_employee_family_members_self_read_policy.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261016171104_employee_family_tenant_scoped_read.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/sql/employee-family/verify.sql
           echo "Passed against synthetic PostgreSQL 17; this is not production Auth/RLS certification."

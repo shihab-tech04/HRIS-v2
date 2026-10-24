@@ -1,0 +1,44 @@
+{
+  "recorded_at": "2026-10-12T17:50:00+06:00",
+  "state": "RECOVERABLE LOCAL CHECKPOINT - NOT FOR RELEASE",
+  "current_phase": 9,
+  "current_module": "Employee Personal Leave",
+  "code_head": "35231292540afc076bb2dd88c9435bb6073db709",
+  "feature_commit": "35231292540afc076bb2dd88c9435bb6073db709",
+  "last_drive_checkpoint_commit": "a855c54119d42eba79bfd61e2fd9ccf108ba96e6",
+  "source_diff_since_1420": {
+    "base": "4ded5f13f1ef2bf17237f347bfac9811283c52dc",
+    "paths": 19,
+    "insertions": 5520,
+    "deletions": 55
+  },
+  "source_diff_since_1735_drive_checkpoint": {
+    "paths": 2,
+    "insertions": 160,
+    "deletions": 1
+  },
+  "tests": {
+    "typescript": {"passed": 1, "failed": 0},
+    "contracts": {"passed": 29, "failed": 0},
+    "vite_build": {"passed": 1, "failed": 0, "warning": "Existing minified chunk exceeds 500 kB"},
+    "personal_leave_targeted_browser": {"passed": 1, "failed": 0},
+    "chromium_full_suite": {"passed": 38, "failed": 0},
+    "isolated_local_auth_rls": {"passed": 55, "failed": 0, "timing": "Last run before UI-only Personal Leave slice; no SQL changed in that slice."}
+  },
+  "previously_failing_tenant_security": {"passed": 5, "failed": 0},
+  "canonical_catalogue": {
+    "reported_stories": 1047,
+    "reported_modules": 153,
+    "expected_sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "verified_source_available": false,
+    "mapped_and_accepted": 0,
+    "pending": 1047,
+    "root_cause": "Local Project sources mount is empty; exact-name Drive search returned no matrix."
+  },
+  "release": {
+    "production_data_or_permissions_changed": false,
+    "paid_supabase_service_created": false,
+    "github_push_performed": false,
+    "deployment_performed": false
+  }
+}

@@ -3,620 +3,42 @@ import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { tenantAttendanceDate, tenantAttendanceDateTime, tenantAttendanceTime } from './attendanceDate.mjs';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
-import { LiveSystemWorkspace } from './LiveSystemWorkspace';
+import { LiveHrisWorkspace } from './LiveHrisWorkspace';
+import { platformTenantFeatureAvailable } from './platformTenantApi';
 
 type Membership = { tenant_id: string; role: string; status: string };
 type Tenant = { id: string; name: string; slug: string; timezone: string | null };
 type Employee = { id: string; full_name: string; employee_number: string; employment_status: string };
-type DashboardProfile = { full_name: string; preferred_name: string | null; employee_number: string; official_email: string | null; personal_email: string | null; phone: string | null; official_phone: string | null; gender: string | null; date_of_birth: string | null; nationality: string | null; marital_status: string | null; emergency_contact_name: string | null; emergency_contact_phone: string | null; emergency_contact_relation: string | null; employment_status: string };
 type Department = { id: string; name: string; code: string };
 type Leave = { id: string; from_date: string; to_date: string; requested_days: number; status: string };
 type LeaveType = { id: string; name: string; annual_entitlement: number | null };
-type LeaveBalance = { leave_type_id: string; leave_type_name: string; balance_year: number; available_days: number; used_days: number; pending_days: number };
-type Holiday = { id: string; name: string; start_date: string; end_date: string; holiday_type: string | null; description: string | null };
-type DashboardTraining = { id: string; title: string; institute_name: string | null; start_date: string | null; end_date: string | null };
-type DashboardCycle = { id: string; name: string; start_date: string; end_date: string; self_review_deadline: string | null; manager_review_deadline: string | null; status: string };
-type DashboardLearningSession = { id: string; title: string; start_at: string; end_at: string | null; location: string | null };
-type DashboardInterview = { id: string; job_title: string; interview_type: string; scheduled_at: string; location_or_link: string | null };
-type DashboardSchedule = { training: DashboardTraining[]; performance_cycles: DashboardCycle[]; learning_sessions: DashboardLearningSession[]; interviews: DashboardInterview[] };
-type DashboardGoal = { id: string; title: string; category: string; target_metric: string | null; current_progress: number; due_date: string | null; status: string; origin: 'assigned' | 'personal' };
-type DashboardNotice = { id: string; title: string; category: string; body: string; published_at: string; pinned: boolean };
-type DashboardActionRequest = { id: string; category: string; title: string; status: string; requestDate: string | null; submittedAt: string | null };
-type AttendanceToday = { status: string; work_mode: string; check_in: string | null; check_out: string | null };
-type DashboardPayslip = { id: string; pay_period_name: string; pay_date: string | null; currency: string; net_salary: number; basic_salary: number | null; house_rent_allowance: number | null; medical_allowance: number | null; transport_allowance: number | null; special_allowance: number | null; overtime_pay: number | null; bonus: number | null; tax_deduction: number | null; provident_fund_deduction: number | null; leave_without_pay_deduction: number | null; other_deductions: number | null; gross_earnings: number | null; total_deductions: number | null };
-type ProfileChangeRequest = { id: string; field_key: string; reason: string; status: string; submitted_at: string; reviewed_at: string | null; review_note: string | null };
-type EmployeeAddress = { id: string | null; address_type: 'Present' | 'Permanent' | 'Other'; district: string; thana: string; post_code: string; city_village: string; road_block_house: string };
-type EmployeeFamilyMember = { id: string | null; name: string; phone: string; nid_number: string; date_of_birth: string; relationship: string; present_address: string; permanent_address: string; is_nominee: boolean; working_in_synesis: boolean; occupation: string; academic_qualification: string; blood_group: string; gender: '' | 'Male' | 'Female' | 'Other' };
-function emptyEmployeeFamilyMember(): EmployeeFamilyMember {
-  return { id: null, name: '', phone: '', nid_number: '', date_of_birth: '', relationship: '', present_address: '', permanent_address: '', is_nominee: false, working_in_synesis: false, occupation: '', academic_qualification: '', blood_group: '', gender: '' };
-}
-function normalizeEmployeeFamilyMembers(value: unknown): EmployeeFamilyMember[] {
-  if (!Array.isArray(value)) throw new Error('Invalid family member response.');
-  return value.map((item): EmployeeFamilyMember => {
-    if (!item || typeof item !== 'object') throw new Error('Invalid family member response.');
-    const row = item as Record<string, unknown>;
-    if (typeof row.id !== 'string' || typeof row.name !== 'string') throw new Error('Invalid family member response.');
-    const text = (key: string) => typeof row[key] === 'string' ? row[key] as string : '';
-    const gender = text('gender');
-    return {
-      id: row.id,
-      name: row.name,
-      phone: text('phone'),
-      nid_number: text('nid_number'),
-      date_of_birth: text('date_of_birth'),
-      relationship: text('relationship'),
-      present_address: text('present_address'),
-      permanent_address: text('permanent_address'),
-      is_nominee: row.is_nominee === true,
-      working_in_synesis: row.working_in_synesis === true,
-      occupation: text('occupation'),
-      academic_qualification: text('academic_qualification'),
-      blood_group: text('blood_group'),
-      gender: gender === 'Male' || gender === 'Female' || gender === 'Other' ? gender : '',
-    };
-  }).sort((left, right) => left.name.localeCompare(right.name) || (left.id || '').localeCompare(right.id || ''));
-}
-const employeeAddressTypes: EmployeeAddress['address_type'][] = ['Present', 'Permanent', 'Other'];
-function normalizeEmployeeAddresses(value: unknown): EmployeeAddress[] {
-  if (!Array.isArray(value)) throw new Error('Invalid employee address response.');
-  return value.map((item): EmployeeAddress => {
-    if (!item || typeof item !== 'object') throw new Error('Invalid employee address response.');
-    const row = item as Record<string, unknown>;
-    if (typeof row.id !== 'string' || !employeeAddressTypes.includes(row.address_type as EmployeeAddress['address_type'])) {
-      throw new Error('Invalid employee address response.');
-    }
-    const text = (key: string) => typeof row[key] === 'string' ? row[key] as string : '';
-    return {
-      id: row.id,
-      address_type: row.address_type as EmployeeAddress['address_type'],
-      district: text('district'),
-      thana: text('thana'),
-      post_code: text('post_code'),
-      city_village: text('city_village'),
-      road_block_house: text('road_block_house'),
-    };
-  }).sort((left, right) => {
-    const order: Record<EmployeeAddress['address_type'], number> = { Present: 0, Permanent: 1, Other: 2 };
-    return order[left.address_type] - order[right.address_type] || (left.id || '').localeCompare(right.id || '');
-  });
-}
-const protectedProfileFields = [
-  ['full_name', 'Full name'],
-  ['official_email', 'Official email (HR record only)'],
-  ['personal_email', 'Personal email'],
-  ['official_phone', 'Official phone'],
-  ['address', 'Home address'],
-  ['mailing_address', 'Mailing address'],
-  ['emergency_contact_name', 'Emergency contact name'],
-  ['emergency_contact_phone', 'Emergency contact phone'],
-  ['emergency_contact_relation', 'Emergency contact relationship'],
-  ['father_name', 'Father’s name'],
-  ['mother_name', 'Mother’s name'],
-  ['birthplace', 'Birthplace'],
-  ['blood_group', 'Blood group'],
-  ['religion', 'Religion'],
-  ['nid_number', 'National ID number'],
-  ['passport_number', 'Passport number'],
-  ['etin_number', 'eTIN number'],
-] as const;
-function profileFieldLabel(key: string) {
-  return protectedProfileFields.find(([field]) => field === key)?.[1] || key.replace(/_/g, ' ');
-}
-type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[]; leaveBalances: LeaveBalance[]; holidays: Holiday[]; dashboardSchedule: DashboardSchedule; scheduleError: boolean; goals: DashboardGoal[]; goalsError: boolean; notices: DashboardNotice[]; noticesError: boolean; pendingRequests: DashboardActionRequest[]; pendingRequestErrors: string[]; attendanceToday: AttendanceToday | null; employeeProfile: DashboardProfile | null; payslips: DashboardPayslip[]; payslipsError: boolean };
-type View = 'employee' | 'admin' | 'preview' | 'system';
-const emptyDashboardSchedule = (): DashboardSchedule => ({ training: [], performance_cycles: [], learning_sessions: [], interviews: [] });
-function normalizeDashboardSchedule(value: unknown): DashboardSchedule {
-  const schedule = value && typeof value === 'object' ? value as Partial<DashboardSchedule> : {};
-  return {
-    training: Array.isArray(schedule.training) ? schedule.training : [],
-    performance_cycles: Array.isArray(schedule.performance_cycles) ? schedule.performance_cycles : [],
-    learning_sessions: Array.isArray(schedule.learning_sessions) ? schedule.learning_sessions : [],
-    interviews: Array.isArray(schedule.interviews) ? schedule.interviews : [],
-  };
-}
-function normalizeDashboardGoals(value: unknown): DashboardGoal[] {
-  if (!value || typeof value !== 'object') return [];
-  const goals = (value as { goals?: unknown }).goals;
-  if (!Array.isArray(goals)) return [];
-  return goals.filter((goal): goal is DashboardGoal => Boolean(goal && typeof goal === 'object'
-    && typeof (goal as DashboardGoal).id === 'string'
-    && typeof (goal as DashboardGoal).title === 'string'
-    && typeof (goal as DashboardGoal).status === 'string'));
-}
-function goalIsOverdue(goal: DashboardGoal, today: string) {
-  return Boolean(goal.due_date && goal.due_date < today && !['completed', 'cancelled'].includes(goal.status));
-}
-function normalizeDashboardNotices(value: unknown): DashboardNotice[] {
-  if (!value || typeof value !== 'object') return [];
-  const notices = (value as { notices?: unknown }).notices;
-  if (!Array.isArray(notices)) return [];
-  return notices.filter((notice): notice is DashboardNotice => Boolean(notice && typeof notice === 'object'
-    && typeof (notice as DashboardNotice).id === 'string'
-    && typeof (notice as DashboardNotice).title === 'string'
-    && typeof (notice as DashboardNotice).category === 'string'
-    && typeof (notice as DashboardNotice).body === 'string'
-    && typeof (notice as DashboardNotice).published_at === 'string'
-    && Number.isFinite(Date.parse((notice as DashboardNotice).published_at))
-    && Date.parse((notice as DashboardNotice).published_at) <= Date.now()))
-    .map(notice => ({ ...notice, pinned: notice.pinned === true }));
-}
-function normalizePendingRequests(value: unknown, category: string, pendingStatuses: string[], titleFor: (row: Record<string, unknown>) => string): DashboardActionRequest[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): DashboardActionRequest[] => {
-    if (!item || typeof item !== 'object') return [];
-    const row = item as Record<string, unknown>;
-    const status = typeof row.status === 'string' ? row.status.toLowerCase() : '';
-    if (typeof row.id !== 'string' || !pendingStatuses.includes(status)) return [];
-    const requestDate = [row.attendance_date, row.from_date, row.claim_date].find(field => typeof field === 'string');
-    const submittedAt = [row.requested_at, row.submitted_at, row.created_at].find(field => typeof field === 'string');
-    return [{
-      id: row.id,
-      category,
-      title: titleFor(row),
-      status,
-      requestDate: typeof requestDate === 'string' ? requestDate : null,
-      submittedAt: typeof submittedAt === 'string' ? submittedAt : null,
-    }];
-  });
-}
-function normalizeDashboardPayslips(value: unknown): DashboardPayslip[] {
-  if (!Array.isArray(value)) return [];
-  const amount = (row: Record<string, unknown>, field: string): number | null => {
-    const parsed = typeof row[field] === 'number' ? row[field] : typeof row[field] === 'string' ? Number(row[field]) : NaN;
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  return value.flatMap((item): DashboardPayslip[] => {
-    if (!item || typeof item !== 'object') return [];
-    const row = item as Record<string, unknown>;
-    const netSalary = amount(row, 'net_salary');
-    if (typeof row.id !== 'string' || row.status !== 'released' || netSalary === null) return [];
-    const currency = typeof row.currency === 'string' && /^[A-Z]{3}$/.test(row.currency) ? row.currency : '---';
-    return [{
-      id: row.id,
-      pay_period_name: typeof row.pay_period_name === 'string' ? row.pay_period_name : 'Payslip',
-      pay_date: typeof row.pay_date === 'string' ? row.pay_date : null,
-      currency,
-      net_salary: netSalary,
-      basic_salary: amount(row, 'basic_salary'),
-      house_rent_allowance: amount(row, 'house_rent_allowance'),
-      medical_allowance: amount(row, 'medical_allowance'),
-      transport_allowance: amount(row, 'transport_allowance'),
-      special_allowance: amount(row, 'special_allowance'),
-      overtime_pay: amount(row, 'overtime_pay'),
-      bonus: amount(row, 'bonus'),
-      tax_deduction: amount(row, 'tax_deduction'),
-      provident_fund_deduction: amount(row, 'provident_fund_deduction'),
-      leave_without_pay_deduction: amount(row, 'leave_without_pay_deduction'),
-      other_deductions: amount(row, 'other_deductions'),
-      gross_earnings: amount(row, 'gross_earnings'),
-      total_deductions: amount(row, 'total_deductions'),
-    }];
-  });
-}
-function formatPayslipAmount(amount: number, currency: string) {
-  return `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
-}
-function contextRows(value: unknown, key: string): unknown[] {
-  if (!value || typeof value !== 'object') return [];
-  const rows = (value as Record<string, unknown>)[key];
-  return Array.isArray(rows) ? rows : [];
-}
-const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [], leaveBalances: [], holidays: [], dashboardSchedule: emptyDashboardSchedule(), scheduleError: false, goals: [], goalsError: false, notices: [], noticesError: false, pendingRequests: [], pendingRequestErrors: [], attendanceToday: null, employeeProfile: null, payslips: [], payslipsError: false });
-
-function attendanceStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    present: 'Present',
-    late: 'Late',
-    absent: 'Absent',
-    on_leave: 'On leave',
-    holiday: 'Holiday',
-    weekend: 'Weekend',
-    missing: 'No attendance recorded',
-    partial: 'Partial attendance',
-  };
-  return labels[status] || 'Status unavailable';
-}
-
-function attendanceWorkModeLabel(workMode: string) {
-  const labels: Record<string, string> = {
-    office: 'Working on-site',
-    home: 'Working remotely',
-    client: 'Working at a client site',
-    field: 'Working in the field',
-  };
-  return labels[workMode] || '';
-}
-
-function attendanceDateLabel(now: Date, timeZone: string | null) {
-  return `Today · ${tenantAttendanceDate(now, timeZone || 'UTC')}`;
-}
-
-function EmployeeProfileSection({ profile, savedMessage, onSaved }: { profile: DashboardProfile; savedMessage: string; onSaved: (message: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [profileChangeRequests, setProfileChangeRequests] = useState<ProfileChangeRequest[]>([]);
-  const [profileChangeLoading, setProfileChangeLoading] = useState(true);
-  const [profileChangeSaving, setProfileChangeSaving] = useState(false);
-  const [profileChangeError, setProfileChangeError] = useState('');
-  const [profileChangeMessage, setProfileChangeMessage] = useState('');
-  const [profileChangeForm, setProfileChangeForm] = useState({ field_key: 'official_email', requested_value: '', reason: '' });
-  const [addresses, setAddresses] = useState<EmployeeAddress[]>([]);
-  const [addressDraft, setAddressDraft] = useState<EmployeeAddress[]>([]);
-  const [addressesLoading, setAddressesLoading] = useState(true);
-  const [addressesEditing, setAddressesEditing] = useState(false);
-  const [addressesSaving, setAddressesSaving] = useState(false);
-  const [addressesError, setAddressesError] = useState('');
-  const [familyMembers, setFamilyMembers] = useState<EmployeeFamilyMember[]>([]);
-  const [familyDraft, setFamilyDraft] = useState<EmployeeFamilyMember[]>([]);
-  const [familyLoading, setFamilyLoading] = useState(true);
-  const [familyEditing, setFamilyEditing] = useState(false);
-  const [familySaving, setFamilySaving] = useState(false);
-  const [familyError, setFamilyError] = useState('');
-  const [familySavedMessage, setFamilySavedMessage] = useState('');
-  const [form, setForm] = useState({
-    preferred_name: profile.preferred_name || '',
-    personal_email: profile.personal_email || '',
-    phone: profile.phone || '',
-    gender: profile.gender || '',
-    date_of_birth: profile.date_of_birth || '',
-    nationality: profile.nationality || '',
-    marital_status: profile.marital_status || '',
-    emergency_contact_name: profile.emergency_contact_name || '',
-    emergency_contact_phone: profile.emergency_contact_phone || '',
-    emergency_contact_relation: profile.emergency_contact_relation || '',
-  });
-  useEffect(() => {
-    setForm({
-      preferred_name: profile.preferred_name || '',
-      personal_email: profile.personal_email || '',
-      phone: profile.phone || '',
-      gender: profile.gender || '',
-      date_of_birth: profile.date_of_birth || '',
-      nationality: profile.nationality || '',
-      marital_status: profile.marital_status || '',
-      emergency_contact_name: profile.emergency_contact_name || '',
-      emergency_contact_phone: profile.emergency_contact_phone || '',
-      emergency_contact_relation: profile.emergency_contact_relation || '',
-    });
-    setError('');
-  }, [profile]);
-
-  async function loadProfileChangeRequests() {
-    setProfileChangeLoading(true);
-    try {
-      const { data, error: requestError } = await supabase.rpc('employee_get_my_profile_change_requests');
-      if (requestError) throw requestError;
-      setProfileChangeError('');
-      setProfileChangeRequests(Array.isArray(data) ? data as ProfileChangeRequest[] : []);
-    } catch {
-      setProfileChangeError('Profile change requests are temporarily unavailable. Refresh to try again.');
-      setProfileChangeRequests([]);
-    } finally {
-      setProfileChangeLoading(false);
-    }
-  }
-
-  useEffect(() => { void loadProfileChangeRequests(); }, []);
-
-  async function loadAddresses() {
-    setAddressesLoading(true);
-    setAddressesError('');
-    try {
-      const { data, error: addressError } = await supabase.from('employee_addresses')
-        .select('id,address_type,district,thana,post_code,city_village,road_block_house');
-      if (addressError) throw addressError;
-      setAddresses(normalizeEmployeeAddresses(data || []));
-    } catch {
-      setAddressesError('Your address details are temporarily unavailable. Refresh to try again.');
-    } finally {
-      setAddressesLoading(false);
-    }
-  }
-
-  useEffect(() => { void loadAddresses(); }, []);
-
-  async function loadFamilyMembers() {
-    setFamilyLoading(true);
-    setFamilyError('');
-    try {
-      const { data, error: familyErrorResult } = await supabase.from('employee_family_members')
-        .select('id,name,phone,nid_number,date_of_birth,relationship,present_address,permanent_address,is_nominee,working_in_synesis,occupation,academic_qualification,blood_group,gender')
-        .order('created_at', { ascending: true });
-      if (familyErrorResult) throw familyErrorResult;
-      setFamilyMembers(normalizeEmployeeFamilyMembers(data || []));
-      return true;
-    } catch {
-      setFamilyError('Your family details are temporarily unavailable. Refresh to try again.');
-      setFamilyMembers([]);
-      return false;
-    } finally {
-      setFamilyLoading(false);
-    }
-  }
-
-  useEffect(() => { void loadFamilyMembers(); }, []);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError('');
-    try {
-      const { error: updateError } = await supabase.rpc('employee_update_my_profile', { p_payload: {
-        preferred_name: form.preferred_name.trim(),
-        personal_email: form.personal_email.trim(),
-        phone: form.phone.trim(),
-        gender: form.gender,
-        date_of_birth: form.date_of_birth,
-        nationality: form.nationality.trim(),
-        marital_status: form.marital_status.trim(),
-        emergency_contact_name: form.emergency_contact_name.trim(),
-        emergency_contact_phone: form.emergency_contact_phone.trim(),
-        emergency_contact_relation: form.emergency_contact_relation.trim(),
-      } });
-      if (updateError) throw updateError;
-      setEditing(false);
-      onSaved('Personal information saved.');
-    } catch {
-      setError('Unable to save your personal information. Refresh and try again.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function submitProfileChangeRequest(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setProfileChangeSaving(true);
-    setProfileChangeError('');
-    setProfileChangeMessage('');
-    try {
-      const { error: requestError } = await supabase.rpc('employee_submit_profile_change_request', {
-        p_field_key: profileChangeForm.field_key,
-        p_requested_value: profileChangeForm.requested_value.trim(),
-        p_reason: profileChangeForm.reason.trim(),
-      });
-      if (requestError) {
-        setProfileChangeError(requestError.message.includes('pending request already exists')
-          ? 'A pending request already exists for this field.'
-          : 'Unable to submit your request. Check the proposed value and try again.');
-      } else {
-        setProfileChangeForm(current => ({ ...current, requested_value: '', reason: '' }));
-        setProfileChangeMessage('Your profile change request was submitted for HR review.');
-        await loadProfileChangeRequests();
-      }
-    } catch {
-      setProfileChangeError('Unable to submit your request. Check your connection and try again.');
-    } finally {
-      setProfileChangeSaving(false);
-    }
-  }
-
-  async function saveAddresses(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAddressesSaving(true);
-    setAddressesError('');
-    try {
-      const rows = addressDraft
-        .filter(row => row.id || [row.district, row.thana, row.post_code, row.city_village, row.road_block_house].some(value => value.trim()))
-        .map(row => ({
-          ...(row.id ? { id: row.id } : {}),
-          address_type: row.address_type,
-          district: row.district.trim(),
-          thana: row.thana.trim(),
-          post_code: row.post_code.trim(),
-          city_village: row.city_village.trim(),
-          road_block_house: row.road_block_house.trim(),
-        }));
-      const { data, error: saveError } = await supabase.rpc('employee_save_my_addresses_v2', { p_rows: rows });
-      if (saveError) throw saveError;
-      if (Number(data) !== rows.length) throw new Error('Address save count did not match.');
-      await loadAddresses();
-      setAddressesEditing(false);
-      onSaved('Present and permanent addresses saved.');
-    } catch {
-      setAddressesError('Unable to save your address details. Refresh and try again.');
-    } finally {
-      setAddressesSaving(false);
-    }
-  }
-
-  function addAddress(addressType: EmployeeAddress['address_type']) {
-    setAddressDraft(current => [...current, {
-      id: null,
-      address_type: addressType,
-      district: '',
-      thana: '',
-      post_code: '',
-      city_village: '',
-      road_block_house: '',
-    }]);
-  }
-
-  function addFamilyMember() {
-    setFamilyDraft(current => current.length >= 100 ? current : [...current, emptyEmployeeFamilyMember()]);
-    setFamilyError('');
-  }
-
-  async function saveFamilyMembers(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFamilySaving(true);
-    setFamilyError('');
-    setFamilySavedMessage('');
-    try {
-      const rows = familyDraft
-        .filter(member => Boolean(member.id) || [member.name, member.phone, member.nid_number, member.date_of_birth, member.relationship, member.present_address, member.permanent_address, member.occupation, member.academic_qualification, member.blood_group, member.gender].some(value => value.trim()))
-        .map(member => ({
-          ...(member.id ? { id: member.id } : {}),
-          name: member.name.trim(),
-          phone: member.phone.trim(),
-          nid_number: member.nid_number.trim(),
-          date_of_birth: member.date_of_birth,
-          relationship: member.relationship.trim(),
-          present_address: member.present_address.trim(),
-          permanent_address: member.permanent_address.trim(),
-          is_nominee: member.is_nominee,
-          working_in_synesis: member.working_in_synesis,
-          occupation: member.occupation.trim(),
-          academic_qualification: member.academic_qualification.trim(),
-          blood_group: member.blood_group.trim(),
-          gender: member.gender,
-        }));
-      const { data, error: saveError } = await supabase.rpc('employee_save_my_family_members_v2', { p_rows: rows });
-      if (saveError) throw saveError;
-      if (Number(data) !== rows.length) throw new Error('Family member save count did not match.');
-      const reloaded = await loadFamilyMembers();
-      setFamilyEditing(false);
-      setFamilyDraft([]);
-      setFamilySavedMessage(reloaded ? 'Family information saved.' : 'Family information saved. Refresh to reload the latest details.');
-    } catch {
-      setFamilyError('Unable to save family details. Check the required names and try again.');
-    } finally {
-      setFamilySaving(false);
-    }
-  }
-
-  return <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-    <div className="border-b p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div>{!editing && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setError(''); onSaved(''); setEditing(true); }}>Edit personal information</button>}</div>
-    {savedMessage && <p role="status" className="border-b p-3 text-sm text-emerald-800">{savedMessage}</p>}
-    {error && <p role="alert" className="border-b p-3 text-sm text-red-800">{error}</p>}
-    {editing ? <form className="p-4" onSubmit={submit}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div><label htmlFor="employee-profile-preferred-name" className="block text-xs font-medium text-slate-600">Preferred name</label><input id="employee-profile-preferred-name" maxLength={120} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.preferred_name} onChange={event => setForm(value => ({ ...value, preferred_name: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-personal-email" className="block text-xs font-medium text-slate-600">Personal email</label><input id="employee-profile-personal-email" type="email" autoComplete="email" maxLength={254} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.personal_email} onChange={event => setForm(value => ({ ...value, personal_email: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-phone" className="block text-xs font-medium text-slate-600">Personal phone</label><input id="employee-profile-phone" type="tel" autoComplete="tel" maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.phone} onChange={event => setForm(value => ({ ...value, phone: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-gender" className="block text-xs font-medium text-slate-600">Gender</label><select id="employee-profile-gender" className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.gender} onChange={event => setForm(value => ({ ...value, gender: event.target.value }))}><option value="">Not provided</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
-        <div><label htmlFor="employee-profile-date-of-birth" className="block text-xs font-medium text-slate-600">Date of birth</label><input id="employee-profile-date-of-birth" type="date" max={new Date().toISOString().slice(0, 10)} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.date_of_birth} onChange={event => setForm(value => ({ ...value, date_of_birth: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-nationality" className="block text-xs font-medium text-slate-600">Nationality</label><input id="employee-profile-nationality" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.nationality} onChange={event => setForm(value => ({ ...value, nationality: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-marital-status" className="block text-xs font-medium text-slate-600">Marital status</label><input id="employee-profile-marital-status" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.marital_status} onChange={event => setForm(value => ({ ...value, marital_status: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-emergency-contact-name" className="block text-xs font-medium text-slate-600">Emergency contact name</label><input id="employee-profile-emergency-contact-name" maxLength={200} autoComplete="name" className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.emergency_contact_name} onChange={event => setForm(value => ({ ...value, emergency_contact_name: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-emergency-contact-phone" className="block text-xs font-medium text-slate-600">Emergency contact phone</label><input id="employee-profile-emergency-contact-phone" type="tel" autoComplete="tel" maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.emergency_contact_phone} onChange={event => setForm(value => ({ ...value, emergency_contact_phone: event.target.value }))}/></div>
-        <div><label htmlFor="employee-profile-emergency-contact-relation" className="block text-xs font-medium text-slate-600">Emergency contact relationship</label><input id="employee-profile-emergency-contact-relation" maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={form.emergency_contact_relation} onChange={event => setForm(value => ({ ...value, emergency_contact_relation: event.target.value }))}/></div>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save personal information'}</button><button type="button" disabled={saving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setForm({ preferred_name: profile.preferred_name || '', personal_email: profile.personal_email || '', phone: profile.phone || '', gender: profile.gender || '', date_of_birth: profile.date_of_birth || '', nationality: profile.nationality || '', marital_status: profile.marital_status || '', emergency_contact_name: profile.emergency_contact_name || '', emergency_contact_phone: profile.emergency_contact_phone || '', emergency_contact_relation: profile.emergency_contact_relation || '' }); setEditing(false); setError(''); }}>Cancel</button></div>
-    </form> : <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm">
-      <div><dt className="text-xs text-slate-500">Full name</dt><dd className="font-medium">{profile.full_name || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Preferred name</dt><dd className="font-medium">{profile.preferred_name || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Employee number</dt><dd className="font-medium">{profile.employee_number || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Official email</dt><dd className="font-medium">{profile.official_email || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Personal email</dt><dd className="font-medium">{profile.personal_email || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Personal phone</dt><dd className="font-medium">{profile.phone || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Official phone</dt><dd className="font-medium">{profile.official_phone || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Gender</dt><dd className="font-medium">{profile.gender || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Date of birth</dt><dd className="font-medium">{profile.date_of_birth || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Nationality</dt><dd className="font-medium">{profile.nationality || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Marital status</dt><dd className="font-medium">{profile.marital_status || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Emergency contact name</dt><dd className="font-medium">{profile.emergency_contact_name || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Emergency contact phone</dt><dd className="font-medium">{profile.emergency_contact_phone || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Emergency contact relationship</dt><dd className="font-medium">{profile.emergency_contact_relation || 'Not provided'}</dd></div>
-      <div><dt className="text-xs text-slate-500">Employment status</dt><dd className="font-medium capitalize">{profile.employment_status.replace(/_/g, ' ')}</dd></div>
-    </dl>}
-    <section id="employee-addresses" aria-label="Present and permanent addresses" className="border-t">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-        <div><h3 className="font-semibold">Present and permanent addresses</h3><p className="mt-1 text-xs text-slate-500">Manage the address details linked to your employee record.</p></div>
-        {!addressesEditing && !addressesLoading && !addressesError && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setAddressDraft(addresses.map(address => ({ ...address }))); setAddressesEditing(true); setAddressesError(''); }}>Edit addresses</button>}
-      </div>
-      {addressesLoading ? <p className="p-4 text-sm text-slate-500">Loading addresses…</p> : addressesError ? <div className="flex flex-wrap items-center gap-3 p-4"><p role="alert" className="text-sm text-red-800">{addressesError}</p><button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { void loadAddresses(); }}>Retry</button></div> : addressesEditing ? <form className="p-4" onSubmit={saveAddresses}>
-        <div className="space-y-4">
-          {addressDraft.map((address, index) => {
-            const prefix = `${address.address_type} address ${index + 1}`;
-            const idPrefix = `employee-address-${address.id || `new-${index}`}`;
-            return <fieldset key={address.id || `new-${index}`} className="rounded-md border p-4">
-              <legend className="px-1 text-sm font-semibold">{prefix}</legend>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><label htmlFor={`${idPrefix}-type`} className="block text-xs font-medium text-slate-600">{prefix} type</label><select id={`${idPrefix}-type`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.address_type} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, address_type: event.target.value as EmployeeAddress['address_type'] } : row))}>{employeeAddressTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
-                <div><label htmlFor={`${idPrefix}-district`} className="block text-xs font-medium text-slate-600">{prefix} district</label><input id={`${idPrefix}-district`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.district} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, district: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-thana`} className="block text-xs font-medium text-slate-600">{prefix} thana</label><input id={`${idPrefix}-thana`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.thana} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, thana: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-post-code`} className="block text-xs font-medium text-slate-600">{prefix} post code</label><input id={`${idPrefix}-post-code`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.post_code} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, post_code: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-city-village`} className="block text-xs font-medium text-slate-600">{prefix} city or village</label><input id={`${idPrefix}-city-village`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.city_village} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, city_village: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-road-block-house`} className="block text-xs font-medium text-slate-600">{prefix} road, block or house</label><input id={`${idPrefix}-road-block-house`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={address.road_block_house} onChange={event => setAddressDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, road_block_house: event.target.value } : row))}/></div>
-              </div>
-            </fieldset>;
-          })}
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {!addressDraft.some(address => address.address_type === 'Present') && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => addAddress('Present')}>Add present address</button>}
-          {!addressDraft.some(address => address.address_type === 'Permanent') && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => addAddress('Permanent')}>Add permanent address</button>}
-          <button type="submit" disabled={addressesSaving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{addressesSaving ? 'Saving…' : 'Save addresses'}</button>
-          <button type="button" disabled={addressesSaving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setAddressesEditing(false); setAddressDraft([]); setAddressesError(''); }}>Cancel</button>
-        </div>
-      </form> : <ul className="divide-y p-4 text-sm">{addresses.length === 0 ? <li className="text-slate-500">No address details added.</li> : addresses.map(address => <li key={address.id} className="py-3 first:pt-0 last:pb-0"><p className="font-medium">{address.address_type} address</p><p className="mt-1 text-slate-600">{[address.road_block_house, address.city_village, address.thana, address.district, address.post_code].filter(Boolean).join(', ') || 'Not provided'}</p></li>)}</ul>}
-    </section>
-    <section id="employee-family-members" aria-label="Dependents and family members" className="border-t">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-        <div><h3 className="font-semibold">Dependents and family members</h3><p className="mt-1 text-xs text-slate-500">Manage the family details linked to your employee record.</p></div>
-        {!familyEditing && !familyLoading && !familyError && <button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { setFamilyDraft(familyMembers.length ? familyMembers.map(member => ({ ...member })) : [emptyEmployeeFamilyMember()]); setFamilySavedMessage(''); setFamilyError(''); setFamilyEditing(true); }}>{familyMembers.length ? 'Edit family information' : 'Add family member'}</button>}
-      </div>
-      {familySavedMessage && <p role="status" className="border-b p-3 text-sm text-emerald-800">{familySavedMessage}</p>}
-      {familyLoading ? <p className="p-4 text-sm text-slate-500">Loading family details…</p> : familyError && !familyEditing ? <div className="flex flex-wrap items-center gap-3 p-4"><p role="alert" className="text-sm text-red-800">{familyError}</p><button type="button" className="min-h-10 rounded-md border px-3 text-sm" onClick={() => { void loadFamilyMembers(); }}>Retry</button></div> : familyEditing ? <form className="p-4" onSubmit={saveFamilyMembers}>
-        <div className="space-y-4">
-          {familyDraft.map((member, index) => {
-            const prefix = `Family member ${index + 1}`;
-            const idPrefix = `employee-family-member-${member.id || `new-${index}`}`;
-            return <fieldset key={member.id || `new-${index}`} className="rounded-md border p-4">
-              <legend className="px-1 text-sm font-semibold">{prefix}</legend>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><label htmlFor={`${idPrefix}-name`} className="block text-xs font-medium text-slate-600">{prefix} name</label><input id={`${idPrefix}-name`} required maxLength={200} autoComplete="name" className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.name} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, name: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-phone`} className="block text-xs font-medium text-slate-600">{prefix} phone</label><input id={`${idPrefix}-phone`} type="tel" maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.phone} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, phone: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-nid`} className="block text-xs font-medium text-slate-600">{prefix} national ID number</label><input id={`${idPrefix}-nid`} maxLength={40} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.nid_number} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, nid_number: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-dob`} className="block text-xs font-medium text-slate-600">{prefix} date of birth</label><input id={`${idPrefix}-dob`} type="date" max={new Date().toISOString().slice(0, 10)} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.date_of_birth} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, date_of_birth: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-relationship`} className="block text-xs font-medium text-slate-600">{prefix} relationship</label><input id={`${idPrefix}-relationship`} maxLength={100} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.relationship} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, relationship: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-gender`} className="block text-xs font-medium text-slate-600">{prefix} gender</label><select id={`${idPrefix}-gender`} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.gender} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, gender: event.target.value as EmployeeFamilyMember['gender'] } : row))}><option value="">Not provided</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
-                <div><label htmlFor={`${idPrefix}-present-address`} className="block text-xs font-medium text-slate-600">{prefix} present address</label><input id={`${idPrefix}-present-address`} maxLength={500} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.present_address} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, present_address: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-permanent-address`} className="block text-xs font-medium text-slate-600">{prefix} permanent address</label><input id={`${idPrefix}-permanent-address`} maxLength={500} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.permanent_address} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, permanent_address: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-occupation`} className="block text-xs font-medium text-slate-600">{prefix} occupation</label><input id={`${idPrefix}-occupation`} maxLength={120} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.occupation} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, occupation: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-qualification`} className="block text-xs font-medium text-slate-600">{prefix} academic qualification</label><input id={`${idPrefix}-qualification`} maxLength={200} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.academic_qualification} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, academic_qualification: event.target.value } : row))}/></div>
-                <div><label htmlFor={`${idPrefix}-blood-group`} className="block text-xs font-medium text-slate-600">{prefix} blood group</label><input id={`${idPrefix}-blood-group`} maxLength={20} className="mt-1 min-h-11 w-full rounded-md border px-3" value={member.blood_group} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, blood_group: event.target.value } : row))}/></div>
-                <div className="flex flex-col justify-center gap-3">
-                  <label className="flex items-center gap-2 text-sm" htmlFor={`${idPrefix}-nominee`}><input id={`${idPrefix}-nominee`} type="checkbox" checked={member.is_nominee} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, is_nominee: event.target.checked } : row))}/>{prefix} nominee</label>
-                  <label className="flex items-center gap-2 text-sm" htmlFor={`${idPrefix}-synesis`}><input id={`${idPrefix}-synesis`} type="checkbox" checked={member.working_in_synesis} onChange={event => setFamilyDraft(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, working_in_synesis: event.target.checked } : row))}/>{prefix} works in Synesis</label>
-                </div>
-              </div>
-            </fieldset>;
-          })}
-        </div>
-        {familyError && <p role="alert" className="mt-3 text-sm text-red-800">{familyError}</p>}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={familySaving || familyDraft.length >= 100} className="min-h-10 rounded-md border px-3 text-sm disabled:opacity-50" onClick={addFamilyMember}>Add another family member</button>
-          <button type="submit" disabled={familySaving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{familySaving ? 'Saving…' : 'Save family information'}</button>
-          <button type="button" disabled={familySaving} className="min-h-10 rounded-md border px-4 text-sm" onClick={() => { setFamilyEditing(false); setFamilyDraft([]); setFamilyError(''); }}>Cancel</button>
-        </div>
-      </form> : <ul className="divide-y p-4 text-sm">{familyMembers.length === 0 ? <li className="text-slate-500">No dependent or family records added.</li> : familyMembers.map(member => <li key={member.id} className="py-3 first:pt-0 last:pb-0"><h4 className="font-medium">{member.name}</h4><dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-        <div><dt className="text-xs text-slate-500">Relationship</dt><dd>{member.relationship || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Phone</dt><dd>{member.phone || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">National ID number</dt><dd>{member.nid_number || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Date of birth</dt><dd>{member.date_of_birth || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Present address</dt><dd>{member.present_address || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Permanent address</dt><dd>{member.permanent_address || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Nominee</dt><dd>{member.is_nominee ? 'Yes' : 'No'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Works in Synesis</dt><dd>{member.working_in_synesis ? 'Yes' : 'No'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Occupation</dt><dd>{member.occupation || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Academic qualification</dt><dd>{member.academic_qualification || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Blood group</dt><dd>{member.blood_group || 'Not provided'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Gender</dt><dd>{member.gender || 'Not provided'}</dd></div>
-      </dl></li>)}</ul>}
-    </section>
-    <details className="border-t">
-      <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Request a protected profile change</summary>
-      <div className="border-t p-4">
-        <p className="mb-4 text-sm text-slate-600">HR reviews changes to protected profile fields. Approval updates the HRIS employee record; it does not change sign-in credentials or financial account details.</p>
-        <form className="grid grid-cols-1 sm:grid-cols-2 gap-4" onSubmit={submitProfileChangeRequest}>
-          <div><label htmlFor="employee-profile-change-field" className="block text-xs font-medium text-slate-600">Profile field</label><select id="employee-profile-change-field" className="mt-1 min-h-11 w-full rounded-md border px-3" value={profileChangeForm.field_key} onChange={event => setProfileChangeForm(current => ({ ...current, field_key: event.target.value }))}>{protectedProfileFields.map(([field, label]) => <option value={field} key={field}>{label}</option>)}</select></div>
-          <div><label htmlFor="employee-profile-change-value" className="block text-xs font-medium text-slate-600">Proposed value</label><input id="employee-profile-change-value" type={profileChangeForm.field_key.endsWith('email') ? 'email' : 'text'} required maxLength={500} className="mt-1 min-h-11 w-full rounded-md border px-3" value={profileChangeForm.requested_value} onChange={event => setProfileChangeForm(current => ({ ...current, requested_value: event.target.value }))}/></div>
-          <div className="sm:col-span-2"><label htmlFor="employee-profile-change-reason" className="block text-xs font-medium text-slate-600">Reason for change</label><textarea id="employee-profile-change-reason" required maxLength={1000} rows={3} className="mt-1 w-full rounded-md border px-3 py-2" value={profileChangeForm.reason} onChange={event => setProfileChangeForm(current => ({ ...current, reason: event.target.value }))}/></div>
-          <div className="sm:col-span-2"><button type="submit" disabled={profileChangeSaving} className="min-h-10 rounded-md bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{profileChangeSaving ? 'Submitting…' : 'Submit profile change request'}</button></div>
-        </form>
-        {profileChangeMessage && <p role="status" className="mt-3 text-sm text-emerald-800">{profileChangeMessage}</p>}
-        {profileChangeError && <p role="alert" className="mt-3 text-sm text-red-800">{profileChangeError}</p>}
-        <section aria-label="My profile change requests" className="mt-5 border-t pt-4">
-          <h3 className="text-sm font-semibold">My profile change requests</h3>
-          {profileChangeLoading ? <p role="status" className="mt-2 text-sm text-slate-500">Loading request status…</p> : profileChangeRequests.length === 0 ? <p className="mt-2 text-sm text-slate-500">No profile change requests yet.</p> : <ul className="mt-2 divide-y">{profileChangeRequests.map(request => <li key={request.id} className="py-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">{profileFieldLabel(request.field_key)}</p><span className="rounded-md bg-slate-100 px-2 py-1 text-xs capitalize">{request.status}</span></div><p className="mt-1 text-xs text-slate-500">Submitted {new Date(request.submitted_at).toLocaleDateString()}</p>{request.review_note && <p className="mt-2 text-sm text-slate-600">HR note: {request.review_note}</p>}</li>)}</ul>}
-        </section>
-      </div>
-    </details>
-  </section>;
-}
+type Records = { employees: Employee[]; departments: Department[]; leaves: Leave[]; leaveTypes: LeaveType[] };
+type View = 'employee' | 'preview' | 'system';
+type WorkspacePermissions = {
+  dashboard: boolean; attendance: boolean; attendanceView: boolean; attendanceManage: boolean;
+  attendanceReport: boolean; leave: boolean; leaveManage: boolean; organization: boolean;
+  organizationManage: boolean; employees: boolean; employeesManage: boolean; performance: boolean; recruitment: boolean; recruitmentManage: boolean;
+  referrals: boolean; referralsManage: boolean;
+  holidayManage: boolean;
+  learningManage: boolean;
+  travel: boolean; travelView: boolean; travelManage: boolean;
+  expenses: boolean; expensesView: boolean; expensesManage: boolean;
+  payroll: boolean; payrollManage: boolean;
+  selfServiceManage: boolean;
+};
+const noWorkspacePermissions: WorkspacePermissions = {
+  dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
+  attendanceReport: false, leave: false, leaveManage: false, organization: false,
+  organizationManage: false, employees: false, employeesManage: false, performance: false, recruitment: false, recruitmentManage: false,
+  referrals: false, referralsManage: false,
+  holidayManage: false,
+  learningManage: false,
+  travel: false, travelView: false, travelManage: false,
+  expenses: false, expensesView: false, expensesManage: false,
+  payroll: false, payrollManage: false, selfServiceManage: false,
+};
+const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
 function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError }: {
   onSuccess: (value: User) => void;
@@ -737,20 +159,26 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState('');
-  const [adminAllowed, setAdminAllowed] = useState(false);
-  const [recruitmentAllowed, setRecruitmentAllowed] = useState(false);
-  const [profileChangeReviewAllowed, setProfileChangeReviewAllowed] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  // Legacy permissions are globally stored, therefore valid for Synesis only.
-  const canAdminSelectedTenant = adminAllowed && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it');
-  const canUseSystemWorkspace = canAdminSelectedTenant || ((recruitmentAllowed || profileChangeReviewAllowed) && tenants.some(t => t.id === tenantId && t.slug === 'synesis-it'));
+  const [employeeTenantIds, setEmployeeTenantIds] = useState<string[]>([]);
+  const [tenantWorkspacePermissions, setTenantWorkspacePermissions] = useState<Record<string, WorkspacePermissions>>({});
+  const workspacePermissions = tenantWorkspacePermissions[tenantId] || noWorkspacePermissions;
+  const canAdminSelectedTenant = tenants.some(t => t.id === tenantId) && (
+    isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.attendance || workspacePermissions.leave
+    || workspacePermissions.organization || workspacePermissions.employees || workspacePermissions.performance || workspacePermissions.recruitment
+    || workspacePermissions.learningManage
+    || workspacePermissions.travel
+    || workspacePermissions.payroll
+  );
+  const canReadAdminDirectories = tenants.some(t => t.id === tenantId) && (
+    isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.organization
+    || workspacePermissions.performance || workspacePermissions.attendance || workspacePermissions.leave
+  );
   const previewEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_PREVIEW === 'true';
   const [view, setView] = useState<View>('system');
-  const currentView = (view === 'admin' && !canAdminSelectedTenant) || (view === 'system' && !canUseSystemWorkspace) ? 'employee' : view;
   const [records, setRecords] = useState<Records>(empty);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [employeeProfileSavedMessage, setEmployeeProfileSavedMessage] = useState('');
   const lastAccessUserId = useRef<string | null>(null);
   const [error, setError] = useState('');
 
@@ -813,14 +241,12 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   useEffect(() => {
     if (!user) {
       lastAccessUserId.current = null;
-      setEmployeeProfileSavedMessage('');
       setTenants([]);
       setMemberships([]);
       setTenantId('');
-      setAdminAllowed(false);
-      setRecruitmentAllowed(false);
-      setProfileChangeReviewAllowed(false);
       setIsSuperAdmin(false);
+      setEmployeeTenantIds([]);
+      setTenantWorkspacePermissions({});
       setRecords(empty());
       setMembershipLoading(false);
       setLoading(false);
@@ -829,14 +255,12 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     let active = true;
     const switchedIdentity = lastAccessUserId.current !== user.id;
     lastAccessUserId.current = user.id;
-    if (switchedIdentity) setEmployeeProfileSavedMessage('');
     setMembershipLoading(true);
     setTenants([]);
     setRecords(empty());
-    setAdminAllowed(false);
-    setRecruitmentAllowed(false);
-    setProfileChangeReviewAllowed(false);
     setIsSuperAdmin(false);
+    setEmployeeTenantIds([]);
+    setTenantWorkspacePermissions({});
     if (switchedIdentity) {
       setTenantId('');
       // Start each authenticated identity in the authorized system workspace.
@@ -859,31 +283,64 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         const ownedTenantIds = (employeeResult.data || [])
           .filter(e => !['resigned','terminated'].includes(e.employment_status))
           .map(e => e.tenant_id);
-        const permissions = await Promise.all(
-          ['employees.view','employees.manage','organization.view','organization.manage','roles.manage','recruitment.view','recruitment.manage','self_service.manage']
-            .map(id => supabase.rpc('has_permission', { p_permission_id: id }))
-        );
-        const isLegacyAdmin = adminResult.data?.active === true &&
-          permissions.slice(0, 5).some(right => !right.error && right.data === true);
-        // Recruiter access is limited to active legacy admins with an explicit
-        // recruitment permission; the recruiter RPCs enforce this again in SQL.
-        const recruitmentWorkspaceAllowed = adminResult.data?.active === true &&
-          permissions.slice(5, 7).some(right => !right.error && right.data === true);
-        const profileChangeReviewWorkspaceAllowed = adminResult.data?.active === true &&
-          !permissions[7].error && permissions[7].data === true;
-        // Existing admin_users grants are specific to the legacy Synesis tenant:
-        // global roles are NOT valid for any other tenant.
-        const legacyTenant = isLegacyAdmin || recruitmentWorkspaceAllowed || profileChangeReviewWorkspaceAllowed
-          ? await supabase.from('tenants').select('id').eq('slug','synesis-it').eq('is_active', true).maybeSingle()
-          : { data: null, error: null };
-        if (legacyTenant.error) throw legacyTenant.error;
+        const permissionIds = [
+          'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view',
+          'leave.view', 'leave.manage', 'organization.view', 'organization.manage', 'performance.view', 'performance.manage',
+          'employees.view', 'employees.manage',
+          'recruitment.view', 'recruitment.manage',
+          'referrals.view', 'referrals.manage',
+          'holidays.manage',
+          'learning.manage',
+          'travel.view', 'travel.manage',
+          'expenses.view', 'expenses.manage',
+          'payroll.view', 'payroll.manage', 'self_service.manage',
+        ];
+        const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
+          const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
+            p_tenant_id: membership.tenant_id,
+            p_permission_id,
+          })));
+          const grants = new Map(permissionIds.map((id, index) => [
+            id, !checks[index]?.error && checks[index]?.data === true,
+          ]));
+          return [membership.tenant_id, {
+            dashboard: grants.get('dashboard.view') === true,
+            attendance: grants.get('attendance.view') === true || grants.get('attendance.manage') === true
+              || grants.get('reports.view') === true,
+            attendanceView: grants.get('attendance.view') === true,
+            attendanceManage: grants.get('attendance.manage') === true,
+            attendanceReport: grants.get('reports.view') === true,
+            leave: grants.get('leave.view') === true || grants.get('leave.manage') === true,
+            leaveManage: grants.get('leave.manage') === true,
+            organization: grants.get('organization.view') === true || grants.get('organization.manage') === true,
+            organizationManage: grants.get('organization.manage') === true,
+            employees: grants.get('employees.view') === true || grants.get('employees.manage') === true,
+            employeesManage: grants.get('employees.manage') === true,
+            performance: grants.get('performance.view') === true || grants.get('performance.manage') === true,
+            recruitment: grants.get('recruitment.view') === true || grants.get('recruitment.manage') === true,
+            recruitmentManage: grants.get('recruitment.manage') === true,
+            referrals: grants.get('referrals.view') === true || grants.get('referrals.manage') === true,
+            referralsManage: grants.get('referrals.manage') === true,
+            holidayManage: grants.get('holidays.manage') === true,
+            learningManage: grants.get('learning.manage') === true,
+            travel: grants.get('travel.view') === true || grants.get('travel.manage') === true,
+            travelView: grants.get('travel.view') === true,
+            travelManage: grants.get('travel.manage') === true,
+            expenses: grants.get('expenses.view') === true || grants.get('expenses.manage') === true,
+            expensesView: grants.get('expenses.view') === true,
+            expensesManage: grants.get('expenses.manage') === true,
+            payroll: grants.get('payroll.view') === true || grants.get('payroll.manage') === true,
+            payrollManage: grants.get('payroll.manage') === true,
+            selfServiceManage: grants.get('self_service.manage') === true,
+          } satisfies WorkspacePermissions] as const;
+        }));
+        const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
 
-        const tenantIds = Array.from(new Set([
-          ...mine.map(m => m.tenant_id),
-          ...ownedTenantIds,
-          ...(legacyTenant.data?.id ? [legacyTenant.data.id] : []),
-        ]));
-        const found = tenantIds.length
+        const tenantIds = Array.from(new Set([...mine.map(m => m.tenant_id), ...ownedTenantIds]));
+        const activeSuperAdmin = adminResult.data?.active === true && adminResult.data?.is_super_admin === true;
+        const found = activeSuperAdmin
+          ? await supabase.from('tenants').select('id,name,slug,timezone').eq('is_active', true).order('name')
+          : tenantIds.length
           ? await supabase.from('tenants').select('id,name,slug,timezone')
               .eq('is_active', true).in('id', tenantIds)
           : { data: [] as Tenant[], error: null };
@@ -891,12 +348,11 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         if (!active) return;
         setMemberships(mine);
         setTenants((found.data || []) as Tenant[]);
+        setEmployeeTenantIds(ownedTenantIds);
+        setTenantWorkspacePermissions(tenantPermissions);
         setTenantId(previous => (found.data || []).some(t => t.id === previous)
           ? previous : (found.data?.[0]?.id || ''));
-        setAdminAllowed(isLegacyAdmin);
-        setRecruitmentAllowed(recruitmentWorkspaceAllowed);
-        setProfileChangeReviewAllowed(profileChangeReviewWorkspaceAllowed);
-        setIsSuperAdmin(isLegacyAdmin && adminResult.data?.is_super_admin === true);
+        setIsSuperAdmin(activeSuperAdmin);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Unable to load your tenant membership.');
       } finally { if (active) setMembershipLoading(false); }
@@ -916,106 +372,19 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     setError('');
     async function loadRecords() {
       try {
-        const timeZone = tenants.find(tenant => tenant.id === tenantId)?.timezone || 'UTC';
-        const attendanceDate = tenantAttendanceDate(new Date(), timeZone);
-        const leaveContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_leave_context')
-          : Promise.resolve({ data: null, error: null });
-        const scheduleContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_dashboard_schedule')
-          : Promise.resolve({ data: null, error: null });
-        const performanceContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_my_performance_context')
-          : Promise.resolve({ data: null, error: null });
-        const noticesContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_notice_context')
-          : Promise.resolve({ data: null, error: null });
-        const expenseContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_expense_context')
-          : Promise.resolve({ data: null, error: null });
-        const travelContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_travel_context')
-          : Promise.resolve({ data: null, error: null });
-        const selfServiceContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_self_service_context')
-          : Promise.resolve({ data: null, error: null });
-        const payslipContext = currentView === 'employee'
-          ? supabase.rpc('employee_get_my_payslips')
-          : Promise.resolve({ data: null, error: null });
-        const attendance = (async () => {
-          // Resolve only the authenticated user's minimized profile. RLS applies
-          // to this read; the attendance query is additionally constrained by
-          // this row's tenant and employee IDs.
-          const linkedEmployee = await supabase.from('employees').select('id,full_name,preferred_name,employee_number,official_email,personal_email,phone,official_phone,gender,date_of_birth,nationality,marital_status,emergency_contact_name,emergency_contact_phone,emergency_contact_relation,employment_status')
-            .eq('tenant_id', tenantId).eq('user_id', user!.id).limit(1).maybeSingle();
-          if (linkedEmployee.error) return { data: null, profile: null, error: linkedEmployee.error, pendingCorrections: [], pendingCorrectionsError: true };
-          if (!linkedEmployee.data) return { data: null, profile: null, error: null, pendingCorrections: [], pendingCorrectionsError: false };
-          const [today, corrections] = await Promise.all([
-            supabase.from('attendance_records')
-              .select('status,work_mode,check_in,check_out')
-              .eq('tenant_id', tenantId)
-              .eq('employee_id', linkedEmployee.data.id)
-              .eq('attendance_date', attendanceDate)
-              .maybeSingle(),
-            currentView === 'employee'
-              ? supabase.from('attendance_corrections')
-                  .select('id,attendance_date,status,requested_at')
-                  .eq('tenant_id', tenantId)
-                  .eq('employee_id', linkedEmployee.data.id)
-                  .eq('status', 'pending')
-                  .order('requested_at', { ascending: false })
-                  .limit(20)
-              : Promise.resolve({ data: [], error: null }),
-          ]);
-          return { data: today.data, profile: linkedEmployee.data, error: today.error, pendingCorrections: corrections.data || [], pendingCorrectionsError: Boolean(corrections.error) };
-        })();
-        const [leaves, types, employees, departments, attendanceResult, leaveContextResult, scheduleContextResult, performanceContextResult, noticesContextResult, expenseContextResult, travelContextResult, selfServiceContextResult, payslipContextResult] = await Promise.all([
+        const [leaves, types, employees, departments] = await Promise.all([
           supabase.from('leave_requests').select('id,from_date,to_date,requested_days,status').eq('tenant_id', tenantId).order('submitted_at', { ascending: false }).limit(50),
           supabase.from('leave_types').select('id,name,annual_entitlement').eq('tenant_id', tenantId).eq('active', true).limit(50),
-          canAdminSelectedTenant ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
-          canAdminSelectedTenant ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
-          attendance,
-          leaveContext,
-          scheduleContext,
-          performanceContext,
-          noticesContext,
-          expenseContext,
-          travelContext,
-          selfServiceContext,
-          payslipContext,
+          canReadAdminDirectories ? supabase.from('employees').select('id,full_name,employee_number,employment_status').eq('tenant_id', tenantId).order('full_name').limit(100) : Promise.resolve({ data: [], error: null }),
+          canReadAdminDirectories ? supabase.from('departments').select('id,name,code').eq('tenant_id', tenantId).order('name').limit(100) : Promise.resolve({ data: [], error: null }),
         ]);
-        const denied = [leaves, types, employees, departments, attendanceResult, leaveContextResult].find(result => result.error);
+        const denied = [leaves, types, employees, departments].find(result => result.error);
         if (denied?.error) throw denied.error;
         if (active) setRecords({
           leaves: (leaves.data || []) as Leave[],
           leaveTypes: (types.data || []) as LeaveType[],
-          leaveBalances: ((leaveContextResult.data as { balances?: LeaveBalance[] } | null)?.balances || []),
-          holidays: ((leaveContextResult.data as { holidays?: Holiday[] } | null)?.holidays || []),
-          dashboardSchedule: normalizeDashboardSchedule(scheduleContextResult.data),
-          scheduleError: Boolean(scheduleContextResult.error),
-          goals: normalizeDashboardGoals(performanceContextResult.data),
-          goalsError: Boolean(performanceContextResult.error),
-          notices: normalizeDashboardNotices(noticesContextResult.data).slice(0, 8),
-          noticesError: Boolean(noticesContextResult.error),
-          pendingRequests: [
-            ...normalizePendingRequests(contextRows(leaveContextResult.data, 'requests'), 'Leave', ['pending'], row => typeof row.leave_type_name === 'string' ? `${row.leave_type_name} request` : 'Leave request'),
-            ...normalizePendingRequests(attendanceResult.pendingCorrections, 'Attendance', ['pending'], () => 'Attendance correction'),
-            ...normalizePendingRequests(contextRows(expenseContextResult.data, 'claims'), 'Expense', ['submitted'], () => 'Expense claim'),
-            ...normalizePendingRequests(contextRows(travelContextResult.data, 'requests'), 'Travel', ['submitted'], () => 'Travel request'),
-            ...normalizePendingRequests(contextRows(selfServiceContextResult.data, 'requests'), 'Service', ['pending', 'in_progress'], row => typeof row.request_type === 'string' ? `${row.request_type.replace(/_/g, ' ')} request` : 'Service request'),
-          ],
-          pendingRequestErrors: [
-            ...(attendanceResult.pendingCorrectionsError ? ['Attendance'] : []),
-            ...(expenseContextResult.error ? ['Expense'] : []),
-            ...(travelContextResult.error ? ['Travel'] : []),
-            ...(selfServiceContextResult.error ? ['Service'] : []),
-          ],
           employees: (employees.data || []) as Employee[],
           departments: (departments.data || []) as Department[],
-          attendanceToday: (attendanceResult.data || null) as AttendanceToday | null,
-          employeeProfile: attendanceResult.profile as DashboardProfile | null,
-          payslips: normalizeDashboardPayslips(payslipContextResult.data),
-          payslipsError: Boolean(payslipContextResult.error),
         });
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Database read failed.');
@@ -1023,7 +392,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user?.id, tenantId, canAdminSelectedTenant, currentView, refreshKey, membershipLoading, tenants]);
+  }, [user?.id, tenantId, canReadAdminDirectories, refreshKey, membershipLoading, tenants]);
 
   async function signOut() {
     setView('employee');
@@ -1057,8 +426,46 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError} onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
   }
   const current = tenants.find(t => t.id === tenantId);
-  const dashboardToday = tenantAttendanceDate(new Date(), current?.timezone || 'UTC');
   const activeMembership = memberships.find(m => m.tenant_id === tenantId);
+  const currentView = view === 'system' && !canAdminSelectedTenant ? 'employee' : view;
+  const opensAdminWorkspace = currentView === 'system' && canAdminSelectedTenant;
+  const opensEmployeeWorkspace = currentView === 'employee'
+    && employeeTenantIds.includes(tenantId);
+
+  if (current && (opensAdminWorkspace || opensEmployeeWorkspace)) {
+    return <LiveHrisWorkspace
+      userId={user.id}
+      userEmail={user.email || 'HRIS user'}
+      tenantRole={activeMembership?.role || ''}
+      tenantId={tenantId}
+      tenantName={current.name}
+      tenants={tenants}
+      onTenantChange={nextTenantId => {
+        setTenantId(nextTenantId);
+        setRecords(empty());
+      }}
+      onSignOut={() => { void signOut(); }}
+      isSuperAdmin={opensAdminWorkspace && isSuperAdmin}
+      isEmployee={employeeTenantIds.includes(tenantId)}
+      permissions={opensAdminWorkspace ? workspacePermissions : noWorkspacePermissions}
+    />;
+  }
+
+  if (platformTenantFeatureAvailable && isSuperAdmin) {
+    return <LiveHrisWorkspace
+      userId={user.id}
+      userEmail={user.email || 'HRIS user'}
+      tenantRole={activeMembership?.role || ''}
+      tenantId=""
+      tenantName="Platform administration"
+      tenants={[]}
+      onTenantChange={() => {}}
+      onSignOut={() => { void signOut(); }}
+      isSuperAdmin
+      isEmployee={false}
+      permissions={noWorkspacePermissions}
+    />;
+  }
 
   return <div className="min-h-screen bg-slate-50 text-slate-900">
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -1077,13 +484,12 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       {!membershipLoading && !tenants.length && <section className="bg-white rounded-lg border p-6"><ShieldAlert className="w-6 h-6 text-amber-700 mb-3" /><h2 className="text-lg font-semibold">No authorized HRIS organization</h2><p className="text-sm text-slate-600 mt-2">Sign-in succeeded, but no active tenant membership, linked employee, or authorized Synesis administrator scope was found. Contact your system administrator. No sample organization is substituted.</p></section>}
       {current && <>
         <nav aria-label="Workspace views" className="flex flex-wrap items-center gap-2 mb-5 pb-3 border-b">
-          {canUseSystemWorkspace && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
+          {canAdminSelectedTenant && <button onClick={() => setView('system')} className={currentView === 'system' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>System Workspace</button>}
           <button onClick={() => setView('employee')} className={currentView === 'employee' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Employee View</button>
-          {canAdminSelectedTenant && <button onClick={() => setView('admin')} className={currentView === 'admin' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'}>Admin View</button>}
           {previewEnabled && <button onClick={() => setView('preview')} className={currentView === 'preview' ? 'min-h-10 px-3 rounded-md bg-[#085587] text-white' : 'min-h-10 px-3 rounded-md border'} >Design preview (sample)</button>}
           {currentView !== 'preview' && <button disabled={loading || membershipLoading} onClick={() => setRefreshKey(n => n + 1)} className="min-h-10 px-3 ml-auto rounded-md border inline-flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Refresh</button>}
         </nav>
-        {currentView === 'system' ? <LiveSystemWorkspace tenantId={tenantId} tenantName={current.name} /> : currentView === 'preview' ? <>
+        {currentView === 'system' ? <p role="status" className="rounded-lg border bg-white p-5 text-sm">Loading your authorized HRIS workspace…</p> : currentView === 'preview' ? <>
           <section role="status" className="p-4 bg-amber-50 border border-amber-300 rounded-lg mb-4"><h2 className="font-semibold text-amber-900">Design preview — NOT connected to SQL</h2><p className="text-sm text-amber-900 mt-1">All tenants, employees, roles, actions, audit logs, and security tests in the preview are simulated browser-only fixtures. Do not use for real HR administration.</p></section>
           <div className="border rounded-lg overflow-hidden">{preview}</div>
         </> : <>
@@ -1092,105 +498,9 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             <div className="bg-white border rounded-lg p-4"><LockKeyhole className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Authorized access</p><p className="font-semibold">{activeMembership?.role || (canAdminSelectedTenant ? (isSuperAdmin ? 'Super Administrator' : 'Synesis administrator') : 'Linked employee')}</p><p className="text-xs text-slate-500">{current.name}</p></div>
             <div className="bg-white border rounded-lg p-4"><ShieldAlert className="w-5 h-5 text-blue-800 mb-2" /><p className="text-xs text-slate-500">Access model</p><p className="font-semibold">Supabase Auth + RLS</p><p className="text-xs text-slate-500">No service-role token in browser</p></div>
           </section>
-          {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="space-y-4">
-            <nav aria-label="Employee quick access" className="bg-white border rounded-lg p-4">
-              <h2 className="font-semibold">Quick access</h2>
-              <ul className="mt-3 flex flex-wrap gap-2">
-                {[
-                  ['#today-attendance', 'Attendance'],
-                  ['#leave-balances', 'Leave'],
-                  ['#my-payslips', 'Payslips'],
-                  ['#employee-profile', 'Profile'],
-                  ['#pending-requests', 'Requests'],
-                ].map(([href, label]) => <li key={href}><a href={href} className="inline-flex min-h-10 items-center rounded-md border border-blue-200 px-3 text-sm font-medium text-blue-900 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-800">{label}</a></li>)}
-              </ul>
-            </nav>
-            <section id="today-attendance" aria-label="Today's attendance" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4">
-                <h2 className="font-semibold">Today's attendance</h2>
-                <p className="text-xs text-slate-500">{attendanceDateLabel(new Date(), current.timezone)}</p>
-              </div>
-              {records.attendanceToday ? <div className="p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm font-medium" role="status">{attendanceStatusLabel(records.attendanceToday.status)}</p>
-                  {['present', 'late', 'partial'].includes(records.attendanceToday.status) && attendanceWorkModeLabel(records.attendanceToday.work_mode) &&
-                    <p className="text-sm text-slate-600">{attendanceWorkModeLabel(records.attendanceToday.work_mode)}</p>}
-                </div>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div><dt className="text-xs text-slate-500">Check-in</dt><dd className="font-medium">{tenantAttendanceTime(records.attendanceToday.check_in, current.timezone || 'UTC') || 'Not recorded'}</dd></div>
-                  <div><dt className="text-xs text-slate-500">Check-out</dt><dd className="font-medium">{tenantAttendanceTime(records.attendanceToday.check_out, current.timezone || 'UTC') || (records.attendanceToday.check_in ? 'Not checked out' : 'Not recorded')}</dd></div>
-                </dl>
-              </div> : <p className="p-4 text-sm text-slate-600">No attendance record is available for today.</p>}
-            </section>
-            <section id="pending-requests" aria-label="Requests awaiting action" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">Requests awaiting action</h2><p className="text-xs text-slate-500">Your unresolved leave, attendance, expense, travel, and service requests</p></div>
-              {records.pendingRequestErrors.length > 0 && <p role="status" className="border-b p-4 text-sm text-slate-600">Some request categories are temporarily unavailable: {records.pendingRequestErrors.join(', ')}. Refresh to try again.</p>}
-              {records.pendingRequests.length ? <ul className="divide-y">{records.pendingRequests.map(request => <li key={`${request.category}-${request.id}`} className="p-4 flex flex-wrap items-start justify-between gap-3">
-                <div><p className="text-sm font-medium">{request.title}</p><p className="text-xs text-slate-500">{request.category}</p></div>
-                <div className="text-sm sm:text-right"><p className="font-medium capitalize">{request.status.replace(/_/g, ' ')}</p>{request.requestDate && <p className="text-xs text-slate-600">For {request.requestDate}</p>}{request.submittedAt && <p className="text-xs text-slate-500">Submitted {tenantAttendanceDateTime(request.submittedAt, current.timezone || 'UTC') || 'date unavailable'}</p>}</div>
-              </li>)}</ul> : <p className="p-4 text-sm text-slate-500">{records.pendingRequestErrors.length ? 'No requests are visible in the categories that loaded.' : 'You have no unresolved requests.'}</p>}
-            </section>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {loading ? <p role="status" className="text-sm">Reading authorized data…</p> : currentView === 'employee' ? <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My visible leave requests</h2><p className="text-xs text-slate-500">Last 50 RLS-visible requests</p></div>{records.leaves.length ? <ul className="divide-y">{records.leaves.map(item => <li key={item.id} className="p-4 flex justify-between gap-3"><p className="text-sm">{item.from_date} – {item.to_date} ({item.requested_days} days)</p><p className="text-xs font-medium">{item.status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible requests, or access is restricted.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized leave types</h2><p className="text-xs text-slate-500">Current tenant policy records</p></div>{records.leaveTypes.length ? <ul className="divide-y">{records.leaveTypes.map(item => <li key={item.id} className="p-4 flex justify-between gap-3 text-sm"><p>{item.name}</p><p>{item.annual_entitlement == null ? 'Policy-defined' : String(item.annual_entitlement) + ' days'}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No visible leave types.</p>}</section>
-            <section id="leave-balances" aria-label="Remaining leave balances" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Remaining leave balances</h2><p className="text-xs text-slate-500">Available days after used and pending leave</p></div>{records.leaveBalances.length ? <ul className="divide-y">{records.leaveBalances.map(item => <li key={item.leave_type_id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{item.leave_type_name}</p><p className="text-xs text-slate-500">{item.balance_year} · {item.used_days} used · {item.pending_days} pending</p></div><p className="text-sm font-semibold">{item.available_days} days available</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No leave balances are available for this year.</p>}</section>
-            <section aria-label="Upcoming holidays" className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Upcoming holidays</h2><p className="text-xs text-slate-500">Current tenant calendar</p></div>{records.holidays.length ? <ul className="divide-y">{records.holidays.map(item => <li key={item.id} className="p-4"><p className="text-sm font-medium">{item.name}</p><p className="text-xs text-slate-600">{item.start_date === item.end_date ? item.start_date : `${item.start_date} – ${item.end_date}`}{item.holiday_type ? ` · ${item.holiday_type}` : ''}</p>{item.description && <p className="text-xs text-slate-500 mt-1">{item.description}</p>}</li>)}</ul> : <p className="p-4 text-sm text-slate-500">No upcoming holidays are scheduled.</p>}</section>
-            </div>
-            <section id="my-payslips" aria-label="My payslips" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">My payslips</h2><p className="text-xs text-slate-500">Released payslips for your linked employee record</p></div>
-              {records.payslipsError ? <p role="status" className="p-4 text-sm text-slate-600">Payslip information is temporarily unavailable. Refresh to try again.</p> : records.payslips.length ? <ul className="divide-y">{records.payslips.map(payslip => <li key={payslip.id} className="p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-medium">{payslip.pay_period_name}</p><p className="text-xs text-slate-500">Pay date: {payslip.pay_date || 'Not listed'}</p></div><p className="text-sm font-semibold">Net pay: {formatPayslipAmount(payslip.net_salary, payslip.currency)}</p></div>
-                <details className="mt-3 text-sm"><summary className="min-h-10 flex cursor-pointer items-center font-medium text-blue-900">View pay details</summary><dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 border-t pt-3">
-                  {([
-                    ['Gross earnings', payslip.gross_earnings], ['Basic salary', payslip.basic_salary], ['House rent allowance', payslip.house_rent_allowance], ['Medical allowance', payslip.medical_allowance], ['Transport allowance', payslip.transport_allowance], ['Special allowance', payslip.special_allowance], ['Overtime pay', payslip.overtime_pay], ['Bonus', payslip.bonus], ['Total deductions', payslip.total_deductions], ['Tax deduction', payslip.tax_deduction], ['Provident fund deduction', payslip.provident_fund_deduction], ['Leave without pay deduction', payslip.leave_without_pay_deduction], ['Other deductions', payslip.other_deductions],
-                  ] as Array<[string, number | null]>).filter(([, amount]) => amount !== null).map(([label, amount]) => <div key={label} className="flex justify-between gap-3"><dt className="text-slate-600">{label}</dt><dd className="font-medium">{formatPayslipAmount(amount!, payslip.currency)}</dd></div>)}
-                </dl></details>
-              </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No released payslips are available.</p>}
-            </section>
-            {records.employeeProfile ? <EmployeeProfileSection profile={records.employeeProfile} savedMessage={employeeProfileSavedMessage} onSaved={message => { setEmployeeProfileSavedMessage(message); if (message) setRefreshKey(n => n + 1); }} /> : <section id="employee-profile" aria-label="My profile" className="scroll-mt-24 bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">My profile</h2><p className="text-xs text-slate-500">Personal information from your linked employee record</p></div><p className="p-4 text-sm text-slate-500">No linked employee profile is available.</p></section>}
-            <section aria-label="Upcoming schedule" className="bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">Upcoming schedule</h2><p className="text-xs text-slate-500">Assigned interviews, training, and review dates</p></div>
-              {records.scheduleError ? <p role="status" className="p-4 text-sm text-slate-600">Schedule information is temporarily unavailable. Refresh to try again.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-                <section aria-label="Upcoming interviews" className="rounded-md border p-3">
-                  <h3 className="text-sm font-semibold">Interviews</h3>
-                  {records.dashboardSchedule.interviews.length ? <ul className="mt-2 divide-y">{records.dashboardSchedule.interviews.map(item => <li key={item.id} className="py-2"><p className="text-sm font-medium">{item.job_title} · {item.interview_type}</p><p className="text-xs text-slate-600">{tenantAttendanceDateTime(item.scheduled_at, current.timezone || 'UTC') || 'Date not available'}</p>{item.location_or_link && <p className="text-xs text-slate-500">{item.location_or_link}</p>}</li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No assigned interviews are scheduled.</p>}
-                </section>
-                <section aria-label="Upcoming training" className="rounded-md border p-3">
-                  <h3 className="text-sm font-semibold">Training</h3>
-                  {records.dashboardSchedule.learning_sessions.length || records.dashboardSchedule.training.length ? <ul className="mt-2 divide-y">
-                    {records.dashboardSchedule.learning_sessions.map(item => <li key={`session-${item.id}`} className="py-2"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-slate-600">{tenantAttendanceDateTime(item.start_at, current.timezone || 'UTC') || 'Date not available'}{item.end_at ? ` – ${tenantAttendanceDateTime(item.end_at, current.timezone || 'UTC') || ''}` : ''}</p>{item.location && <p className="text-xs text-slate-500">{item.location}</p>}</li>)}
-                    {records.dashboardSchedule.training.map(item => <li key={`training-${item.id}`} className="py-2"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-slate-600">{item.start_date || item.end_date ? `${item.start_date || ''}${item.start_date && item.end_date && item.start_date !== item.end_date ? ' – ' : ''}${item.end_date || ''}` : 'Dates not listed'}</p>{item.institute_name && <p className="text-xs text-slate-500">{item.institute_name}</p>}</li>)}
-                  </ul> : <p className="mt-2 text-sm text-slate-500">No upcoming or in-progress training is scheduled.</p>}
-                </section>
-                <section aria-label="Upcoming reviews" className="rounded-md border p-3">
-                  <h3 className="text-sm font-semibold">Reviews</h3>
-                  {records.dashboardSchedule.performance_cycles.length ? <ul className="mt-2 divide-y">{records.dashboardSchedule.performance_cycles.map(item => <li key={item.id} className="py-2"><p className="text-sm font-medium">{item.name}</p><p className="text-xs text-slate-600">{item.start_date} – {item.end_date}</p>{item.self_review_deadline && <p className="text-xs text-slate-500">Self review due {item.self_review_deadline}</p>}{item.manager_review_deadline && <p className="text-xs text-slate-500">Manager review due {item.manager_review_deadline}</p>}</li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No review dates are currently scheduled.</p>}
-                </section>
-                <section aria-label="Company events" className="rounded-md border p-3">
-                  <h3 className="text-sm font-semibold">Company events</h3>
-                  <p className="mt-2 text-sm text-slate-500">Company event dates are not available in this workspace calendar.</p>
-                </section>
-              </div>}
-            </section>
-            <section aria-label="My goals and overdue actions" className="bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">My goals and overdue actions</h2><p className="text-xs text-slate-500">Goals and due dates assigned to your employee record</p></div>
-              {records.goalsError ? <p role="status" className="p-4 text-sm text-slate-600">Goal information is temporarily unavailable. Refresh to try again.</p> : records.goals.length ? <ul className="divide-y">{records.goals.map(goal => {
-                const overdue = goalIsOverdue(goal, dashboardToday);
-                return <li key={goal.id} className="p-4 flex flex-wrap items-start justify-between gap-3">
-                  <div><p className="text-sm font-medium">{goal.title}</p><p className="text-xs text-slate-500">{goal.origin === 'assigned' ? 'Assigned goal' : 'Personal goal'}{goal.category ? ` · ${goal.category}` : ''}</p></div>
-                  <div className="text-sm sm:text-right"><p className="font-medium capitalize">{goal.status.replace(/_/g, ' ')} · {goal.current_progress}% complete</p><p className="text-xs text-slate-600">{goal.due_date ? `Due ${goal.due_date}` : 'No due date'}</p>{goal.target_metric && <p className="text-xs text-slate-500">Target: {goal.target_metric}</p>}{overdue && <p role="status" className="text-xs font-semibold text-red-700">Overdue</p>}</div>
-                </li>;
-              })}</ul> : <p className="p-4 text-sm text-slate-500">No performance goals are currently listed for you.</p>}
-              <p className="border-t px-4 py-3 text-xs text-slate-500">This workspace provides performance goals; standalone task assignments are not available here.</p>
-            </section>
-            <section aria-label="Recent HR announcements" className="bg-white border rounded-lg overflow-hidden">
-              <div className="border-b p-4"><h2 className="font-semibold">Recent HR announcements</h2><p className="text-xs text-slate-500">Published notices for your organization and audience</p></div>
-              {records.noticesError ? <p role="status" className="p-4 text-sm text-slate-600">Announcements are temporarily unavailable. Refresh to try again.</p> : records.notices.length ? <ul className="divide-y">{records.notices.map(notice => <li key={notice.id} className="p-4">
-                <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{notice.title}</p>{notice.pinned && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">Pinned</span>}</div>
-                <p className="text-xs text-slate-500 mt-1">{notice.category} · {tenantAttendanceDateTime(notice.published_at, current.timezone || 'UTC') || 'Date not available'}</p>
-                <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">{notice.body}</p>
-              </li>)}</ul> : <p className="p-4 text-sm text-slate-500">No recent announcements are available for your audience.</p>}
-            </section>
           </div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized employee directory</h2><p className="text-xs text-slate-500">Up to 100 RLS-visible employees</p></div>{records.employees.length ? <ul className="divide-y">{records.employees.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.full_name}</p><p className="text-xs text-slate-500">{item.employee_number} · {item.employment_status}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No employee records visible.</p>}</section>
             <section className="bg-white border rounded-lg overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Authorized departments</h2></div>{records.departments.length ? <ul className="divide-y">{records.departments.map(item => <li key={item.id} className="p-4"><p className="font-medium text-sm">{item.name}</p><p className="text-xs text-slate-500">{item.code}</p></li>)}</ul> : <p className="p-4 text-sm text-slate-500">No departments visible.</p>}</section>

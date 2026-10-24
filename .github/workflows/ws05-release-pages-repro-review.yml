@@ -1,0 +1,46 @@
+name: WS05 exact-source Pages reproducibility check (no deployment)
+on:
+  push:
+    branches:
+      - integration/ws05-pages-assets-reconciliation-20261023
+permissions:
+  contents: read
+jobs:
+  source-pages-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact source only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install strictly from committed lockfile
+        run: npm ci --include=optional --no-audit --no-fund
+      - name: TypeScript regression
+        run: npm run lint
+      - name: Build verified GitHub Pages artifact twice
+        env:
+          GITHUB_PAGES: 'true'
+        run: |
+          set -euo pipefail
+          npm run build
+          first_digest="$(find dist -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second_digest="$(find dist -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first_digest" = "$second_digest"
+          echo "Identical clean double-build digest: $first_digest"
+      - name: Compare compiled and committed Pages entry/assets
+        run: |
+          set -euo pipefail
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+          git diff --check
+          # The build sync script copies output into index.html and assets/;
+          # compare those resulting paths against the COMMITTED tree, not only dist.
+          git diff --exit-code -- index.html assets
+          test -z "$(git ls-files --others --exclude-standard -- index.html assets)"
+          echo "Generated Pages files are byte-identical to the committed source tree."

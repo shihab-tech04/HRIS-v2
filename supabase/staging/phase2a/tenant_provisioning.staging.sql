@@ -18,7 +18,11 @@ CREATE OR REPLACE FUNCTION public.platform_hris_is_super_admin()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $func$
  SELECT public.is_live_session() AND EXISTS (
   SELECT 1 FROM public.admin_users a
+  JOIN auth.users u ON u.id=a.user_id
   WHERE a.user_id = auth.uid() AND a.active IS TRUE AND a.is_super_admin IS TRUE
+    AND u.email_confirmed_at IS NOT NULL
+    AND u.deleted_at IS NULL
+    AND (u.banned_until IS NULL OR u.banned_until <= now())
  );
 $func$;
 
@@ -64,8 +68,21 @@ BEGIN
  IF p_admin_user_id IS NULL OR NOT EXISTS(
   SELECT 1 FROM auth.users u WHERE u.id=p_admin_user_id
   AND u.email_confirmed_at IS NOT NULL
+  AND u.deleted_at IS NULL
+  AND (u.banned_until IS NULL OR u.banned_until <= now())
  ) THEN
-  RAISE EXCEPTION 'Administrator account must already be activated' USING ERRCODE='22023';
+  RAISE EXCEPTION 'Administrator account must be confirmed and active' USING ERRCODE='22023';
+ END IF;
+ -- Do not create a membership that the tenant-scoped RBAC resolver cannot
+ -- resolve. Hosted legacy membership values exist without matching roles.
+ IF NOT EXISTS (
+  SELECT 1 FROM public.roles r
+  JOIN public.role_permissions rp ON rp.role_id=r.id
+    AND rp.permission_id='organization.manage'
+  WHERE r.id='hr_admin' AND r.active IS TRUE
+ ) THEN
+  RAISE EXCEPTION 'Tenant administrator role is not configured for scoped authorization'
+    USING ERRCODE='55000';
  END IF;
  INSERT INTO public.tenants(code,slug,name,timezone,default_locale,is_active)
  VALUES(v_code,v_slug,v_name,p_timezone,p_default_locale,FALSE)
@@ -117,8 +134,19 @@ BEGIN
  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(p_tenant_id::text)::bigint);
  IF p_enabled THEN
   IF NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id=p_user_id
-      AND u.email_confirmed_at IS NOT NULL) THEN
-    RAISE EXCEPTION 'Administrator account must already be activated' USING ERRCODE='22023';
+      AND u.email_confirmed_at IS NOT NULL
+      AND u.deleted_at IS NULL
+      AND (u.banned_until IS NULL OR u.banned_until <= now())) THEN
+    RAISE EXCEPTION 'Administrator account must be confirmed and active' USING ERRCODE='22023';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.roles r
+    JOIN public.role_permissions rp ON rp.role_id=r.id
+      AND rp.permission_id='organization.manage'
+    WHERE r.id='hr_admin' AND r.active IS TRUE
+  ) THEN
+    RAISE EXCEPTION 'Tenant administrator role is not configured for scoped authorization'
+      USING ERRCODE='55000';
   END IF;
   INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   VALUES(p_tenant_id,p_user_id,'hr_admin','active')

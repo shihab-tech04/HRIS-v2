@@ -1,0 +1,53 @@
+name: WS02 jobs tenant access acceptance (disposable Postgres 17)
+on:
+  push:
+    branches:
+      - work/ws02-production-view-security-20261021
+      - integration/ws05-jobs-tenant-parity-review-20261023
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  jobs-tenant-rls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: qa-local-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGPASSWORD: qa-local-only
+    steps:
+      - name: Checkout exact WS02 source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Postgres client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+      - name: Verify two-tenant candidate and HR jobs SQL boundaries
+        run: |
+          set -euo pipefail
+          psql -X -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f tests/sql/jobs-tenant-read.disposable.sql \
+            >"$RUNNER_TEMP/jobs-tenant-test.log" 2>&1 || {
+              grep -E 'ERROR|FATAL|DETAIL|CONTEXT' "$RUNNER_TEMP/jobs-tenant-test.log" || true
+              exit 1
+            }
+          grep -F 'HRIS_JOBS_TENANT_ISOLATION_PASS=5' "$RUNNER_TEMP/jobs-tenant-test.log"
+      - name: Verify no production connection or deployment commands
+        run: |
+          set -euo pipefail
+          ! grep -Ei 'supabase (link|db push)|deploy-pages|vercel --prod' .github/workflows/ws02-jobs-tenant-disposable.yml
+          echo "Disposable PostgreSQL 17 only; no hosted project referenced."

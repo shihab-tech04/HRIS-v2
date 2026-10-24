@@ -30,9 +30,12 @@ export default defineConfig(() => {
       },
     },
     resolve: {
-      alias: {
-        '@': fileURLToPath(new URL('.', import.meta.url)),
-      },
+      alias: [
+        { find: '@', replacement: fileURLToPath(new URL('.', import.meta.url)) },
+        ...(process.env.HRIS_FRONTEND_REVIEW === 'true' ? [
+          { find: /^(?:\.\.\/)+lib\/supabase(?:\.ts)?$/, replacement: fileURLToPath(new URL('./src/frontend-review/supabase-review.ts', import.meta.url)) },
+        ] : []),
+      ],
     },
     server: {
       host: '0.0.0.0',

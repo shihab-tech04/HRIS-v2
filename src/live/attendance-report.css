@@ -1,0 +1,12 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap");
+
+.attendance-report .attendance-report__heading {
+  font-family: "Inter", var(--font-sans), sans-serif;
+}
+
+/* Keep the manager detail wrapper at toolbar +56px while moving the
+   separated table's 6px outer spacing above the wrapper edge, so the
+   visible header surface starts at the approved Figma coordinate. */
+.attendance-report .attendance-report__detail-table {
+  margin-top: -6px;
+}

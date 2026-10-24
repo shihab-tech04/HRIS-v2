@@ -1,0 +1,63 @@
+name: Employee Figma profile branch acceptance (no deploy)
+on:
+  push:
+    branches:
+      - work/ws06-employee-profile-figma-20261021
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  employee-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact branch dependencies
+        run: npm install --include=optional --no-audit --no-fund
+      - name: Restore missing optional Linux TypeScript executable from Mac-authored lockfile
+        run: npm install --no-save --no-package-lock --include=optional --no-audit --no-fund @typescript/typescript-linux-x64@7.0.2
+      - name: Restore sibling Candidate source for cross-repo contract tests
+        run: |
+          git clone --quiet --depth 1 --branch development/hris-checkpoints https://github.com/shihab-tech04/HRIS-Candidate-v2.git ../HRIS-Candidate-v2
+          test -f ../HRIS-Candidate-v2/src/pages/TasksPage.tsx
+          test -f ../HRIS-Candidate-v2/src/lib/api.ts
+      - name: Type, contract and build verification
+        run: npm run check
+      - name: Assert secure Employee-only UI route and existing RPC contract
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const src=fs.readFileSync('src/live/EmployeeProfileFigma.tsx','utf8');
+          const workspace=fs.readFileSync('src/live/LiveHrisWorkspace.tsx','utf8');
+          assert.match(workspace,/page === 'my-profile' && isEmployee/);
+          assert.match(workspace,/id: 'my-profile', label: 'My Profile'/);
+          assert.match(src,/hris_get_my_dashboard_data/);
+          assert.match(src,/response\.tenant_id !== tenantId/);
+          assert.match(src,/profile\.tenant_id !== tenantId/);
+          assert.match(src,/loadedTenantId === tenantId/);
+          assert.match(src,/return \(\) => \{ current = false; \}/);
+          assert.match(src,/disabled title=\{unavailable\}/);
+          assert.doesNotMatch(src,/\.from\(|supabase\.auth\.|supabase\.rpc\('hris_update_/);
+          assert.doesNotMatch(src,/www\.figma\.com\/api\/mcp\/asset/);
+          assert.doesNotMatch(src,/Nadia Sultana|nadia@synesis/);
+          for(const path of ['address-book.svg','graduation-cap.svg','edit-pen.svg']){
+            assert.ok(fs.statSync('src/assets/employee-figma/'+path).size>100);
+          }
+          console.log('Employee Figma read-only route/privacy/source-asset contract passed');
+          NODE
+      - name: Install Chromium for Employee visual acceptance
+        run: npx playwright install --with-deps chromium
+      - name: Test Employee Profile in EN/BN at desktop and mobile widths
+        run: WS06_CAPTURE_PROFILE_SCREENSHOTS=1 WS06_CAPTURE_DIRECTORY=${RUNNER_TEMP}/ws06-profile-figma npm run test:e2e -- tests/browser/employee-profile-figma.spec.ts
+      - name: Upload exact-head Employee screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws06-employee-profile-figma-${{ github.sha }}
+          path: ${{ runner.temp }}/ws06-profile-figma/*.png
+          if-no-files-found: error
+          retention-days: 14

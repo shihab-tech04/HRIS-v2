@@ -1,0 +1,29 @@
+{
+  "checkpoint_time_local": "2026-10-13T21:06:00+06:00",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "source_commit": "5db5ae887b7c90ef4060a7024c8f10a07e276cb2",
+  "phase": 14,
+  "archive": {
+    "name": "Synesis-HRIS-v2-20261013_2106-5db5ae8.zip",
+    "drive_file_id": "1MuKdti57UwVOjZjGu2Te1jURPLRuLXoQ",
+    "mime_type": "application/zip",
+    "bytes": 2660644,
+    "local_sha256": "cfb489218b382771c4786b2ea533268b33107feeac347f6cd06b1cb974dbb919",
+    "local_zip_integrity": "PASS",
+    "remote_readback_size_matches": true,
+    "remote_sha256_verified": false
+  },
+  "drive": {
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "folder_name": "HRMIS Preservation 2026-10-11",
+    "owner_email": "shihabshajib01@gmail.com",
+    "connected_user_email": "shihabshajib01@gmail.com",
+    "upload_permission": "confirmed by owner role and successful versioned upload",
+    "archive_parent_readback_matches": true
+  },
+  "records": {
+    "acceptance_evidence_drive_id": "1b_h1tlDNRJ0B-BPj-i-VywzY18fG0NgZ",
+    "execution_checkpoint_drive_id": "1Gz9ugYFiQin3NlfNSmueHzA-CClVPtOy"
+  },
+  "verification_limit": "Drive metadata readback exposed exact name, MIME type, byte size, parent folder, and owner, but not a provider checksum or raw bytes for independent remote SHA-256 comparison."
+}

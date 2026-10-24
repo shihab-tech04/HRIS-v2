@@ -1,0 +1,97 @@
+{
+  "recorded_at": "2026-10-12T17:14:12+06:00",
+  "status": "RECOVERABLE_LOCAL_CHECKPOINT_NOT_FOR_RELEASE",
+  "application": "Main HRIS",
+  "branch": "codex/recovery-checkpoint-20261012",
+  "current_phase": 8,
+  "current_module": "Employee Attendance Correction Request and Manager Resolution",
+  "local_head": "a8210584529b6ddac54546929e22c16bb3a4e335",
+  "feature_commit": "1edd97d1e13d58330e6df2ab9a8ace13a99ec61b",
+  "manager_browser_acceptance_commit": "a8210584529b6ddac54546929e22c16bb3a4e335",
+  "drive_checkpoint_baseline": {
+    "commit": "4ded5f13f1ef2bf17237f347bfac9811283c52dc",
+    "source_document": "CHECKPOINT_STATUS.md",
+    "modified_at": "2026-10-12T14:20:41+06:00",
+    "paths_in_complete_diff": 60,
+    "text_insertions": 5743,
+    "text_deletions": 55
+  },
+  "changed_implementation_files_since_drive_baseline": [
+    "playwright.config.ts",
+    "src/live/LiveApp.tsx",
+    "src/live/LiveHrisWorkspace.tsx",
+    "supabase/migrations/20261012091930_hris_tenant_membership_role_permissions.sql",
+    "supabase/staging/approval-resolution/20261012_04_hris_leave_approval_tenant_guard.sql",
+    "supabase/staging/approval-resolution/20261012_05_hris_attendance_approval_tenant_and_partial_fields.sql",
+    "tests/browser/attendance-information.spec.ts",
+    "tests/browser/employee-leave.spec.ts",
+    "tests/browser/managerial-dashboard.spec.ts",
+    "tests/browser/system-workspace.spec.ts",
+    "tests/contracts/approval-resolution-migrations.test.mjs",
+    "tests/contracts/live-workspace.test.mjs",
+    "tests/contracts/phase1.test.mjs",
+    "tests/sql/isolated-auth/fixture.sql",
+    "tests/sql/isolated-auth/run-local.mjs"
+  ],
+  "implementation": {
+    "employee_submit_rpc": "hris_employee_submit_attendance_correction(uuid,jsonb)",
+    "employee_history_rpc": "hris_get_my_dashboard_data(uuid)",
+    "manager_decision_rpc": "admin_resolve_attendance_correction(uuid,text,text)",
+    "tested_behaviors": [
+      "Employee and tenant are bound to the live authenticated identity",
+      "Requested times are converted using the organization timezone",
+      "Pending correction and audit entry are recorded",
+      "Employee sees only their own correction history",
+      "Manager approve/reject actions update status through the existing scoped RPC"
+    ],
+    "acceptance_evidence": "docs/programme/ACCEPTANCE_EVIDENCE_20261012_1714.md"
+  },
+  "verification": {
+    "typescript": "PASS",
+    "contracts": {"passed": 26, "failed": 0},
+    "vite_build": "PASS_WITH_699.64KB_CHUNK_WARNING",
+    "full_chromium": {"passed": 37, "failed": 0},
+    "attendance_manager_journey": {"passed": 1, "failed": 0},
+    "isolated_local_auth_rls_latest": {"passed": 47, "failed": 0},
+    "git_diff_check": "PASS",
+    "previous_tenant_security_failures": {
+      "status": "ALL_PASS_IN_47_CHECK_SUITE",
+      "cases": [
+        "Tenant B cannot read Tenant A attendance",
+        "Tenant A cannot read Tenant B attendance",
+        "Tenant B cannot call Tenant A dashboard, attendance or leave RPCs",
+        "Tenant B cannot approve Tenant A leave",
+        "Tenant B cannot approve Tenant A attendance"
+      ]
+    }
+  },
+  "canonical_story_catalogue": {
+    "user_reported_stories": 1047,
+    "user_reported_modules": 153,
+    "expected_sha256": "c0f8eb8ea4fa7a1cd17e957629642c957ae0c22d706f07d0b2c3f1a2a77ed520",
+    "mounted_project_sources_file_count": 0,
+    "repository_skeleton_rows": 0,
+    "repository_skeleton_sha256": "456f1855bc932d6562c1081ee87220b616f4960a780a32931a18a5d477b3a996",
+    "mapped_and_accepted_against_canonical_ids": 0,
+    "unmapped": 1047,
+    "blocker": "User-reported recovered source is not present in this task's mounted Project sources; verify exact SHA before mapping"
+  },
+  "active_blocker": {
+    "root_cause": "The mounted Project sources directory has zero files; only the empty repository tracking skeleton is accessible",
+    "next_action": "Continue Phase 08 roster/time work and Figma-aligned pages while preserving the 47-check Auth/RLS and 37-check browser regressions"
+  },
+  "drive_preservation": {
+    "folder_name": "HRMIS Preservation 2026-10-11",
+    "folder_id": "1v9EA0TKcMfsNobfAdvmmz_XNF_tUx0-V",
+    "connected_owner_verified": "shihabshajib01@gmail.com",
+    "previous_checkpoint": "EXECUTION_CHECKPOINT_20261012_1707",
+    "previous_checkpoint_round_trip": "verified",
+    "this_checkpoint_round_trip": "to_be_verified_after_upload"
+  },
+  "release_state": "NOT_ACCEPTED_NOT_FOR_RELEASE",
+  "production_data_or_permissions_changed": false,
+  "paid_supabase_service_activated": false,
+  "github_push": false,
+  "deployment": false,
+  "final_drive_source_archive": false
+}

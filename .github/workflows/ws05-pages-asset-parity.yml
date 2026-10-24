@@ -1,0 +1,60 @@
+name: WS05 release candidate Pages asset parity (branch only)
+on:
+  push:
+    branches:
+      - work/ws05-free-tier-release-candidate-20261022
+      - integration/ws05-main-final-review-20261022
+    paths-ignore:
+      - 'assets/**'
+      - 'index.html'
+      - '.nojekyll'
+permissions:
+  contents: write
+concurrency:
+  group: ws05-pages-asset-parity-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  sync-release-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Complete optional platform entries in existing npm lockfile
+        run: npm install --package-lock-only --include=optional --ignore-scripts --no-audit --no-fund
+      - name: Reproducible dependency installation
+        run: npm ci --include=optional --no-audit --no-fund
+      - name: Build the exact Pages asset set
+        env:
+          GITHUB_PAGES: 'true'
+        run: |
+          npm run lint
+          npm run build
+          first_digest="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second_digest="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first_digest" = "$second_digest" || { echo 'Non-reproducible Pages bundle; refuse commit'; exit 1; }
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+          git diff --check
+      - name: Commit only generated Pages files to the WS05 release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/heads/work/ws05-free-tier-release-candidate-20261022|refs/heads/integration/ws05-main-final-review-20261022) ;;
+            *) echo "Not an approved WS05 branch; refuse generated asset commit"; exit 1 ;;
+          esac
+          git add -A -- package-lock.json index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo "Already reproducible; no generated asset commit needed."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'WS05: synchronize reproducible Pages assets on release candidate'
+          git push origin "HEAD:$GITHUB_REF"
