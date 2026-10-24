@@ -104,14 +104,29 @@ jobs:
             exit 1
           fi
 
-          if ! docker run --rm --network host \
-            --env PGPASSWORD=postgres \
-            --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
-            postgres:17-alpine \
-            pg_restore --host 127.0.0.1 --port 55422 --username supabase_admin \
-              --dbname hris_recovered_isolated --no-owner --no-acl \
-              --exit-on-error --verbose /restore/hris-recovered.pgcustom \
-              >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
+          # Full replay in explicit TOC order. In this raw platform archive
+          # audit entries depend on auth.users and an existing FK would block
+          # a one-pass table-data restore; pre-data -> data -> post-data ensures
+          # constraints are created after their referenced rows are loaded.
+          # Fail-closed: we DO NOT turn off FK enforcement or ignore errors.
+          restore_failed_section=''
+          restore_log="${RUNNER_TEMP}/hris-restore-log.txt"
+          : >"$restore_log"
+          for section in pre-data data post-data; do
+            if ! docker run --rm --network host \
+              --env PGPASSWORD=postgres \
+              --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
+              postgres:17-alpine \
+              pg_restore --host 127.0.0.1 --port 55422 --username supabase_admin \
+                --dbname hris_recovered_isolated --no-owner --no-acl \
+                --section="$section" --exit-on-error --verbose \
+                /restore/hris-recovered.pgcustom >>"$restore_log" 2>&1; then
+              restore_failed_section="$section"
+              break
+            fi
+          done
+          if [[ -n "$restore_failed_section" ]]; then
+            echo "::notice::Isolated restore failed in section: $restore_failed_section"
             # Emit only the first short PostgreSQL error (not SQL/data/row details).
             # Mask emails, UUIDs and quoted literal text before public CI output.
             first_error="$(grep -m1 'ERROR:' "${RUNNER_TEMP}/hris-restore-log.txt" || true)"
@@ -139,6 +154,13 @@ jobs:
              AND to_regclass('public.employees') IS NOT NULL
              AND (SELECT COUNT(*) FROM public.tenants) >= 1
              AND (SELECT COUNT(*) FROM public.admin_users) >= 1
+             AND to_regclass('auth.users') IS NOT NULL
+             AND (SELECT COUNT(*) FROM auth.users) >= 1
+             AND NOT EXISTS (SELECT 1 FROM public.admin_audit_logs a
+                               LEFT JOIN auth.users u ON u.id=a.actor_id
+                              WHERE a.actor_id IS NOT NULL AND u.id IS NULL)
+             AND to_regclass('supabase_migrations.schema_migrations') IS NOT NULL
+             AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations) >= 110
              THEN 'ISOLATED_RESTORE_VERIFIED' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
           docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
             psql --host 127.0.0.1 --port 55422 --username postgres \
