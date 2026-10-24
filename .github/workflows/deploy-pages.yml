@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout verified Candidate contract source for cross-repository tests
+      - name: Checkout deployed Candidate contract source for cross-repository tests
         shell: bash
         run: |
           set -euo pipefail
-          candidate_branch=integration/ws05-candidate-final-review-20261022
-          expected_sha=412c2137e19ffbb5e7a5e8ad3a4e505bfbaaca03
+          candidate_branch=main
+          expected_sha=72a24b0a5d272dfbd92b6bd5f10afa0d86f0d059
           git clone --depth 1 --branch "$candidate_branch" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
           git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
           git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
