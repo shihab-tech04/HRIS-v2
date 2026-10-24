@@ -1,0 +1,103 @@
+# Manual HRIS Step 1: produce an encrypted logical backup of the replacement database.
+# This cannot modify hosted SQL or trigger deployments; requires a separate Actions
+# encryption passphrase. The private key/passphrase must NOT be stored with the Drive copy.
+name: "HRIS Step 1 - Encrypted database export"
+on:
+  workflow_dispatch:
+    inputs:
+      session_pooler_host:
+        description: "HOST only from replacement Supabase > Connect > Session pooler"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hris-step1-encrypted-database-export
+  cancel-in-progress: false
+
+jobs:
+  encrypted-export:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Export read-only and encrypt immediately
+        shell: bash
+        env:
+          PGHOST: ${{ inputs.session_pooler_host }}
+          PGPORT: "5432"
+          PGDATABASE: postgres
+          PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+          PGSSLMODE: require
+          PGOPTIONS: "-c default_transaction_read_only=on"
+          PGPASSWORD: ${{ secrets.HRIS_DB_PASSWORD }}
+          HRIS_BACKUP_PASSPHRASE: ${{ secrets.HRIS_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "${PGPASSWORD:-}" ]]; then
+            echo "::error::Missing required secret HRIS_DB_PASSWORD."
+            exit 1
+          fi
+          if [[ "${#HRIS_BACKUP_PASSPHRASE}" -lt 32 ]]; then
+            echo "::error::Create HRIS_BACKUP_PASSPHRASE with a unique 32+ character random secret, saved outside Google Drive."
+            exit 1
+          fi
+          if [[ ! "${PGHOST}" =~ ^aws-[0-9]+-ap-northeast-2\.pooler\.supabase\.com$ ]]; then
+            echo "::error::Invalid replacement HRIS session-pooler HOST."
+            exit 1
+          fi
+          command -v docker >/dev/null
+          command -v gpg >/dev/null
+          scratch="$(mktemp -d "${RUNNER_TEMP}/hris-dump.XXXXXXXX")"
+          deliver="${RUNNER_TEMP}/hris-encrypted-delivery"
+          mkdir -m 700 -p "$deliver"
+          trap 'rm -rf "$scratch"' EXIT
+
+          # Actual pg_dump only; no checkout of PR code, SQL writes or server-side commands.
+          # The secret passes as an environment variable, never a command-line argument.
+          docker run --rm \
+            --env PGHOST --env PGPORT --env PGDATABASE --env PGUSER \
+            --env PGSSLMODE --env PGOPTIONS --env PGPASSWORD \
+            --mount "type=bind,src=$scratch,dst=/backup" \
+            postgres:17-alpine \
+            pg_dump --no-owner --format=custom --file=/backup/hris.pgcustom
+          test -s "$scratch/hris.pgcustom"
+
+          # GnuPG symmetric AES-256, with built-in integrity protection.
+          # The passphrase enters GPG via fd 3, never in the process arguments/logs.
+          out="$deliver/hris-replacement-${GITHUB_RUN_ID}.pgcustom.gpg"
+          gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
+            --cipher-algo AES256 --compress-algo none --symmetric \
+            --output "$out" "$scratch/hris.pgcustom" 3<<<"$HRIS_BACKUP_PASSPHRASE"
+          test -s "$out"
+          gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
+            --output "$scratch/verified.pgcustom" --decrypt "$out" \
+            3<<<"$HRIS_BACKUP_PASSPHRASE"
+          cmp -s "$scratch/hris.pgcustom" "$scratch/verified.pgcustom"
+          ( cd "$deliver" && sha256sum "$(basename "$out")" > encrypted.sha256 )
+          {
+            printf 'source_project=xfuxnljfrgvusbrpvxpa\n'
+            printf 'source_database=postgres\n'
+            printf 'database_engine=PostgreSQL17\n'
+            printf 'format=pg_dump_custom_archive\n'
+            printf 'encryption=GnuPG_symmetric_AES256\n'
+            printf 'github_run_id=%s\n' "${GITHUB_RUN_ID}"
+            printf 'created_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            printf 'plaintext_archive_sha256=%s\n' "$(sha256sum "$scratch/hris.pgcustom" | cut -d ' ' -f1)"
+          } > "$deliver/backup-manifest.txt"
+          echo "Encrypted logical database export and decrypt/hash validation PASS."
+          echo "This is NOT an independently restored database or full Supabase Storage/Auth configuration backup."
+
+      # This artifact is encrypted before leaving the ephemeral runner.
+      # Transfer its ZIP to the restricted Google Drive recovery folder promptly;
+      # the source artifact is set to expire after one day.
+      - name: Transfer-ready encrypted artifact (1-day expiry)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-db-encrypted-${{ github.run_id }}
+          path: ${{ runner.temp }}/hris-encrypted-delivery/
+          if-no-files-found: error
+          retention-days: 1
