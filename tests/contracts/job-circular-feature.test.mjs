@@ -82,3 +82,17 @@ test('screening editor translates active EN/BN UI, preserving Candidate public-o
   assert.match(manager, /projectText\(locale, english\)/);
   assert.doesNotMatch(manager, /style=\{/);
 });
+
+test('Job Circular draft and employment options match verified hosted SQL rather than unsupported UI choices', () => {
+  // Hosted jobs_employment_type_check permits exactly these four values.
+  assert.match(manager, /\['full-time','part-time','contract','internship'\]/);
+  assert.doesNotMatch(manager, /'temporary'/);
+  // Hosted admin_save_job accepts NULL application_deadline until publication.
+  assert.match(manager, /application_deadline: draft\.deadline \|\| null/);
+  assert.match(manager, /Application deadline \(required before publishing\)/);
+  assert.doesNotMatch(manager, /<input type="date" required/);
+  // Hosted admin_set_job_published still enforces its own current/future date.
+  assert.match(manager, /draft\.deadline && draft\.deadline < new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(manager, /editing\?\.is_published \? undefined : new Date\(\)\.toISOString\(\)\.slice\(0,10\)/);
+  assert.match(manager, /supabase\.rpc\('admin_set_job_published'/);
+});
