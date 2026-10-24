@@ -148,7 +148,8 @@ BEGIN
   END IF;
 
   v_steps:=ARRAY(SELECT step FROM unnest(ARRAY['step_identity','step_emergency','step_payroll','step_policies']::text[]) AS steps(step)
-    WHERE step=ANY(v_handoff.candidate_completed_steps || ARRAY[p_step_key]::text[]));
+    WHERE step=p_step_key
+      OR step=ANY(COALESCE(v_handoff.candidate_completed_steps,ARRAY[]::text[])));
 
   UPDATE public.onboarding_handoffs h SET
     candidate_personal_data=h.candidate_personal_data || v_clean,
