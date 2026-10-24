@@ -1,0 +1,65 @@
+name: WS02 Super Admin Auth rebound isolated PostgreSQL 17 acceptance
+on:
+  push:
+    branches: [work/ws02-membership-rebind-pg17-acceptance-20261024]
+permissions:
+  contents: read
+jobs:
+  rebound-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: hris_membership_synthetic
+          POSTGRES_USER: synthetic_test_runner
+          POSTGRES_PASSWORD: synthetic_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U synthetic_test_runner -d hris_membership_synthetic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: synthetic_test_runner
+      PGPASSWORD: synthetic_test_only
+      PGDATABASE: hris_membership_synthetic
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Execute controlled recovery and negative tests against real disposable PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=tests/sql/isolated-auth/membership-rebind-fixture.sql
+          staged=supabase/staging/hosted-membership-transition/20261024_super_admin_membership_rebind.staging.sql
+          psql -X -v ON_ERROR_STOP=1 -f "$fixture" >/dev/null
+          psql -X -v ON_ERROR_STOP=1 -f "$staged" >/dev/null
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/isolated-auth/verify-membership-rebind.sql
+          echo 'PASS: applied exact reviewed staging source on synthetic PostgreSQL 17'
+          for case_name in extra_grant existing_member historical_identity_same banned_auth; do
+            psql -X -v ON_ERROR_STOP=1 -f "$fixture" >/dev/null
+            case "$case_name" in
+              extra_grant) psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO public.role_permissions VALUES('hr_admin','other.permission')" >/dev/null ;;
+              existing_member) psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO public.tenant_memberships VALUES('f1111111-1111-4111-8111-111111111111','f2222222-2222-4222-8222-222222222222','hr_admin','active')" >/dev/null ;;
+              historical_identity_same) psql -X -v ON_ERROR_STOP=1 -c "UPDATE public.admin_audit_logs SET details=jsonb_set(details,'{user_id}',to_jsonb('f2222222-2222-4222-8222-222222222222'::text)) WHERE action='PHASE03_INITIAL_TENANT_ADMIN_BACKFILLED'" >/dev/null ;;
+              banned_auth) psql -X -v ON_ERROR_STOP=1 -c "UPDATE auth.users SET banned_until=now()+interval '1 day'" >/dev/null ;;
+            esac
+            if psql -X -v ON_ERROR_STOP=1 -f "$staged" >/dev/null 2>&1; then
+              echo "::error::Dangerous staged repair succeeded despite negative case $case_name"
+              exit 1
+            fi
+            test "$(psql -X -At -c "SELECT count(*) FROM public.admin_audit_logs WHERE action='PHASE03_TENANT_ADMIN_MEMBERSHIP_REBOUND'")" = 0
+            if [ "$case_name" != existing_member ]; then
+              test "$(psql -X -At -c "SELECT count(*) FROM public.tenant_memberships")" = 0
+            fi
+            echo "PASS: fail-closed negative case $case_name"
+          done
+          echo 'PASS: no real Supabase, production DB, data, or deployments were modified'
