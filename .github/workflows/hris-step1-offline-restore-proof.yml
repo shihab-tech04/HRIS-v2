@@ -1,0 +1,115 @@
+# Independent restore of an existing encrypted HRIS backup. Never connects to a hosted DB.
+# Runs once on the trusted main merge of THIS workflow file; manual dispatch for retry.
+name: "HRIS Step 1 - Isolated PostgreSQL restore proof"
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/hris-step1-offline-restore-proof.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hris-step1-offline-restore-proof
+  cancel-in-progress: false
+
+jobs:
+  restore-proof:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      SUPABASE_TELEMETRY_DISABLED: '1'
+      SUPABASE_HOME: /tmp/hris-supabase-home
+      HRIS_RESTORE_WORKDIR: /tmp/synesis-local-hris-restore
+    steps:
+      - name: Fetch exact encrypted backup from trusted completed run
+        uses: actions/download-artifact@v4
+        with:
+          name: hris-db-encrypted-40084995271
+          run-id: 40084995271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/hris-restore-source
+
+      - name: Verify encryption archive and authenticate decryption
+        shell: bash
+        env:
+          HRIS_BACKUP_PASSPHRASE: ${{ secrets.HRIS_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test "${#HRIS_BACKUP_PASSPHRASE}" -ge 32 || { echo "::error::Backup passphrase unavailable"; exit 1; }
+          src="${RUNNER_TEMP}/hris-restore-source"
+          test -s "$src/hris-replacement-40084995271.pgcustom.gpg"
+          (cd "$src" && sha256sum --check --status encrypted.sha256)
+          grep -Fxq "source_project=xfuxnljfrgvusbrpvxpa" "$src/backup-manifest.txt"
+          grep -Fxq "github_run_id=40084995271" "$src/backup-manifest.txt"
+          plain="${RUNNER_TEMP}/hris-recovered.pgcustom"
+          gpg --batch --yes --quiet --pinentry-mode loopback \
+            --passphrase-fd 3 --output "$plain" --decrypt \
+            "$src/hris-replacement-40084995271.pgcustom.gpg" 3<<<"$HRIS_BACKUP_PASSPHRASE"
+          test -s "$plain"
+          expected="$(sed -n 's/^plaintext_archive_sha256=//p' "$src/backup-manifest.txt")"
+          test "${#expected}" = 64
+          printf '%s  %s\n' "$expected" "$plain" | sha256sum --check --status
+          docker run --rm --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" postgres:17-alpine \
+            pg_restore --list /restore/hris-recovered.pgcustom > "${RUNNER_TEMP}/hris-restore-inventory.txt"
+          test "$(wc -l < "${RUNNER_TEMP}/hris-restore-inventory.txt")" -gt 100
+          echo "PASS: pinned encrypted backup decrypted; SHA-256 and pg_restore inventory verified."
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+
+      - name: Create isolated local Supabase PostgreSQL 17 environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HRIS_RESTORE_WORKDIR"
+          supabase init --workdir "$HRIS_RESTORE_WORKDIR" --force >/dev/null
+          sed -i 's/^port = 54321$/port = 55421/' "$HRIS_RESTORE_WORKDIR/supabase/config.toml"
+          sed -i 's/^port = 54322$/port = 55422/' "$HRIS_RESTORE_WORKDIR/supabase/config.toml"
+          if ! supabase start --workdir "$HRIS_RESTORE_WORKDIR" \
+            --exclude studio,edge-runtime,logflare,vector,supavisor >"${RUNNER_TEMP}/hris-local-start.log" 2>&1; then
+            echo "::error::Isolated local Supabase failed to start. No hosted database was accessed."
+            exit 1
+          fi
+          echo "Isolated local Supabase ready; never uses hosted project credentials."
+
+      - name: Restore source archive in isolated local PostgreSQL, then verify critical data
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! docker run --rm --network host \
+            --env PGPASSWORD=postgres \
+            --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
+            postgres:17-alpine \
+            pg_restore --host 127.0.0.1 --port 55422 --username postgres \
+              --dbname postgres --no-owner --no-acl --clean --if-exists \
+              --exit-on-error --verbose /restore/hris-recovered.pgcustom \
+              >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
+            echo "::error::Isolated restore FAILED. Full restore not certified; no hosted writes."
+            # Avoid dumping private schema/data/SQL errors into public CI logs.
+            exit 1
+          fi
+          probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
+             AND to_regclass('public.admin_users') IS NOT NULL
+             AND to_regclass('public.employees') IS NOT NULL
+             AND (SELECT COUNT(*) FROM public.tenants) >= 1
+             AND (SELECT COUNT(*) FROM public.admin_users) >= 1
+             THEN 'ISOLATED_RESTORE_VERIFIED' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            psql --host 127.0.0.1 --port 55422 --username postgres \
+              --dbname postgres -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
+            | grep -Fx "ISOLATED_RESTORE_VERIFIED"
+          echo "PASS: isolated restore completed and application tables/data verified."
+          echo "Not a live HRIS functional acceptance or Supabase Storage files/secrets restore."
+
+      - name: Stop disposable local Supabase only
+        if: always()
+        shell: bash
+        run: |
+          supabase stop --workdir "$HRIS_RESTORE_WORKDIR" --no-backup >/dev/null 2>&1 || true
+          rm -f "${RUNNER_TEMP}/hris-recovered.pgcustom" || true
