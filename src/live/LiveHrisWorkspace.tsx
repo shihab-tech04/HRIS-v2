@@ -5174,7 +5174,7 @@ export function LiveHrisWorkspace({
           {page === 'profile-change-review' && permissions.selfServiceManage && <ProfileChangeReview tenantId={tenantId} locale={locale} />}
           {page === 'performance' && permissions.performance && <OrganizationPerformance tenantId={tenantId} />}
           {page === 'recruitment' && permissions.recruitment && <RecruitmentPipeline tenantId={tenantId} locale={locale} canManagePreboarding={permissions.recruitmentManage} canManageOffers={permissions.recruitmentManage} canManageApplicationStages={permissions.recruitmentManage} />}
-          {page === 'job-circulars' && permissions.recruitmentManage && <JobCircularManager tenantId={tenantId} refreshKey={0} />}
+          {page === 'job-circulars' && permissions.recruitmentManage && <JobCircularManager tenantId={tenantId} refreshKey={0} locale={locale} />}
           {page === 'referrals' && (isEmployee || permissions.referrals) && <EmployeeReferrals tenantId={tenantId} userId={userId} canViewQueue={permissions.referrals} canManage={permissions.referralsManage} />}
           {page === 'holidays' && permissions.holidayManage && <OrganizationHolidayCalendar tenantId={tenantId} locale={locale} />}
           {page === 'learning-programs' && permissions.learningManage && <LearningProgramAdmin tenantId={tenantId} locale={locale} />}
