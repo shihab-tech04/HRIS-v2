@@ -104,25 +104,51 @@ jobs:
             exit 1
           fi
 
-          # Full replay in explicit TOC order. In this raw platform archive
-          # audit entries depend on auth.users and an existing FK would block
-          # a one-pass table-data restore; pre-data -> data -> post-data ensures
-          # constraints are created after their referenced rows are loaded.
-          # Fail-closed: we DO NOT turn off FK enforcement or ignore errors.
-          # Replacement source has 58 preexisting audit actor references to
-          # deleted historical Auth users, even with convalidated=true.
-          # Keep every original row/UUID intact. The one legacy FK is replayed
-          # below as NOT VALID (still enforced for future writes), rather than
-          # silently dropping audit history or fabricating Auth users.
-          archive_toc="${RUNNER_TEMP}/hris-restore-inventory.txt"
-          excluded_fk="${RUNNER_TEMP}/hris-legacy-audit-fk-postdata.toc"
-          match_count="$(grep -Ec 'FK CONSTRAINT.*admin_audit_logs_actor_id_fkey' "$archive_toc" || true)"
-          if [[ "$match_count" != 1 ]]; then
-            echo "::error::Pinned archive lacks exactly one expected audit FK item."
+          # Pin the WHOLE existing referential drift, rather than patching one
+          # Auth foreign key per failed restore. These 17 definitions and counts
+          # were read from replacement DB catalog/data, SELECT-only. Never touch hosted.
+          # The exact original FK definitions (including deletion actions) are preserved.
+          pinned_auth_fks="${RUNNER_TEMP}/hris-pinned-auth-fks.tsv"
+          cat > "$pinned_auth_fks" <<'PINNED_AUTH_FKS'
+          admin_audit_logs|actor_id|admin_audit_logs_actor_id_fkey|59|58|FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          confirmation_reviews|resolved_by|confirmation_reviews_resolved_by_fkey|2|2|FOREIGN KEY (resolved_by) REFERENCES auth.users(id)
+          employee_lifecycle_events|performed_by|employee_lifecycle_events_performed_by_fkey|5|5|FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          employee_referrals|submitted_by|employee_referrals_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          employees|user_id|employees_user_id_fkey|1|1|FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          hr_policies|created_by|hr_policies_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          leave_requests|submitted_by|leave_requests_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          manpower_requisitions|requested_by|manpower_requisitions_requested_by_fkey|1|1|FOREIGN KEY (requested_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          manpower_requisitions|resolved_by|manpower_requisitions_resolved_by_fkey|1|1|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          notices|created_by|notices_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          pay_periods|created_by|pay_periods_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          pay_periods|released_by|pay_periods_released_by_fkey|1|1|FOREIGN KEY (released_by) REFERENCES auth.users(id)
+          performance_cycles|created_by|performance_cycles_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          performance_goals|created_by|performance_goals_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          project_performance_reviews|evaluated_by|project_performance_reviews_evaluated_by_fkey|1|1|FOREIGN KEY (evaluated_by) REFERENCES auth.users(id)
+          service_requests|resolved_by|service_requests_resolved_by_fkey|1|1|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          service_requests|submitted_by|service_requests_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          PINNED_AUTH_FKS
+          if [[ "$(wc -l < "$pinned_auth_fks")" -ne 17 ]]; then
+            echo "::error::Pinned historical Auth FK inventory must contain exactly 17 entries."
             exit 1
           fi
-          sed -E '/FK CONSTRAINT.*admin_audit_logs_actor_id_fkey/s/^/;/' "$archive_toc" >"$excluded_fk"
-
+          archive_toc="${RUNNER_TEMP}/hris-restore-inventory.txt"
+          excluded_fk="${RUNNER_TEMP}/hris-legacy-audit-fk-postdata.toc"
+          cp "$archive_toc" "$excluded_fk"
+          while IFS='|' read -r table column fk expected_nonnull expected_orphan definition; do
+            if [[ ! "$table" =~ ^[a-z_]+$ || ! "$column" =~ ^[a-z_]+$ || ! "$fk" =~ ^[a-z_]+$ ]]; then
+              echo "::error::Unexpected FK identifier in pinned source inventory."
+              exit 1
+            fi
+            count="$(grep -Ec "FK CONSTRAINT.*${fk}" "$archive_toc" || true)"
+            if [[ "$count" != 1 ]]; then
+              echo "::error::Pinned archive FK inventory mismatch: ${fk}"
+              exit 1
+            fi
+            sed -E "/FK CONSTRAINT.*${fk}/s/^/;/" "$excluded_fk" > "${excluded_fk}.new"
+            mv "${excluded_fk}.new" "$excluded_fk"
+          done < "$pinned_auth_fks"
+          echo "Pinned 17 historical Auth FKs excluded from validation during isolated archive replay."
           restore_failed_section=''
           restore_log="${RUNNER_TEMP}/hris-restore-log.txt"
           : >"$restore_log"
@@ -167,50 +193,59 @@ jobs:
             fi
             exit 1
           fi
-          # Explicitly verify exact pinned-source legacy drift before altering
-          # *only this disposable database's* FK validity state.
-          legacy_probe="SELECT CASE WHEN
-            (SELECT COUNT(*) FROM public.admin_audit_logs)=61
-            AND (SELECT COUNT(*) FROM public.admin_audit_logs WHERE actor_id IS NOT NULL)=59
-            AND (SELECT COUNT(*) FROM auth.users)=1
-            AND (SELECT COUNT(*) FROM public.admin_audit_logs a
-                 LEFT JOIN auth.users u ON u.id=a.actor_id
-                 WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=58
-            THEN 'PINNED_LEGACY_FK_DRIFT_VERIFIED' ELSE 'LEGACY_DRIFT_MISMATCH' END;"
-          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
-            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
-              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$legacy_probe" \
-            | grep -Fx "PINNED_LEGACY_FK_DRIFT_VERIFIED"
+          # Fail closed if historical references drift from this EXACT pinned archive.
+          # No deletion, reassignment, invention of auth users or trigger/constraint bypass.
+          while IFS='|' read -r table column fk expected_nonnull expected_orphan definition; do
+            probe_sql="SELECT COUNT(*) FILTER (WHERE src.${column} IS NOT NULL)::text || '|' || COUNT(*) FILTER (WHERE src.${column} IS NOT NULL AND u.id IS NULL)::text FROM public.${table} src LEFT JOIN auth.users u ON u.id=src.${column};"
+            observed="$(docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe_sql")"
+            if [[ "$observed" != "$expected_nonnull|$expected_orphan" ]]; then
+              echo "::error::Pinned source nonnull/orphan counts changed for ${table}.${column}."
+              exit 1
+            fi
+          done < "$pinned_auth_fks"
+          echo "PINNED_LEGACY_FK_DRIFT_VERIFIED"
 
-          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
-            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
-              --dbname hris_recovered_isolated -X -v ON_ERROR_STOP=1 \
-              -c 'ALTER TABLE public.admin_audit_logs ADD CONSTRAINT admin_audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL NOT VALID;' \
-              >/dev/null
-          echo "RECOVERY_EXCEPTION: legacy 58 orphaned audit actor references retained unchanged; FK NOT VALID on isolated restore only."
+          # Recreate those exact FKs as NOT VALID solely in the disposable restore:
+          # future inserts/updates remain enforced, historical references are retained.
+          while IFS='|' read -r table column fk expected_nonnull expected_orphan definition; do
+            docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+              --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
+              -c "ALTER TABLE public.${table} ADD CONSTRAINT ${fk} ${definition} NOT VALID;"
+          done < "$pinned_auth_fks"
+          echo "RECOVERY_EXCEPTION: 79 pinned historical orphan references preserved in 17 Auth FKs (NOT VALID on isolated restore only)."
 
           probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
              AND to_regclass('public.admin_users') IS NOT NULL
              AND to_regclass('public.employees') IS NOT NULL
+             AND to_regclass('auth.users') IS NOT NULL
              AND (SELECT COUNT(*) FROM public.tenants) >= 1
              AND (SELECT COUNT(*) FROM public.admin_users) >= 1
-             AND to_regclass('auth.users') IS NOT NULL
-             AND (SELECT COUNT(*) FROM auth.users) >= 1
+             AND (SELECT COUNT(*) FROM auth.users) = 1
              AND (SELECT COUNT(*) FROM public.admin_audit_logs a
                   LEFT JOIN auth.users u ON u.id=a.actor_id
                   WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=58
-             AND EXISTS (SELECT 1 FROM pg_constraint
-                  WHERE conrelid='public.admin_audit_logs'::regclass
-                    AND conname='admin_audit_logs_actor_id_fkey'
-                    AND contype='f' AND NOT convalidated)
              AND to_regclass('supabase_migrations.schema_migrations') IS NOT NULL
              AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations) >= 110
-             THEN 'ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
+             AND (SELECT COUNT(*) FROM pg_constraint con
+                  JOIN pg_class rel ON rel.oid=con.conrelid
+                  JOIN pg_namespace ns ON ns.oid=rel.relnamespace
+                  WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
+                    AND ns.nspname='public') = 57
+             AND (SELECT COUNT(*) FROM pg_constraint con
+                  JOIN pg_class rel ON rel.oid=con.conrelid
+                  JOIN pg_namespace ns ON ns.oid=rel.relnamespace
+                  WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
+                    AND ns.nspname='public' AND NOT con.convalidated) = 17
+             THEN 'ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION'
+             ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
           docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
-            psql --host 127.0.0.1 --port 55422 --username postgres \
+            psql --host 127.0.0.1 --port 55422 --username supabase_admin \
               --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
             | grep -Fx "ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION"
-          echo "PASS: isolated restore with pinned 58-row historical FK exception, NOT a clean byte-for-byte schema restoration."
+          echo "PASS: isolated PG17 restoration with 17 pinned Auth FK exceptions; NOT a clean constraint-validating source clone."
           echo "Not a live HRIS functional acceptance or Supabase Storage files/secrets restore."
 
       - name: Stop disposable local Supabase only

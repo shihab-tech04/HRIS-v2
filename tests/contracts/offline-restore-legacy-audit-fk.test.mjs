@@ -11,7 +11,7 @@ test('isolated recovery explicitly preserves historical audit references', () =>
   assert.match(file, /hris-legacy-audit-fk-postdata\.toc/);
   assert.match(file, /admin_audit_logs_actor_id_fkey/);
   assert.match(file, /NOT VALID/);
-  assert.match(file, /NOT convalidated/);
+  assert.match(file, /NOT con\.convalidated/);
   assert.match(file, /supabase_migrations\.schema_migrations/);
   assert.match(file, /--host 127\.0\.0\.1 --port 55422/);
 });
