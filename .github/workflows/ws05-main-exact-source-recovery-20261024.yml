@@ -16,7 +16,7 @@ jobs:
       - name: Verify exact protected main, archive, and independent Git restore
         shell: bash
         env:
-          EXPECTED_MAIN_SHA: '712d16254342da9cd12d1275b6826ac5c3902607'
+          EXPECTED_MAIN_SHA: '444461870cac710e1c9cb850bc59eedbb86dd629'
         run: |
           set -euo pipefail
           git fetch --no-tags origin main
@@ -35,7 +35,7 @@ jobs:
       - name: Retain portable, verified recovery for off-GitHub transfer
         uses: actions/upload-artifact@v4
         with:
-          name: hris-main-exact-main-after-pr92-20261024
+          name: hris-main-exact-main-after-pr93-20261024
           path: |
             ${{ runner.temp }}/hris-main-complete-source.git.bundle
             ${{ runner.temp }}/hris-main-exact-main.tar.gz
