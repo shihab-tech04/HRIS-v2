@@ -1,0 +1,39 @@
+name: WS07 screening editor Pages asset sync
+on:
+  push:
+    branches:
+      - work/ws07-job-circular-screening-editor-20261024
+permissions:
+  contents: write
+jobs:
+  synchronize-screening-feature-assets:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/work/ws07-job-circular-screening-editor-20261024'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build same feature bundle as protected Pages
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit exact build assets to isolated branch
+        run: |
+          set -euo pipefail
+          test -s index.html
+          test -d assets
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html assets/ .nojekyll
+          if git diff --cached --quiet; then
+            echo "Already byte-for-byte synchronized"
+            exit 0
+          fi
+          git commit -m "chore(ws07): sync screening feature Pages artifacts"
+          git push origin HEAD:work/ws07-job-circular-screening-editor-20261024
