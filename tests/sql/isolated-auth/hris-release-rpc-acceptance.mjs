@@ -101,7 +101,17 @@ try {
     + "DROP POLICY IF EXISTS candidate_documents_own_delete ON storage.objects;\n"
     + "CREATE POLICY candidate_documents_own_delete ON storage.objects FOR DELETE TO authenticated USING (bucket_id='candidate-documents' AND (storage.foldername(name))[1]=(SELECT auth.uid())::text);");
 
-  applySql('supabase/migrations/20261024190002_hris_project_timesheet_review_forward_port.sql');
+  // run-local.mjs installs the canonical 20261016033936 project-timesheet SQL.
+  // Its 20261024190002 replay has the same CREATE FUNCTION signature, so avoid
+  // applying that Projects replay twice on this shared disposable database.
+  // Any hosted Projects activation remains governed by release controller #91.
+  const hasCanonicalProjectTimesheet = psql(
+    "SELECT to_regprocedure('public.hris_get_my_project_timesheet_reviews(uuid)') IS NOT NULL AND " +
+    "to_regprocedure('public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb,integer)') IS NOT NULL"
+  );
+  if (hasCanonicalProjectTimesheet !== 't') {
+    applySql('supabase/migrations/20261024190002_hris_project_timesheet_review_forward_port.sql');
+  }
   applySql('supabase/migrations/20261024191001_hris_candidate_application_document_forward_port.sql');
   applySql('supabase/migrations/20261024200001_hris_preboarding_missing_rpcs_forward_port.sql');
   applySql('supabase/migrations/20261024210001_hris_recruitment_pipeline_forward_port.sql');
