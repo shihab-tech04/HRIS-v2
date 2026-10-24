@@ -82,16 +82,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Full restore must use a fresh empty database, not the local Supabase
+          # bootstrap 'postgres' DB whose pre-existing system objects can collide.
+          docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
+            createdb --host 127.0.0.1 --port 55422 --username postgres hris_recovered_isolated
           if ! docker run --rm --network host \
             --env PGPASSWORD=postgres \
             --mount "type=bind,src=${RUNNER_TEMP},dst=/restore,readonly" \
             postgres:17-alpine \
             pg_restore --host 127.0.0.1 --port 55422 --username postgres \
-              --dbname postgres --no-owner --no-acl --clean --if-exists \
+              --dbname hris_recovered_isolated --no-owner --no-acl \
               --exit-on-error --verbose /restore/hris-recovered.pgcustom \
               >"${RUNNER_TEMP}/hris-restore-log.txt" 2>&1; then
-            echo "::error::Isolated restore FAILED. Full restore not certified; no hosted writes."
-            # Avoid dumping private schema/data/SQL errors into public CI logs.
+            # Print only a classification, not source SQL or private data.
+            if grep -Eiq 'already exists|duplicate object' "${RUNNER_TEMP}/hris-restore-log.txt"; then
+              echo "::error::Isolated restore encountered existing-object conflict."
+            elif grep -Eiq 'does not exist|not installed|could not open extension' "${RUNNER_TEMP}/hris-restore-log.txt"; then
+              echo "::error::Isolated restore requires unavailable Supabase-managed dependency."
+            elif grep -Eiq 'permission denied|must be owner|superuser' "${RUNNER_TEMP}/hris-restore-log.txt"; then
+              echo "::error::Isolated restore encountered privilege mismatch."
+            else
+              echo "::error::Isolated restore failed; encrypted backup integrity remains separately verified."
+            fi
             exit 1
           fi
           probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
@@ -102,7 +114,7 @@ jobs:
              THEN 'ISOLATED_RESTORE_VERIFIED' ELSE 'ISOLATED_RESTORE_INCOMPLETE' END;"
           docker run --rm --network host --env PGPASSWORD=postgres postgres:17-alpine \
             psql --host 127.0.0.1 --port 55422 --username postgres \
-              --dbname postgres -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
+              --dbname hris_recovered_isolated -X -A -t -v ON_ERROR_STOP=1 -c "$probe" \
             | grep -Fx "ISOLATED_RESTORE_VERIFIED"
           echo "PASS: isolated restore completed and application tables/data verified."
           echo "Not a live HRIS functional acceptance or Supabase Storage files/secrets restore."
