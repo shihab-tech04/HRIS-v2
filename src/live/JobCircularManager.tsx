@@ -202,13 +202,15 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
         education_requirement: draft.education.trim(), skills: textList(draft.skills),
         responsibilities: textList(draft.responsibilities), requirements: textList(draft.requirements),
         benefits: textList(draft.benefits), required_documents: textList(draft.documents),
-        screening_questions: screeningQuestions.map(question => ({
-          ...question,
-          questionText: question.questionText.trim(),
-          options: needsOptions(question.type)
-            ? (question.options || []).map(option => option.trim()).filter(Boolean)
-            : [],
-        })),
+        screening_questions: editing?.is_published
+          ? editing.screening_questions
+          : screeningQuestions.map(question => ({
+            ...question,
+            questionText: question.questionText.trim(),
+            options: needsOptions(question.type)
+              ? (question.options || []).map(option => option.trim()).filter(Boolean)
+              : [],
+          })),
         salary_currency: draft.currency.trim().toUpperCase(),
         salary_min: draft.salaryMin || null, salary_max: draft.salaryMax || null,
         is_salary_published: draft.showSalary, instructions: draft.instructions.trim(),
