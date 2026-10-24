@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
+import { projectText, type Locale } from './project-locale';
 
 type Job = {
   id: string; reference_number: string; title: string;
@@ -99,7 +100,8 @@ function fromJob(job: Job): Draft {
   };
 }
 
-export function JobCircularManager({ tenantId, refreshKey }: { tenantId: string; refreshKey: number }) {
+export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { tenantId: string; refreshKey: number; locale?: Locale }) {
+  const t = (english: string) => projectText(locale, english);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [departments, setDepartments] = useState<Master[]>([]);
   const [locations, setLocations] = useState<Master[]>([]);
@@ -320,44 +322,44 @@ export function JobCircularManager({ tenantId, refreshKey }: { tenantId: string;
             <textarea rows={3} className={fieldClass} value={draft[key]} onChange={e => change(key,e.target.value)}/>
           </label>)}
       </div>
-      <section className="space-y-3 rounded-lg border border-slate-200 p-3 sm:p-4" aria-label="Application screening questions">
+      <section className="space-y-3 rounded-lg border border-slate-200 p-3 sm:p-4" aria-label={t("Application screening questions")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h4 className="font-semibold text-slate-900">Application screening questions</h4>
-            <p className="text-xs text-slate-600">Questions appear in Candidate applications in the same order. Keep IDs stable when editing.</p>
+            <h4 className="font-semibold text-slate-900">{t("Application screening questions")}</h4>
+            <p className="text-xs text-slate-600">{t("Questions appear in Candidate applications in the same order. Keep IDs stable when editing.")}</p>
           </div>
           {!editing?.is_published && <button type="button" disabled={saving} className={secondaryButton}
             onClick={() => setScreeningQuestions(previous => [...previous, {
               id: crypto.randomUUID(), questionText: '', type: 'short_text', required: false, options: [],
-            }])}>Add question</button>}
+            }])}>{t("Add question")}</button>}
         </div>
         {editing?.is_published && <p role="status" className="text-sm text-slate-600">
-          Unpublish this circular before changing screening questions. Existing applicants' question IDs are preserved.
+          {t("Unpublish this circular before changing screening questions. Existing applicants' question IDs are preserved.")}
         </p>}
-        {screeningQuestions.length === 0 && <p className="text-sm text-slate-600">No screening questions added.</p>}
+        {screeningQuestions.length === 0 && <p className="text-sm text-slate-600">{t("No screening questions added.")}</p>}
         {screeningQuestions.map((question, index) =>
           <fieldset key={question.id || index} disabled={saving || Boolean(editing?.is_published)}
             className="space-y-3 rounded-md border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-semibold">Question {index + 1}</legend>
+            <legend className="px-1 text-sm font-semibold">{t('Question')} {index + 1}</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block text-sm font-medium">Question text *
+              <label className="block text-sm font-medium">{t("Question text *")}
                 <input required maxLength={500} className={fieldClass} value={question.questionText}
                   onChange={event => setScreeningQuestions(previous => previous.map(current =>
                     current.id === question.id ? { ...current, questionText: event.target.value } : current))}/>
               </label>
-              <label className="block text-sm font-medium">Answer type
+              <label className="block text-sm font-medium">{t("Answer type")}
                 <select className={fieldClass} value={question.type}
                   onChange={event => setScreeningQuestions(previous => previous.map(current =>
                     current.id === question.id ? { ...current, type: event.target.value, options: [] } : current))}>
                   {!screeningQuestionTypes.some(type => type === question.type) &&
                     <option value={question.type}>Unsupported saved type — {question.type || 'missing'}</option>}
                   {screeningQuestionTypes.map(type =>
-                    <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
+                    <option key={type} value={type}>{t(type.replaceAll('_', ' '))}</option>)}
                 </select>
               </label>
             </div>
             {needsOptions(question.type) && <label className="block text-sm font-medium">
-              Answer options (one per line) *
+              {t("Answer options (one per line) *")}
               <textarea required rows={3} className={fieldClass}
                 value={(question.options || []).join('\n')}
                 onChange={event => setScreeningQuestions(previous => previous.map(current =>
@@ -370,11 +372,11 @@ export function JobCircularManager({ tenantId, refreshKey }: { tenantId: string;
                 <input type="checkbox" checked={question.required}
                   onChange={event => setScreeningQuestions(previous => previous.map(current =>
                     current.id === question.id ? { ...current, required: event.target.checked } : current))}/>
-                Required answer
+                {t("Required answer")}
               </label>
               {!editing?.is_published && <button type="button" className={secondaryButton}
                 onClick={() => setScreeningQuestions(previous => previous.filter(item => item.id !== question.id))}>
-                Remove question
+                {t("Remove question")}
               </button>}
             </div>
           </fieldset>)}
