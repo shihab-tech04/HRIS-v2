@@ -9,9 +9,10 @@ on:
         required: true
         type: choice
         options:
+          - main
           - development/hris-checkpoints
           - release/candidate-stable-20261017
-        default: development/hris-checkpoints
+        default: main
 
 permissions:
   contents: read
@@ -28,7 +29,7 @@ jobs:
     env:
       CI: '1'
       HRIS_DOCKER_CONTEXT: default
-      HRIS_CANDIDATE_REF: ${{ (github.ref == 'refs/heads/integration/ws05-main-final-review-20261022' || github.ref == 'refs/heads/integration/ws05-leave-nav-e2e-review-20261023') && 'integration/ws05-candidate-final-review-20261022' || github.ref == 'refs/heads/integration/ws02-security-proof-to-ws05-20261022' && 'integration/candidate-figma-cv-unified-20261022' || github.ref == 'refs/heads/release/hris-stable-20261017' && 'release/candidate-stable-20261017' || inputs.candidate_ref || 'development/hris-checkpoints' }}
+      HRIS_CANDIDATE_REF: ${{ (github.ref == 'refs/heads/integration/ws05-main-final-review-20261022' || github.ref == 'refs/heads/integration/ws05-leave-nav-e2e-review-20261023') && 'integration/ws05-candidate-final-review-20261022' || github.ref == 'refs/heads/integration/ws02-security-proof-to-ws05-20261022' && 'integration/candidate-figma-cv-unified-20261022' || github.ref == 'refs/heads/release/hris-stable-20261017' && 'release/candidate-stable-20261017' || inputs.candidate_ref || 'main' }}
       HRIS_SUPABASE_TEST_WORKDIR: /tmp/synesis-local-hris-test
       HRIS_SUPABASE_API_PORT: '55421'
       HRIS_SUPABASE_DB_PORT: '55422'
@@ -74,7 +75,7 @@ jobs:
         run: npm run test:e2e
       - name: Run real local Auth/RLS and workflow acceptance (travel, reporting, learning, timesheets)
         run: node tests/sql/isolated-auth/run-local.mjs
-      - name: Run HRIS recruitment, Candidate document and preboarding release RPC acceptance
+      - name: Run complete missing-RPC and Super Admin invitation acceptance
         run: node tests/sql/isolated-auth/hris-release-rpc-acceptance.mjs
       - name: Run Phase 04 parity checks on the Auth-tested source migrations
         run: node tests/sql/hosted-parity/run-local.mjs

@@ -101,26 +101,74 @@ try {
     + "DROP POLICY IF EXISTS candidate_documents_own_delete ON storage.objects;\n"
     + "CREATE POLICY candidate_documents_own_delete ON storage.objects FOR DELETE TO authenticated USING (bucket_id='candidate-documents' AND (storage.foldername(name))[1]=(SELECT auth.uid())::text);");
 
+  applySql('supabase/migrations/20261024190002_hris_project_timesheet_review_forward_port.sql');
   applySql('supabase/migrations/20261024191001_hris_candidate_application_document_forward_port.sql');
   applySql('supabase/migrations/20261024200001_hris_preboarding_missing_rpcs_forward_port.sql');
   applySql('supabase/migrations/20261024210001_hris_recruitment_pipeline_forward_port.sql');
+  applySql('supabase/migrations/20261024230001_hris_candidate_hiring_rpc_forward_port.sql');
+  applySql('supabase/migrations/20261024231001_hris_attendance_shift_rpc_forward_port.sql');
+  applySql('supabase/migrations/20261024232001_hris_employee_payroll_learning_rpc_forward_port.sql');
   applySql('supabase/staging/phase2a/tenant_provisioning.staging.sql');
   applySql('supabase/staging/phase2b/platform_tenant_admin_email.staging.sql');
+  // The hosted replacement already has this minimum scoped role/grant. Seed
+  // the same authorization prerequisite in this isolated database only; the
+  // disposable stack intentionally does not copy hosted RBAC rows.
+  psql("INSERT INTO public.roles(id,name,description,active,is_system) "
+    + "VALUES('hr_admin','Tenant HR administrator',"
+    + "'Synthetic isolated tenant-scoped organization administration',true,false) "
+    + "ON CONFLICT (id) DO NOTHING;"
+    + "INSERT INTO public.role_permissions(role_id,permission_id) "
+    + "SELECT 'hr_admin','organization.manage' WHERE NOT EXISTS ("
+    + "SELECT 1 FROM public.role_permissions WHERE role_id='hr_admin' "
+    + "AND permission_id='organization.manage');");
   applySql('supabase/migrations/20261024220001_platform_tenant_invitations.sql');
   psql("NOTIFY pgrst, 'reload schema';");
   await new Promise(resolve => setTimeout(resolve, 500));
 
+  const hostedRpcSignatures = [
+    'public.candidate_add_application_document(text,text,text,text)',
+    'public.candidate_get_my_preboarding_handoff(uuid)',
+    'public.candidate_save_my_preboarding_step(uuid,text,jsonb)',
+    'public.hris_get_candidate_preboarding_queue(uuid)',
+    'public.hris_get_recruitment_pipeline(uuid,text,text,integer,integer)',
+    'public.hris_activate_candidate_employee(uuid,uuid,text,date,boolean)',
+    'public.hris_assign_candidate_assessment(uuid,uuid,text,text,text,date)',
+    'public.hris_get_candidate_assessments(uuid)',
+    'public.hris_review_candidate_assessment(uuid,uuid,text)',
+    'public.hris_schedule_candidate_interview(uuid,uuid,text,text,timestamp without time zone,integer,text,text[],text)',
+    'public.hris_complete_candidate_interview(uuid,uuid)',
+    'public.hris_get_candidate_interview_responses(uuid)',
+    'public.hris_save_candidate_interview_panel_notes(uuid,uuid,text)',
+    'public.hris_issue_candidate_offer(uuid,uuid,numeric,text,text,date,date,text)',
+    'public.hris_update_candidate_application_stage(uuid,uuid,text)',
+    'public.hris_get_tenant_shift_roster_data(uuid,date,date,text)',
+    'public.hris_get_tenant_shift_roster_options(uuid)',
+    'public.hris_assign_tenant_employee_shift(uuid,uuid,uuid,date)',
+    'public.hris_employee_record_attendance_event(uuid,text)',
+    'public.hris_get_my_attendance_period(uuid,date)',
+    'public.hris_get_my_project_timesheet_reviews(uuid)',
+    'public.hris_get_my_timesheet_context(uuid)',
+    'public.hris_resolve_project_timesheet(uuid,uuid,uuid,integer,text,text)',
+    'public.hris_resubmit_rejected_project_timesheet(uuid,uuid,uuid,integer,jsonb)',
+    'public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb)',
+    'public.hris_save_my_timesheet(uuid,uuid,text,date,date,jsonb,integer)',
+    'public.hris_submit_my_timesheet(uuid,uuid)',
+    'public.employee_get_my_employment_info_v1(uuid)',
+    'public.hris_get_employee_referral_workspace(uuid)',
+    'public.hris_submit_employee_referral(uuid,jsonb)',
+    'public.hris_mark_employee_referral_in_review(uuid,uuid,text)',
+    'public.hris_get_tenant_payroll_register(uuid,uuid,text,text,integer,integer)',
+    'public.hris_get_tenant_dashboard_team_report(uuid,date)',
+    'public.hris_get_tenant_dashboard_team_details(uuid,uuid,boolean,date)',
+    'public.hris_save_learning_session(uuid,uuid,uuid,text,timestamptz,timestamptz,text,text,integer,timestamptz)',
+    'public.hris_get_learning_session_roster(uuid,uuid)',
+  ];
+  const signatureSql = hostedRpcSignatures.map(sqlLiteral).join(',');
   const contractSql = "SELECT jsonb_build_object("
-    + "'recruitment',to_regprocedure('public.hris_get_recruitment_pipeline(uuid,text,text,integer,integer)') IS NOT NULL,"
-    + "'document',to_regprocedure('public.candidate_add_application_document(text,text,text,text)') IS NOT NULL,"
-    + "'candidate_handoff',to_regprocedure('public.candidate_get_my_preboarding_handoff(uuid)') IS NOT NULL,"
-    + "'candidate_step',to_regprocedure('public.candidate_save_my_preboarding_step(uuid,text,jsonb)') IS NOT NULL,"
-    + "'hr_queue',to_regprocedure('public.hris_get_candidate_preboarding_queue(uuid)') IS NOT NULL,"
-    + "'anon_denied',NOT has_function_privilege('anon','public.hris_get_recruitment_pipeline(uuid,text,text,integer,integer)','EXECUTE')"
-    + " AND NOT has_function_privilege('anon','public.candidate_add_application_document(text,text,text,text)','EXECUTE')"
-    + " AND NOT has_function_privilege('anon','public.candidate_get_my_preboarding_handoff(uuid)','EXECUTE')"
-    + " AND NOT has_function_privilege('anon','public.candidate_save_my_preboarding_step(uuid,text,jsonb)','EXECUTE')"
-    + " AND NOT has_function_privilege('anon','public.hris_get_candidate_preboarding_queue(uuid)','EXECUTE'),"
+    + "'missing_signatures',COALESCE((SELECT jsonb_agg(r.signature ORDER BY r.signature) FROM unnest(ARRAY[" + signatureSql + "]::text[]) AS r(signature) WHERE to_regprocedure(r.signature) IS NULL),'[]'::jsonb),"
+    + "'anonymous_execute',COALESCE((SELECT jsonb_agg(r.signature ORDER BY r.signature) FROM unnest(ARRAY[" + signatureSql + "]::text[]) AS r(signature) WHERE to_regprocedure(r.signature) IS NOT NULL AND has_function_privilege('anon',r.signature,'EXECUTE')),'[]'::jsonb),"
+    + "'authenticated_missing',COALESCE((SELECT jsonb_agg(r.signature ORDER BY r.signature) FROM unnest(ARRAY[" + signatureSql + "]::text[]) AS r(signature) WHERE to_regprocedure(r.signature) IS NOT NULL AND NOT has_function_privilege('authenticated',r.signature,'EXECUTE')),'[]'::jsonb),"
+    + "'private_roster',to_regprocedure('private.hris_get_learning_session_roster(uuid,uuid)') IS NOT NULL AND has_function_privilege('authenticated','private.hris_get_learning_session_roster(uuid,uuid)','EXECUTE') AND NOT has_function_privilege('anon','private.hris_get_learning_session_roster(uuid,uuid)','EXECUTE'),"
     + "'invite_create',to_regprocedure('public.platform_hris_create_tenant_invitation(text,text,text,text,text,text)') IS NOT NULL,"
     + "'invite_accept',to_regprocedure('public.platform_hris_accept_tenant_invitation(uuid)') IS NOT NULL,"
     + "'invite_service_only',NOT has_function_privilege('authenticated','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE')"
@@ -129,9 +177,15 @@ try {
     + "'invite_private_table',NOT has_table_privilege('authenticated','private.platform_tenant_invitations','SELECT')"
     + " AND NOT has_table_privilege('anon','private.platform_tenant_invitations','SELECT'))::text;";
   const contractState = JSON.parse(psql(contractSql));
-  record('All five forward-ported signatures exist and anonymous execute remains denied',
-    Object.values(contractState).every(value => value === true));
-  if (Object.values(contractState).some(value => value !== true)) {
+  const rpcContractsPass = hostedRpcSignatures.length === 36
+    && contractState.missing_signatures.length === 0
+    && contractState.anonymous_execute.length === 0
+    && contractState.authenticated_missing.length === 0
+    && contractState.private_roster === true;
+  record('All 36 forward-ported public RPC signatures have authenticated execution and anonymous access is denied',
+    rpcContractsPass, JSON.stringify(contractState));
+  if (!rpcContractsPass || Object.entries(contractState).some(([key, value]) => key !== 'missing_signatures'
+    && key !== 'anonymous_execute' && key !== 'authenticated_missing' && value !== true)) {
     throw new Error('Forward-port signature or anonymous grant postconditions failed.');
   }
 
