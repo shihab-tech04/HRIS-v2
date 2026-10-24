@@ -1,0 +1,45 @@
+name: Main exact-source portable recovery (no deploy)
+on:
+  push:
+    branches: [recovery/verified-main-source-20261024]
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact protected main, archive, and independent Git restore
+        shell: bash
+        env:
+          EXPECTED_MAIN_SHA: '14508ee0ca509a7ee023c5d22ce6a9e83161b91c'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          test "$(git rev-parse refs/remotes/origin/main)" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git cat-file -e "$EXPECTED_MAIN_SHA^{commit}"
+          git bundle create "$RUNNER_TEMP/hris-main-complete-source.git.bundle" --all HEAD
+          git bundle verify "$RUNNER_TEMP/hris-main-complete-source.git.bundle"
+          git clone --quiet "$RUNNER_TEMP/hris-main-complete-source.git.bundle" "$RUNNER_TEMP/main-restore-check"
+          git -C "$RUNNER_TEMP/main-restore-check" cat-file -e "$EXPECTED_MAIN_SHA^{commit}"
+          git -C "$RUNNER_TEMP/main-restore-check" checkout --detach "$EXPECTED_MAIN_SHA"
+          test -s "$RUNNER_TEMP/main-restore-check/docs/programme/HRIS_360_EXECUTION_ACCEPTANCE_LEDGER_20261024.json"
+          git archive --format=tar --prefix=HRIS-v2/ "$EXPECTED_MAIN_SHA" | gzip -n > "$RUNNER_TEMP/hris-main-exact-main.tar.gz"
+          printf 'repository=%s\nsource_commit=%s\nsource_branch=%s\nbundle_restored=yes\n' 'shihab-tech04/HRIS-v2' "$EXPECTED_MAIN_SHA" 'main' > "$RUNNER_TEMP/hris-main-exact-source-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-complete-source.git.bundle hris-main-exact-main.tar.gz hris-main-exact-source-manifest.txt > hris-main-exact-main.sha256 && sha256sum -c hris-main-exact-main.sha256)
+      - name: Retain portable, verified recovery for off-GitHub transfer
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-main-exact-main-20261024
+          path: |
+            ${{ runner.temp }}/hris-main-complete-source.git.bundle
+            ${{ runner.temp }}/hris-main-exact-main.tar.gz
+            ${{ runner.temp }}/hris-main-exact-source-manifest.txt
+            ${{ runner.temp }}/hris-main-exact-main.sha256
+          retention-days: 30
+          if-no-files-found: error
