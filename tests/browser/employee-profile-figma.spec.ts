@@ -126,3 +126,18 @@ test('profile read states, disabled writes, tenant mismatch, and tab keyboard co
   await expect(page.locator('[data-employee-figma-profile]').getByText('Synthetic QA Employee')).toHaveCount(0);
   await expect(page.getByRole('tabpanel', { name: tabs[0] }).getByText('Synthetic QA Employee')).toBeVisible();
 });
+
+
+test('E02-09 displays the authorized employee work details without leaking private records', async ({ page }) => {
+  for (const locale of locales) {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto(`/tests/browser/employee-profile-harness.html?state=employment-details&locale=${locale}`);
+    await expect(page.getByText('Synthetic QA Employee').first()).toBeVisible();
+    for (const detail of ['2022-05-01', 'Permanent', 'Synthetic Dhaka HQ', 'Synthetic Manager', 'Synthetic Grade 7']) {
+      await expect(page.getByText(detail, { exact: true }).first()).toBeVisible();
+    }
+    await expect(page.getByText(locale === 'en' ? 'Grade' : 'গ্রেড', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-employee-figma-profile]')).not.toContainText('synthetic-bank-secret');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  }
+});
