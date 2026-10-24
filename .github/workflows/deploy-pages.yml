@@ -18,6 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout verified Candidate contract source for cross-repository tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_branch=integration/ws05-candidate-final-review-20261022
+          expected_sha=412c2137e19ffbb5e7a5e8ad3a4e505bfbaaca03
+          git clone --depth 1 --branch "$candidate_branch" https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
+          actual_sha="$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)"
+          test "$actual_sha" = "$expected_sha" || { echo "::error::Candidate source contract SHA mismatch"; exit 1; }
+          test -s "$GITHUB_WORKSPACE/../HRIS-Candidate-v2/src/lib/api.ts"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
