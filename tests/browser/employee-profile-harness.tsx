@@ -13,7 +13,7 @@ const state = query.get('state') || 'sparse';
 const tenantId = query.get('tenant') || 'local-visual-tenant';
 document.documentElement.lang = locale;
 
-const employee = state === 'synthetic' || state === 'tenant-switch' ? {
+const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' ? {
   full_name: 'Synthetic QA Employee',
   employee_number: 'QA-EMP-001',
   official_email: 'qa.employee@example.invalid',
@@ -27,6 +27,15 @@ const client = supabase as unknown as FixtureClient;
 Object.defineProperty(client, 'rpc', {
   configurable: true,
   value: async (name: string, args: unknown): Promise<FixtureResult> => {
+    if (name === 'employee_get_my_employment_info_v1') {
+      if (state !== 'employment-details') return { data: null, error: new Error('E02-09 optional RPC not installed in this fixture') };
+      return { data: [{
+        joining_date: '2022-05-01', employment_type: 'Permanent',
+        designation_title: 'Design Review Fixture', department_name: 'Synthetic Organization',
+        manager_name: 'Synthetic Manager', work_location_name: 'Synthetic Dhaka HQ',
+        grade_name: 'Synthetic Grade 7',
+      }], error: null };
+    }
     if (name !== 'hris_get_my_dashboard_data') return { data: null, error: new Error('Unexpected local fixture RPC') };
     if (state === 'loading') return new Promise<FixtureResult>(() => undefined);
     if (state === 'tenant-switch' && (args as { p_tenant_id?: unknown })?.p_tenant_id === 'switched-local-tenant') {
