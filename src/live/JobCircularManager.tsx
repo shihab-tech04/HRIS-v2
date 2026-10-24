@@ -168,7 +168,10 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
 
   function validate(): string | null {
     if (!draft.title.trim()) return 'Enter a job title.';
-    if (!draft.deadline || draft.deadline < new Date().toISOString().slice(0, 10)) {
+    // Draft jobs may be saved without a deadline; publishing RPC requires one.
+    // An already published circular may have passed its deadline since creation.
+    if (draft.deadline && draft.deadline < new Date().toISOString().slice(0, 10)
+      && (!editing?.is_published || draft.deadline !== editing.application_deadline)) {
       return 'Select today or a future application deadline.';
     }
     if (!Number.isInteger(Number(draft.vacancies)) || Number(draft.vacancies) < 1) return 'Vacancies must be a positive whole number.';
@@ -192,7 +195,7 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
       // Preserve linked masters and stable screening-question IDs on updates.
       // admin_save_job replaces these fields even if they are omitted.
       const payload = {
-        title: draft.title.trim(), application_deadline: draft.deadline,
+        title: draft.title.trim(), application_deadline: draft.deadline || null,
         department_id: draft.departmentId || null, location_id: draft.locationId || null,
         team_id: editing?.team_id || null, designation_id: editing?.designation_id || null,
         requisition_id: editing?.requisition_id || null,
@@ -269,8 +272,8 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
         <label className="text-sm font-medium">Job title *
           <input required maxLength={180} className={fieldClass} value={draft.title} onChange={e => change('title', e.target.value)}/>
         </label>
-        <label className="text-sm font-medium">Application deadline *
-          <input type="date" required min={new Date().toISOString().slice(0,10)} className={fieldClass} value={draft.deadline} onChange={e => change('deadline', e.target.value)}/>
+        <label className="text-sm font-medium">Application deadline (required before publishing)
+          <input type="date" min={editing?.is_published ? undefined : new Date().toISOString().slice(0,10)} className={fieldClass} value={draft.deadline} onChange={e => change('deadline', e.target.value)}/>
         </label>
         <label className="text-sm font-medium">Department
           <select className={fieldClass} value={draft.departmentId} onChange={e => change('departmentId',e.target.value)}>{selectOption(departments,draft.departmentId)}</select>
@@ -285,7 +288,7 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
         </label>
         <label className="text-sm font-medium">Employment type
           <select className={fieldClass} value={draft.employmentType} onChange={e => change('employmentType',e.target.value)}>
-            {['full-time','part-time','contract','internship','temporary'].map(value => <option key={value} value={value}>{value}</option>)}
+            {['full-time','part-time','contract','internship'].map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
         <label className="text-sm font-medium">Experience level
