@@ -1,0 +1,70 @@
+# WS04 Independent Exact-Head Release Gate — 23 October 2026
+
+**Disposition: BLOCKED — WS05 must not merge or deploy.**
+**Scope:** Independent read-only QA of Main PR #66, Candidate PR #12, existing WS04 PR #45 and hosted replacement Supabase. No application source, protected branch, production data or deployment changed. Evidence collected 2026-10-23 (Asia/Dhaka).
+
+## 1. Exact release identity
+
+| Target | Exact current PR head (queried live) | Base main | Status |
+| --- | --- | --- | --- |
+| Main HRIS #66 | 6378089778c470da4115a56c7cb075b4de4dc711 | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 | OPEN, DRAFT, UNMERGED |
+| Candidate #12 | 0c15cb5c5fe6cabefa45ff37b394184faeb3e5a7 | 38174c7b607999f951c7eea47aefaa443735080e | OPEN, DRAFT, UNMERGED |
+| WS04 QA #45 | 519334e9170b2b3ff071c728fcd8e82398101f69 (before this report) | cfd5fc5c71c4346ebcef2f86eead2b7c5196e2c7 | OPEN, DRAFT |
+
+PR descriptions mentioning older integration SHAs are historical; no release certification may be transferred from those ancestors. Review links: [Main #66](https://github.com/shihab-tech04/HRIS-v2/pull/66), [Candidate #12](https://github.com/shihab-tech04/HRIS-Candidate-v2/pull/12), [WS04 #45](https://github.com/shihab-tech04/HRIS-v2/pull/45).
+
+## 2. Owner inclusion / non-destructive source review
+
+These results refer only to GitHub commit ancestry or SHA-1 content blobs, never full application acceptance.
+
+| Owner | Result | Independently verified source / needed follow-up |
+| --- | --- | --- |
+| WS01 / #49 | PASS — Git ancestry | Owner e645a181 is an ancestor of release 63780897 (compare status ahead, behind 0). The release shared workspace source differs because later integration changed it. Re-run exact release screenshot states. |
+| WS01 / #58 | BLOCKED — selective resolution | Owner 025a5b45 diverges from release; package-lock.json, index.html and check.yml have different blobs. Current Main integration build passed, but compare Linux-lockfile/Pages parity semantics rather than cherry-picking older generated assets. |
+| WS02 / #50 | PASS — one source blob; BLOCKED overall | Employee-address tenant guard migration 20261021060748 is byte-identical between owner 7f3fd0a and release. Owner history diverges (28 commits behind when comparing owner → release); remaining RPC/hosted mapping needs review. |
+| WS03 / #8 | PASS — selective source blobs; BLOCKED overall | Candidate AuthContext.tsx and App.tsx match between owner c6230217 and release. Owner history diverges; current Candidate release additionally contains candidateCvParser.ts missing at that owner head. Do not overwrite release with older owner tree. |
+| WS06 / #52 | PASS — source blob | src/live/EmployeeProfileFigma.tsx identical blob 021beadc on owner 3f1f1f1b and release. Profile contracts and unsupported write states are not thereby certified. |
+| WS07 / #43 | BLOCKED — file divergence | Owner 95f5aa32 diverges (39 commits behind owner-to-release); src/live/LiveHrisWorkspace.tsx owner blob 438d5efa differs from release 0a606510. Preserve later integrated nav/permissions and reconcile attendance/leave by state and exact-head screenshots. |
+| WS08 / #44 | PASS — Git ancestry; BLOCKED runtime | Owner 286bc188 is an ancestor of release, behind 0. Later release changed LiveHrisWorkspace.tsx. Manager chart unit/authorization, role mapping and Figma recheck remain open. |
+
+Comparison references: https://github.com/shihab-tech04/HRIS-v2/compare/e645a181...63780897 ; https://github.com/shihab-tech04/HRIS-v2/compare/286bc188...63780897 ; https://github.com/shihab-tech04/HRIS-Candidate-v2/compare/c6230217...0c15cb5c . Ancestry PASS only means a commit is reachable, not that all owner behavior remains intact.
+
+## 3. CI and artifacts at exactly these heads
+
+| Exact head | Result | Direct evidence and limit |
+| --- | --- | --- |
+| Main 63780897 | PASS — scoped disposable suites | [Isolated Auth/PG/browser workflow 39900107323](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39900107323); [address 39900115713](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39900115713); [family 39900115740](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39900115740). Their steps report success. No same-head visual screenshot artifact returned by these runs. |
+| Main 63780897 | PASS — GitHub artifact exists; BLOCKED — off-GitHub preservation | [Source bundle run 39900107321](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39900107321), artifact 12478173610, sha256 70066e3d33eeb478c769238890b09cb993d47b9e33267518993d7ab32a03d6d1. Source preserved on GitHub Actions; no independent off-GitHub restore receipt for this exact head observed. |
+| Candidate 0c15cb5c | PASS — scoped local suites | [Auth/Postgres 39905305448](https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/39905305448); [new Supabase build 39905305324](https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/39905305324) (QA build artifact 12480626806). Not a hosted signed-in browser or Figma comparison. |
+| Candidate 0c15cb5c | PASS — GitHub artifact exists; BLOCKED — off-GitHub preservation | [Source bundle + offline restoration 39905305668](https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/39905305668), GitHub artifact 12480900736 sha256 8c02d1474935101cf7bee18071f597e3bb5ae7675cd97ad6a5b292579a969af5. No independent external-source backup receipt observed. |
+| WS04 docs branch 519334e | FAIL — QA verifier, not the WS05 release | [Check 39714010415](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39714010415), job 119611711652: tracked entry references assets/app-D0JtBbVh.js while same-run build emits assets/app-DqsfAdd6.js; Pages-entry parity step fails, browser/Chromium screenshots skipped. Correct the QA build/entry parity before claiming this workflow as passing. |
+
+Current runs are not interchangeable with the earlier WS04 owner screenshots and 99-finding ledger. No current complete Main/Candidate release-head Figma signoff or production deploy run was established.
+
+## 4. Design / behavior gate: precise blockers
+
+Figma nodes independently queried through connected design metadata on 2026-10-23: Attendance Information 17:28320 (1920x1117), Attendance Requests 17:29937 (1920x1080), Leave Requests 17:31769 (1920x1080), Manager Dashboard 9:22640 (1920x1080), Employee Profile 66:72042 (1920x2063). Approved source: https://www.figma.com/design/XEXLe9J1oATlITS9I5u1P9 .
+
+| ID / story mapping | Class | Owner / file or route | Reproduce & evidence | Closure criterion |
+| --- | --- | --- | --- | --- |
+| V01 / story ID UNMAPPED | BLOCKED | WS01+WS07 / src/live/LiveHrisWorkspace.tsx; Attendance Information/Requests, Leave Requests | Build **exact release** 63780897, capture actual EN/BN 375,768,1280,1920 states and compare 17:28320, 17:29937, 17:30342, 17:30766, 17:31148, 17:31769, 17:32168, 17:32584, 17:32957. Earlier [WS04 report and ledger](https://github.com/shihab-tech04/HRIS-v2/tree/audit/hris-figma-parity-20261020/docs/audit/figma-parity) show owner-head 17:29937/17:31769 table/control mismatches, but cannot be automatically marked FAIL on a different integrated release head. | Exact release full-shell state-matched screenshots + measured table/action/filter/tab parity; accessible EN/BN and responsive reachability; independent review. |
+| V02 / story ID UNMAPPED | BLOCKED | WS08 / Manager Dashboard and Attendance Report in src/live/LiveHrisWorkspace.tsx | Figma 9:22640 and 17:28694; reproduce at authorized Manager tenant, inspect chart unit/date axis, heading/tabs/cards, report sort/filter controls and 375px containment. Earlier owner [artifact 12369102401](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39650508313/artifacts/12369102401) shows mismatched chart scale and glyph; not exact release output. | Approved metric denominator/percent contract; exact-head screenshot/geometry/locale comparison; role permission proof. |
+| V03 / story ID UNMAPPED | BLOCKED | WS06 / src/live/EmployeeProfileFigma.tsx | Match Figma 66:72042 and tabs, error/empty/read-only states. Owner [artifact 12366306463](https://github.com/shihab-tech04/HRIS-v2/actions/runs/39643062126/artifacts/12366306463) supports prior *main frame geometry* only, not the exact release browser. 28 additional data/action states recorded as unsupported. | Release-head exact screenshot at applicable widths; WS02-backed data/action permissions and explicit unsupported UI states. |
+| V04 / Candidate CA07 and other IDs UNMAPPED | BLOCKED | WS03 / Candidate Careers/CV/applications, src/App.tsx, src/context/AuthContext.tsx | Current approved Main Figma file has **no verified Candidate self-service screen nodes**; [Candidate screen register](https://github.com/shihab-tech04/HRIS-Candidate-v2/blob/work/ws03-figma-first-20261021/docs/quality/CANDIDATE_FIGMA_SCREEN_REGISTER_2026-10-21.md). Capture release-head public Careers/validation and authenticated routes only in approved isolated QA; never expose private records merely to take screenshots. | Product-approved Candidate frame IDs or written visual contract, matched EN/BN 375/768/1280/1920 captures and route/privacy signoff. |
+| S01 / story IDs UNMAPPED | BLOCKED | WS02 / hosted Auth/RLS/RPC and tenant isolation | On replacement project xfuxnljfrgvusbrpvxpa, read-only SQL on 23 Oct returned **1 auth.users, 1 tenants, 0 tenant_memberships, 5 employees across 1 tenant**. Two-tenant authenticated denial cannot be exercised with current hosted QA identities. Local suite 39900107323/39905305448 succeeds but is not hosted evidence. | Approved isolated two-tenant Auth fixture; real sessions/expiry, cross-tenant read/write/RPC denials, protected routes, private downloads, and source-schema parity, with hosted logs (no live data mutation). |
+| S02 / story IDs UNMAPPED | BLOCKED | WS02 / security-definer authority and password policy | Read-only Supabase security advisor: 1 anon-executable and 246 authenticated-executable SECURITY DEFINER functions (WARN), leaked-password protection disabled (WARN), 28 tables RLS-enabled/no-policy (INFO; may be intentional deny). Existing address/family policy reads are tenant-scoped and tested direct insert/update/delete ACLs are revoked for authenticated; **do not call those regressions failing**. | Enumerate each executable function authorization; prove anon/user/role/tenant denials; enable required Auth security controls; dispositions for any intentionally closed RLS tables. See [advisor reference](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable). |
+| P01 / 1,047-story certification | BLOCKED | WS04+all owners / docs/programme/CANONICAL_USER_STORY_MATRIX.json | Exact Main release file blob c95e8e94 reports BLOCKED_SOURCE_NOT_RECOVERED, expected 1047, **mapped_story_count=0** and **accepted_end_to_end_story_count=0**. Legacy source recovery is explicitly not complete. | Recover authoritative story ID/acceptance registry or approved replacement mapping; match every claimed PASS to story ID, exact test/run, evidence and state. Do not invent IDs or certify completion from aggregate CI. |
+| B01 / infrastructure gate | BLOCKED | WS05 / both repos source, hosted Postgres, rollback | GitHub Actions bundles exist but are not independent off-GitHub exact-head bundles. Main evidence file docs/evidence/ws05/free-tier-release-candidate-20261022.md reports historical off-GitHub bundle for older SHA and **no encrypted Postgres backup/restore proof**. | Transfer exact release histories outside GitHub, verify checksums and offline restore; encrypted DB logical backup + isolated restore; documented rollback, permissions and required protected review. |
+| P02 / release integrity | BLOCKED | WS05+WS01 / check.yml, compiled assets and QA branch | Reproduce WS04 job 119611711652 Pages mismatch; compare latest exact release dist/HTML/assets and prod workflow target with reproducible build (including Linux dependencies). This older QA-branch failure is **not** a demonstrated Main #66 build failure. | Exact release deterministic build/served-assets parity, green mandatory suites and documented resolved QA verifier. |
+
+**Known story identifiers:** HR03-01 is explicitly contract-blocked by WS07 pending organizational model approvals; SA06 global master-data authority remains contract-gated. CA07 Candidate profile completion is not release-certified. Other finding-to-story IDs are deliberately left UNMAPPED because the canonical matrix contains no restored IDs. This is a blocker, not permission to invent identifiers.
+
+## 5. Current hosted observations — scoped PASS only
+
+Read-only public RLS inspection shows employee_addresses_admin_read and employee_family_admin_read predicates include employees.tenant_id = synesis_tenant_id(), and self-read uses employee_for_auth_user(); leave_types read policies use tenant or scoped membership gates. ACL inspection returned **false** for anon/auth direct INSERT and auth UPDATE/DELETE on employee_addresses, employee_family_members, leave_types. These are *observations of policy text and ACL*, not a real two-tenant session test. Replacement DB recorded migration history through 20261022142012; source/release SQL migration parity still requires explicit reconciliation.
+
+## 6. Overall decision and WS05 required action
+
+**VERDICT: BLOCKED — NOT ACCEPT.** No production merge, Pages deployment or DB activation by WS04. WS05 must obtain closure evidence for V01–V04, S01–S02, P01–P02 and B01 on the **unchanged or new exact release SHAs**. If either release head changes, rerun checks and independently renew this gate; ancestor or owner-run PASS never automatically applies. Existing production Main and Candidate main branches must remain untouched by this QA work.
+
+**Evidence integrity:** Prior 99-state WS04 ledger totals 23 PASS, 12 FAIL, 63 BLOCKED, 1 NOT_APPLICABLE on scoped *owner source heads*. It is retained as historical finding inventory. This report makes no new full-frame pixel-PASS assertion and does not inflate those totals to 1,047 stories.
