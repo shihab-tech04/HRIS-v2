@@ -260,7 +260,7 @@ jobs:
                   JOIN pg_class rel ON rel.oid=con.conrelid
                   JOIN pg_namespace ns ON ns.oid=rel.relnamespace
                   WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
-                    AND ns.nspname='public') = 57
+                    AND ns.nspname='public') = 58
              AND (SELECT COUNT(*) FROM pg_constraint con
                   JOIN pg_class rel ON rel.oid=con.conrelid
                   JOIN pg_namespace ns ON ns.oid=rel.relnamespace
