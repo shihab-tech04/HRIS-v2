@@ -3,17 +3,20 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const workflow = readFileSync(new URL('../../.github/workflows/hris-step1-offline-restore-proof.yml', import.meta.url), 'utf8');
-const start = workflow.indexOf('- name: Rehearse outstanding SQL/RPC forward ports on disposable PG17 only');
+const start = workflow.indexOf('- name: Verify or rehearse forward-port RPCs on disposable PG17 only');
 const stop = workflow.indexOf('- name: Stop disposable local Supabase only');
 const sqlStage = workflow.slice(start, stop);
 const migrations = [...sqlStage.matchAll(/^\s{12}(20261024\d{6}_[\w]+\.sql)$/gm)].map(m => m[1]);
 
-test('rehearsal uses a pinned list of nine not-yet-hosted forward ports and protects frozen Projects replay', () => {
+test('post-migration restore verifies installed forward ports without replay; older snapshots use a pinned list', () => {
   assert.ok(start > 0 && stop > start);
   assert.equal(migrations.length, 9);
   assert.equal(new Set(migrations).size, 9);
   assert.ok(migrations.every(f => !/20261024143000|20261024143100|2026102418350[1-5]/.test(f)));
-  assert.match(sqlStage, /ISOLATED_SAAS_RPC_MIGRATION_REHEARSAL_PASS/);
+  assert.match(sqlStage, /MAX\(version\)::text/);
+  assert.match(sqlStage, /if \[\[ "\$snapshot_head" < "20261025042819" \]\]/);
+  assert.match(sqlStage, /POST_MIGRATION_BACKUP_DETECTED/);
+  assert.match(sqlStage, /ISOLATED_SAAS_RPC_SNAPSHOT_PASS/);
   assert.match(sqlStage, /candidate_add_application_document/);
   assert.match(sqlStage, /platform_hris_accept_tenant_invitation/);
 });
