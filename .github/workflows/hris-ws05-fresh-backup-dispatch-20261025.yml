@@ -1,0 +1,36 @@
+# One-time protected-Main dispatch; separate from any deployment or SQL write.
+# The target existing backup job exports via read-only PG17 and encrypts before artifact upload.
+name: "WS05 - One-time fresh encrypted HRIS backup"
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact protected Main and dispatch read-only encrypted export
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          actual="$(gh api repos/shihab-tech04/HRIS-v2/branches/main --jq '.commit.sha')"
+          if [[ "$actual" != "$GITHUB_SHA" ]]; then
+            echo "::error::Protected Main moved. No backup dispatched."
+            exit 1
+          fi
+          gh workflow run hris-step1-encrypted-db-export.yml \
+            --repo shihab-tech04/HRIS-v2 --ref main \
+            -f session_pooler_host=aws-0-ap-northeast-2.pooler.supabase.com
+          echo 'Fresh encrypted replacement Supabase export dispatched.'
+          echo 'No hosted DDL, deployment, or invitation email was triggered.'
