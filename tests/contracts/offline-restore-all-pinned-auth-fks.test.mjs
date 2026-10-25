@@ -31,7 +31,7 @@ test('all isolated FK exceptions are inventory-matched and still enforce future 
   assert.match(source,/ALTER TABLE public\.\\?\$\{table\} ADD CONSTRAINT/);
   assert.match(source,/NOT VALID/);
   assert.match(source,/NOT con\.convalidated/);
-  assert.match(source,/= 57/);
+  assert.match(source,/= 58/);
   assert.match(source,/= 17/);
   assert.match(source,/ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION/);
   assert.match(source,/--host 127\.0\.0\.1 --port 55422/);

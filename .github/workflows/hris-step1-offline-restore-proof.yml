@@ -260,7 +260,7 @@ jobs:
                   JOIN pg_class rel ON rel.oid=con.conrelid
                   JOIN pg_namespace ns ON ns.oid=rel.relnamespace
                   WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
-                    AND ns.nspname='public') = 57
+                    AND ns.nspname='public') = 58
              AND (SELECT COUNT(*) FROM pg_constraint con
                   JOIN pg_class rel ON rel.oid=con.conrelid
                   JOIN pg_namespace ns ON ns.oid=rel.relnamespace
@@ -277,11 +277,12 @@ jobs:
 
       # This is only a LOCAL migration rehearsal, not a hosted migration.
       # It runs after proven local restore and before unconditional cleanup.
-      - name: Rehearse outstanding SQL/RPC forward ports on disposable PG17 only
+      - name: Verify or rehearse forward-port RPCs on disposable PG17 only
         shell: bash
         run: |
           set -euo pipefail
-          # No hosted host/password/URL; only local supersuser and disposable database.
+          # Never connect to a hosted database. Older snapshots may need rehearsal;
+          # post-migration snapshots only verify the forward-port signatures.
           migration_dir="${GITHUB_WORKSPACE}/supabase/migrations"
           migrations=(
             20261024190001_hris_system_notifications_forward_port.sql
@@ -305,24 +306,32 @@ jobs:
                 --dbname hris_recovered_isolated -X -qAt -v ON_ERROR_STOP=1 "$@"
           }
           before="$(local_psql -c "SELECT (SELECT count(*) FROM public.admin_audit_logs)::text || '|' || (SELECT count(*) FROM auth.users)::text || '|' || (SELECT count(*) FROM public.tenant_memberships)::text;")"
-          for name in "${migrations[@]}"; do
-            # Codes are from main branch, never remote URLs or untrusted PR content.
-            output="${RUNNER_TEMP}/hris-forward-port-${name}.log"
-            if ! docker run --rm --network host --env PGPASSWORD=postgres \
-              --mount "type=bind,src=${migration_dir},dst=/migrations,readonly" \
-              postgres:17-alpine \
-              psql --host 127.0.0.1 --port 55422 --username supabase_admin \
-                --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
-                -f "/migrations/$name" > "$output" 2>&1; then
-              echo "::error::Disposable PostgreSQL migration failed at $name. No hosted database accessed."
-              # Do not print SQL or private database data to public runner logs.
-              exit 1
-            fi
-            echo "ISOLATED_SQL_PASS: $name"
-          done
+          snapshot_head="$(local_psql -c "SELECT COALESCE(MAX(version)::text, '') FROM supabase_migrations.schema_migrations;")"
+          if [[ -z "$snapshot_head" ]]; then
+            echo "::error::Restored snapshot has no Supabase migration history."
+            exit 1
+          fi
+          if [[ "$snapshot_head" < "20261025042819" ]]; then
+            for name in "${migrations[@]}"; do
+              output="${RUNNER_TEMP}/hris-forward-port-${name}.log"
+              if ! docker run --rm --network host --env PGPASSWORD=postgres \
+                --mount "type=bind,src=${migration_dir},dst=/migrations,readonly" \
+                postgres:17-alpine \
+                psql --host 127.0.0.1 --port 55422 --username supabase_admin \
+                  --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
+                  -f "/migrations/$name" > "$output" 2>&1; then
+                echo "::error::Disposable PostgreSQL migration failed at $name. No hosted database accessed."
+                # Do not print SQL or private database data to public runner logs.
+                exit 1
+              fi
+              echo "ISOLATED_SQL_PASS: $name"
+            done
+          else
+            echo "POST_MIGRATION_BACKUP_DETECTED: restored head $snapshot_head; migrations will not be replayed."
+          fi
           after="$(local_psql -c "SELECT (SELECT count(*) FROM public.admin_audit_logs)::text || '|' || (SELECT count(*) FROM auth.users)::text || '|' || (SELECT count(*) FROM public.tenant_memberships)::text;")"
           if [[ "$before" != "$after" ]]; then
-            echo "::error::Historic audit/Auth/membership row-count drift during local rehearsal."
+            echo "::error::Historical audit/Auth/membership row-count drift during isolated restore validation."
             exit 1
           fi
           contract="SELECT CASE WHEN
@@ -337,11 +346,21 @@ jobs:
             AND to_regclass('private.platform_tenant_invitations') IS NOT NULL
             AND (SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('private.platform_tenant_invitations'))
             AND NOT has_table_privilege('anon','private.platform_tenant_invitations','SELECT')
-            THEN 'ISOLATED_SAAS_RPC_MIGRATION_REHEARSAL_PASS'
-            ELSE 'ISOLATED_SAAS_RPC_MIGRATION_REHEARSAL_FAIL' END;"
-          local_psql -c "$contract" | grep -Fx 'ISOLATED_SAAS_RPC_MIGRATION_REHEARSAL_PASS'
-          echo "Nine outstanding forward-port migrations rehearsed without modifying either hosted database."
+            THEN 'ISOLATED_SAAS_RPC_SNAPSHOT_PASS'
+            ELSE 'ISOLATED_SAAS_RPC_SNAPSHOT_FAIL' END;"
+          result="$(local_psql -c "$contract")"
+          if [[ "$result" != "ISOLATED_SAAS_RPC_SNAPSHOT_PASS" ]]; then
+            echo "::error::Forward-port RPC or invitation-table snapshot acceptance failed."
+            exit 1
+          fi
+          echo "$result"
+          if [[ "$snapshot_head" < "20261025042819" ]]; then
+            echo "Nine forward-port migrations rehearsed only on an older disposable snapshot."
+          else
+            echo "Installed migrations were verified in the post-migration snapshot and were not replayed."
+          fi
           echo "This is not hosted SQL/RLS sign-off or authorization for production invitation emails."
+
 
       - name: Stop disposable local Supabase only
         if: always()
