@@ -258,6 +258,54 @@ BEGIN
 END
 $function$;
 
+CREATE OR REPLACE FUNCTION public.hris_recover_employee_invitation_auth_user_id(
+  p_invitation_id uuid
+) RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_auth_user_id uuid;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    RAISE EXCEPTION 'Not authorized.' USING errcode = '42501';
+  END IF;
+
+  -- A pending ledger can outlive the Auth invite call if its follow-up write
+  -- failed. Recover only the exact, newly invited email identity.
+  BEGIN
+    SELECT u.id INTO STRICT v_auth_user_id
+    FROM private.hris_employee_invitations AS i
+    JOIN public.employees AS e
+      ON e.id = i.employee_id
+     AND e.tenant_id = i.tenant_id
+     AND e.user_id IS NULL
+    JOIN auth.users AS u
+      ON lower(u.email) = lower(i.email)
+     AND u.invited_at IS NOT NULL
+     AND u.created_at >= i.created_at
+     AND u.deleted_at IS NULL
+     AND (u.banned_until IS NULL OR u.banned_until <= now())
+    WHERE i.id = p_invitation_id
+      AND i.status IN ('pending','failed')
+      AND i.invited_auth_user_id IS NULL
+      AND i.expires_at > now()
+      AND private.hris_employee_inviter_has_permission(i.tenant_id, i.inviter_user_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM public.employees AS other
+        WHERE other.user_id = u.id AND other.id <> i.employee_id
+      );
+  EXCEPTION
+    WHEN NO_DATA_FOUND OR TOO_MANY_ROWS THEN
+      RETURN NULL;
+  END;
+
+  RETURN v_auth_user_id;
+END
+$function$;
+
 CREATE OR REPLACE FUNCTION public.hris_mark_employee_invitation_sent(
   p_invitation_id uuid,
   p_auth_user_id uuid
@@ -278,8 +326,14 @@ BEGIN
   FROM private.hris_employee_invitations AS i
   WHERE i.id = p_invitation_id
   FOR UPDATE;
-  IF NOT FOUND
-    OR v_invitation.status NOT IN ('pending','failed')
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Invitation delivery could not be finalized.' USING errcode = '22023';
+  END IF;
+  IF v_invitation.status = 'sent'
+    AND v_invitation.invited_auth_user_id IS NOT DISTINCT FROM p_auth_user_id THEN
+    RETURN true;
+  END IF;
+  IF v_invitation.status NOT IN ('pending','failed')
     OR v_invitation.expires_at <= now()
     OR NOT private.hris_employee_inviter_has_permission(v_invitation.tenant_id, v_invitation.inviter_user_id)
     OR NOT EXISTS (
@@ -493,6 +547,10 @@ REVOKE ALL ON FUNCTION public.hris_create_employee_invitation(uuid,uuid,text,tex
   FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.hris_create_employee_invitation(uuid,uuid,text,text,text,date)
   TO authenticated;
+REVOKE ALL ON FUNCTION public.hris_recover_employee_invitation_auth_user_id(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hris_recover_employee_invitation_auth_user_id(uuid)
+  TO service_role;
 REVOKE ALL ON FUNCTION public.hris_mark_employee_invitation_sent(uuid,uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hris_mark_employee_invitation_sent(uuid,uuid)

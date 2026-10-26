@@ -119,6 +119,28 @@ Deno.serve(async (request: Request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const { data: recoveredAuthUserId, error: recoveryError } = await admin.rpc(
+    "hris_recover_employee_invitation_auth_user_id",
+    { p_invitation_id: invitationId },
+  );
+  if (recoveryError) {
+    return reply(502, {
+      error: "Invitation delivery status could not be checked. Retry this same invitation; do not create a new request.",
+    }, origin);
+  }
+  if (typeof recoveredAuthUserId === "string") {
+    const { error: recoveryMarkError } = await admin.rpc("hris_mark_employee_invitation_sent", {
+      p_invitation_id: invitationId,
+      p_auth_user_id: recoveredAuthUserId,
+    });
+    if (recoveryMarkError) {
+      return reply(502, {
+        error: "The invitation email was already submitted, but activation could not be finalized. Retry this same invitation.",
+      }, origin);
+    }
+    return reply(200, { success: true, invitation_id: invitationId, already_sent: true }, origin);
+  }
+
   const redirectTo = new URL("https://shihab-tech04.github.io/HRIS-v2/");
   redirectTo.searchParams.set("employee_invitation", invitationId);
   const { data: sent, error: sendError } = await admin.auth.admin.inviteUserByEmail(invitedEmail, {
@@ -131,13 +153,22 @@ Deno.serve(async (request: Request) => {
     }, origin);
   }
 
-  const { error: markError } = await admin.rpc("hris_mark_employee_invitation_sent", {
+  let { error: markError } = await admin.rpc("hris_mark_employee_invitation_sent", {
     p_invitation_id: invitationId,
     p_auth_user_id: sent.user.id,
   });
   if (markError) {
+    // Auth and Postgres cannot commit atomically. Retry the idempotent ledger
+    // write so a transient response/database error does not strand the invite.
+    const retryMark = await admin.rpc("hris_mark_employee_invitation_sent", {
+      p_invitation_id: invitationId,
+      p_auth_user_id: sent.user.id,
+    });
+    markError = retryMark.error;
+  }
+  if (markError) {
     return reply(502, {
-      error: "The invitation email was submitted, but employee activation could not be finalized. Contact HRIS support before retrying.",
+      error: "The invitation email was submitted, but activation could not be finalized. Retry this same invitation; the service can recover the Auth identity safely.",
     }, origin);
   }
 

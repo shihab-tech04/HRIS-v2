@@ -42,6 +42,9 @@ test('employee creation persists through an idempotent tenant permission RPC and
   assert.match(employeeMigration, /email_confirmed_at IS NOT NULL/);
   assert.match(employeeMigration, /INSERT INTO public\.tenant_memberships/);
   assert.match(employeeMigration, /'HRIS_EMPLOYEE_INVITATION_ACCEPTED'/);
+  assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\.hris_recover_employee_invitation_auth_user_id\(\s*p_invitation_id uuid/);
+  assert.match(employeeMigration, /u\.invited_at IS NOT NULL[\s\S]*u\.created_at >= i\.created_at/);
+  assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_recover_employee_invitation_auth_user_id\(uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_mark_employee_invitation_sent\(uuid,uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_mark_employee_invitation_failed\(uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /REVOKE ALL ON FUNCTION public\.hris_mark_employee_invitation_sent\(uuid,uuid\)\s+FROM PUBLIC, anon, authenticated/);
@@ -57,6 +60,10 @@ test('Auth invitation is sent only from the server-side function, with a signed-
   assert.match(employeeFunction, /\[\^\\s@\]\+@\[\^\\s@\]\+\\\./);
   assert.match(employeeFunction, /employee_invitation/);
   assert.match(employeeFunction, /hris_mark_employee_invitation_sent/);
+  assert.match(employeeFunction, /hris_recover_employee_invitation_auth_user_id/);
+  assert.ok(employeeFunction.indexOf('hris_recover_employee_invitation_auth_user_id')
+    < employeeFunction.indexOf('inviteUserByEmail'));
+  assert.match(employeeFunction, /const retryMark = await admin\.rpc\("hris_mark_employee_invitation_sent"/);
   assert.match(employeeApi, /supabase\.functions\.invoke\('hris-employee-invite'/);
   assert.match(employeeApi, /supabase\.rpc\('hris_accept_employee_invitation'/);
   assert.match(employeeDirectory, /Save employee and send invitation/);

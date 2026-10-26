@@ -217,7 +217,11 @@ try {
     + "'certification_guard',EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgname='platform_tenant_activation_requires_certification' AND NOT tgisinternal),"
     + "'employee_invite_private_table',NOT has_table_privilege('authenticated','private.hris_employee_invitations','SELECT')"
     + " AND NOT has_table_privilege('anon','private.hris_employee_invitations','SELECT'),"
-    + "'employee_invite_service_only',to_regprocedure('public.hris_mark_employee_invitation_sent(uuid,uuid)') IS NOT NULL"
+    + "'employee_invite_service_only',to_regprocedure('public.hris_recover_employee_invitation_auth_user_id(uuid)') IS NOT NULL"
+    + " AND NOT has_function_privilege('authenticated','public.hris_recover_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.hris_recover_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.hris_recover_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND to_regprocedure('public.hris_mark_employee_invitation_sent(uuid,uuid)') IS NOT NULL"
     + " AND to_regprocedure('public.hris_mark_employee_invitation_failed(uuid)') IS NOT NULL"
     + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
     + " AND NOT has_function_privilege('anon','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
@@ -359,8 +363,20 @@ try {
   }
   const employeeInvitee = employeeAuthInvitation.data.user;
   createdUserIds.push(employeeInvitee.id);
+  // Simulate Auth invite success followed by an unsuccessful delivery-mark write.
+  // The still-pending invitation must recover only the exact invited identity.
+  const interruptedMarkSent = await admin.rpc('hris_mark_employee_invitation_sent', {
+    p_invitation_id: employeeInvitationId, p_auth_user_id: randomUUID(),
+  });
+  const recoveredEmployeeAuthUser = await admin.rpc(
+    'hris_recover_employee_invitation_auth_user_id',
+    { p_invitation_id: employeeInvitationId },
+  );
   const employeeSent = await admin.rpc('hris_mark_employee_invitation_sent', {
-    p_invitation_id: employeeInvitationId, p_auth_user_id: employeeInvitee.id,
+    p_invitation_id: employeeInvitationId, p_auth_user_id: recoveredEmployeeAuthUser.data,
+  });
+  const employeeSentReplay = await admin.rpc('hris_mark_employee_invitation_sent', {
+    p_invitation_id: employeeInvitationId, p_auth_user_id: recoveredEmployeeAuthUser.data,
   });
   const authenticatedMarkSent = await clients.employeeManager.rpc('hris_mark_employee_invitation_sent', {
     p_invitation_id: employeeInvitationId, p_auth_user_id: employeeInvitee.id,
@@ -388,7 +404,10 @@ try {
     .eq('tenant_id', tenantA).eq('user_id', employeeInvitee.id).single();
   const employeeRoleName = await admin.from('roles').select('name').eq('id', employeeMembership.data?.role || '').single();
   record('Employee invitation is service-delivered, email-confirmed, tenant-scoped, and replay-safe',
-    employeeSent.data === true && Boolean(authenticatedMarkSent.error)
+    Boolean(interruptedMarkSent.error)
+      && recoveredEmployeeAuthUser.data === employeeInvitee.id
+      && employeeSent.data === true && employeeSentReplay.data === true
+      && Boolean(authenticatedMarkSent.error)
       && wrongEmployeeAcceptance.error?.code === '42501'
       && acceptedEmployee.data?.accepted === true && acceptedEmployee.data?.tenant_id === tenantA
       && replayedEmployeeAcceptance.data?.idempotent === true
@@ -396,6 +415,9 @@ try {
       && employeeMembership.data?.status === 'active'
       && employeeRoleName.data?.name === 'Employee',
     JSON.stringify({ sent: employeeSent.data === true,
+      interruptedMarkRecovered: Boolean(interruptedMarkSent.error)
+        && recoveredEmployeeAuthUser.data === employeeInvitee.id,
+      idempotentMarkReplay: employeeSentReplay.data === true,
       clientCannotMarkSent: Boolean(authenticatedMarkSent.error),
       wrongAccountDenied: wrongEmployeeAcceptance.error?.code === '42501',
       accepted: acceptedEmployee.data?.accepted === true,
