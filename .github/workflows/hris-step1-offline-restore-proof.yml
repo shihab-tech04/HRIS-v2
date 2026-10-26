@@ -17,7 +17,8 @@ on:
           - '40113845357'
           - '40105833572'
           - '40205314215'
-        default: '40205314215'
+          - '40290572482'
+        default: '40290572482'
 
 permissions:
   contents: read
@@ -36,7 +37,7 @@ jobs:
       SUPABASE_TELEMETRY_DISABLED: '1'
       SUPABASE_HOME: /tmp/hris-supabase-home
       HRIS_RESTORE_WORKDIR: /tmp/synesis-local-hris-restore
-      HRIS_BACKUP_RUN_ID: ${{ inputs.backup_run_id || '40205314215' }}
+      HRIS_BACKUP_RUN_ID: ${{ inputs.backup_run_id || '40290572482' }}
     steps:
       - name: Validate selected completed export run
         shell: bash
@@ -45,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${HRIS_BACKUP_RUN_ID:-}" in
-            40113845357|40105833572|40205314215) ;;
+            40113845357|40105833572|40205314215|40290572482) ;;
             *) echo "::error::Backup run ID is not in the approved export allowlist."; exit 1 ;;
           esac
 
