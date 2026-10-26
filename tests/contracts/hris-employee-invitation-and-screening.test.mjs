@@ -33,6 +33,8 @@ test('employee creation persists through an idempotent tenant permission RPC and
   assert.match(employeeMigration, /This invitation request has expired/);
   assert.match(employeeMigration, /This invitation was already created with different employee details/);
   assert.match(employeeMigration, /hris_guard_employee_invitation_email/);
+  assert.match(employeeMigration, /INSERT INTO public\.employees\s*\(\s*id, tenant_id,/);
+  assert.match(employeeMigration, /gen_random_uuid\(\), p_tenant_id/);
   assert.match(employeeMigration, /public\.has_tenant_permission\(p_tenant_id, 'employees\.manage'\)/);
   assert.match(employeeMigration, /INSERT INTO public\.employees/);
   assert.match(employeeMigration, /lower\(u\.email\) = v_email/);

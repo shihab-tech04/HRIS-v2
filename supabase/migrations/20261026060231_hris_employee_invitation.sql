@@ -230,9 +230,9 @@ BEGIN
   END IF;
 
   INSERT INTO public.employees (
-    tenant_id, employee_number, full_name, official_email, joining_date, employment_status
+    id, tenant_id, employee_number, full_name, official_email, joining_date, employment_status
   ) VALUES (
-    p_tenant_id, v_employee_number, v_full_name, v_email, p_joining_date, 'active'
+    gen_random_uuid(), p_tenant_id, v_employee_number, v_full_name, v_email, p_joining_date, 'active'
   ) RETURNING id INTO v_employee_id;
 
   INSERT INTO private.hris_employee_invitations (
