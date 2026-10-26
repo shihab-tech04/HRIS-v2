@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const migration = readFileSync('supabase/migrations/20261024220001_platform_tenant_invitations.sql', 'utf8');
+const certificationMigration = readFileSync('supabase/migrations/20261026000100_platform_tenant_security_certification.sql', 'utf8');
 const edge = readFileSync('supabase/functions/platform-tenant-invite/index.ts', 'utf8');
 const api = readFileSync('src/live/platformTenantApi.ts', 'utf8');
 const workspace = readFileSync('src/live/PlatformTenantWorkspace.tsx', 'utf8');
@@ -19,6 +20,24 @@ test('invitation details stay private and client roles cannot read or mutate the
   assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS platform_tenant_invitations_live_email_uq/);
   assert.match(migration, /expires_at timestamptz NOT NULL/);
   assert.match(acceptance, /invite_private_table/);
+});
+
+test('tenant activation requires a separate trusted Phase 21 security certification', () => {
+  assert.match(certificationMigration, /private\.platform_tenant_security_certifications/);
+  assert.match(certificationMigration, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(certificationMigration, /REVOKE ALL ON TABLE private\.platform_tenant_security_certifications[\s\S]*?FROM PUBLIC, anon, authenticated, service_role/);
+  assert.match(certificationMigration, /app_metadata[^;]*hris_tenant_security_certifier/);
+  assert.match(certificationMigration, /platform_hris_current_user_can_certify_tenant/);
+  assert.match(certificationMigration, /public\.platform_hris_is_super_admin\(\)/);
+  assert.match(certificationMigration, /BEFORE INSERT OR UPDATE OF is_active ON public\.tenants/);
+  assert.match(certificationMigration, /Approved security certification is required before tenant activation/);
+  assert.match(certificationMigration, /security_signoff_complete boolean NOT NULL CHECK/);
+  assert.match(certificationMigration, /evidence_reference text NOT NULL/);
+  assert.match(certificationMigration, /platform_hris_certify_and_activate_tenant/);
+  assert.match(certificationMigration, /PLATFORM_TENANT_SECURITY_CERTIFIED_AND_ACTIVATED/);
+  assert.match(certificationMigration, /REVOKE ALL ON FUNCTION public\.platform_hris_certify_and_activate_tenant\(uuid,boolean,text\)[\s\S]*?FROM PUBLIC, anon/);
+  assert.match(certificationMigration, /GRANT EXECUTE ON FUNCTION public\.platform_hris_certify_and_activate_tenant\(uuid,boolean,text\)[\s\S]*?TO authenticated/);
+  assert.match(certificationMigration, /SET search_path = ''/);
 });
 
 test('invitation creation and acceptance bind a confirmed email to the invited Auth user', () => {
@@ -63,6 +82,11 @@ test('Super Admin UI offers existing-account and invitation paths; recipient see
   assert.match(workspace, /invitePlatformTenantAdministrator\(/);
   assert.match(workspace, /Send invitation/);
   assert.match(workspace, /same confirmed email/);
+  assert.match(workspace, /Approved security sign-off reference/);
+  assert.match(workspace, /assigned security certifier/);
+  assert.match(workspace, /Certify and activate tenant/);
+  assert.match(api, /platform_hris_list_tenant_certifications/);
+  assert.match(api, /platform_hris_certify_and_activate_tenant/);
   assert.match(api, /supabase\.functions\.invoke\('platform-tenant-invite'/);
   assert.match(api, /platform_hris_accept_tenant_invitation/);
   assert.match(liveApp, /platform_invitation/);
@@ -73,6 +97,9 @@ test('Super Admin UI offers existing-account and invitation paths; recipient see
   assert.match(acceptance, /platform_hris_accept_tenant_invitation/);
   assert.match(acceptance, /ordinaryAdminInvite/);
   assert.match(acceptance, /wrongAccountAcceptance/);
+  assert.match(acceptance, /securityCertifier/);
+  assert.match(acceptance, /directActivationDenied/);
+  assert.match(acceptance, /approvedCertification/);
 });
 
 test('frontend never receives a service-role credential', () => {
