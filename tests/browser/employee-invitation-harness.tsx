@@ -3,12 +3,10 @@ import { OrganizationEmployeeDirectory } from '../../src/live/OrganizationEmploy
 import { supabase } from '../../src/lib/supabase';
 
 type RecordedCall = { kind: string; name?: string; payload?: Record<string, unknown>; args?: unknown };
-declare global {
-  interface Window { __hrisInvitationCalls: RecordedCall[] }
-}
 
 const calls: RecordedCall[] = [];
-window.__hrisInvitationCalls = calls;
+const testWindow = window as Window & { __hrisInvitationCalls?: RecordedCall[] };
+testWindow.__hrisInvitationCalls = calls;
 const mode = new URLSearchParams(window.location.search).get('mode') || 'manager';
 const locale = new URLSearchParams(window.location.search).get('locale') === 'bn' ? 'bn' : 'en';
 let reissueAttempts = 0;

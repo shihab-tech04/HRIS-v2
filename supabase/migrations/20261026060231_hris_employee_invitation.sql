@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS private.hris_employee_invitations (
   sent_at timestamptz,
   accepted_at timestamptz,
   reissue_count integer NOT NULL DEFAULT 0 CHECK (reissue_count >= 0),
+  delivery_attempts integer NOT NULL DEFAULT 0 CHECK (delivery_attempts BETWEEN 0 AND 3),
   UNIQUE (tenant_id, request_id)
 );
 
@@ -216,12 +217,26 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'This invitation was already created with different employee details. Retry using the original details.' USING errcode = '22023';
     END IF;
+    IF v_invitation.status = 'failed' THEN
+      IF v_invitation.updated_at > now() - interval '15 minutes' THEN
+        RAISE EXCEPTION 'This invitation cannot be retried yet. Wait before retrying.' USING errcode = '22023';
+      END IF;
+      IF v_invitation.delivery_attempts >= 3 THEN
+        RAISE EXCEPTION 'This invitation reached its delivery retry limit.' USING errcode = '22023';
+      END IF;
+      UPDATE private.hris_employee_invitations
+      SET delivery_attempts = delivery_attempts + 1,
+          updated_at = now()
+      WHERE id = v_invitation.id
+      RETURNING * INTO v_invitation;
+    END IF;
     RETURN pg_catalog.jsonb_build_object(
       'invitation_id', v_invitation.id,
       'employee_id', v_invitation.employee_id,
       'email', v_invitation.email,
       'status', v_invitation.status,
       'expires_at', v_invitation.expires_at,
+      'delivery_attempts', v_invitation.delivery_attempts,
       'idempotent', true
     );
   END IF;
@@ -243,9 +258,9 @@ BEGIN
   ) RETURNING id INTO v_employee_id;
 
   INSERT INTO private.hris_employee_invitations (
-    tenant_id, employee_id, request_id, email, inviter_user_id, status, expires_at
+    tenant_id, employee_id, request_id, email, inviter_user_id, status, expires_at, delivery_attempts
   ) VALUES (
-    p_tenant_id, v_employee_id, p_request_id, v_email, auth.uid(), 'pending', now() + interval '7 days'
+    p_tenant_id, v_employee_id, p_request_id, v_email, auth.uid(), 'pending', now() + interval '7 days', 1
   ) RETURNING * INTO v_invitation;
 
   INSERT INTO public.admin_audit_logs(actor_id, action, target_type, target_id, details)
@@ -260,6 +275,7 @@ BEGIN
     'email', v_invitation.email,
     'status', v_invitation.status,
     'expires_at', v_invitation.expires_at,
+    'delivery_attempts', v_invitation.delivery_attempts,
     'idempotent', false
   );
 END
@@ -665,6 +681,19 @@ BEGIN
       OR v_existing.inviter_user_id IS DISTINCT FROM auth.uid() THEN
       RAISE EXCEPTION 'This invitation request is unavailable.' USING errcode = '42501';
     END IF;
+    IF v_existing.status = 'failed' THEN
+      IF v_existing.updated_at > now() - interval '15 minutes' THEN
+        RAISE EXCEPTION 'This invitation cannot be reissued yet. Refresh the directory or wait before trying again.' USING errcode = '22023';
+      END IF;
+      IF v_existing.delivery_attempts >= 3 THEN
+        RAISE EXCEPTION 'This invitation reached its delivery retry limit.' USING errcode = '22023';
+      END IF;
+      UPDATE private.hris_employee_invitations
+      SET delivery_attempts = delivery_attempts + 1,
+          updated_at = now()
+      WHERE id = v_existing.id
+      RETURNING * INTO v_existing;
+    END IF;
     RETURN pg_catalog.jsonb_build_object(
       'invitation_id', v_existing.id,
       'employee_id', v_existing.employee_id,
@@ -672,6 +701,7 @@ BEGIN
       'status', v_existing.status,
       'expires_at', v_existing.expires_at,
       'reissue_count', v_existing.reissue_count,
+      'delivery_attempts', v_existing.delivery_attempts,
       'idempotent', true
     );
   END IF;
@@ -708,10 +738,10 @@ BEGIN
 
   INSERT INTO private.hris_employee_invitations (
     tenant_id, employee_id, request_id, email, inviter_user_id,
-    status, expires_at, reissue_count
+    status, expires_at, reissue_count, delivery_attempts
   ) VALUES (
     p_tenant_id, p_employee_id, p_request_id, lower(btrim(v_employee.official_email)),
-    auth.uid(), 'pending', now() + interval '7 days', v_invitation_count
+    auth.uid(), 'pending', now() + interval '7 days', v_invitation_count, 1
   ) RETURNING * INTO v_existing;
 
   INSERT INTO public.admin_audit_logs(actor_id, action, target_type, target_id, details)
@@ -732,6 +762,7 @@ BEGIN
     'status', v_existing.status,
     'expires_at', v_existing.expires_at,
     'reissue_count', v_existing.reissue_count,
+    'delivery_attempts', v_existing.delivery_attempts,
     'idempotent', false
   );
 END

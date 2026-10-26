@@ -4,12 +4,10 @@ import { EmployeeInvitationAcceptance } from '../../src/live/LiveApp';
 import { supabase } from '../../src/lib/supabase';
 
 type RecordedCall = { kind: string; name?: string };
-declare global {
-  interface Window { __hrisInvitationCalls: RecordedCall[] }
-}
 
 const calls: RecordedCall[] = [];
-window.__hrisInvitationCalls = calls;
+const testWindow = window as Window & { __hrisInvitationCalls?: RecordedCall[] };
+testWindow.__hrisInvitationCalls = calls;
 const params = new URLSearchParams(window.location.search);
 const locale = params.get('locale') === 'bn' ? 'bn' : 'en';
 let acceptAttempts = 0;

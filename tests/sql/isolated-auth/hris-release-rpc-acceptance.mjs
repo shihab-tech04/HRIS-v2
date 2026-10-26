@@ -340,6 +340,19 @@ try {
   employeeInvitationIds.push(employeeInvitationId);
   employeeIds.push(employeeId);
   const employeeCreateReplay = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  const initialDeliveryFailure = await admin.rpc('hris_mark_employee_invitation_failed', {
+    p_invitation_id: employeeInvitationId,
+  });
+  const immediateCreateRetry = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  psql("UPDATE private.hris_employee_invitations SET updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
+  const cooledCreateRetry = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  const immediateReplayAfterCooldown = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  psql("UPDATE private.hris_employee_invitations SET delivery_attempts=3, updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
+  const cappedCreateRetry = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  psql("UPDATE private.hris_employee_invitations SET delivery_attempts=2, updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
   const duplicateEmployeeCreate = await clients.employeeManager.rpc('hris_create_employee_invitation', {
     ...employeeCreateArgs, p_request_id: randomUUID(), p_email: 'release-employee-duplicate-' + suffix + '@hris.test',
   });
@@ -351,16 +364,24 @@ try {
   });
   const employeeRows = await admin.from('employees').select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantA).eq('official_email', employeeEmail);
-  record('Tenant HR manager creates one persistent employee and retries reuse its invitation idempotently',
+  record('Tenant HR manager creation is idempotent and delivery retries are cooldown- and attempt-limited',
     !createdEmployeeInvitation.error && employeeCreateReplay.data?.invitation_id === employeeInvitationId
       && employeeCreateReplay.data?.employee_id === employeeId
       && employeeCreateReplay.data?.idempotent === true
+      && initialDeliveryFailure.data === true && Boolean(immediateCreateRetry.error)
+      && cooledCreateRetry.data?.idempotent === true && cooledCreateRetry.data?.delivery_attempts === 2
+      && Boolean(immediateReplayAfterCooldown.error) && Boolean(cappedCreateRetry.error)
       && employeeRows.count === 1 && Boolean(duplicateEmployeeCreate.error)
       && unauthorizedEmployeeCreate.error?.code === '42501'
       && crossTenantEmployeeCreate.error?.code === '42501'
       && Boolean(directEmployeeInsert.error),
     JSON.stringify({ persistedRows: employeeRows.count,
       idempotentReplay: employeeCreateReplay.data?.idempotent === true,
+      deliveryFailureRecorded: initialDeliveryFailure.data === true,
+      immediateRetryDenied: Boolean(immediateCreateRetry.error),
+      cooledRetryCount: cooledCreateRetry.data?.delivery_attempts,
+      retryCooldownReapplied: Boolean(immediateReplayAfterCooldown.error),
+      retryAttemptLimitEnforced: Boolean(cappedCreateRetry.error),
       duplicateDenied: Boolean(duplicateEmployeeCreate.error),
       unauthorizedDenied: unauthorizedEmployeeCreate.error?.code === '42501',
       crossTenantDenied: crossTenantEmployeeCreate.error?.code === '42501',
@@ -415,12 +436,30 @@ try {
   }
   const employeeReissueId = reissuedEmployeeInvitation.data.invitation_id;
   employeeInvitationIds.push(employeeReissueId);
-  const reissueReplay = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
-    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
-  });
   const activeReissueDenied = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
     p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: randomUUID(),
   });
+  const reissueDeliveryFailure = await admin.rpc('hris_mark_employee_invitation_failed', {
+    p_invitation_id: employeeReissueId,
+  });
+  const immediateReissueRetry = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
+  });
+  psql("UPDATE private.hris_employee_invitations SET updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeReissueId) + "::uuid;");
+  const reissueReplay = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
+  });
+  const immediateReissueReplay = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
+  });
+  psql("UPDATE private.hris_employee_invitations SET delivery_attempts=3, updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeReissueId) + "::uuid;");
+  const cappedReissueRetry = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
+  });
+  psql("UPDATE private.hris_employee_invitations SET delivery_attempts=2, updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeReissueId) + "::uuid;");
   const staleInvitationRecovery = await admin.rpc(
     'hris_recover_employee_invitation_auth_user_id',
     { p_invitation_id: employeeInvitationId },
@@ -487,8 +526,10 @@ try {
       && Boolean(authenticatedMarkSent.error)
       && wrongEmployeeAcceptance.error?.code === '42501'
       && !reissuedEmployeeInvitation.error
+      && reissueDeliveryFailure.data === true && Boolean(immediateReissueRetry.error)
       && reissueReplay.data?.invitation_id === employeeReissueId
-      && reissueReplay.data?.idempotent === true
+      && reissueReplay.data?.idempotent === true && reissueReplay.data?.delivery_attempts === 2
+      && Boolean(immediateReissueReplay.error) && Boolean(cappedReissueRetry.error)
       && Boolean(activeReissueDenied.error)
       && staleInvitationRecovery.data === null
       && Boolean(clientCannotResolveAuthUser.error)
@@ -511,6 +552,11 @@ try {
       initialInviteReissued: !secondAuthInvitation.error && secondInviteUser?.id === employeeInvitee.id,
       freshInvitationId: employeeReissueId !== employeeInvitationId,
       requestReplayIsIdempotent: reissueReplay.data?.invitation_id === employeeReissueId && reissueReplay.data?.idempotent === true,
+      reissueDeliveryFailureRecorded: reissueDeliveryFailure.data === true,
+      immediateReissueRetryDenied: Boolean(immediateReissueRetry.error),
+      reissueCooledRetryCount: reissueReplay.data?.delivery_attempts,
+      reissueCooldownReapplied: Boolean(immediateReissueReplay.error),
+      reissueAttemptLimitEnforced: Boolean(cappedReissueRetry.error),
       activeInvitationCannotBeForked: Boolean(activeReissueDenied.error),
       expiredRequestCannotRecover: staleInvitationRecovery.data === null,
       clientCannotResolveAuthIdentity: Boolean(clientCannotResolveAuthUser.error),
