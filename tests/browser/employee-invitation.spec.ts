@@ -62,11 +62,11 @@ test('expired invitation resend retries with the same idempotency key and hides 
 test('a pending employee invitation can resume after a directory reload without client identity data', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/tests/browser/employee-invitation-harness.html?mode=pending');
-  const resume = page.getByRole('button', { name: 'Resume invitation' });
+  const resume = page.getByRole('listitem').getByRole('button', { name: 'Resume invitation' });
   await expect(resume).toBeVisible();
   await resume.click();
   await expect(page.getByRole('alert')).toContainText('The employee invitation could not be resumed.');
-  await page.getByRole('button', { name: 'Resume invitation' }).click();
+  await resume.click();
   await expect(page.getByRole('status')).toContainText('Employee invitation delivery resumed and email sent.');
 
   const calls = await invitationCalls(page);
@@ -81,10 +81,10 @@ test('a pending employee invitation can resume after a directory reload without 
   expect(resumeCalls[0].payload).not.toHaveProperty('email');
   expect(resumeCalls[0].payload).not.toHaveProperty('employee_number');
   expect(resumeCalls[0].payload).not.toHaveProperty('full_name');
-  await expect(page.getByRole('button', { name: 'Resume invitation' })).toHaveCount(0);
+  await expect(resume).toHaveCount(0);
 
   await page.goto('/tests/browser/employee-invitation-harness.html?mode=readonly');
-  await expect(page.getByRole('button', { name: 'Resume invitation' })).toHaveCount(0);
+  await expect(resume).toHaveCount(0);
 });
 
 test('employee invitation acceptance defaults to English labels', async ({ page }) => {
