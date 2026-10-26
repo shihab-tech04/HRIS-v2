@@ -42,6 +42,8 @@ test('employee creation persists through an idempotent tenant permission RPC and
   assert.match(employeeMigration, /'HRIS_EMPLOYEE_INVITATION_ACCEPTED'/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_mark_employee_invitation_sent\(uuid,uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_mark_employee_invitation_failed\(uuid\)\s+TO service_role/);
+  assert.match(employeeMigration, /REVOKE ALL ON FUNCTION public\.hris_mark_employee_invitation_sent\(uuid,uuid\)\s+FROM PUBLIC, anon, authenticated/);
+  assert.match(employeeMigration, /REVOKE ALL ON FUNCTION public\.hris_mark_employee_invitation_failed\(uuid\)\s+FROM PUBLIC, anon, authenticated/);
   assert.doesNotMatch(employeeMigration, /GRANT\s+INSERT\s+ON\s+TABLE\s+public\.employees/i);
 });
 

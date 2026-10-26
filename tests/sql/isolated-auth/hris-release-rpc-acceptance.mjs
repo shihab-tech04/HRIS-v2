@@ -192,8 +192,6 @@ try {
     'public.hris_save_learning_session(uuid,uuid,uuid,text,timestamptz,timestamptz,text,text,integer,timestamptz)',
     'public.hris_get_learning_session_roster(uuid,uuid)',
     'public.hris_create_employee_invitation(uuid,uuid,text,text,text,date)',
-    'public.hris_mark_employee_invitation_sent(uuid,uuid)',
-    'public.hris_mark_employee_invitation_failed(uuid)',
     'public.hris_accept_employee_invitation(uuid)',
     'public.candidate_apply_to_job(uuid,jsonb)',
   ];
@@ -219,22 +217,25 @@ try {
     + "'certification_guard',EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgname='platform_tenant_activation_requires_certification' AND NOT tgisinternal),"
     + "'employee_invite_private_table',NOT has_table_privilege('authenticated','private.hris_employee_invitations','SELECT')"
     + " AND NOT has_table_privilege('anon','private.hris_employee_invitations','SELECT'),"
-    + "'employee_invite_service_only',NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
+    + "'employee_invite_service_only',to_regprocedure('public.hris_mark_employee_invitation_sent(uuid,uuid)') IS NOT NULL"
+    + " AND to_regprocedure('public.hris_mark_employee_invitation_failed(uuid)') IS NOT NULL"
+    + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
     + " AND NOT has_function_privilege('anon','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
     + " AND has_function_privilege('service_role','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
     + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE')"
     + " AND has_function_privilege('service_role','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE'),"
     + "'employee_role', (SELECT count(*)=1 FROM public.roles WHERE active IS TRUE AND lower(btrim(name))='employee'),"
     + "'screening_rpc',to_regprocedure('public.candidate_apply_to_job(uuid,jsonb)') IS NOT NULL"
     + " AND has_function_privilege('authenticated','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE')"
     + " AND NOT has_function_privilege('anon','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE'))::text;";
   const contractState = JSON.parse(psql(contractSql));
-  const rpcContractsPass = hostedRpcSignatures.length === 41
+  const rpcContractsPass = hostedRpcSignatures.length === 39
     && contractState.missing_signatures.length === 0
     && contractState.anonymous_execute.length === 0
     && contractState.authenticated_missing.length === 0
     && contractState.private_roster === true;
-  record('All 41 forward-ported public RPC signatures have authenticated execution and anonymous access is denied',
+  record('All 39 client-executable public RPC signatures have authenticated execution and anonymous access is denied',
     rpcContractsPass, JSON.stringify(contractState));
   if (!rpcContractsPass || Object.entries(contractState).some(([key, value]) => key !== 'missing_signatures'
     && key !== 'anonymous_execute' && key !== 'authenticated_missing' && value !== true)) {

@@ -128,7 +128,7 @@ test('isolated release acceptance applies the reviewed timesheet port and all ne
     assert.ok(next > previous, `${path} is applied in release order`);
     previous = next;
   }
-  assert.match(acceptance, /All 41 forward-ported public RPC signatures/);
+  assert.match(acceptance, /All 39 client-executable public RPC signatures/);
   assert.match(acceptance, /anonymous_execute/);
   assert.match(acceptance, /authenticated_missing/);
 });
