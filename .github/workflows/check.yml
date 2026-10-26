@@ -49,6 +49,14 @@ jobs:
         env:
           VITE_ENABLE_PLATFORM_TENANTS: 'true'
         run: npm run build
+      - name: Preserve the exact Pages build for release review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-pages-build-${{ github.sha }}
+          path: dist/
+          if-no-files-found: ignore
+          retention-days: 2
       - name: Verify the branch-served Pages entry matches the production build
         run: git diff --exit-code -- index.html assets .nojekyll
       - name: Install Chromium
