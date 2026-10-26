@@ -21,16 +21,14 @@ BEGIN
     RAISE EXCEPTION 'More than one Employee role exists; resolve the duplicate role before enabling employee invitations.';
   ELSIF v_employee_role_count = 1 THEN
     UPDATE public.roles
-    SET active = true,
-        is_system = true,
-        updated_at = now()
+    SET active = true
     WHERE id = v_employee_role_id;
   ELSE
     IF EXISTS (SELECT 1 FROM public.roles WHERE id = 'employee') THEN
       RAISE EXCEPTION 'The canonical employee role ID is already assigned to a different role.';
     END IF;
-    INSERT INTO public.roles(id, name, description, active, is_system)
-    VALUES ('employee', 'Employee', 'Tenant employee workspace role.', true, true);
+    INSERT INTO public.roles(id, name, active)
+    VALUES ('employee', 'Employee', true);
   END IF;
 
   IF (SELECT count(*) FROM public.roles WHERE active IS TRUE AND lower(btrim(name)) = 'employee') <> 1 THEN

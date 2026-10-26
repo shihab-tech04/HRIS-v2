@@ -14,6 +14,16 @@ const employeeFunction = readFileSync(
 const employeeApi = readFileSync(new URL('../../src/live/employeeInvitationApi.ts', import.meta.url), 'utf8');
 const employeeDirectory = readFileSync(new URL('../../src/live/OrganizationEmployeeDirectory.tsx', import.meta.url), 'utf8');
 const liveApp = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
+const isolatedFixture = readFileSync(new URL('../../tests/sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
+
+test('employee role provisioning uses only the deployed roles columns', () => {
+  const roleSetup = employeeMigration.match(/DO \$role\$[\s\S]*?\$role\$;/)?.[0];
+  assert.ok(roleSetup, 'employee role setup block must exist');
+  assert.match(isolatedFixture, /CREATE TABLE public\.roles \(\s*id text PRIMARY KEY,\s*name text NOT NULL,\s*active boolean NOT NULL DEFAULT true\s*\);/);
+  assert.match(roleSetup, /UPDATE public\.roles\s+SET active = true\s+WHERE id = v_employee_role_id/);
+  assert.match(roleSetup, /INSERT INTO public\.roles\(id, name, active\)/);
+  assert.doesNotMatch(roleSetup, /\b(?:description|is_system|updated_at)\b/);
+});
 
 test('employee creation persists through an idempotent tenant permission RPC and private invitation ledger', () => {
   assert.match(employeeMigration, /CREATE TABLE IF NOT EXISTS private\.hris_employee_invitations/);
