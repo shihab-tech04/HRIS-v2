@@ -180,6 +180,7 @@ BEGIN
     WHERE tm.tenant_id = p_tenant_id
       AND tm.role = 'hr_admin'
       AND tm.status = 'active'
+      AND tm.user_id <> auth.uid()
       AND u.email_confirmed_at IS NOT NULL
       AND u.deleted_at IS NULL
       AND (u.banned_until IS NULL OR u.banned_until <= now())
