@@ -81,7 +81,7 @@ test('a pending employee invitation can resume after a directory reload without 
   expect(resumeCalls[0].payload).not.toHaveProperty('email');
   expect(resumeCalls[0].payload).not.toHaveProperty('employee_number');
   expect(resumeCalls[0].payload).not.toHaveProperty('full_name');
-  await expect(resume).toHaveCount(0);
+  await expect(resume).toHaveCount(1);
 
   await page.goto('/tests/browser/employee-invitation-harness.html?mode=readonly');
   await expect(resume).toHaveCount(0);
