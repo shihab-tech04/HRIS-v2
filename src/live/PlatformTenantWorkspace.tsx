@@ -283,8 +283,8 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       });
   }
 
-  const certificationByTenantId = new Map(
-    tenantCertifications.map(certification => [certification.tenant_id, certification]),
+  const certificationByTenantId = new Map<string, PlatformTenantCertification>(
+    tenantCertifications.map(certification => [certification.tenant_id, certification] as const),
   );
 
   if (!platformTenantFeatureAvailable) return <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
