@@ -73,6 +73,8 @@ test('candidate application validates all seven screening types and keeps candid
   assert.match(screeningMigration, /tenant_id=public\.synesis_tenant_id\(\)[\s\S]*profile_status='active'/);
   assert.match(screeningMigration, /is_published=true[\s\S]*status='published'[\s\S]*is_active=true/);
   assert.match(screeningMigration, /Duplicate screening answers are not allowed/);
+  assert.match(screeningMigration, /INSERT INTO public\.job_applications\s*\(\s*id,tenant_id,/);
+  assert.match(screeningMigration, /gen_random_uuid\(\),v_job\.tenant_id/);
   assert.match(screeningMigration, /unknown question/);
   assert.match(screeningMigration, /single-select answer is not an available option/);
   assert.match(screeningMigration, /multi-select answer is not an available option/);

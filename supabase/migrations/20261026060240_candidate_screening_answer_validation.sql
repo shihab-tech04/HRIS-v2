@@ -298,11 +298,11 @@ BEGIN
   END IF;
 
   INSERT INTO public.job_applications(
-    tenant_id,job_id,candidate_user_id,full_name,email,phone,
+    id,tenant_id,job_id,candidate_user_id,full_name,email,phone,
     years_experience,skills,cv_url,cover_letter,application_data
   )
   VALUES (
-    v_job.tenant_id,v_job.id,auth.uid(),
+    gen_random_uuid(),v_job.tenant_id,v_job.id,auth.uid(),
     coalesce(nullif(btrim(p_payload->>'full_name'),''),v_profile.full_name,v_profile.email),
     v_profile.email,
     coalesce(nullif(btrim(p_payload->>'phone'),''),v_profile.phone),
