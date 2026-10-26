@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Download, Pencil, RefreshCw, Save, Search, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { createEmployeeInvitation, reissueEmployeeInvitation } from './employeeInvitationApi';
+import { createEmployeeInvitation, reissueEmployeeInvitation, resumeEmployeeInvitation } from './employeeInvitationApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import { activateModalFocusTrap } from './modal-focus';
@@ -310,7 +310,11 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
           ? 'Employee-management access for this organization is required.'
           : /valid employee|employee number/i.test(message)
             ? 'Enter a valid employee number, name, email, and joining date.'
-            : 'Employee invitation could not be completed. Retry with the same employee details or refresh the directory.');
+            : /15 minutes/i.test(message)
+              ? 'Wait 15 minutes before retrying the invitation.'
+              : /retry limit/i.test(message)
+                ? 'This invitation reached its delivery retry limit. Contact your platform administrator.'
+                : 'Employee invitation could not be completed. Retry with the same employee details or refresh the directory.');
     } finally {
       if (activeTenantId.current === requestTenant) setEmployeeInvitationBusy(false);
     }
@@ -319,29 +323,44 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
 
   async function resendEmployeeInvitation(employee: EmployeeRow) {
     if (!employeesManage || !employee.invitation
-      || !['expired', 'failed'].includes(employee.invitation.status)
+      || !['expired', 'failed', 'pending'].includes(employee.invitation.status)
       || reissuingEmployeeId) return;
     const requestTenant = tenantId;
-    const requestId = reissueRequestIds.current.get(employee.employee_id) || crypto.randomUUID();
-    reissueRequestIds.current.set(employee.employee_id, requestId);
+    const isPending = employee.invitation.status === 'pending';
+    const requestId = isPending
+      ? ''
+      : reissueRequestIds.current.get(employee.employee_id) || crypto.randomUUID();
+    if (!isPending) reissueRequestIds.current.set(employee.employee_id, requestId);
     setReissuingEmployeeId(employee.employee_id);
     setEmployeeReissueError('');
     setEmployeeReissueSuccess('');
     try {
-      const result = await reissueEmployeeInvitation({
-        tenantId: requestTenant,
-        employeeId: employee.employee_id,
-        requestId,
-      });
+      const result = isPending
+        ? await resumeEmployeeInvitation({
+          tenantId: requestTenant,
+          invitationId: employee.invitation.id,
+        })
+        : await reissueEmployeeInvitation({
+          tenantId: requestTenant,
+          employeeId: employee.employee_id,
+          requestId,
+        });
       if (activeTenantId.current !== requestTenant) return;
-      reissueRequestIds.current.delete(employee.employee_id);
+      if (!isPending) reissueRequestIds.current.delete(employee.employee_id);
       setEmployeeReissueSuccess(result.alreadySent
         ? 'Employee invitation was already sent.'
-        : 'Employee invitation reissued and email sent.');
+        : isPending ? 'Employee invitation delivery resumed and email sent.' : 'Employee invitation reissued and email sent.');
       setRevision(value => value + 1);
-    } catch {
+    } catch (cause) {
       if (activeTenantId.current !== requestTenant) return;
-      setEmployeeReissueError('The employee invitation could not be reissued. Refresh the directory and try again.');
+      const message = cause instanceof Error ? cause.message : '';
+      setEmployeeReissueError(/15 minutes/i.test(message)
+        ? 'Wait 15 minutes before retrying the invitation.'
+        : /retry limit/i.test(message)
+          ? 'This invitation reached its delivery retry limit. Contact your platform administrator.'
+          : isPending
+            ? 'The employee invitation could not be resumed. Refresh the directory and try again.'
+            : 'The employee invitation could not be reissued. Refresh the directory and try again.');
       setRevision(value => value + 1);
     } finally {
       if (activeTenantId.current === requestTenant) setReissuingEmployeeId('');
@@ -621,20 +640,25 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
                 <span className="w-fit shrink-0 rounded-full bg-[#EFF7F8] px-2.5 py-1 text-xs font-medium text-[#085587]">{statusLabel(employee.employment_status, locale)}</span></div>
               <p className="break-words text-sm text-slate-700">{employee.designation_title || tx('Designation unavailable')}</p>
               <p className="break-words text-xs text-slate-500">{employee.department_name || tx('No department')} · {employee.team_name || tx('No team')}</p>
-              {employeesManage && employee.invitation && ['expired', 'failed'].includes(employee.invitation.status) && <>
-                <p className="text-xs font-medium text-amber-800">{tx(employee.invitation.status === 'expired' ? 'Invitation expired' : 'Invitation delivery failed')}</p>
+              {employeesManage && employee.invitation && ['expired', 'failed', 'pending'].includes(employee.invitation.status) && <>
+                <p className="text-xs font-medium text-amber-800">{tx(employee.invitation.status === 'expired'
+                  ? 'Invitation expired'
+                  : employee.invitation.status === 'failed'
+                    ? 'Invitation delivery failed'
+                    : 'Invitation delivery pending')}</p>
                 <button type="button" disabled={reissuingEmployeeId === employee.employee_id || Boolean(reissuingEmployeeId)}
                   onClick={() => void resendEmployeeInvitation(employee)}
                   className="min-h-10 rounded-md border border-[#085587] px-3 text-sm font-semibold text-[#085587] disabled:opacity-50">
-                  {tx(reissuingEmployeeId === employee.employee_id ? 'Sending…' : 'Resend invitation')}
+                  {tx(reissuingEmployeeId === employee.employee_id ? 'Sending…'
+                    : employee.invitation.status === 'pending' ? 'Resume invitation' : 'Resend invitation')}
                 </button>
               </>}
               <button type="button" onClick={event => openEmployeeDetails(employee, event.currentTarget)}
                 aria-label={`${tx('View details for')} ${employee.full_name}`}
                 className="min-h-10 rounded-md border border-slate-300 px-3 text-sm font-medium text-[#085587]">{tx('View details')}</button>
             </li>)}</ul>
-            <div role="region" aria-label="Scrollable employee directory table" tabIndex={0} className="hidden overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B] md:block">
-              <table aria-label="Organization employee directory" className="w-full min-w-[860px] text-left text-sm">
+            <div role="region" aria-label={tx('Scrollable employee directory table')} tabIndex={0} className="hidden overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#08558B] md:block">
+              <table aria-label={tx('Organization employee directory')} className="w-full min-w-[860px] text-left text-sm">
                 <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
                   {['Employee', 'Employee number', 'Department', 'Designation', 'Team', 'Employment status', 'Actions'].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium">{tx(label)}</th>)}
                 </tr></thead>
@@ -649,11 +673,12 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
                     <button type="button" onClick={event => openEmployeeDetails(employee, event.currentTarget)}
                       aria-label={`${tx('View details for')} ${employee.full_name}`}
                       className="min-h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-[#085587]">{tx('View details')}</button>
-                    {employeesManage && employee.invitation && ['expired', 'failed'].includes(employee.invitation.status) && <button type="button"
+                    {employeesManage && employee.invitation && ['expired', 'failed', 'pending'].includes(employee.invitation.status) && <button type="button"
                       disabled={Boolean(reissuingEmployeeId)}
                       onClick={() => void resendEmployeeInvitation(employee)}
                       className="min-h-9 rounded-md border border-[#085587] px-2.5 text-xs font-semibold text-[#085587] disabled:opacity-50">
-                      {tx(reissuingEmployeeId === employee.employee_id ? 'Sending…' : 'Resend invitation')}
+                      {tx(reissuingEmployeeId === employee.employee_id ? 'Sending…'
+                        : employee.invitation.status === 'pending' ? 'Resume invitation' : 'Resend invitation')}
                     </button>}
                   </div></td>
                 </tr>)}</tbody>

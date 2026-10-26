@@ -23,7 +23,7 @@ const directoryPayload = {
     employment_status: 'active',
     invitation: {
       id: 'fddddddd-dddd-4ddd-8ddd-dddddddddddd',
-      status: 'expired',
+      status: mode === 'pending' ? 'pending' : 'expired',
       expires_at: '2026-01-01T00:00:00.000Z',
     },
   }],
@@ -48,7 +48,8 @@ Object.defineProperty(supabase, 'functions', {
   value: {
     invoke: async (name: string, options: { body?: Record<string, unknown> }) => {
       calls.push({ kind: 'function', name, payload: options.body });
-      if (mode === 'retry' && options.body?.mode === 'resend' && reissueAttempts++ === 0) {
+      if ((mode === 'retry' && options.body?.mode === 'resend'
+        || mode === 'pending' && options.body?.mode === 'resume') && reissueAttempts++ === 0) {
         return { data: null, error: new Error('temporary delivery failure') };
       }
       return {

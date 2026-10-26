@@ -6,6 +6,7 @@ type InviteBody = {
   tenant_id?: unknown;
   request_id?: unknown;
   employee_id?: unknown;
+  invitation_id?: unknown;
   employee_number?: unknown;
   full_name?: unknown;
   email?: unknown;
@@ -75,57 +76,76 @@ Deno.serve(async (request: Request) => {
   const tenantId = typeof body.tenant_id === "string" ? body.tenant_id : "";
   const requestId = typeof body.request_id === "string" ? body.request_id : "";
   const employeeId = typeof body.employee_id === "string" ? body.employee_id : "";
+  const resumeInvitationId = typeof body.invitation_id === "string" ? body.invitation_id : "";
   const employeeNumber = typeof body.employee_number === "string" ? body.employee_number.trim() : "";
   const fullName = typeof body.full_name === "string" ? body.full_name.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const joiningDate = typeof body.joining_date === "string" ? body.joining_date : "";
   const isResend = body.mode === "resend";
+  const isResume = body.mode === "resume";
   const validUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-  if ((body.mode !== undefined && body.mode !== "create" && body.mode !== "resend")
-    || !validUuid(tenantId) || !validUuid(requestId)
-    || (isResend
-      ? !validUuid(employeeId)
-      : !isText(employeeNumber, 32)
+  if ((body.mode !== undefined && body.mode !== "create" && !isResend && !isResume)
+    || !validUuid(tenantId)
+    || (!isResume && !validUuid(requestId))
+    || (isResend && !validUuid(employeeId))
+    || (isResume && !validUuid(resumeInvitationId))
+    || (!isResend && !isResume
+      && (!isText(employeeNumber, 32)
         || !isText(fullName, 160) || fullName.length < 2
         || !isText(email, 320) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-        || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate))) {
+        || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate)))) {
     return reply(400, {
-      error: isResend
+      error: isResend || isResume
         ? "A valid employee invitation request is required."
         : "Enter a valid employee number, name, email, and joining date.",
     }, origin);
   }
 
-  const { data: invitation, error: createError } = isResend
-    ? await caller.rpc("hris_reissue_employee_invitation", {
+  const { data: invitation, error: createError } = isResume
+    ? await caller.rpc("hris_resume_employee_invitation", {
       p_tenant_id: tenantId,
-      p_employee_id: employeeId,
-      p_request_id: requestId,
+      p_invitation_id: resumeInvitationId,
     })
-    : await caller.rpc("hris_create_employee_invitation", {
-      p_tenant_id: tenantId,
-      p_request_id: requestId,
-      p_employee_number: employeeNumber,
-      p_full_name: fullName,
-      p_email: email,
-      p_joining_date: joiningDate,
-    });
+    : isResend
+      ? await caller.rpc("hris_reissue_employee_invitation", {
+        p_tenant_id: tenantId,
+        p_employee_id: employeeId,
+        p_request_id: requestId,
+      })
+      : await caller.rpc("hris_create_employee_invitation", {
+        p_tenant_id: tenantId,
+        p_request_id: requestId,
+        p_employee_number: employeeNumber,
+        p_full_name: fullName,
+        p_email: email,
+        p_joining_date: joiningDate,
+      });
   if (createError) {
     const status = createError.code === "42501" ? 403 : 400;
+    const retryMessage = createError.message || "";
+    const safeRetryError = /15 minutes/i.test(retryMessage)
+      ? "This invitation cannot be retried yet. Wait 15 minutes before trying again."
+      : /retry limit/i.test(retryMessage)
+        ? "This invitation reached its delivery retry limit. Contact your platform administrator."
+        : isResume
+          ? "This invitation is no longer available to resume. Refresh the directory or contact your organization administrator."
+          : isResend
+            ? "This invitation cannot be reissued yet. Refresh the directory or wait before trying again."
+            : createError.message;
     return reply(status, {
-      error: status === 403
+      error: status === 403 && !isResume
         ? "Employee-management access for this organization is required."
-        : isResend
-          ? "This invitation cannot be reissued yet. Refresh the directory or wait before trying again."
-          : createError.message,
+        : safeRetryError,
     }, origin);
   }
 
   const invitationId = invitation?.invitation_id;
   const invitedEmail = invitation?.email;
   const invitationStatus = invitation?.status;
+  const effectiveRequestId = isResume ? invitation?.request_id : requestId;
   if (typeof invitationId !== "string" || typeof invitedEmail !== "string"
-    || typeof invitationStatus !== "string") {
+    || typeof invitationStatus !== "string"
+    || typeof effectiveRequestId !== "string" || !validUuid(effectiveRequestId)) {
     return reply(500, { error: "The employee record was saved, but the invitation could not be finalized." }, origin);
   }
   if (invitationStatus === "sent" || invitationStatus === "accepted") {
@@ -209,7 +229,7 @@ Deno.serve(async (request: Request) => {
   const taggedUser = await admin.auth.admin.updateUserById(authUserId, {
     app_metadata: {
       ...(authUser.data.user.app_metadata || {}),
-      hris_employee_invitation_request_id: requestId,
+      hris_employee_invitation_request_id: effectiveRequestId,
     },
   });
   if (taggedUser.error || taggedUser.data.user?.id !== authUserId) {

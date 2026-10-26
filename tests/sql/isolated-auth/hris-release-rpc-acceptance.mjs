@@ -193,6 +193,7 @@ try {
     'public.hris_get_learning_session_roster(uuid,uuid)',
     'public.hris_create_employee_invitation(uuid,uuid,text,text,text,date)',
     'public.hris_reissue_employee_invitation(uuid,uuid,uuid)',
+    'public.hris_resume_employee_invitation(uuid,uuid)',
     'public.hris_accept_employee_invitation(uuid)',
     'public.candidate_apply_to_job(uuid,jsonb)',
   ];
@@ -217,6 +218,8 @@ try {
     + " AND has_function_privilege('service_role','public.hris_resolve_employee_invitation_auth_user_id(uuid)','EXECUTE')"
     + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
     + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE'),"
+    + "'employee_resume_acl',has_function_privilege('authenticated','public.hris_resume_employee_invitation(uuid,uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.hris_resume_employee_invitation(uuid,uuid)','EXECUTE'),"
     + "'certification_list',to_regprocedure('public.platform_hris_list_tenant_certifications()') IS NOT NULL,"
     + "'certification_write',to_regprocedure('public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)') IS NOT NULL"
     + " AND has_function_privilege('authenticated','public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)','EXECUTE')"
@@ -243,12 +246,12 @@ try {
     + " AND has_function_privilege('authenticated','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE')"
     + " AND NOT has_function_privilege('anon','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE'))::text;";
   const contractState = JSON.parse(psql(contractSql));
-  const rpcContractsPass = hostedRpcSignatures.length === 40
+  const rpcContractsPass = hostedRpcSignatures.length === 41
     && contractState.missing_signatures.length === 0
     && contractState.anonymous_execute.length === 0
     && contractState.authenticated_missing.length === 0
     && contractState.private_roster === true;
-  record('All 40 client-executable public RPC signatures have authenticated execution and anonymous access is denied',
+  record('All 41 client-executable public RPC signatures have authenticated execution and anonymous access is denied',
     rpcContractsPass, JSON.stringify(contractState));
   if (!rpcContractsPass || Object.entries(contractState).some(([key, value]) => key !== 'missing_signatures'
     && key !== 'anonymous_execute' && key !== 'authenticated_missing' && value !== true)) {
@@ -393,9 +396,33 @@ try {
   );
   psql("UPDATE private.hris_employee_invitations SET updated_at=now()-interval '16 minutes' "
     + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
+  const reloadedEmployeeManager = createClient(services.API_URL, services.ANON_KEY, authOptions);
+  const reloadedManagerSession = await reloadedEmployeeManager.auth.signInWithPassword({
+    email: emails.employeeManager, password,
+  });
+  if (reloadedManagerSession.error) throw reloadedManagerSession.error;
+  const resumedPendingInvitation = await reloadedEmployeeManager.rpc('hris_resume_employee_invitation', {
+    p_tenant_id: tenantA, p_invitation_id: employeeInvitationId,
+  });
+  const crossTenantResume = await reloadedEmployeeManager.rpc('hris_resume_employee_invitation', {
+    p_tenant_id: tenantB, p_invitation_id: employeeInvitationId,
+  });
+  const unauthorizedResume = await clients.candidateA.rpc('hris_resume_employee_invitation', {
+    p_tenant_id: tenantA, p_invitation_id: employeeInvitationId,
+  });
   const cooledCreateReplay = await clients.employeeManager.rpc(
     'hris_create_employee_invitation', employeeCreateArgs,
   );
+  psql("UPDATE private.hris_employee_invitations SET updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
+  const secondResumedInvitation = await reloadedEmployeeManager.rpc('hris_resume_employee_invitation', {
+    p_tenant_id: tenantA, p_invitation_id: employeeInvitationId,
+  });
+  psql("UPDATE private.hris_employee_invitations SET updated_at=now()-interval '16 minutes' "
+    + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
+  const cappedResume = await reloadedEmployeeManager.rpc('hris_resume_employee_invitation', {
+    p_tenant_id: tenantA, p_invitation_id: employeeInvitationId,
+  });
   const recoveredEmployeeAuthUser = await admin.rpc(
     'hris_recover_employee_invitation_auth_user_id',
     { p_invitation_id: employeeInvitationId },
@@ -527,8 +554,13 @@ try {
   const employeeRoleName = await admin.from('roles').select('name').eq('id', employeeMembership.data?.role || '').single();
   record('Employee invitation delivery recovery, pending retry limits, acceptance, and replay remain tenant-scoped',
     Boolean(interruptedMarkSent.error) && Boolean(pendingCreateRetryAfterMarkFailure.error)
-      && cooledCreateReplay.data?.idempotent === true
-      && cooledCreateReplay.data?.delivery_attempts === 2
+      && resumedPendingInvitation.data?.invitation_id === employeeInvitationId
+      && resumedPendingInvitation.data?.request_id === employeeRequestId
+      && resumedPendingInvitation.data?.delivery_attempts === 2
+      && secondResumedInvitation.data?.request_id === employeeRequestId
+      && secondResumedInvitation.data?.delivery_attempts === 3
+      && Boolean(cappedResume.error) && Boolean(cooledCreateReplay.error)
+      && crossTenantResume.error?.code === '42501' && unauthorizedResume.error?.code === '42501'
       && recoveredEmployeeAuthUser.data === employeeInvitee.id
       && employeeSent.data === true && employeeSentReplay.data === true
       && employeeCreateSentReplay.data?.idempotent === true
@@ -560,7 +592,13 @@ try {
     JSON.stringify({
       authSendMarkFailureLeavesReplayCooldown: Boolean(interruptedMarkSent.error)
         && Boolean(pendingCreateRetryAfterMarkFailure.error),
-      cooledPendingReplayCount: cooledCreateReplay.data?.delivery_attempts,
+      reloadResumeReusesExactInvitationRequest: resumedPendingInvitation.data?.request_id === employeeRequestId
+        && resumedPendingInvitation.data?.invitation_id === employeeInvitationId,
+      resumeAttemptBudget: [resumedPendingInvitation.data?.delivery_attempts,
+        secondResumedInvitation.data?.delivery_attempts, Boolean(cappedResume.error)],
+      resumeTenantAndRoleDenials: crossTenantResume.error?.code === '42501'
+        && unauthorizedResume.error?.code === '42501',
+      createReplayBlockedAfterResume: Boolean(cooledCreateReplay.error),
       initialMarkRecovery: recoveredEmployeeAuthUser.data === employeeInvitee.id,
       initialMarkReplay: employeeSent.data === true && employeeSentReplay.data === true,
       sentRequestReplayIsIdempotent: employeeCreateSentReplay.data?.idempotent === true,

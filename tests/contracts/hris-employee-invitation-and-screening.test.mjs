@@ -47,6 +47,10 @@ test('employee creation persists through an idempotent tenant permission RPC and
   assert.match(employeeMigration, /u\.invited_at IS NOT NULL[\s\S]*raw_app_meta_data\s*->> 'hris_employee_invitation_request_id'\) = i\.request_id::text/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_recover_employee_invitation_auth_user_id\(uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\.hris_reissue_employee_invitation\(/);
+  assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\.hris_resume_employee_invitation\(\s*p_tenant_id uuid,\s*p_invitation_id uuid/);
+  assert.match(employeeMigration, /FOR UPDATE OF i/);
+  assert.match(employeeMigration, /private\.hris_employee_inviter_has_permission\(i\.tenant_id, i\.inviter_user_id\)/);
+  assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_resume_employee_invitation\(uuid,uuid\)\s+TO authenticated/);
   assert.match(employeeMigration, /v_invitation_count >= 4/);
   assert.match(employeeMigration, /delivery_attempts integer NOT NULL DEFAULT 0 CHECK \(delivery_attempts BETWEEN 0 AND 3\)/);
   assert.match(employeeMigration, /v_invitation\.status IN \('pending','failed'\)[\s\S]*?v_invitation\.updated_at > now\(\) - interval '15 minutes'[\s\S]*?v_invitation\.delivery_attempts >= 3/);
@@ -65,6 +69,8 @@ test('employee creation persists through an idempotent tenant permission RPC and
 test('Auth invitation is sent only from the server-side function, with a signed-in caller and no client service key', () => {
   assert.match(employeeFunction, /caller\.auth\.getUser\(\)/);
   assert.match(employeeFunction, /caller\.rpc\("hris_create_employee_invitation"/);
+  assert.match(employeeFunction, /caller\.rpc\("hris_resume_employee_invitation"/);
+  assert.match(employeeApi, /export async function resumeEmployeeInvitation/);
   assert.match(employeeFunction, /Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)/);
   assert.match(employeeFunction, /admin\.auth\.admin\.inviteUserByEmail/);
   assert.match(employeeFunction, /\[\^\\s@\]\+@\[\^\\s@\]\+\\\./);
@@ -80,9 +86,12 @@ test('Auth invitation is sent only from the server-side function, with a signed-
   assert.match(employeeApi, /supabase\.rpc\('hris_accept_employee_invitation'/);
   assert.match(employeeApi, /export async function reissueEmployeeInvitation/);
   assert.match(employeeDirectory, /resendEmployeeInvitation/);
-  assert.match(employeeDirectory, /\['expired', 'failed'\]/);
+  assert.match(employeeDirectory, /\['expired', 'failed', 'pending'\]/);
+  assert.match(employeeDirectory, /employee\.invitation\.status === 'pending' \? 'Resume invitation'/);
   assert.match(liveApp, /export function EmployeeInvitationAcceptance/);
   assert.match(projectLocale, /Employee invitation reissued and email sent\./);
+  assert.match(projectLocale, /Wait 15 minutes before retrying the invitation\./);
+  assert.match(projectLocale, /'Resume invitation'/);
   assert.match(projectLocale, /'Complete your employee access'/);
   assert.match(projectLocale, /'Passwords do not match\.'/);
   assert.match(employeeDirectory, /Save employee and send invitation/);

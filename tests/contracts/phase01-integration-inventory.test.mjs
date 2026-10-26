@@ -22,7 +22,7 @@ test('Phase 01 enumerates frontend RPCs, differentiates staged-only and unresolv
     result.rpc_targets_in_versioned_migrations + result.rpc_targets_staging_only.length + result.rpc_targets_without_tracked_public_definition.length);
   assert.equal(result.rpc_targets_in_versioned_migrations, result.rpc_targets_defined_in_tracked_public_sql);
   assert.deepEqual(result.rpc_targets_without_tracked_public_definition, []);
-  assert.equal(result.rpc_targets_in_versioned_migrations, 126);
+  assert.equal(result.rpc_targets_in_versioned_migrations, 127);
   assert.ok(result.rpc_targets.find(row => row.name === 'admin_save_job')?.sql_definitions.length);
   assert.ok(result.rpc_targets.find(row => row.name === 'admin_set_job_published')?.sql_definitions.length);
   assert.equal(result.rpc_targets.find(row => row.name === 'candidate_submit_requested_document')?.source_status, 'VERSIONED_MIGRATION');

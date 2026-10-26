@@ -773,6 +773,82 @@ REVOKE ALL ON FUNCTION public.hris_reissue_employee_invitation(uuid,uuid,uuid)
 GRANT EXECUTE ON FUNCTION public.hris_reissue_employee_invitation(uuid,uuid,uuid)
   TO authenticated;
 
+CREATE OR REPLACE FUNCTION public.hris_resume_employee_invitation(
+  p_tenant_id uuid,
+  p_invitation_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_invitation private.hris_employee_invitations%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_live_session()
+    OR p_tenant_id IS NULL OR p_invitation_id IS NULL
+    OR NOT public.has_tenant_permission(p_tenant_id, 'employees.manage') THEN
+    RAISE EXCEPTION 'Employee-management access for this organization is required.' USING errcode = '42501';
+  END IF;
+
+  SELECT i.* INTO v_invitation
+  FROM private.hris_employee_invitations AS i
+  JOIN public.tenants AS t
+    ON t.id = i.tenant_id AND t.is_active IS TRUE
+  JOIN public.employees AS e
+    ON e.id = i.employee_id
+   AND e.tenant_id = i.tenant_id
+   AND e.user_id IS NULL
+   AND lower(btrim(e.official_email)) = lower(i.email)
+  WHERE i.id = p_invitation_id
+    AND i.tenant_id = p_tenant_id
+    AND i.status = 'pending'
+    AND i.expires_at > now()
+    AND private.hris_employee_inviter_has_permission(i.tenant_id, i.inviter_user_id)
+  FOR UPDATE OF i;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'This employee invitation is no longer available to resume.' USING errcode = '22023';
+  END IF;
+  IF v_invitation.updated_at > now() - interval '15 minutes' THEN
+    RAISE EXCEPTION 'This invitation cannot be retried yet. Wait 15 minutes before retrying.' USING errcode = '22023';
+  END IF;
+  IF v_invitation.delivery_attempts >= 3 THEN
+    RAISE EXCEPTION 'This invitation reached its delivery retry limit.' USING errcode = '22023';
+  END IF;
+
+  UPDATE private.hris_employee_invitations
+  SET delivery_attempts = delivery_attempts + 1, updated_at = now()
+  WHERE id = v_invitation.id
+  RETURNING * INTO v_invitation;
+
+  INSERT INTO public.admin_audit_logs(actor_id, action, target_type, target_id, details)
+  VALUES (
+    auth.uid(), 'HRIS_EMPLOYEE_INVITATION_RESUMED', 'employee', v_invitation.employee_id::text,
+    pg_catalog.jsonb_build_object(
+      'tenant_id', p_tenant_id,
+      'invitation_id', v_invitation.id,
+      'delivery_attempts', v_invitation.delivery_attempts
+    )
+  );
+
+  RETURN pg_catalog.jsonb_build_object(
+    'invitation_id', v_invitation.id,
+    'request_id', v_invitation.request_id,
+    'email', v_invitation.email,
+    'status', v_invitation.status,
+    'expires_at', v_invitation.expires_at,
+    'delivery_attempts', v_invitation.delivery_attempts,
+    'idempotent', true
+  );
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public.hris_resume_employee_invitation(uuid,uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.hris_resume_employee_invitation(uuid,uuid)
+  TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.hris_get_tenant_employee_directory_v2(
   p_tenant_id uuid,
   p_search text DEFAULT NULL,

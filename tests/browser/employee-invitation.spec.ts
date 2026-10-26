@@ -58,6 +58,42 @@ test('expired invitation resend retries with the same idempotency key and hides 
   await expect(page.getByRole('button', { name: 'Resend invitation' })).toHaveCount(0);
 });
 
+
+test('a pending employee invitation can resume after a directory reload without client identity data', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/tests/browser/employee-invitation-harness.html?mode=pending');
+  const resume = page.getByRole('button', { name: 'Resume invitation' });
+  await expect(resume).toBeVisible();
+  await resume.click();
+  await expect(page.getByRole('alert')).toContainText('The employee invitation could not be resumed.');
+  await page.getByRole('button', { name: 'Resume invitation' }).click();
+  await expect(page.getByRole('status')).toContainText('Employee invitation delivery resumed and email sent.');
+
+  const calls = await invitationCalls(page);
+  const resumeCalls = calls.filter(call => call.kind === 'function'
+    && call.name === 'hris-employee-invite' && call.payload?.mode === 'resume');
+  expect(resumeCalls).toHaveLength(2);
+  expect(resumeCalls[0].payload).toMatchObject({
+    tenant_id: 'faaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    invitation_id: 'fddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  });
+  expect(resumeCalls[0].payload).not.toHaveProperty('request_id');
+  expect(resumeCalls[0].payload).not.toHaveProperty('email');
+  expect(resumeCalls[0].payload).not.toHaveProperty('employee_number');
+  expect(resumeCalls[0].payload).not.toHaveProperty('full_name');
+  await expect(page.getByRole('button', { name: 'Resume invitation' })).toHaveCount(0);
+
+  await page.goto('/tests/browser/employee-invitation-harness.html?mode=readonly');
+  await expect(page.getByRole('button', { name: 'Resume invitation' })).toHaveCount(0);
+});
+
+test('employee invitation acceptance defaults to English labels', async ({ page }) => {
+  await page.goto('/tests/browser/employee-invitation-acceptance-harness.html?mode=retry&locale=en');
+  await expect(page.getByRole('heading')).toContainText('Complete your employee access');
+  await expect(page.getByLabel('New password')).toBeVisible();
+  await expect(page.getByLabel('Confirm password')).toBeVisible();
+});
+
 test('employee acceptance is localized and lets a verified invitee retry after a transient failure', async ({ page }) => {
   await page.goto('/tests/browser/employee-invitation-acceptance-harness.html?mode=retry&locale=bn');
   await expect(page.getByRole('heading')).toContainText('কর্মী প্রবেশাধিকার সম্পন্ন করুন');
