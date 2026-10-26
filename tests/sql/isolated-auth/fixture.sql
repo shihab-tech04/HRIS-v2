@@ -1221,6 +1221,9 @@ INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee','active'
   FROM auth.users WHERE email='employee-a@hris.test';
 INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
+  SELECT '11111111-1111-4111-8111-111111111111',id,'qa_tenant_employee','active'
+  FROM auth.users WHERE email='employee-clock@hris.test';
+INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status)
   SELECT '22222222-2222-4222-8222-222222222222',id,'qa_tenant_employee','active'
   FROM auth.users WHERE email='employee-b@hris.test';
 

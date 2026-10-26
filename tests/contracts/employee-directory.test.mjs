@@ -88,7 +88,11 @@ test('employee detail sheet preserves permission-limited directory fields and ad
   assert.match(page, /setSelectedEmployee\(null\);[\s\S]*?setLoading\(true\)/);
   assert.match(page, /View details/);
   assert.match(page, /Employee record/);
-  assert.doesNotMatch(page, /joining_date|gender|salary|user_id|Save changes|Delete employee/);
+  const detailMarkup = page.slice(page.indexOf('role="dialog" aria-modal="true"'), page.indexOf('employee-contact-heading'));
+  const invitationMarkup = page.slice(page.indexOf('id="employee-invitation-form"'), page.indexOf('form onSubmit={applyFilters'));
+  assert.doesNotMatch(detailMarkup, /joining_date|gender|salary|user_id|Save changes|Delete employee/);
+  assert.match(invitationMarkup, /joining_date/);
+  assert.doesNotMatch(invitationMarkup, /gender|salary|payroll|user_id|Delete employee/);
   assert.match(page, /employeesManage && <section aria-labelledby="employee-contact-heading"/);
   assert.match(page, /hris_get_tenant_employee_contact_details/);
   assert.match(page, /hris_update_tenant_employee_contact_details/);

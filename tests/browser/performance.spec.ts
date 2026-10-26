@@ -81,7 +81,9 @@ test('employee updates only their recorded performance goal progress', async ({ 
     const request = route.request();
     const url = new URL(request.url());
     const endpoint = url.pathname.split('/').pop() || '';
-    if (endpoint === 'tenant_memberships') return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    if (endpoint === 'tenant_memberships') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+      { tenant_id: tenantId, role: 'employee', status: 'active' },
+    ]) });
     if (endpoint === 'employees') {
       const select = url.searchParams.get('select') || '';
       const linked = select.includes('employment_status');
