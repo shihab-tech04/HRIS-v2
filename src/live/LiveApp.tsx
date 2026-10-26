@@ -5,6 +5,7 @@ import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-re
 import { supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveHrisWorkspace } from './LiveHrisWorkspace';
+import { acceptEmployeeInvitation } from './employeeInvitationApi';
 import { acceptPlatformTenantInvitation, platformTenantFeatureAvailable } from './platformTenantApi';
 
 type Membership = { tenant_id: string; role: string; status: string };
@@ -216,6 +217,85 @@ function PlatformInvitationAcceptance({ tenantName, error, onSignOut }: {
   </main>;
 }
 
+function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
+  invitationId: string;
+  onAccepted: (tenantId: string) => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function completeInvitation() {
+    setBusy(true);
+    setError('');
+    try {
+      const accepted = await acceptEmployeeInvitation(invitationId);
+      onAccepted(accepted.tenant_id);
+    } catch (cause) {
+      setError(cause instanceof Error
+        ? cause.message
+        : 'Employee access could not be activated. Keep this page open and retry.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function savePasswordAndAccept(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password.length < 12) { setError('Use at least 12 characters.'); return; }
+    if (password !== confirmation) { setError('Passwords do not match.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const updated = await supabase.auth.updateUser({ password });
+      if (updated.error) throw updated.error;
+      setPassword('');
+      setConfirmation('');
+      setPasswordSaved(true);
+      const accepted = await acceptEmployeeInvitation(invitationId);
+      onAccepted(accepted.tenant_id);
+    } catch (cause) {
+      setError(cause instanceof Error
+        ? cause.message
+        : 'Employee access could not be activated. Keep this page open and retry.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <main className="min-h-screen grid place-items-center bg-slate-50 px-4 py-8">
+    <section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#085587]">Employee invitation</p>
+      <h1 className="mt-2 text-2xl font-semibold text-slate-900">Complete your employee access</h1>
+      <p className="mt-3 text-sm text-slate-600">Choose a password, then confirm this invitation to activate your organization membership.</p>
+      {!passwordSaved ? <form onSubmit={event => void savePasswordAndAccept(event)} className="mt-5 space-y-3">
+        <label className="block text-sm font-medium text-slate-700" htmlFor="employee-invitation-password">New password
+          <input id="employee-invitation-password" type="password" autoComplete="new-password" required minLength={12}
+            value={password} onChange={event => setPassword(event.target.value)}
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3" />
+        </label>
+        <label className="block text-sm font-medium text-slate-700" htmlFor="employee-invitation-password-confirm">Confirm password
+          <input id="employee-invitation-password-confirm" type="password" autoComplete="new-password" required minLength={12}
+            value={confirmation} onChange={event => setConfirmation(event.target.value)}
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3" />
+        </label>
+        {error && <p role="alert" className="text-sm text-rose-800">{error}</p>}
+        <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+          {busy ? 'Saving password and activating…' : 'Save password and activate access'}
+        </button>
+      </form> : <div className="mt-5 space-y-3">
+        {error && <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+        <button type="button" disabled={busy} onClick={() => void completeInvitation()}
+          className="min-h-11 w-full rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+          {busy ? 'Activating access…' : 'Retry employee activation'}
+        </button>
+      </div>}
+    </section>
+  </main>;
+}
+
 export function LiveApp({ preview }: { preview: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
@@ -248,6 +328,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
   const lastAccessUserId = useRef<string | null>(null);
   const [error, setError] = useState('');
   const platformInvitationId = new URLSearchParams(window.location.search).get('platform_invitation') || '';
+  const employeeInvitationId = new URLSearchParams(window.location.search).get('employee_invitation') || '';
   const [invitationAcceptance, setInvitationAcceptance] = useState<{
     id: string; status: 'accepting' | 'accepted' | 'error';
     tenantName?: string; tenantActive?: boolean;
@@ -377,8 +458,10 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
         if (adminResult.error) throw adminResult.error;
 
         const mine = (memberResult.data || []).filter(m => m.status.toLowerCase() === 'active');
+        const activeMembershipTenantIds = new Set(mine.map(m => m.tenant_id));
         const ownedTenantIds = (employeeResult.data || [])
-          .filter(e => !['resigned','terminated'].includes(e.employment_status))
+          .filter(e => activeMembershipTenantIds.has(e.tenant_id)
+            && !['resigned','terminated'].includes(e.employment_status))
           .map(e => e.tenant_id);
         const permissionIds = [
           'dashboard.view', 'attendance.view', 'attendance.manage', 'reports.view',
@@ -528,8 +611,22 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
       );
     }
     return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError}
-      contextMessage={platformInvitationId ? 'Sign in with the same email address that received the platform invitation. The invitation will be checked after sign-in.' : undefined}
+      contextMessage={employeeInvitationId
+        ? 'Open the employee invitation email link to confirm your email and activate your employee access.'
+        : platformInvitationId
+          ? 'Sign in with the same email address that received the platform invitation. The invitation will be checked after sign-in.'
+          : undefined}
       onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
+  }
+  if (employeeInvitationId) {
+    return <EmployeeInvitationAcceptance invitationId={employeeInvitationId} onAccepted={acceptedTenantId => {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('employee_invitation');
+      window.history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+      setTenantId(acceptedTenantId);
+      setView('employee');
+      setRefreshKey(key => key + 1);
+    }} />;
   }
   if (platformInvitationId) {
     if (!invitationAcceptance || invitationAcceptance.id !== platformInvitationId

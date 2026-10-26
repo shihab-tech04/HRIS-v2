@@ -76,7 +76,13 @@ const createdUserIds = [];
 const uploadedPaths = [];
 const invitationIds = [];
 const invitationTenantIds = [];
+const employeeInvitationIds = [];
+const employeeIds = [];
+const screeningJobIds = [];
+const screeningApplicationIds = [];
+const screeningCvIds = [];
 let createdBucket = false;
+let directEmployeeEmail = null;
 const password = randomBytes(24).toString('base64url');
 const tenantA = '11111111-1111-4111-8111-111111111111';
 const tenantB = '22222222-2222-4222-8222-222222222222';
@@ -132,6 +138,19 @@ try {
     + "AND permission_id='organization.manage');");
   applySql('supabase/migrations/20261024220001_platform_tenant_invitations.sql');
   applySql('supabase/migrations/20261026000100_platform_tenant_security_certification.sql');
+  psql("ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS application_deadline date;"
+    + "ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS required_documents text[] NOT NULL DEFAULT '{}';"
+    + "ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS screening_questions jsonb NOT NULL DEFAULT '[]'::jsonb;"
+    + "ALTER TABLE public.job_applications ALTER COLUMN stage SET DEFAULT 'submitted';"
+    + "ALTER TABLE public.candidate_profiles ADD COLUMN IF NOT EXISTS full_name text;"
+    + "ALTER TABLE public.candidate_profiles ADD COLUMN IF NOT EXISTS email text;"
+    + "ALTER TABLE public.candidate_profiles ADD COLUMN IF NOT EXISTS phone text;"
+    + "ALTER TABLE public.candidate_profiles ADD COLUMN IF NOT EXISTS years_experience numeric;"
+    + "ALTER TABLE public.candidate_profiles ADD COLUMN IF NOT EXISTS skills text[] NOT NULL DEFAULT '{}';"
+    + "CREATE TABLE IF NOT EXISTS public.candidate_cvs(id uuid PRIMARY KEY,candidate_user_id uuid NOT NULL,document_url text);"
+    + "CREATE TABLE IF NOT EXISTS public.candidate_application_drafts(candidate_user_id uuid NOT NULL,job_id uuid NOT NULL,PRIMARY KEY(candidate_user_id,job_id));");
+  applySql('supabase/migrations/20261026060231_hris_employee_invitation.sql');
+  applySql('supabase/migrations/20261026060240_candidate_screening_answer_validation.sql');
   psql("NOTIFY pgrst, 'reload schema';");
   await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -172,6 +191,11 @@ try {
     'public.hris_get_tenant_dashboard_team_details(uuid,uuid,boolean,date)',
     'public.hris_save_learning_session(uuid,uuid,uuid,text,timestamptz,timestamptz,text,text,integer,timestamptz)',
     'public.hris_get_learning_session_roster(uuid,uuid)',
+    'public.hris_create_employee_invitation(uuid,uuid,text,text,text,date)',
+    'public.hris_mark_employee_invitation_sent(uuid,uuid)',
+    'public.hris_mark_employee_invitation_failed(uuid)',
+    'public.hris_accept_employee_invitation(uuid)',
+    'public.candidate_apply_to_job(uuid,jsonb)',
   ];
   const signatureSql = hostedRpcSignatures.map(sqlLiteral).join(',');
   const contractSql = "SELECT jsonb_build_object("
@@ -192,14 +216,25 @@ try {
     + " AND NOT has_function_privilege('anon','public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)','EXECUTE'),"
     + "'certification_private',NOT has_table_privilege('authenticated','private.platform_tenant_security_certifications','SELECT')"
     + " AND NOT has_table_privilege('anon','private.platform_tenant_security_certifications','SELECT'),"
-    + "'certification_guard',EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgname='platform_tenant_activation_requires_certification' AND NOT tgisinternal))::text;";
+    + "'certification_guard',EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgname='platform_tenant_activation_requires_certification' AND NOT tgisinternal),"
+    + "'employee_invite_private_table',NOT has_table_privilege('authenticated','private.hris_employee_invitations','SELECT')"
+    + " AND NOT has_table_privilege('anon','private.hris_employee_invitations','SELECT'),"
+    + "'employee_invite_service_only',NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE'),"
+    + "'employee_role', (SELECT count(*)=1 FROM public.roles WHERE active IS TRUE AND lower(btrim(name))='employee'),"
+    + "'screening_rpc',to_regprocedure('public.candidate_apply_to_job(uuid,jsonb)') IS NOT NULL"
+    + " AND has_function_privilege('authenticated','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE'))::text;";
   const contractState = JSON.parse(psql(contractSql));
-  const rpcContractsPass = hostedRpcSignatures.length === 36
+  const rpcContractsPass = hostedRpcSignatures.length === 41
     && contractState.missing_signatures.length === 0
     && contractState.anonymous_execute.length === 0
     && contractState.authenticated_missing.length === 0
     && contractState.private_roster === true;
-  record('All 36 forward-ported public RPC signatures have authenticated execution and anonymous access is denied',
+  record('All 41 forward-ported public RPC signatures have authenticated execution and anonymous access is denied',
     rpcContractsPass, JSON.stringify(contractState));
   if (!rpcContractsPass || Object.entries(contractState).some(([key, value]) => key !== 'missing_signatures'
     && key !== 'anonymous_execute' && key !== 'authenticated_missing' && value !== true)) {
@@ -227,6 +262,7 @@ try {
     recruiterB: 'release-recruiter-b-' + suffix + '@hris.test',
     superAdmin: 'release-super-admin-' + suffix + '@hris.test',
     securityCertifier: 'release-security-certifier-' + suffix + '@hris.test',
+    employeeManager: 'release-employee-manager-' + suffix + '@hris.test',
   };
   const users = {};
   for (const key of Object.keys(emails)) {
@@ -254,15 +290,116 @@ try {
     + "(" + sqlLiteral(users.securityCertifier.id) + "::uuid,'Synthetic release security certifier',true,true);"
     + "INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status) VALUES "
     + "(" + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(users.recruiterA.id) + "::uuid,'qa_tenant_recruitment_manager_a','active'),"
-    + "(" + sqlLiteral(tenantB) + "::uuid," + sqlLiteral(users.recruiterB.id) + "::uuid,'qa_tenant_manager_b','active');"
-    + "INSERT INTO public.candidate_profiles(user_id,tenant_id,profile_status,profile_data) VALUES "
-    + "(" + sqlLiteral(users.candidateA.id) + "::uuid," + sqlLiteral(tenantA) + "::uuid,'active','{}'::jsonb),"
-    + "(" + sqlLiteral(users.candidateB.id) + "::uuid," + sqlLiteral(tenantB) + "::uuid,'active','{}'::jsonb);"
+    + "(" + sqlLiteral(tenantB) + "::uuid," + sqlLiteral(users.recruiterB.id) + "::uuid,'qa_tenant_manager_b','active'),"
+    + "(" + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(users.employeeManager.id) + "::uuid,'hr_admin','active');"
+    + "INSERT INTO public.candidate_profiles(user_id,tenant_id,profile_status,profile_data,full_name,email,phone,years_experience,skills) VALUES "
+    + "(" + sqlLiteral(users.candidateA.id) + "::uuid," + sqlLiteral(tenantA) + "::uuid,'active','{}'::jsonb,'Synthetic Release Candidate'," + sqlLiteral(emails.candidateA) + ",'555-0101',4,ARRAY['sql']),"
+    + "(" + sqlLiteral(users.candidateB.id) + "::uuid," + sqlLiteral(tenantB) + "::uuid,'active','{}'::jsonb,'Synthetic Candidate B'," + sqlLiteral(emails.candidateB) + ",'555-0102',2,ARRAY['design']);"
     + "INSERT INTO public.jobs(id,tenant_id,reference_number,title,status,is_published,is_active) VALUES "
     + "(" + sqlLiteral(jobId) + "::uuid," + sqlLiteral(tenantA) + "::uuid,'QA-RELEASE-1','Synthetic HRIS Release Role','published',true,true);"
     + "INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,stage,applied_at) VALUES "
     + "(" + sqlLiteral(applicationId) + "::uuid," + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(jobId) + "::uuid,"
     + sqlLiteral(users.candidateA.id) + "::uuid,'Synthetic Release Candidate'," + sqlLiteral(emails.candidateA) + ",'submitted',now());");
+
+  const employeeEmail = 'release-employee-' + suffix + '@hris.test';
+  const employeeNumber = 'E-' + suffix.replaceAll('-', '').slice(0, 12).toUpperCase();
+  const employeeRequestId = randomUUID();
+  const employeeCreateArgs = {
+    p_tenant_id: tenantA,
+    p_request_id: employeeRequestId,
+    p_employee_number: employeeNumber,
+    p_full_name: 'Synthetic Release Employee',
+    p_email: employeeEmail,
+    p_joining_date: '2026-11-01',
+  };
+  const unauthorizedEmployeeCreate = await clients.candidateA.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  const crossTenantEmployeeCreate = await clients.employeeManager.rpc('hris_create_employee_invitation', {
+    ...employeeCreateArgs, p_tenant_id: tenantB, p_request_id: randomUUID(),
+  });
+  const createdEmployeeInvitation = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  if (createdEmployeeInvitation.error || typeof createdEmployeeInvitation.data?.invitation_id !== 'string'
+    || typeof createdEmployeeInvitation.data?.employee_id !== 'string') {
+    throw createdEmployeeInvitation.error || new Error('Tenant HR manager could not create a persistent employee invitation.');
+  }
+  const employeeInvitationId = createdEmployeeInvitation.data.invitation_id;
+  const employeeId = createdEmployeeInvitation.data.employee_id;
+  employeeInvitationIds.push(employeeInvitationId);
+  employeeIds.push(employeeId);
+  const employeeCreateReplay = await clients.employeeManager.rpc('hris_create_employee_invitation', employeeCreateArgs);
+  const duplicateEmployeeCreate = await clients.employeeManager.rpc('hris_create_employee_invitation', {
+    ...employeeCreateArgs, p_request_id: randomUUID(), p_email: 'release-employee-duplicate-' + suffix + '@hris.test',
+  });
+  directEmployeeEmail = 'direct-' + suffix + '@hris.test';
+  const directEmployeeInsert = await clients.employeeManager.from('employees').insert({
+    tenant_id: tenantA, employee_number: 'DIRECT-' + suffix.slice(0, 8),
+    full_name: 'Direct insert must be denied', official_email: directEmployeeEmail,
+    joining_date: '2026-11-01',
+  });
+  const employeeRows = await admin.from('employees').select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantA).eq('official_email', employeeEmail);
+  record('Tenant HR manager creates one persistent employee and retries reuse its invitation idempotently',
+    !createdEmployeeInvitation.error && employeeCreateReplay.data?.invitation_id === employeeInvitationId
+      && employeeCreateReplay.data?.employee_id === employeeId
+      && employeeCreateReplay.data?.idempotent === true
+      && employeeRows.count === 1 && Boolean(duplicateEmployeeCreate.error)
+      && unauthorizedEmployeeCreate.error?.code === '42501'
+      && crossTenantEmployeeCreate.error?.code === '42501'
+      && Boolean(directEmployeeInsert.error),
+    JSON.stringify({ persistedRows: employeeRows.count,
+      idempotentReplay: employeeCreateReplay.data?.idempotent === true,
+      duplicateDenied: Boolean(duplicateEmployeeCreate.error),
+      unauthorizedDenied: unauthorizedEmployeeCreate.error?.code === '42501',
+      crossTenantDenied: crossTenantEmployeeCreate.error?.code === '42501',
+      directInsertDenied: Boolean(directEmployeeInsert.error) }));
+
+  const employeeAuthInvitation = await admin.auth.admin.inviteUserByEmail(employeeEmail);
+  if (employeeAuthInvitation.error || !employeeAuthInvitation.data.user?.id) {
+    throw employeeAuthInvitation.error || new Error('Local Auth did not create the synthetic employee invitee.');
+  }
+  const employeeInvitee = employeeAuthInvitation.data.user;
+  createdUserIds.push(employeeInvitee.id);
+  const employeeSent = await admin.rpc('hris_mark_employee_invitation_sent', {
+    p_invitation_id: employeeInvitationId, p_auth_user_id: employeeInvitee.id,
+  });
+  const authenticatedMarkSent = await clients.employeeManager.rpc('hris_mark_employee_invitation_sent', {
+    p_invitation_id: employeeInvitationId, p_auth_user_id: employeeInvitee.id,
+  });
+  const wrongEmployeeAcceptance = await clients.candidateA.rpc('hris_accept_employee_invitation', {
+    p_invitation_id: employeeInvitationId,
+  });
+  const employeePassword = await admin.auth.admin.updateUserById(employeeInvitee.id, {
+    email_confirm: true, password,
+  });
+  if (employeePassword.error) throw employeePassword.error;
+  const employeeInviteeClient = createClient(services.API_URL, services.ANON_KEY, authOptions);
+  const employeeInviteeSession = await employeeInviteeClient.auth.signInWithPassword({ email: employeeEmail, password });
+  if (employeeInviteeSession.error || !employeeInviteeSession.data.user) {
+    throw employeeInviteeSession.error || new Error('Synthetic employee invitee did not receive a local Auth session.');
+  }
+  const acceptedEmployee = await employeeInviteeClient.rpc('hris_accept_employee_invitation', {
+    p_invitation_id: employeeInvitationId,
+  });
+  const replayedEmployeeAcceptance = await employeeInviteeClient.rpc('hris_accept_employee_invitation', {
+    p_invitation_id: employeeInvitationId,
+  });
+  const employeeLink = await admin.from('employees').select('id,user_id').eq('id', employeeId).single();
+  const employeeMembership = await admin.from('tenant_memberships').select('role,status')
+    .eq('tenant_id', tenantA).eq('user_id', employeeInvitee.id).single();
+  const employeeRoleName = await admin.from('roles').select('name').eq('id', employeeMembership.data?.role || '').single();
+  record('Employee invitation is service-delivered, email-confirmed, tenant-scoped, and replay-safe',
+    employeeSent.data === true && Boolean(authenticatedMarkSent.error)
+      && wrongEmployeeAcceptance.error?.code === '42501'
+      && acceptedEmployee.data?.accepted === true && acceptedEmployee.data?.tenant_id === tenantA
+      && replayedEmployeeAcceptance.data?.idempotent === true
+      && employeeLink.data?.user_id === employeeInvitee.id
+      && employeeMembership.data?.status === 'active'
+      && employeeRoleName.data?.name === 'Employee',
+    JSON.stringify({ sent: employeeSent.data === true,
+      clientCannotMarkSent: Boolean(authenticatedMarkSent.error),
+      wrongAccountDenied: wrongEmployeeAcceptance.error?.code === '42501',
+      accepted: acceptedEmployee.data?.accepted === true,
+      replaySafe: replayedEmployeeAcceptance.data?.idempotent === true,
+      activeEmployeeRole: employeeMembership.data?.status === 'active' && employeeRoleName.data?.name === 'Employee' }));
 
   const invitationEmail = 'release-invitee-' + suffix + '@hris.test';
   const invitationCreated = await clients.superAdmin.rpc('platform_hris_create_tenant_invitation', {
@@ -432,6 +569,104 @@ try {
     if (uploaded.error) throw uploaded.error;
     uploadedPaths.push(objectPath);
   }
+  const screeningCvA = randomUUID();
+  const screeningCvB = randomUUID();
+  screeningCvIds.push(screeningCvA, screeningCvB);
+  psql("INSERT INTO public.candidate_cvs(id,candidate_user_id,document_url) VALUES "
+    + "(" + sqlLiteral(screeningCvA) + "::uuid," + sqlLiteral(users.candidateA.id) + "::uuid," + sqlLiteral(pathA) + "),"
+    + "(" + sqlLiteral(screeningCvB) + "::uuid," + sqlLiteral(users.candidateB.id) + "::uuid," + sqlLiteral(pathB) + ");");
+
+  const screeningQuestions = [
+    { id: 'q-short', questionText: 'Short response', type: 'short_text', required: true },
+    { id: 'q-long', questionText: 'Long response', type: 'long_text', required: true },
+    { id: 'q-number', questionText: 'Years', type: 'number', required: true },
+    { id: 'q-yes-no', questionText: 'Available', type: 'yes_no', required: true },
+    { id: 'q-single', questionText: 'Work mode', type: 'single_select', required: true, options: ['Remote', 'Hybrid'] },
+    { id: 'q-multi', questionText: 'Languages', type: 'multi_select', required: true, options: ['English', 'Bangla'] },
+    { id: 'q-date', questionText: 'Start date', type: 'date', required: true },
+  ];
+  const screeningAnswers = [
+    { questionId: 'q-short', answer: 'Short answer' },
+    { questionId: 'q-long', answer: 'A longer answer.' },
+    { questionId: 'q-number', answer: 0 },
+    { questionId: 'q-yes-no', answer: 'No' },
+    { questionId: 'q-single', answer: 'Remote' },
+    { questionId: 'q-multi', answer: ['English', 'Bangla'] },
+    { questionId: 'q-date', answer: '2026-10-26' },
+  ];
+  function createScreeningJob(questions) {
+    const id = randomUUID();
+    screeningJobIds.push(id);
+    psql("INSERT INTO public.jobs(id,tenant_id,reference_number,title,status,is_published,is_active,required_documents,screening_questions) VALUES ("
+      + sqlLiteral(id) + "::uuid," + sqlLiteral(tenantA) + "::uuid," + sqlLiteral('QA-SCREEN-' + id.slice(0, 8))
+      + ",'Synthetic Screening Role','published',true,true,'{}'," + sqlLiteral(JSON.stringify(questions)) + "::jsonb);");
+    return id;
+  }
+  async function submitScreeningApplication(client, candidateCvId, screeningJobId, answers) {
+    return client.rpc('candidate_apply_to_job', {
+      p_job_id: screeningJobId,
+      p_payload: {
+        selected_cv_id: candidateCvId,
+        full_name: 'Synthetic Release Candidate',
+        phone: '555-0101',
+        years_experience: 4,
+        skills: ['sql'],
+        answers,
+        document_ids: [],
+        required_document_map: {},
+        declarations: { accuracyCertified: true, recruitmentDataConsent: true },
+      },
+    });
+  }
+  const validScreeningJob = createScreeningJob(screeningQuestions);
+  const validScreeningSubmission = await submitScreeningApplication(
+    clients.candidateA, screeningCvA, validScreeningJob, screeningAnswers,
+  );
+  if (validScreeningSubmission.error || typeof validScreeningSubmission.data !== 'string') {
+    throw validScreeningSubmission.error || new Error('A valid all-types screening submission was rejected.');
+  }
+  screeningApplicationIds.push(validScreeningSubmission.data);
+  const screeningApplication = await admin.from('job_applications').select('application_data')
+    .eq('id', validScreeningSubmission.data).single();
+  const crossTenantScreening = await submitScreeningApplication(
+    clients.candidateB, screeningCvB, validScreeningJob, screeningAnswers,
+  );
+  const invalidScreeningCases = [
+    ['unknown question ID', screeningQuestions, [...screeningAnswers, { questionId: 'unknown-question', answer: 'x' }]],
+    ['duplicate question answer', screeningQuestions, [...screeningAnswers, { questionId: 'q-short', answer: 'duplicate' }]],
+    ['wrong numeric answer type', screeningQuestions, screeningAnswers.map(answer => answer.questionId === 'q-number'
+      ? { ...answer, answer: '0' } : answer)],
+    ['unlisted single-select value', screeningQuestions, screeningAnswers.map(answer => answer.questionId === 'q-single'
+      ? { ...answer, answer: 'Office' } : answer)],
+    ['unlisted multi-select value', screeningQuestions, screeningAnswers.map(answer => answer.questionId === 'q-multi'
+      ? { ...answer, answer: ['English', 'French'] } : answer)],
+    ['duplicate multi-select value', screeningQuestions, screeningAnswers.map(answer => answer.questionId === 'q-multi'
+      ? { ...answer, answer: ['English', 'English'] } : answer)],
+    ['missing required answer', screeningQuestions, screeningAnswers.filter(answer => answer.questionId !== 'q-date')],
+    ['invalid persisted question type', screeningQuestions.map(question => question.id === 'q-short'
+      ? { ...question, type: 'client_only_type' } : question), screeningAnswers],
+  ];
+  const rejectedScreeningResults = [];
+  for (const [label, questions, answers] of invalidScreeningCases) {
+    const testJob = createScreeningJob(questions);
+    const attempt = await submitScreeningApplication(clients.candidateA, screeningCvA, testJob, answers);
+    rejectedScreeningResults.push({ label, rejected: Boolean(attempt.error) });
+  }
+  const rejectedApplicationRows = await admin.from('job_applications').select('id')
+    .in('job_id', screeningJobIds);
+  const screeningPassed = screeningApplication.data?.application_data?.answers?.length === 7
+    && crossTenantScreening.error?.code === '42501'
+    && rejectedScreeningResults.length === invalidScreeningCases.length
+    && rejectedScreeningResults.every(result => result.rejected)
+    && (rejectedApplicationRows.data || []).length === 1
+    && rejectedApplicationRows.data?.[0]?.id === validScreeningSubmission.data;
+  record('Candidate screening accepts all seven valid types and rejects malformed, unknown, duplicate, unlisted, missing, and cross-tenant submissions',
+    screeningPassed,
+    JSON.stringify({ validAnswerCount: screeningApplication.data?.application_data?.answers?.length || 0,
+      rejected: rejectedScreeningResults,
+      crossTenantDenied: crossTenantScreening.error?.code === '42501',
+      noPartialInvalidApplications: (rejectedApplicationRows.data || []).length === 1 }));
+
   const registered = await clients.candidateA.rpc('candidate_add_application_document', {
     p_title: 'Synthetic identity document', p_file_name: 'identity.pdf',
     p_file_path: pathA, p_content_type: 'application/pdf',
@@ -581,6 +816,31 @@ try {
       + "DELETE FROM private.platform_tenant_security_certifications WHERE tenant_id IN (" + tenantSql + ");"
       + "DELETE FROM public.tenant_memberships WHERE tenant_id IN (" + tenantSql + ");"
       + "DELETE FROM public.tenants WHERE id IN (" + tenantSql + ");");
+  }
+  if (employeeInvitationIds.length) {
+    const employeeInvitationSql = employeeInvitationIds.map(sqlLiteral).join(',');
+    const employeeSql = employeeIds.map(sqlLiteral).join(',');
+    psql("DELETE FROM public.admin_audit_logs WHERE target_type='employee' AND target_id IN (" + employeeSql + ");"
+      + "DELETE FROM private.hris_employee_invitations WHERE id IN (" + employeeInvitationSql + ");"
+      + "DELETE FROM public.employees WHERE id IN (" + employeeSql + ");");
+  }
+  if (directEmployeeEmail) {
+    psql("DELETE FROM public.employees WHERE official_email=" + sqlLiteral(directEmployeeEmail) + ";");
+  }
+  if (screeningApplicationIds.length) {
+    const applicationSql = screeningApplicationIds.map(sqlLiteral).join(',');
+    psql("DELETE FROM public.candidate_notifications WHERE related_application_id IN (" + applicationSql + ");"
+      + "DELETE FROM public.candidate_application_stage_history WHERE application_id IN (" + applicationSql + ");"
+      + "DELETE FROM public.job_applications WHERE id IN (" + applicationSql + ");");
+  }
+  if (screeningJobIds.length) {
+    const jobSql = screeningJobIds.map(sqlLiteral).join(',');
+    psql("DELETE FROM public.job_applications WHERE job_id IN (" + jobSql + ");"
+      + "DELETE FROM public.candidate_application_drafts WHERE job_id IN (" + jobSql + ");"
+      + "DELETE FROM public.jobs WHERE id IN (" + jobSql + ");");
+  }
+  if (screeningCvIds.length) {
+    psql("DELETE FROM public.candidate_cvs WHERE id IN (" + screeningCvIds.map(sqlLiteral).join(',') + ");");
   }
   if (createdUserIds.length) {
     psql("DELETE FROM public.candidate_notifications WHERE related_application_id=" + sqlLiteral(applicationId) + "::uuid;"

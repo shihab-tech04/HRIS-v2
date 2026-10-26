@@ -241,7 +241,13 @@ async function openWorkspace(page: import('@playwright/test').Page, mode: Mode) 
         designation_title: 'Designer', department_name: 'Product' }, dashboard_date: '2026-10-13',
       attendance: { records: [], corrections: [] }, balances: [], requests: [], leave_types: [], holidays: [], weekly_off_days: [0, 6],
     }) });
-    if (endpoint === 'tenant_memberships') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(['ordinary-admin', 'ordinary-manager'].includes(mode) ? [{ tenant_id: tenantId, role: mode === 'ordinary-admin' ? 'qa_tenant_admin' : 'qa_tenant_manager', status: 'active' }] : []) });
+    if (endpoint === 'tenant_memberships') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(
+      ['ordinary-admin', 'ordinary-manager'].includes(mode)
+        ? [{ tenant_id: tenantId, role: mode === 'ordinary-admin' ? 'qa_tenant_admin' : 'qa_tenant_manager', status: 'active' }]
+        : ['project-manager', 'employee'].includes(mode)
+          ? [{ tenant_id: tenantId, role: 'employee', status: 'active' }]
+          : [],
+    ) });
     if (endpoint === 'employees') {
       const select = url.searchParams.get('select') || '';
       const linkedEmployee = ['project-manager', 'employee'].includes(mode) && select.includes('employment_status');

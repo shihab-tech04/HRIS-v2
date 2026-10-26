@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Download, Pencil, RefreshCw, Save, Search, Users, X } from 'lucide-react';
+import { Download, Pencil, RefreshCw, Save, Search, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { createEmployeeInvitation } from './employeeInvitationApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import { activateModalFocusTrap } from './modal-focus';
@@ -43,6 +44,20 @@ const EMPTY_CONTACT_DRAFT: ContactDraft = {
   mailing_address: '', emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relation: '',
 };
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type EmployeeInvitationDraft = {
+  request_id: string;
+  employee_number: string;
+  full_name: string;
+  email: string;
+  joining_date: string;
+};
+function newEmployeeInvitationDraft(): EmployeeInvitationDraft {
+  return {
+    request_id: crypto.randomUUID(),
+    employee_number: '', full_name: '', email: '',
+    joining_date: new Date().toISOString().slice(0, 10),
+  };
+}
 
 function contactDraftFrom(details: EmployeeContactDetails): ContactDraft {
   return {
@@ -110,6 +125,12 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
   const [contactError, setContactError] = useState('');
   const [contactSuccess, setContactSuccess] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
+  const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
+  const [employeeInvitationDraft, setEmployeeInvitationDraft] = useState<EmployeeInvitationDraft>(newEmployeeInvitationDraft);
+  const [employeeInvitationBusy, setEmployeeInvitationBusy] = useState(false);
+  const [employeeInvitationAttempted, setEmployeeInvitationAttempted] = useState(false);
+  const [employeeInvitationError, setEmployeeInvitationError] = useState('');
+  const [employeeInvitationSuccess, setEmployeeInvitationSuccess] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestSequence = useRef(0);
@@ -139,6 +160,12 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
     setContactDraft(EMPTY_CONTACT_DRAFT);
     setContactError('');
     setContactSuccess(false);
+    setAddEmployeeOpen(false);
+    setEmployeeInvitationDraft(newEmployeeInvitationDraft());
+    setEmployeeInvitationBusy(false);
+    setEmployeeInvitationAttempted(false);
+    setEmployeeInvitationError('');
+    setEmployeeInvitationSuccess('');
   }, [tenantId]);
 
   useEffect(() => {
@@ -229,6 +256,50 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
     setAppliedDepartmentId(departmentId);
     setAppliedTeamId(teamId);
     setAppliedStatus(status);
+  }
+
+  async function submitEmployeeInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!employeesManage || employeeInvitationBusy) return;
+    const draft = employeeInvitationDraft;
+    const employeeNumber = draft.employee_number.trim();
+    const fullName = draft.full_name.trim();
+    const email = draft.email.trim();
+    if (!employeeNumber || employeeNumber.length > 32 || !fullName || fullName.length > 160
+      || !EMAIL_PATTERN.test(email) || !draft.joining_date) {
+      setEmployeeInvitationError('Enter a valid employee number, name, email, and joining date.');
+      return;
+    }
+    setEmployeeInvitationBusy(true);
+    setEmployeeInvitationAttempted(true);
+    setEmployeeInvitationError('');
+    setEmployeeInvitationSuccess('');
+    const requestTenant = tenantId;
+    try {
+      const result = await createEmployeeInvitation({
+        tenantId: requestTenant,
+        requestId: draft.request_id,
+        employeeNumber,
+        fullName,
+        email,
+        joiningDate: draft.joining_date,
+      });
+      if (activeTenantId.current !== requestTenant) return;
+      setEmployeeInvitationSuccess(result.alreadySent
+        ? 'The employee invitation was already sent.'
+        : 'Employee record saved and invitation email sent.');
+      setAddEmployeeOpen(false);
+      setEmployeeInvitationDraft(newEmployeeInvitationDraft());
+      setEmployeeInvitationAttempted(false);
+      setRevision(value => value + 1);
+    } catch (cause) {
+      if (activeTenantId.current !== requestTenant) return;
+      setEmployeeInvitationError(cause instanceof Error
+        ? cause.message
+        : 'The employee record or invitation could not be saved. Retry with the same form to avoid creating a duplicate.');
+    } finally {
+      if (activeTenantId.current === requestTenant) setEmployeeInvitationBusy(false);
+    }
   }
 
   function exportPage() {
@@ -360,6 +431,8 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       const code = cause && typeof cause === 'object' && 'code' in cause ? String(cause.code) : '';
       setContactError(code === '23505'
         ? 'That official email is already used in this organization.'
+        : code === '55000' && String(cause instanceof Error ? cause.message : '').includes('invitation')
+          ? 'The official email cannot change while this employee invitation is pending.'
         : code === '22023'
           ? 'Enter a valid official email and a valid personal email when provided.'
           : isContactApiUnavailable(cause)
@@ -377,6 +450,15 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
         <p className="mt-1 text-sm text-slate-500">{tx('Authorized employee records for your current organization.')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
+        {employeesManage && <button type="button" aria-expanded={addEmployeeOpen}
+          aria-controls="employee-invitation-form" onClick={() => {
+            setAddEmployeeOpen(current => !current);
+            setEmployeeInvitationError('');
+            setEmployeeInvitationSuccess('');
+          }}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#085587] px-3 text-sm font-semibold text-white">
+          <UserPlus className="h-4 w-4" aria-hidden="true" /> {tx(addEmployeeOpen ? 'Close employee form' : 'Add employee')}
+        </button>}
         <button type="button" disabled={loading || employees.length === 0} onClick={exportPage}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:opacity-50">
           <Download className="h-4 w-4" aria-hidden="true" /> {tx('Export current page')}
@@ -387,6 +469,48 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
         </button>
       </div>
     </header>
+
+    {employeeInvitationSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx(employeeInvitationSuccess)}</p>}
+    {addEmployeeOpen && employeesManage && <form id="employee-invitation-form" onSubmit={event => void submitEmployeeInvitation(event)}
+      aria-labelledby="employee-invitation-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div>
+        <h3 id="employee-invitation-heading" className="text-lg font-semibold text-[#08263D]">{tx('Add employee and send invitation')}</h3>
+        <p className="mt-1 text-sm text-slate-600">{tx('The employee record is saved in this organization. Access starts after the invitee confirms their email and accepts the invitation.')}</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <label className="block text-sm font-medium text-slate-700">{tx('Employee number')}
+          <input required maxLength={32} autoComplete="off" disabled={employeeInvitationAttempted || employeeInvitationBusy} value={employeeInvitationDraft.employee_number}
+            onChange={event => setEmployeeInvitationDraft(current => ({ ...current, employee_number: event.target.value }))}
+            className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-normal" />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">{tx('Full name')}
+          <input required maxLength={160} autoComplete="name" disabled={employeeInvitationAttempted || employeeInvitationBusy} value={employeeInvitationDraft.full_name}
+            onChange={event => setEmployeeInvitationDraft(current => ({ ...current, full_name: event.target.value }))}
+            className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-normal" />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">{tx('Official email')}
+          <input required maxLength={320} type="email" autoComplete="email" disabled={employeeInvitationAttempted || employeeInvitationBusy} value={employeeInvitationDraft.email}
+            onChange={event => setEmployeeInvitationDraft(current => ({ ...current, email: event.target.value }))}
+            className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-normal" />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">{tx('Joining date')}
+          <input required type="date" disabled={employeeInvitationAttempted || employeeInvitationBusy} value={employeeInvitationDraft.joining_date}
+            onChange={event => setEmployeeInvitationDraft(current => ({ ...current, joining_date: event.target.value }))}
+            className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-normal" />
+        </label>
+      </div>
+      {employeeInvitationError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{tx(employeeInvitationError)}</p>}
+      {employeeInvitationAttempted && employeeInvitationError && <p className="text-sm text-slate-600">{tx('This invitation may already be saved. Retry without changing these details.')}</p>}
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" disabled={employeeInvitationBusy} onClick={() => setAddEmployeeOpen(false)}
+          className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium disabled:opacity-50">{tx('Cancel')}</button>
+        <button type="submit" disabled={employeeInvitationBusy}
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
+          <UserPlus className="h-4 w-4" aria-hidden="true" />
+          {tx(employeeInvitationBusy ? 'Saving and sending…' : 'Save employee and send invitation')}
+        </button>
+      </div>
+    </form>}
 
     <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_220px_220px_200px_auto]">
       <label className="relative block text-xs font-medium text-slate-600">
