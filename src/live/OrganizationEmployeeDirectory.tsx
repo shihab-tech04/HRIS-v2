@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Download, Pencil, RefreshCw, Save, Search, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { createEmployeeInvitation } from './employeeInvitationApi';
+import { createEmployeeInvitation, reissueEmployeeInvitation } from './employeeInvitationApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
 import { activateModalFocusTrap } from './modal-focus';
@@ -16,6 +16,7 @@ type EmployeeRow = {
   designation_title: string | null;
   team_name: string | null;
   employment_status: string;
+  invitation?: { id: string; status: string; expires_at: string } | null;
 };
 type DirectoryPayload = {
   employees?: EmployeeRow[];
@@ -131,6 +132,10 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
   const [employeeInvitationAttempted, setEmployeeInvitationAttempted] = useState(false);
   const [employeeInvitationError, setEmployeeInvitationError] = useState('');
   const [employeeInvitationSuccess, setEmployeeInvitationSuccess] = useState('');
+  const [employeeReissueError, setEmployeeReissueError] = useState('');
+  const [employeeReissueSuccess, setEmployeeReissueSuccess] = useState('');
+  const [reissuingEmployeeId, setReissuingEmployeeId] = useState('');
+  const reissueRequestIds = useRef(new Map<string, string>());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestSequence = useRef(0);
@@ -166,6 +171,10 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
     setEmployeeInvitationAttempted(false);
     setEmployeeInvitationError('');
     setEmployeeInvitationSuccess('');
+    setEmployeeReissueError('');
+    setEmployeeReissueSuccess('');
+    setReissuingEmployeeId('');
+    reissueRequestIds.current.clear();
   }, [tenantId]);
 
   useEffect(() => {
@@ -294,11 +303,48 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       setRevision(value => value + 1);
     } catch (cause) {
       if (activeTenantId.current !== requestTenant) return;
-      setEmployeeInvitationError(cause instanceof Error
-        ? cause.message
-        : 'The employee record or invitation could not be saved. Retry with the same form to avoid creating a duplicate.');
+      const message = cause instanceof Error ? cause.message : '';
+      setEmployeeInvitationError(/already uses this email/i.test(message)
+        ? 'An employee record already uses this email in this organization.'
+        : /management access|authorized/i.test(message)
+          ? 'Employee-management access for this organization is required.'
+          : /valid employee|employee number/i.test(message)
+            ? 'Enter a valid employee number, name, email, and joining date.'
+            : 'Employee invitation could not be completed. Retry with the same employee details or refresh the directory.');
     } finally {
       if (activeTenantId.current === requestTenant) setEmployeeInvitationBusy(false);
+    }
+  }
+
+
+  async function resendEmployeeInvitation(employee: EmployeeRow) {
+    if (!employeesManage || !employee.invitation
+      || !['expired', 'failed'].includes(employee.invitation.status)
+      || reissuingEmployeeId) return;
+    const requestTenant = tenantId;
+    const requestId = reissueRequestIds.current.get(employee.employee_id) || crypto.randomUUID();
+    reissueRequestIds.current.set(employee.employee_id, requestId);
+    setReissuingEmployeeId(employee.employee_id);
+    setEmployeeReissueError('');
+    setEmployeeReissueSuccess('');
+    try {
+      const result = await reissueEmployeeInvitation({
+        tenantId: requestTenant,
+        employeeId: employee.employee_id,
+        requestId,
+      });
+      if (activeTenantId.current !== requestTenant) return;
+      reissueRequestIds.current.delete(employee.employee_id);
+      setEmployeeReissueSuccess(result.alreadySent
+        ? 'Employee invitation was already sent.'
+        : 'Employee invitation reissued and email sent.');
+      setRevision(value => value + 1);
+    } catch {
+      if (activeTenantId.current !== requestTenant) return;
+      setEmployeeReissueError('The employee invitation could not be reissued. Refresh the directory and try again.');
+      setRevision(value => value + 1);
+    } finally {
+      if (activeTenantId.current === requestTenant) setReissuingEmployeeId('');
     }
   }
 
@@ -471,6 +517,8 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
     </header>
 
     {employeeInvitationSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx(employeeInvitationSuccess)}</p>}
+    {employeeReissueSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{tx(employeeReissueSuccess)}</p>}
+    {employeeReissueError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{tx(employeeReissueError)}</p>}
     {addEmployeeOpen && employeesManage && <form id="employee-invitation-form" onSubmit={event => void submitEmployeeInvitation(event)}
       aria-labelledby="employee-invitation-heading" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div>
@@ -573,6 +621,14 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
                 <span className="w-fit shrink-0 rounded-full bg-[#EFF7F8] px-2.5 py-1 text-xs font-medium text-[#085587]">{statusLabel(employee.employment_status, locale)}</span></div>
               <p className="break-words text-sm text-slate-700">{employee.designation_title || tx('Designation unavailable')}</p>
               <p className="break-words text-xs text-slate-500">{employee.department_name || tx('No department')} · {employee.team_name || tx('No team')}</p>
+              {employeesManage && employee.invitation && ['expired', 'failed'].includes(employee.invitation.status) && <>
+                <p className="text-xs font-medium text-amber-800">{tx(employee.invitation.status === 'expired' ? 'Invitation expired' : 'Invitation delivery failed')}</p>
+                <button type="button" disabled={reissuingEmployeeId === employee.employee_id || Boolean(reissuingEmployeeId)}
+                  onClick={() => void resendEmployeeInvitation(employee)}
+                  className="min-h-10 rounded-md border border-[#085587] px-3 text-sm font-semibold text-[#085587] disabled:opacity-50">
+                  {tx(reissuingEmployeeId === employee.employee_id ? 'Sending…' : 'Resend invitation')}
+                </button>
+              </>}
               <button type="button" onClick={event => openEmployeeDetails(employee, event.currentTarget)}
                 aria-label={`${tx('View details for')} ${employee.full_name}`}
                 className="min-h-10 rounded-md border border-slate-300 px-3 text-sm font-medium text-[#085587]">{tx('View details')}</button>
@@ -589,9 +645,17 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
                   <td className="px-4 py-3 text-slate-600">{employee.designation_title || '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{employee.team_name || '—'}</td>
                   <td className="px-4 py-3"><span className="inline-flex rounded-full bg-[#EFF7F8] px-2.5 py-1 text-xs font-medium text-[#085587]">{statusLabel(employee.employment_status, locale)}</span></td>
-                  <td className="px-4 py-3"><button type="button" onClick={event => openEmployeeDetails(employee, event.currentTarget)}
-                    aria-label={`${tx('View details for')} ${employee.full_name}`}
-                    className="min-h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-[#085587]">{tx('View details')}</button></td>
+                  <td className="px-4 py-3"><div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={event => openEmployeeDetails(employee, event.currentTarget)}
+                      aria-label={`${tx('View details for')} ${employee.full_name}`}
+                      className="min-h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-[#085587]">{tx('View details')}</button>
+                    {employeesManage && employee.invitation && ['expired', 'failed'].includes(employee.invitation.status) && <button type="button"
+                      disabled={Boolean(reissuingEmployeeId)}
+                      onClick={() => void resendEmployeeInvitation(employee)}
+                      className="min-h-9 rounded-md border border-[#085587] px-2.5 text-xs font-semibold text-[#085587] disabled:opacity-50">
+                      {tx(reissuingEmployeeId === employee.employee_id ? 'Sending…' : 'Resend invitation')}
+                    </button>}
+                  </div></td>
                 </tr>)}</tbody>
               </table>
             </div>

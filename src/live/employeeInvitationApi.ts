@@ -41,6 +41,33 @@ export async function createEmployeeInvitation(input: CreateEmployeeInvitationIn
   return { invitationId: data.invitation_id, alreadySent: data.already_sent };
 }
 
+
+export type ReissueEmployeeInvitationInput = {
+  tenantId: string;
+  employeeId: string;
+  requestId: string;
+};
+
+export async function reissueEmployeeInvitation(input: ReissueEmployeeInvitationInput): Promise<{
+  invitationId: string;
+  alreadySent: boolean;
+}> {
+  const { data, error } = await supabase.functions.invoke('hris-employee-invite', {
+    body: {
+      mode: 'resend',
+      tenant_id: input.tenantId,
+      employee_id: input.employeeId,
+      request_id: input.requestId,
+    },
+  });
+  if (error) throw error;
+  if (!data || data.success !== true || typeof data.invitation_id !== 'string'
+    || (data.already_sent !== true && data.already_sent !== false)) {
+    throw new Error('The employee invitation could not be reissued.');
+  }
+  return { invitationId: data.invitation_id, alreadySent: data.already_sent };
+}
+
 export async function acceptEmployeeInvitation(
   invitationId: string,
 ): Promise<AcceptedEmployeeInvitation> {

@@ -192,6 +192,7 @@ try {
     'public.hris_save_learning_session(uuid,uuid,uuid,text,timestamptz,timestamptz,text,text,integer,timestamptz)',
     'public.hris_get_learning_session_roster(uuid,uuid)',
     'public.hris_create_employee_invitation(uuid,uuid,text,text,text,date)',
+    'public.hris_reissue_employee_invitation(uuid,uuid,uuid)',
     'public.hris_accept_employee_invitation(uuid)',
     'public.candidate_apply_to_job(uuid,jsonb)',
   ];
@@ -208,6 +209,14 @@ try {
     + " AND has_function_privilege('service_role','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE'),"
     + "'invite_private_table',NOT has_table_privilege('authenticated','private.platform_tenant_invitations','SELECT')"
     + " AND NOT has_table_privilege('anon','private.platform_tenant_invitations','SELECT'),"
+    + "'employee_invite_service_only',NOT has_function_privilege('authenticated','public.hris_recover_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.hris_recover_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.hris_recover_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('authenticated','public.hris_resolve_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.hris_resolve_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.hris_resolve_employee_invitation_auth_user_id(uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_sent(uuid,uuid)','EXECUTE')"
+    + " AND NOT has_function_privilege('authenticated','public.hris_mark_employee_invitation_failed(uuid)','EXECUTE'),"
     + "'certification_list',to_regprocedure('public.platform_hris_list_tenant_certifications()') IS NOT NULL,"
     + "'certification_write',to_regprocedure('public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)') IS NOT NULL"
     + " AND has_function_privilege('authenticated','public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)','EXECUTE')"
@@ -363,8 +372,15 @@ try {
   }
   const employeeInvitee = employeeAuthInvitation.data.user;
   createdUserIds.push(employeeInvitee.id);
+  const taggedInitialInvite = await admin.auth.admin.updateUserById(employeeInvitee.id, {
+    app_metadata: {
+      ...(employeeInvitee.app_metadata || {}),
+      hris_employee_invitation_request_id: employeeRequestId,
+    },
+  });
+  if (taggedInitialInvite.error) throw taggedInitialInvite.error;
   // Simulate Auth invite success followed by an unsuccessful delivery-mark write.
-  // The still-pending invitation must recover only the exact invited identity.
+  // The pending invitation must recover only this exact request identity.
   const interruptedMarkSent = await admin.rpc('hris_mark_employee_invitation_sent', {
     p_invitation_id: employeeInvitationId, p_auth_user_id: randomUUID(),
   });
@@ -384,6 +400,64 @@ try {
   const wrongEmployeeAcceptance = await clients.candidateA.rpc('hris_accept_employee_invitation', {
     p_invitation_id: employeeInvitationId,
   });
+
+  // Expire the sent request in the disposable database and prove that a new
+  // request gets a fresh invitation ID while the previous ID stays unusable.
+  psql("UPDATE private.hris_employee_invitations SET expires_at=now()-interval '1 second' "
+    + "WHERE id=" + sqlLiteral(employeeInvitationId) + "::uuid;");
+  const employeeReissueRequestId = randomUUID();
+  const reissuedEmployeeInvitation = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
+  });
+  if (reissuedEmployeeInvitation.error || reissuedEmployeeInvitation.data?.status !== 'pending'
+    || reissuedEmployeeInvitation.data?.invitation_id === employeeInvitationId) {
+    throw reissuedEmployeeInvitation.error || new Error('An expired employee invitation did not create a fresh pending request.');
+  }
+  const employeeReissueId = reissuedEmployeeInvitation.data.invitation_id;
+  employeeInvitationIds.push(employeeReissueId);
+  const reissueReplay = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: employeeReissueRequestId,
+  });
+  const activeReissueDenied = await clients.employeeManager.rpc('hris_reissue_employee_invitation', {
+    p_tenant_id: tenantA, p_employee_id: employeeId, p_request_id: randomUUID(),
+  });
+  const staleInvitationRecovery = await admin.rpc(
+    'hris_recover_employee_invitation_auth_user_id',
+    { p_invitation_id: employeeInvitationId },
+  );
+  const clientCannotResolveAuthUser = await clients.employeeManager.rpc(
+    'hris_resolve_employee_invitation_auth_user_id',
+    { p_invitation_id: employeeReissueId },
+  );
+  const recoveryBeforeCurrentRequestTag = await admin.rpc(
+    'hris_recover_employee_invitation_auth_user_id',
+    { p_invitation_id: employeeReissueId },
+  );
+  const secondAuthInvitation = await admin.auth.admin.inviteUserByEmail(employeeEmail);
+  const secondInviteUser = secondAuthInvitation.data?.user;
+  const taggedReissuedInvite = secondInviteUser?.id
+    ? await admin.auth.admin.updateUserById(secondInviteUser.id, {
+      app_metadata: {
+        ...(secondInviteUser.app_metadata || {}),
+        hris_employee_invitation_request_id: employeeReissueRequestId,
+      },
+    })
+    : null;
+  const recoveredReissuedAuthUser = await admin.rpc(
+    'hris_recover_employee_invitation_auth_user_id',
+    { p_invitation_id: employeeReissueId },
+  );
+  const resolvedReissuedAuthUser = await admin.rpc(
+    'hris_resolve_employee_invitation_auth_user_id',
+    { p_invitation_id: employeeReissueId },
+  );
+  const employeeReissueSent = await admin.rpc('hris_mark_employee_invitation_sent', {
+    p_invitation_id: employeeReissueId, p_auth_user_id: recoveredReissuedAuthUser.data,
+  });
+  const clientCannotMarkReissueSent = await clients.employeeManager.rpc('hris_mark_employee_invitation_sent', {
+    p_invitation_id: employeeReissueId, p_auth_user_id: employeeInvitee.id,
+  });
+
   const employeePassword = await admin.auth.admin.updateUserById(employeeInvitee.id, {
     email_confirm: true, password,
   });
@@ -393,36 +467,62 @@ try {
   if (employeeInviteeSession.error || !employeeInviteeSession.data.user) {
     throw employeeInviteeSession.error || new Error('Synthetic employee invitee did not receive a local Auth session.');
   }
-  const acceptedEmployee = await employeeInviteeClient.rpc('hris_accept_employee_invitation', {
+  const staleEmployeeAcceptance = await employeeInviteeClient.rpc('hris_accept_employee_invitation', {
     p_invitation_id: employeeInvitationId,
   });
+  const acceptedEmployee = await employeeInviteeClient.rpc('hris_accept_employee_invitation', {
+    p_invitation_id: employeeReissueId,
+  });
   const replayedEmployeeAcceptance = await employeeInviteeClient.rpc('hris_accept_employee_invitation', {
-    p_invitation_id: employeeInvitationId,
+    p_invitation_id: employeeReissueId,
   });
   const employeeLink = await admin.from('employees').select('id,user_id').eq('id', employeeId).single();
   const employeeMembership = await admin.from('tenant_memberships').select('role,status')
     .eq('tenant_id', tenantA).eq('user_id', employeeInvitee.id).single();
   const employeeRoleName = await admin.from('roles').select('name').eq('id', employeeMembership.data?.role || '').single();
-  record('Employee invitation is service-delivered, email-confirmed, tenant-scoped, and replay-safe',
+  record('Employee invitation delivery recovery, resend, acceptance, and replay remain tenant-scoped',
     Boolean(interruptedMarkSent.error)
       && recoveredEmployeeAuthUser.data === employeeInvitee.id
       && employeeSent.data === true && employeeSentReplay.data === true
       && Boolean(authenticatedMarkSent.error)
       && wrongEmployeeAcceptance.error?.code === '42501'
+      && !reissuedEmployeeInvitation.error
+      && reissueReplay.data?.invitation_id === employeeReissueId
+      && reissueReplay.data?.idempotent === true
+      && Boolean(activeReissueDenied.error)
+      && staleInvitationRecovery.data === null
+      && Boolean(clientCannotResolveAuthUser.error)
+      && recoveryBeforeCurrentRequestTag.data === null
+      && resolvedReissuedAuthUser.data === employeeInvitee.id
+      && !secondAuthInvitation.error && secondInviteUser?.id === employeeInvitee.id
+      && !taggedReissuedInvite?.error
+      && recoveredReissuedAuthUser.data === employeeInvitee.id
+      && employeeReissueSent.data === true
+      && Boolean(clientCannotMarkReissueSent.error)
+      && staleEmployeeAcceptance.error?.code === '22023'
       && acceptedEmployee.data?.accepted === true && acceptedEmployee.data?.tenant_id === tenantA
       && replayedEmployeeAcceptance.data?.idempotent === true
       && employeeLink.data?.user_id === employeeInvitee.id
       && employeeMembership.data?.status === 'active'
       && employeeRoleName.data?.name === 'Employee',
-    JSON.stringify({ sent: employeeSent.data === true,
-      interruptedMarkRecovered: Boolean(interruptedMarkSent.error)
-        && recoveredEmployeeAuthUser.data === employeeInvitee.id,
-      idempotentMarkReplay: employeeSentReplay.data === true,
-      clientCannotMarkSent: Boolean(authenticatedMarkSent.error),
-      wrongAccountDenied: wrongEmployeeAcceptance.error?.code === '42501',
+    JSON.stringify({
+      initialMarkRecovery: Boolean(interruptedMarkSent.error) && recoveredEmployeeAuthUser.data === employeeInvitee.id,
+      initialMarkReplay: employeeSent.data === true && employeeSentReplay.data === true,
+      initialInviteReissued: !secondAuthInvitation.error && secondInviteUser?.id === employeeInvitee.id,
+      freshInvitationId: employeeReissueId !== employeeInvitationId,
+      requestReplayIsIdempotent: reissueReplay.data?.invitation_id === employeeReissueId && reissueReplay.data?.idempotent === true,
+      activeInvitationCannotBeForked: Boolean(activeReissueDenied.error),
+      expiredRequestCannotRecover: staleInvitationRecovery.data === null,
+      clientCannotResolveAuthIdentity: Boolean(clientCannotResolveAuthUser.error),
+      exactRequestMarkerRequired: recoveryBeforeCurrentRequestTag.data === null,
+      serviceResolverMatchesInvitedIdentity: resolvedReissuedAuthUser.data === employeeInvitee.id,
+      newRequestRecovery: recoveredReissuedAuthUser.data === employeeInvitee.id && employeeReissueSent.data === true,
+      clientCannotMarkSent: Boolean(authenticatedMarkSent.error) && Boolean(clientCannotMarkReissueSent.error),
+      staleInvitationRejected: staleEmployeeAcceptance.error?.code === '22023',
       accepted: acceptedEmployee.data?.accepted === true,
       replaySafe: replayedEmployeeAcceptance.data?.idempotent === true,
-      activeEmployeeRole: employeeMembership.data?.status === 'active' && employeeRoleName.data?.name === 'Employee' }));
+      activeEmployeeRole: employeeMembership.data?.status === 'active' && employeeRoleName.data?.name === 'Employee',
+    }));
 
   const invitationEmail = 'release-invitee-' + suffix + '@hris.test';
   const invitationCreated = await clients.superAdmin.rpc('platform_hris_create_tenant_invitation', {

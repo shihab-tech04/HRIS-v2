@@ -14,6 +14,7 @@ const employeeFunction = readFileSync(
 const employeeApi = readFileSync(new URL('../../src/live/employeeInvitationApi.ts', import.meta.url), 'utf8');
 const employeeDirectory = readFileSync(new URL('../../src/live/OrganizationEmployeeDirectory.tsx', import.meta.url), 'utf8');
 const liveApp = readFileSync(new URL('../../src/live/LiveApp.tsx', import.meta.url), 'utf8');
+const projectLocale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
 const isolatedFixture = readFileSync(new URL('../../tests/sql/isolated-auth/fixture.sql', import.meta.url), 'utf8');
 
 test('employee role provisioning uses only the deployed roles columns', () => {
@@ -43,8 +44,14 @@ test('employee creation persists through an idempotent tenant permission RPC and
   assert.match(employeeMigration, /INSERT INTO public\.tenant_memberships/);
   assert.match(employeeMigration, /'HRIS_EMPLOYEE_INVITATION_ACCEPTED'/);
   assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\.hris_recover_employee_invitation_auth_user_id\(\s*p_invitation_id uuid/);
-  assert.match(employeeMigration, /u\.invited_at IS NOT NULL[\s\S]*u\.created_at >= i\.created_at/);
+  assert.match(employeeMigration, /u\.invited_at IS NOT NULL[\s\S]*raw_app_meta_data\s*->> 'hris_employee_invitation_request_id'\) = i\.request_id::text/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_recover_employee_invitation_auth_user_id\(uuid\)\s+TO service_role/);
+  assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\\.hris_reissue_employee_invitation\\(/);
+  assert.match(employeeMigration, /v_invitation_count >= 4/);
+  assert.match(employeeMigration, /interval '15 minutes'/);
+  assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\\.hris_resolve_employee_invitation_auth_user_id\\(/);
+  assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\\.hris_resolve_employee_invitation_auth_user_id\\(uuid\\)\\s+TO service_role/);
+  assert.match(employeeDirectory, /employeesManage && employee\\.invitation/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_mark_employee_invitation_sent\(uuid,uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_mark_employee_invitation_failed\(uuid\)\s+TO service_role/);
   assert.match(employeeMigration, /REVOKE ALL ON FUNCTION public\.hris_mark_employee_invitation_sent\(uuid,uuid\)\s+FROM PUBLIC, anon, authenticated/);
@@ -61,11 +68,20 @@ test('Auth invitation is sent only from the server-side function, with a signed-
   assert.match(employeeFunction, /employee_invitation/);
   assert.match(employeeFunction, /hris_mark_employee_invitation_sent/);
   assert.match(employeeFunction, /hris_recover_employee_invitation_auth_user_id/);
+  assert.match(employeeFunction, /signInWithOtp\([\s\S]*shouldCreateUser: false[\s\S]*emailRedirectTo: redirectTo\.toString\(\)/);
+  assert.match(employeeFunction, /hris_resolve_employee_invitation_auth_user_id/);
   assert.ok(employeeFunction.indexOf('hris_recover_employee_invitation_auth_user_id')
     < employeeFunction.indexOf('inviteUserByEmail'));
   assert.match(employeeFunction, /const retryMark = await admin\.rpc\("hris_mark_employee_invitation_sent"/);
   assert.match(employeeApi, /supabase\.functions\.invoke\('hris-employee-invite'/);
   assert.match(employeeApi, /supabase\.rpc\('hris_accept_employee_invitation'/);
+  assert.match(employeeApi, /export async function reissueEmployeeInvitation/);
+  assert.match(employeeDirectory, /resendEmployeeInvitation/);
+  assert.match(employeeDirectory, /\['expired', 'failed'\]/);
+  assert.match(liveApp, /export function EmployeeInvitationAcceptance/);
+  assert.match(projectLocale, /Employee invitation reissued and email sent\./);
+  assert.match(projectLocale, /'Complete your employee access'/);
+  assert.match(projectLocale, /'Passwords do not match\.'/);
   assert.match(employeeDirectory, /Save employee and send invitation/);
   assert.match(employeeDirectory, /employeeInvitationAttempted \|\| employeeInvitationBusy/);
   assert.match(liveApp, /activeMembershipTenantIds\.has\(e\.tenant_id\)/);

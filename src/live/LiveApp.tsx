@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveHrisWorkspace } from './LiveHrisWorkspace';
 import { acceptEmployeeInvitation } from './employeeInvitationApi';
+import { projectText, type Locale } from './project-locale';
 import { acceptPlatformTenantInvitation, platformTenantFeatureAvailable } from './platformTenantApi';
 
 type Membership = { tenant_id: string; role: string; status: string };
@@ -217,10 +218,32 @@ function PlatformInvitationAcceptance({ tenantName, error, onSignOut }: {
   </main>;
 }
 
-function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
+const employeeInvitationKnownErrors = new Set([
+  'A signed-in, confirmed invited account is required.',
+  'This invitation is not available to this account.',
+  'The accepted invitation no longer matches the employee membership.',
+  'This invitation has expired or is no longer available.',
+  'The employee record is not available for this invitation.',
+  'This account is already linked to another employee record.',
+  'The Employee role is not configured.',
+  'This account already has a different role in this organization.',
+  'Employee account activation did not complete.',
+  'The employee organization is not active.',
+]);
+
+function employeeInvitationError(cause: unknown, locale: Locale): string {
+  const message = cause instanceof Error ? cause.message : '';
+  return projectText(locale, employeeInvitationKnownErrors.has(message)
+    ? message
+    : 'Employee access could not be activated. Retry or contact your organization administrator.');
+}
+
+export function EmployeeInvitationAcceptance({ invitationId, locale, onAccepted }: {
   invitationId: string;
+  locale: Locale;
   onAccepted: (tenantId: string) => void;
 }) {
+  const tx = (english: string) => projectText(locale, english);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [passwordSaved, setPasswordSaved] = useState(false);
@@ -234,9 +257,7 @@ function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
       const accepted = await acceptEmployeeInvitation(invitationId);
       onAccepted(accepted.tenant_id);
     } catch (cause) {
-      setError(cause instanceof Error
-        ? cause.message
-        : 'Employee access could not be activated. Keep this page open and retry.');
+      setError(employeeInvitationError(cause, locale));
     } finally {
       setBusy(false);
     }
@@ -244,8 +265,8 @@ function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
 
   async function savePasswordAndAccept(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (password.length < 12) { setError('Use at least 12 characters.'); return; }
-    if (password !== confirmation) { setError('Passwords do not match.'); return; }
+    if (password.length < 12) { setError(tx('Use at least 12 characters.')); return; }
+    if (password !== confirmation) { setError(tx('Passwords do not match.')); return; }
     setBusy(true);
     setError('');
     try {
@@ -257,9 +278,10 @@ function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
       const accepted = await acceptEmployeeInvitation(invitationId);
       onAccepted(accepted.tenant_id);
     } catch (cause) {
-      setError(cause instanceof Error
-        ? cause.message
-        : 'Employee access could not be activated. Keep this page open and retry.');
+      const message = cause instanceof Error ? cause.message : '';
+      setError(message === 'Password could not be saved.'
+        ? tx('Password could not be saved. Retry or contact your organization administrator.')
+        : employeeInvitationError(cause, locale));
     } finally {
       setBusy(false);
     }
@@ -267,29 +289,29 @@ function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
 
   return <main className="min-h-screen grid place-items-center bg-slate-50 px-4 py-8">
     <section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#085587]">Employee invitation</p>
-      <h1 className="mt-2 text-2xl font-semibold text-slate-900">Complete your employee access</h1>
-      <p className="mt-3 text-sm text-slate-600">Choose a password, then confirm this invitation to activate your organization membership.</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#085587]">{tx('Employee invitation')}</p>
+      <h1 className="mt-2 text-2xl font-semibold text-slate-900">{tx('Complete your employee access')}</h1>
+      <p className="mt-3 text-sm text-slate-600">{tx('Choose a password, then confirm this invitation to activate your organization membership.')}</p>
       {!passwordSaved ? <form onSubmit={event => void savePasswordAndAccept(event)} className="mt-5 space-y-3">
-        <label className="block text-sm font-medium text-slate-700" htmlFor="employee-invitation-password">New password
+        <label className="block text-sm font-medium text-slate-700" htmlFor="employee-invitation-password">{tx('New password')}
           <input id="employee-invitation-password" type="password" autoComplete="new-password" required minLength={12}
             value={password} onChange={event => setPassword(event.target.value)}
             className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3" />
         </label>
-        <label className="block text-sm font-medium text-slate-700" htmlFor="employee-invitation-password-confirm">Confirm password
+        <label className="block text-sm font-medium text-slate-700" htmlFor="employee-invitation-password-confirm">{tx('Confirm password')}
           <input id="employee-invitation-password-confirm" type="password" autoComplete="new-password" required minLength={12}
             value={confirmation} onChange={event => setConfirmation(event.target.value)}
             className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3" />
         </label>
         {error && <p role="alert" className="text-sm text-rose-800">{error}</p>}
         <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
-          {busy ? 'Saving password and activating…' : 'Save password and activate access'}
+          {busy ? tx('Saving password and activating…') : tx('Save password and activate access')}
         </button>
       </form> : <div className="mt-5 space-y-3">
         {error && <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
         <button type="button" disabled={busy} onClick={() => void completeInvitation()}
           className="min-h-11 w-full rounded-md bg-[#085587] px-4 text-sm font-semibold text-white disabled:opacity-50">
-          {busy ? 'Activating access…' : 'Retry employee activation'}
+          {busy ? tx('Activating access…') : tx('Retry employee activation')}
         </button>
       </div>}
     </section>
@@ -297,6 +319,11 @@ function EmployeeInvitationAcceptance({ invitationId, onAccepted }: {
 }
 
 export function LiveApp({ preview }: { preview: ReactNode }) {
+  const [locale] = useState<Locale>(() => {
+    try { return localStorage.getItem('synesis-hris-locale') === 'bn' ? 'bn' : 'en'; }
+    catch { return 'en'; }
+  });
+  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
@@ -612,14 +639,14 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     }
     return <SignIn onSuccess={setUser} recoveryLinkError={recoveryLinkError}
       contextMessage={employeeInvitationId
-        ? 'Open the employee invitation email link to confirm your email and activate your employee access.'
+        ? projectText(locale, 'Open the employee invitation email link to confirm your email and activate your employee access.')
         : platformInvitationId
           ? 'Sign in with the same email address that received the platform invitation. The invitation will be checked after sign-in.'
           : undefined}
       onRecoveryVerified={account => { setUser(account); setRecoveryLinkError(''); setPasswordRecovery(true); }} />;
   }
   if (employeeInvitationId) {
-    return <EmployeeInvitationAcceptance invitationId={employeeInvitationId} onAccepted={acceptedTenantId => {
+    return <EmployeeInvitationAcceptance invitationId={employeeInvitationId} locale={locale} onAccepted={acceptedTenantId => {
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('employee_invitation');
       window.history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);

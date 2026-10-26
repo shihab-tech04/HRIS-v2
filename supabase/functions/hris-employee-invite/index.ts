@@ -2,8 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 
 type InviteBody = {
+  mode?: unknown;
   tenant_id?: unknown;
   request_id?: unknown;
+  employee_id?: unknown;
   employee_number?: unknown;
   full_name?: unknown;
   email?: unknown;
@@ -72,33 +74,50 @@ Deno.serve(async (request: Request) => {
   }
   const tenantId = typeof body.tenant_id === "string" ? body.tenant_id : "";
   const requestId = typeof body.request_id === "string" ? body.request_id : "";
+  const employeeId = typeof body.employee_id === "string" ? body.employee_id : "";
   const employeeNumber = typeof body.employee_number === "string" ? body.employee_number.trim() : "";
   const fullName = typeof body.full_name === "string" ? body.full_name.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const joiningDate = typeof body.joining_date === "string" ? body.joining_date : "";
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)
-    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)
-    || !isText(employeeNumber, 32)
-    || !isText(fullName, 160) || fullName.length < 2
-    || !isText(email, 320) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate)) {
-    return reply(400, { error: "Enter a valid employee number, name, email, and joining date." }, origin);
+  const isResend = body.mode === "resend";
+  const validUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  if ((body.mode !== undefined && body.mode !== "create" && body.mode !== "resend")
+    || !validUuid(tenantId) || !validUuid(requestId)
+    || (isResend
+      ? !validUuid(employeeId)
+      : !isText(employeeNumber, 32)
+        || !isText(fullName, 160) || fullName.length < 2
+        || !isText(email, 320) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate))) {
+    return reply(400, {
+      error: isResend
+        ? "A valid employee invitation request is required."
+        : "Enter a valid employee number, name, email, and joining date.",
+    }, origin);
   }
 
-  const { data: invitation, error: createError } = await caller.rpc("hris_create_employee_invitation", {
-    p_tenant_id: tenantId,
-    p_request_id: requestId,
-    p_employee_number: employeeNumber,
-    p_full_name: fullName,
-    p_email: email,
-    p_joining_date: joiningDate,
-  });
+  const { data: invitation, error: createError } = isResend
+    ? await caller.rpc("hris_reissue_employee_invitation", {
+      p_tenant_id: tenantId,
+      p_employee_id: employeeId,
+      p_request_id: requestId,
+    })
+    : await caller.rpc("hris_create_employee_invitation", {
+      p_tenant_id: tenantId,
+      p_request_id: requestId,
+      p_employee_number: employeeNumber,
+      p_full_name: fullName,
+      p_email: email,
+      p_joining_date: joiningDate,
+    });
   if (createError) {
     const status = createError.code === "42501" ? 403 : 400;
     return reply(status, {
       error: status === 403
         ? "Employee-management access for this organization is required."
-        : createError.message,
+        : isResend
+          ? "This invitation cannot be reissued yet. Refresh the directory or wait before trying again."
+          : createError.message,
     }, origin);
   }
 
@@ -143,26 +162,72 @@ Deno.serve(async (request: Request) => {
 
   const redirectTo = new URL("https://shihab-tech04.github.io/HRIS-v2/");
   redirectTo.searchParams.set("employee_invitation", invitationId);
+
+  let authUserId: string | null = null;
   const { data: sent, error: sendError } = await admin.auth.admin.inviteUserByEmail(invitedEmail, {
     redirectTo: redirectTo.toString(),
   });
-  if (sendError || !sent.user?.id) {
-    await admin.rpc("hris_mark_employee_invitation_failed", { p_invitation_id: invitationId });
+  if (!sendError && sent.user?.id) {
+    authUserId = sent.user.id;
+  } else {
+    const duplicateConfirmedEmail = Boolean(sendError)
+      && (sendError.code === "email_exists"
+        || /already registered|email address.*exists/i.test(sendError.message || ""));
+    if (duplicateConfirmedEmail) {
+      // A previously invited employee may have confirmed the email but not
+      // completed membership activation. Auth no longer sends another invite to
+      // a confirmed identity, so send a passwordless sign-in link instead.
+      const linkSender = createClient(supabaseUrl, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const emailLink = await linkSender.auth.signInWithOtp({
+        email: invitedEmail,
+        options: { shouldCreateUser: false, emailRedirectTo: redirectTo.toString() },
+      });
+      if (!emailLink.error) {
+        const resolved = await admin.rpc(
+          "hris_resolve_employee_invitation_auth_user_id",
+          { p_invitation_id: invitationId },
+        );
+        if (!resolved.error && typeof resolved.data === "string") authUserId = resolved.data;
+      }
+    }
+    if (!authUserId) {
+      await admin.rpc("hris_mark_employee_invitation_failed", { p_invitation_id: invitationId });
+      return reply(502, {
+        error: "The employee record was saved, but the invitation email could not be sent. Check Auth email delivery before retrying.",
+      }, origin);
+    }
+  }
+
+  const authUser = await admin.auth.admin.getUserById(authUserId);
+  if (authUser.error || authUser.data.user?.id !== authUserId) {
     return reply(502, {
-      error: "The employee record was saved, but the invitation email could not be sent. Check Auth email delivery before retrying.",
+      error: "The invitation email was submitted, but its delivery could not be safely finalized. Retry this same invitation.",
+    }, origin);
+  }
+  const taggedUser = await admin.auth.admin.updateUserById(authUserId, {
+    app_metadata: {
+      ...(authUser.data.user.app_metadata || {}),
+      hris_employee_invitation_request_id: requestId,
+    },
+  });
+  if (taggedUser.error || taggedUser.data.user?.id !== authUserId) {
+    return reply(502, {
+      error: "The invitation email was submitted, but its delivery could not be safely finalized. Retry this same invitation.",
     }, origin);
   }
 
   let { error: markError } = await admin.rpc("hris_mark_employee_invitation_sent", {
     p_invitation_id: invitationId,
-    p_auth_user_id: sent.user.id,
+    p_auth_user_id: authUserId,
   });
   if (markError) {
     // Auth and Postgres cannot commit atomically. Retry the idempotent ledger
     // write so a transient response/database error does not strand the invite.
     const retryMark = await admin.rpc("hris_mark_employee_invitation_sent", {
       p_invitation_id: invitationId,
-      p_auth_user_id: sent.user.id,
+      p_auth_user_id: authUserId,
     });
     markError = retryMark.error;
   }
