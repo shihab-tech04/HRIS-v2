@@ -217,7 +217,7 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'This invitation was already created with different employee details. Retry using the original details.' USING errcode = '22023';
     END IF;
-    IF v_invitation.status = 'failed' THEN
+    IF v_invitation.status IN ('pending','failed') THEN
       IF v_invitation.updated_at > now() - interval '15 minutes' THEN
         RAISE EXCEPTION 'This invitation cannot be retried yet. Wait before retrying.' USING errcode = '22023';
       END IF;
@@ -681,7 +681,7 @@ BEGIN
       OR v_existing.inviter_user_id IS DISTINCT FROM auth.uid() THEN
       RAISE EXCEPTION 'This invitation request is unavailable.' USING errcode = '42501';
     END IF;
-    IF v_existing.status = 'failed' THEN
+    IF v_existing.status IN ('pending','failed') THEN
       IF v_existing.updated_at > now() - interval '15 minutes' THEN
         RAISE EXCEPTION 'This invitation cannot be reissued yet. Refresh the directory or wait before trying again.' USING errcode = '22023';
       END IF;

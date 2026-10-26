@@ -49,8 +49,8 @@ test('employee creation persists through an idempotent tenant permission RPC and
   assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\.hris_reissue_employee_invitation\(/);
   assert.match(employeeMigration, /v_invitation_count >= 4/);
   assert.match(employeeMigration, /delivery_attempts integer NOT NULL DEFAULT 0 CHECK \(delivery_attempts BETWEEN 0 AND 3\)/);
-  assert.match(employeeMigration, /v_invitation\.status = 'failed'[\s\S]*?v_invitation\.updated_at > now\(\) - interval '15 minutes'[\s\S]*?v_invitation\.delivery_attempts >= 3/);
-  assert.match(employeeMigration, /v_existing\.status = 'failed'[\s\S]*?v_existing\.updated_at > now\(\) - interval '15 minutes'[\s\S]*?v_existing\.delivery_attempts >= 3/);
+  assert.match(employeeMigration, /v_invitation\.status IN \('pending','failed'\)[\s\S]*?v_invitation\.updated_at > now\(\) - interval '15 minutes'[\s\S]*?v_invitation\.delivery_attempts >= 3/);
+  assert.match(employeeMigration, /v_existing\.status IN \('pending','failed'\)[\s\S]*?v_existing\.updated_at > now\(\) - interval '15 minutes'[\s\S]*?v_existing\.delivery_attempts >= 3/);
   assert.match(employeeMigration, /interval '15 minutes'/);
   assert.match(employeeMigration, /CREATE OR REPLACE FUNCTION public\.hris_resolve_employee_invitation_auth_user_id\(/);
   assert.match(employeeMigration, /GRANT EXECUTE ON FUNCTION public\.hris_resolve_employee_invitation_auth_user_id\(uuid\)\s+TO service_role/);
