@@ -3,6 +3,8 @@ import type { FormEvent } from 'react';
 import { Building2, Pencil, Plus, RefreshCw, Save, Settings2, ShieldCheck, X } from 'lucide-react';
 import {
   isPlatformSuperAdmin,
+  listPlatformTenantCertifications,
+  certifyAndActivatePlatformTenant,
   listPlatformTenantModules,
   listPlatformTenants,
   platformTenantFeatureAvailable,
@@ -12,7 +14,7 @@ import {
   setPlatformTenantAdministratorByEmail,
   updatePlatformTenantMetadata,
 } from './platformTenantApi';
-import type { PlatformTenant, TenantOptionalModule, TenantOptionalModuleKey } from './platformTenantApi';
+import type { PlatformTenant, PlatformTenantCertification, TenantOptionalModule, TenantOptionalModuleKey } from './platformTenantApi';
 import { projectText, type Locale } from './project-locale';
 import { activateModalFocusTrap } from './modal-focus';
 
@@ -66,6 +68,9 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
   const [authorized, setAuthorized] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
+  const [tenantCertifications, setTenantCertifications] = useState<PlatformTenantCertification[]>([]);
+  const [certificationReferences, setCertificationReferences] = useState<Record<string, string>>({});
+  const [signoffConfirmations, setSignoffConfirmations] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -118,7 +123,12 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
         setError('This account is not authorized to manage platform tenants.');
         return false;
       }
-      setTenants(await listPlatformTenants());
+      const [tenantRows, certificationRows] = await Promise.all([
+        listPlatformTenants(),
+        listPlatformTenantCertifications(),
+      ]);
+      setTenants(tenantRows);
+      setTenantCertifications(certificationRows);
       return true;
     } catch (cause) {
       setError(errorMessage(cause, tx));
@@ -249,6 +259,34 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
       });
   }
 
+  async function certifyTenant(event: FormEvent<HTMLFormElement>, tenant: PlatformTenant) {
+    event.preventDefault();
+    const certification = tenantCertifications.find(record => record.tenant_id === tenant.id);
+    const evidenceReference = (certificationReferences[tenant.id] || '').trim();
+    if (!certification?.can_certify) {
+      setError(tx('An assigned security certifier with active platform Super Admin access is required.'));
+      return;
+    }
+    if (!signoffConfirmations[tenant.id]) {
+      setError(tx('Confirm the approved security sign-off before activating this tenant.'));
+      return;
+    }
+    if (!evidenceReference) {
+      setError(tx('Enter the approved security sign-off reference.'));
+      return;
+    }
+    await runAction(`certify:${tenant.id}`,
+      tx('Security certification recorded and tenant activated.'), async () => {
+        await certifyAndActivatePlatformTenant(tenant.id, evidenceReference, true);
+        setCertificationReferences(values => ({ ...values, [tenant.id]: '' }));
+        setSignoffConfirmations(values => ({ ...values, [tenant.id]: false }));
+      });
+  }
+
+  const certificationByTenantId = new Map<string, PlatformTenantCertification>(
+    tenantCertifications.map(certification => [certification.tenant_id, certification] as const),
+  );
+
   if (!platformTenantFeatureAvailable) return <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
     <h2 className="font-semibold">{tx('Platform tenant administration is not enabled.')}</h2>
     <p className="mt-1">{tx('This staging-only workflow is not available in this deployment.')}</p>
@@ -308,7 +346,25 @@ export function PlatformTenantWorkspace({ locale }: { locale: Locale }) {
                 <div className="shrink-0 rounded-lg bg-[#F4F8FA] px-3 py-2 text-center"><span data-testid="tenant-active-admin-count" className="block text-lg font-semibold tabular-nums text-[#1E1B39]">{tenant.active_admin_count}</span><span className="text-[11px] text-slate-500">{tx('active administrators')}</span></div>
               </div>
               <dl className="mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 text-sm sm:grid-cols-2"><div><dt className="text-xs text-slate-500">{tx('Time zone')}</dt><dd className="mt-0.5 break-all">{tenant.timezone}</dd></div><div><dt className="text-xs text-slate-500">{tx('Default language')}</dt><dd className="mt-0.5">{tenant.default_locale === 'bn' ? 'বাংলা' : tenant.default_locale === 'en' ? 'English' : 'Not set'}</dd></div></dl>
-              {!tenant.is_active && <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-950">{tx('Inactive pending broader tenant security certification. Activation is not available in this workflow.')}</p>}
+              {!tenant.is_active && <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                <p>{tx('Inactive pending the approved security certification. Tenant access stays blocked until the separate sign-off is complete.')}</p>
+                {certificationByTenantId.get(tenant.id)?.can_certify ? <form onSubmit={event => void certifyTenant(event, tenant)} className="space-y-3 rounded-md border border-amber-300 bg-white p-3">
+                  <Field id={`tenant-certification-reference-${tenant.id}`} label={tx('Approved security sign-off reference')} value={certificationReferences[tenant.id] || ''} maxLength={500} minLength={1} placeholder={tx('Release or security review reference')} onChange={value => setCertificationReferences(values => ({ ...values, [tenant.id]: value }))} />
+                  <label className="flex items-start gap-2 text-sm text-slate-700">
+                    <input type="checkbox" required checked={Boolean(signoffConfirmations[tenant.id])} onChange={event => setSignoffConfirmations(values => ({ ...values, [tenant.id]: event.target.checked }))} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+                    <span>{tx('I confirm the approved Phase 21 security sign-off for this tenant is complete and the reference above identifies its evidence.')}</span>
+                  </label>
+                  <button type="submit" disabled={Boolean(busy)} className="min-h-10 rounded-lg bg-[#085587] px-3 text-sm font-semibold text-white disabled:opacity-50">
+                    {busy === `certify:${tenant.id}` ? tx('Recording certification…') : tx('Certify and activate tenant')}
+                  </button>
+                </form> : <p className="rounded-md bg-white px-3 py-2 text-slate-700">{tx('Only an assigned security certifier with active platform Super Admin access can record the approved sign-off and activate this tenant.')}</p>}
+              </div>}
+              {certificationByTenantId.get(tenant.id)?.certification_status === 'certified' && tenant.is_active
+                && <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                  {tx('Security certified')} · {certificationByTenantId.get(tenant.id)?.certified_at
+                    ? new Date(certificationByTenantId.get(tenant.id)!.certified_at!).toLocaleString()
+                    : ''}
+                </p>}
 
               {editingId === tenant.id ? <form onSubmit={event => void saveMetadata(event, tenant.id)} className="mt-4 space-y-3 rounded-lg bg-[#F7FAFB] p-3">
                 <Field id={`tenant-name-${tenant.id}`} label={tx('Organization name')} value={editName} maxLength={180} onChange={setEditName} />

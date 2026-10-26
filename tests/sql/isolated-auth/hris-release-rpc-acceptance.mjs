@@ -131,6 +131,7 @@ try {
     + "SELECT 1 FROM public.role_permissions WHERE role_id='hr_admin' "
     + "AND permission_id='organization.manage');");
   applySql('supabase/migrations/20261024220001_platform_tenant_invitations.sql');
+  applySql('supabase/migrations/20261026000100_platform_tenant_security_certification.sql');
   psql("NOTIFY pgrst, 'reload schema';");
   await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -184,7 +185,14 @@ try {
     + " AND NOT has_function_privilege('anon','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE')"
     + " AND has_function_privilege('service_role','public.platform_hris_mark_tenant_invitation_sent(uuid,uuid)','EXECUTE'),"
     + "'invite_private_table',NOT has_table_privilege('authenticated','private.platform_tenant_invitations','SELECT')"
-    + " AND NOT has_table_privilege('anon','private.platform_tenant_invitations','SELECT'))::text;";
+    + " AND NOT has_table_privilege('anon','private.platform_tenant_invitations','SELECT'),"
+    + "'certification_list',to_regprocedure('public.platform_hris_list_tenant_certifications()') IS NOT NULL,"
+    + "'certification_write',to_regprocedure('public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)') IS NOT NULL"
+    + " AND has_function_privilege('authenticated','public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.platform_hris_certify_and_activate_tenant(uuid,boolean,text)','EXECUTE'),"
+    + "'certification_private',NOT has_table_privilege('authenticated','private.platform_tenant_security_certifications','SELECT')"
+    + " AND NOT has_table_privilege('anon','private.platform_tenant_security_certifications','SELECT'),"
+    + "'certification_guard',EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgname='platform_tenant_activation_requires_certification' AND NOT tgisinternal))::text;";
   const contractState = JSON.parse(psql(contractSql));
   const rpcContractsPass = hostedRpcSignatures.length === 36
     && contractState.missing_signatures.length === 0
@@ -218,12 +226,15 @@ try {
     recruiterA: 'release-recruiter-a-' + suffix + '@hris.test',
     recruiterB: 'release-recruiter-b-' + suffix + '@hris.test',
     superAdmin: 'release-super-admin-' + suffix + '@hris.test',
+    securityCertifier: 'release-security-certifier-' + suffix + '@hris.test',
   };
   const users = {};
   for (const key of Object.keys(emails)) {
-    const created = await admin.auth.admin.createUser({
-      email: emails[key], password, email_confirm: true,
-    });
+    const createOptions = { email: emails[key], password, email_confirm: true };
+    if (key === 'securityCertifier') {
+      createOptions.app_metadata = { hris_tenant_security_certifier: true };
+    }
+    const created = await admin.auth.admin.createUser(createOptions);
     if (created.error || !created.data.user?.id) throw created.error || new Error('Local Auth did not create a synthetic user.');
     users[key] = created.data.user;
     createdUserIds.push(created.data.user.id);
@@ -239,7 +250,8 @@ try {
   psql("INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin) VALUES "
     + "(" + sqlLiteral(users.recruiterA.id) + "::uuid,'Synthetic release recruiter A',true,false),"
     + "(" + sqlLiteral(users.recruiterB.id) + "::uuid,'Synthetic release recruiter B',true,false),"
-    + "(" + sqlLiteral(users.superAdmin.id) + "::uuid,'Synthetic release platform Super Admin',true,true);"
+    + "(" + sqlLiteral(users.superAdmin.id) + "::uuid,'Synthetic release platform Super Admin',true,true),"
+    + "(" + sqlLiteral(users.securityCertifier.id) + "::uuid,'Synthetic release security certifier',true,true);"
     + "INSERT INTO public.tenant_memberships(tenant_id,user_id,role,status) VALUES "
     + "(" + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(users.recruiterA.id) + "::uuid,'qa_tenant_recruitment_manager_a','active'),"
     + "(" + sqlLiteral(tenantB) + "::uuid," + sqlLiteral(users.recruiterB.id) + "::uuid,'qa_tenant_manager_b','active');"
@@ -318,7 +330,37 @@ try {
     .eq('id', invitedTenantId);
   const invitationAudit = psql("SELECT count(*) FROM public.admin_audit_logs WHERE action='PLATFORM_TENANT_INVITATION_ACCEPTED' AND target_id="
     + sqlLiteral(invitedTenantId) + ";");
-  record('Super Admin invite uses local Auth, accepts only for the invited email, and provisions an inactive tenant once',
+  const initialCertificationList = await clients.superAdmin.rpc('platform_hris_list_tenant_certifications');
+  const pendingCertification = initialCertificationList.data?.find(row => row.tenant_id === invitedTenantId);
+  const unassignedSuperAdminCertification = await clients.superAdmin.rpc('platform_hris_certify_and_activate_tenant', {
+    p_tenant_id: invitedTenantId, p_security_signoff_complete: true,
+    p_evidence_reference: 'must-not-activate-without-security-assignment',
+  });
+  const incompleteSignoff = await clients.securityCertifier.rpc('platform_hris_certify_and_activate_tenant', {
+    p_tenant_id: invitedTenantId, p_security_signoff_complete: false,
+    p_evidence_reference: 'isolated-incomplete-signoff',
+  });
+  const missingEvidence = await clients.securityCertifier.rpc('platform_hris_certify_and_activate_tenant', {
+    p_tenant_id: invitedTenantId, p_security_signoff_complete: true,
+    p_evidence_reference: ' ',
+  });
+  let directActivationDenied = false;
+  try {
+    psqlSync("UPDATE public.tenants SET is_active=true WHERE id=" + sqlLiteral(invitedTenantId) + "::uuid;");
+  } catch {
+    directActivationDenied = true;
+  }
+  const securityEvidenceReference = 'isolated-phase21-security-signoff-' + suffix;
+  const approvedCertification = await clients.securityCertifier.rpc('platform_hris_certify_and_activate_tenant', {
+    p_tenant_id: invitedTenantId, p_security_signoff_complete: true,
+    p_evidence_reference: securityEvidenceReference,
+  });
+  const certifiedTenantRead = await inviteeClient.from('tenants').select('id').eq('id', invitedTenantId);
+  const certificationList = await clients.securityCertifier.rpc('platform_hris_list_tenant_certifications');
+  const certifiedRecord = certificationList.data?.find(row => row.tenant_id === invitedTenantId);
+  const certificationAudit = psql("SELECT count(*) FROM public.admin_audit_logs WHERE action='PLATFORM_TENANT_SECURITY_CERTIFIED_AND_ACTIVATED' AND target_id="
+    + sqlLiteral(invitedTenantId) + ";");
+  record('Super Admin invite stays inactive until an assigned security certifier records approved evidence',
     invitationCreated.data.email === invitationEmail
       && markedSent.data === true
       && Boolean(unauthenticatedInvite.error)
@@ -327,14 +369,35 @@ try {
       && !acceptedInvitation.error
       && replayedAcceptance.data?.tenant_id === invitedTenantId
       && inactiveTenantRead.data?.length === 0
-      && invitationAudit === '1',
+      && invitationAudit === '1'
+      && pendingCertification?.certification_status === 'pending'
+      && pendingCertification?.can_certify === false
+      && unassignedSuperAdminCertification.error?.code === '42501'
+      && incompleteSignoff.error?.code === '55000'
+      && missingEvidence.error?.code === '22023'
+      && directActivationDenied
+      && !approvedCertification.error
+      && approvedCertification.data?.is_active === true
+      && certifiedRecord?.certification_status === 'certified'
+      && certifiedRecord?.can_certify === true
+      && certifiedTenantRead.data?.length === 1
+      && certificationAudit === '1',
     JSON.stringify({ requestCreated: true, serviceMarkedSent: markedSent.data === true,
-      anonymousDenied: Boolean(unauthenticatedInvite.error),
-      ordinaryAdminDenied: ordinaryAdminInvite.error?.code === '42501',
+      anonymousInviteDenied: Boolean(unauthenticatedInvite.error),
+      ordinaryAdminInviteDenied: ordinaryAdminInvite.error?.code === '42501',
       wrongInviteeDenied: wrongAccountAcceptance.error?.code === '42501',
       createdInactive: acceptedInvitation.data?.is_active === false,
       replayIdempotent: replayedAcceptance.data?.tenant_id === invitedTenantId,
-      tenantDataHiddenWhileInactive: inactiveTenantRead.data?.length === 0 }));
+      tenantDataHiddenWhileInactive: inactiveTenantRead.data?.length === 0,
+      pendingUntilSecurityCertifier: pendingCertification?.certification_status === 'pending',
+      unassignedSuperAdminDenied: unassignedSuperAdminCertification.error?.code === '42501',
+      incompleteSignoffDenied: incompleteSignoff.error?.code === '55000',
+      missingEvidenceDenied: missingEvidence.error?.code === '22023',
+      directActivationDenied,
+      approvedCertification: !approvedCertification.error,
+      activatedAfterCertification: approvedCertification.data?.is_active === true,
+      tenantVisibleAfterActivation: certifiedTenantRead.data?.length === 1,
+      certificationAudit }));
 
   const pipeline = await clients.recruiterA.rpc('hris_get_recruitment_pipeline', {
     p_tenant_id: tenantA, p_search: 'Synthetic HRIS Release Role',
@@ -515,6 +578,7 @@ try {
     const tenantSql = invitationTenantIds.map(sqlLiteral).join(',');
     psql("DELETE FROM public.admin_audit_logs WHERE actor_id IN (" + ids + ") OR target_id IN ("
       + tenantSql + ");"
+      + "DELETE FROM private.platform_tenant_security_certifications WHERE tenant_id IN (" + tenantSql + ");"
       + "DELETE FROM public.tenant_memberships WHERE tenant_id IN (" + tenantSql + ");"
       + "DELETE FROM public.tenants WHERE id IN (" + tenantSql + ");");
   }

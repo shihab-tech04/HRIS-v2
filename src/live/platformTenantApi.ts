@@ -1,12 +1,21 @@
 import { supabase } from '../lib/supabase';
 
-// Stage-only Batch 2A RPC contract. Not mounted in production UI.
+// Protected platform tenant administration RPC contract.
 export const platformTenantFeatureAvailable =
   import.meta.env.VITE_ENABLE_PLATFORM_TENANTS === 'true';
 export type PlatformTenant = {
   id: string; code: string; slug: string; name: string;
   is_active: boolean; timezone: string;
   default_locale: 'en' | 'bn' | null; active_admin_count: number;
+};
+export type PlatformTenantCertification = {
+  tenant_id: string;
+  tenant_name: string;
+  is_active: boolean;
+  certification_status: 'pending' | 'certified' | 'not_required';
+  evidence_reference: string | null;
+  certified_at: string | null;
+  can_certify: boolean;
 };
 export type TenantOptionalModuleKey = 'travel' | 'expenses' | 'learning';
 export type TenantOptionalModule = {
@@ -47,6 +56,38 @@ export async function listPlatformTenants(): Promise<PlatformTenant[]> {
   if (error) throw error;
   return (data ?? []) as PlatformTenant[];
 }
+export async function listPlatformTenantCertifications(): Promise<PlatformTenantCertification[]> {
+  requireStagingFeature();
+  const { data, error } = await supabase.rpc('platform_hris_list_tenant_certifications');
+  if (error) throw error;
+  if (!Array.isArray(data) || data.some(record =>
+    typeof record.tenant_id !== 'string' || typeof record.tenant_name !== 'string'
+    || typeof record.is_active !== 'boolean'
+    || !['pending', 'certified', 'not_required'].includes(record.certification_status)
+    || (record.evidence_reference !== null && typeof record.evidence_reference !== 'string')
+    || (record.certified_at !== null && typeof record.certified_at !== 'string')
+    || typeof record.can_certify !== 'boolean')) {
+    throw new Error('Tenant security certification status returned an invalid response.');
+  }
+  return data as PlatformTenantCertification[];
+}
+export async function certifyAndActivatePlatformTenant(
+  tenantId: string, evidenceReference: string, securitySignoffComplete: boolean,
+): Promise<void> {
+  requireStagingFeature();
+  const { data, error } = await supabase.rpc('platform_hris_certify_and_activate_tenant', {
+    p_tenant_id: tenantId,
+    p_security_signoff_complete: securitySignoffComplete,
+    p_evidence_reference: evidenceReference.trim(),
+  });
+  if (error) throw error;
+  if (!data || typeof data !== 'object'
+    || data.tenant_id !== tenantId || data.is_active !== true
+    || typeof data.certified_at !== 'string') {
+    throw new Error('Tenant activation returned an invalid certification response.');
+  }
+}
+
 export async function provisionPlatformTenant(input: ProvisionTenantInput): Promise<string> {
   requireStagingFeature();
   const {data,error} = await supabase.rpc('platform_hris_provision_tenant', {
