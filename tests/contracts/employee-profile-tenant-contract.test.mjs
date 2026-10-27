@@ -38,6 +38,9 @@ test('scalar profile corrections retain HR approval and use the employee scalar 
   assert.match(migration, /current profile address fields map to employees\.address\/mailing_address/);
   assert.match(submit, /INSERT INTO public\.employee_profile_change_requests/);
   assert.match(review, /public\.has_tenant_permission\(p_tenant_id,'self_service\.manage'\)/);
+  assert.match(review, /r\.requested_by IS NOT DISTINCT FROM auth\.uid\(\)/,
+    'a reviewer must not approve or reject a change they requested themselves');
+  assert.match(review, /RAISE EXCEPTION 'Reviewers cannot decide their own profile change requests\.' USING errcode='42501'/);
   assert.match(review, /UPDATE public\.employees e SET/);
   assert.match(review, /WHERE e\.id=r\.employee_id AND e\.tenant_id=p_tenant_id/);
   assert.match(review, /address=CASE WHEN r\.field_key='address' THEN r\.requested_value ELSE e\.address END/);
