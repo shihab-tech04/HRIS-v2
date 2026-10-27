@@ -72,6 +72,6 @@ test('isolated PostgreSQL acceptance applies the forward port and exercises priv
   assert.match(acceptance, /SHOW server_version_num/);
   assert.match(acceptance, /must be PostgreSQL 17/);
   assert.match(workflow, /major_version = 17/);
-  assert.match(workflow, /grep -q '\^major_version = 17\$'/);
+  assert.match(workflow, /grep -q '\^major_version = 17\$' "\$HRIS_SUPABASE_TEST_WORKDIR\/supabase\/config\.toml"/);
 });
 
