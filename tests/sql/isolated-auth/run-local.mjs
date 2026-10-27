@@ -877,7 +877,7 @@ record('E02-17 approved profile changes update only the requested field, persist
 
 const profileOwnRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
 const profileCrossTenantRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantB });
-const profileMemberWithoutEmployee = await noPermission.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
+const profileMemberWithoutEmployee = await employeesViewer.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
 record('E02-01 v1 profile projection returns only the linked tenant employee and handles a member without an employee row',
   !profileOwnRead.error
     && profileOwnRead.data?.tenant_id === ids.tenantA
@@ -888,7 +888,10 @@ record('E02-01 v1 profile projection returns only the linked tenant employee and
     && !profileMemberWithoutEmployee.error
     && profileMemberWithoutEmployee.data?.employee === null,
   JSON.stringify({ own: profileOwnRead.error?.code || profileOwnRead.data?.employee?.id,
+    address: profileOwnRead.data?.employee?.address,
+    mailing_address: profileOwnRead.data?.employee?.mailing_address,
     crossTenant: profileCrossTenantRead.error?.code || 'unexpected success',
+    noEmployeeError: profileMemberWithoutEmployee.error?.code || null,
     noEmployee: profileMemberWithoutEmployee.data?.employee }));
 
 const educationPayload = {
@@ -1179,7 +1182,7 @@ record('E02 v1 profile projection returns saved employee-owned records and legac
     family: employeeProfileReads?.family_members?.length, bank: employeeProfileReads?.bank?.bank_name,
     invalidEmail: profileInvalidEmail.error?.code, invalidGender: profileInvalidGender.error?.code,
     invalidDob: profileInvalidDob.error?.code, retired: retiredProfileRpcExecute }));
-const profileRoleWithoutEmployeeWrite = await noPermission.client.rpc('employee_save_my_family_member_v1', {
+const profileRoleWithoutEmployeeWrite = await employeesViewer.client.rpc('employee_save_my_family_member_v1', {
   p_tenant_id: ids.tenantA, p_payload: familyPayload,
 });
 record('E02 unlinked active tenant members cannot mutate an employee profile',

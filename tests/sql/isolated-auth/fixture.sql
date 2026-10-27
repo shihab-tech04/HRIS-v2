@@ -289,7 +289,7 @@ GRANT TRUNCATE, TRIGGER, REFERENCES ON public.employee_documents TO authenticate
 -- Synthetic copy of the hosted family table. Its first policy intentionally
 -- mirrors the legacy global permission rule that the migration must replace.
 CREATE TABLE public.employee_family_members (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL REFERENCES public.employees(id),
   name text NOT NULL,
   relationship text,
