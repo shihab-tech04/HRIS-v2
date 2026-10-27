@@ -57,5 +57,7 @@ test('disposable Auth/Postgres acceptance rehearses notices transition and execu
   assert.match(localParityHarness, /rows\.length !== 47/);
   assert.match(localParityHarness, /failures\.length/);
   assert.match(localParityHarness, /synesis-local-hris-test/);
+  assert.match(localParityHarness, /storage\.buckets/);
+  assert.match(localParityHarness, /employee-documents/);
   assert.doesNotMatch(localParityHarness, /synesis-local-hris-parity-test/);
 });

@@ -30,6 +30,20 @@ const container = execFileSync('docker', [
 if (container !== `supabase_db_${path.basename(workdir)}`) {
   throw new Error('Refusing parity test: no matching disposable local Supabase Postgres container was found.');
 }
+const runDisposableSql = sql => execFileSync('docker', [
+  '--context', dockerContext, 'exec', '-i', container, 'psql',
+  '-X', '-A', '-t', '-q', '--set=ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres',
+], { input: sql, encoding: 'utf8' }).trim();
+const employeeDocumentsBucketPublic = runDisposableSql(
+  "SELECT public::text FROM storage.buckets WHERE id='employee-documents';",
+);
+if (employeeDocumentsBucketPublic === '') {
+  runDisposableSql(`INSERT INTO storage.buckets(id,name,public)
+    VALUES('employee-documents','employee-documents',false)
+    ON CONFLICT (id) DO NOTHING;`);
+} else if (employeeDocumentsBucketPublic !== 'false') {
+  throw new Error('Refusing parity test: the disposable employee-documents bucket must remain private.');
+}
 
 const legacyGuardRetirementSql = readFileSync(
   path.join(root, 'supabase/staging/hosted-legacy-notices/retire-legacy-security-guard.staging.sql'),
