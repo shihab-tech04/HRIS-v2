@@ -290,6 +290,11 @@ BEGIN
   SELECT * INTO r FROM public.employee_profile_change_requests
   WHERE id=p_id AND tenant_id=p_tenant_id AND status='pending' FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Pending profile change request not found.' USING errcode='P0002'; END IF;
+  -- Four-eyes approval: even a reviewer with self_service.manage must not
+  -- approve or reject a request that they submitted themselves.
+  IF r.requested_by IS NOT DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Reviewers cannot decide their own profile change requests.' USING errcode='42501';
+  END IF;
   IF p_decision='approved' AND r.field_key NOT IN (
     'full_name','official_email','phone','personal_email','official_phone',
     'address','mailing_address','emergency_contact_name','emergency_contact_phone',
