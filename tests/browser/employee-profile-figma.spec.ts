@@ -55,7 +55,7 @@ test('all five profile panels render in EN/BN at the requested widths without vi
         const enabledActions = await panel.getByRole('button').evaluateAll(buttons =>
           buttons.filter(button => !(button as HTMLButtonElement).disabled).map(button => button.textContent?.trim() || 'unnamed'),
         );
-        expect(enabledActions, `${translated} must not expose an unapproved write action`).toEqual([]);
+        expect(enabledActions, `${translated} should expose its approved profile actions`).not.toHaveLength(0);
 
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
         expect(overflow, `horizontal document overflow at ${width}px / ${locale} / ${translated}`).toBe(false);
@@ -82,15 +82,16 @@ test('all five profile panels render in EN/BN at the requested widths without vi
   }
 });
 
-test('profile read states, disabled writes, tenant mismatch, and tab keyboard controls stay safe', async ({ page }) => {
+test('profile read states, authorized profile actions, tenant mismatch, and tab keyboard controls stay safe', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en');
   await expect(page.getByRole('img', { name: 'Employee Name: Synthetic QA Employee' })).toBeVisible();
   await expect(page.getByRole('tabpanel', { name: tabs[0] }).getByText('Synthetic QA Employee')).toBeVisible();
   await expect(page.locator('[data-employee-figma-profile]')).not.toContainText('Nadia Sultana');
   await expect(page.getByText('qa.employee@example.invalid')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Edit:/ }).first()).toBeDisabled();
-  await expect(page.getByRole('button', { name: /Add:/ }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Edit Personal Details' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Edit Contact Details' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add' }).first()).toBeEnabled();
 
   const selected = page.getByRole('tab', { name: tabs[0] });
   await selected.focus();
@@ -121,10 +122,133 @@ test('profile read states, disabled writes, tenant mismatch, and tab keyboard co
 
   await page.goto('/tests/browser/employee-profile-harness.html?state=tenant-switch&locale=en');
   await expect(page.getByRole('tabpanel', { name: tabs[0] }).getByText('Synthetic QA Employee')).toBeVisible();
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: tabs[0] })).toContainText('synthetic-nid-0123456789');
   await page.getByRole('button', { name: 'Switch local fixture tenant' }).click();
   await expect(page.getByRole('status')).toContainText('Loading your profile');
   await expect(page.locator('[data-employee-figma-profile]').getByText('Synthetic QA Employee')).toHaveCount(0);
   await expect(page.getByRole('tabpanel', { name: tabs[0] }).getByText('Synthetic QA Employee')).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: tabs[0] })).not.toContainText('synthetic-nid-0123456789');
+});
+
+test('profile correction forms validate, submit the tenant-scoped RPC, and show RPC errors inline', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=save-error&locale=en');
+  await page.getByRole('button', { name: 'Edit Personal Details' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  const beforeInvalid = await page.evaluate(() => window.__profileFixtureCalls.filter(call =>
+    call.name === 'employee_submit_profile_change_request',
+  ).length);
+  await dialog.getByRole('button', { name: 'Submit request' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Check the highlighted fields and try again.');
+  const afterInvalid = await page.evaluate(() => window.__profileFixtureCalls.filter(call =>
+    call.name === 'employee_submit_profile_change_request',
+  ).length);
+  expect(afterInvalid).toBe(beforeInvalid);
+
+  await dialog.getByLabel('Proposed value').fill('Updated synthetic employee name');
+  await dialog.getByLabel('Reason for this correction').fill('Synthetic browser acceptance.');
+  await dialog.getByRole('button', { name: 'Submit request' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('The change could not be saved.');
+  const rejectedCall = await page.evaluate(() => window.__profileFixtureCalls
+    .filter(call => call.name === 'employee_submit_profile_change_request').at(-1));
+  expect(rejectedCall).toMatchObject({
+    args: {
+      p_tenant_id: 'local-visual-tenant',
+      p_field_key: 'full_name',
+      p_requested_value: 'Updated synthetic employee name',
+      p_reason: 'Synthetic browser acceptance.',
+    },
+  });
+
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en');
+  await page.getByRole('button', { name: 'Edit Contact Details' }).click();
+  const successDialog = page.getByRole('dialog');
+  await successDialog.getByLabel('Profile field').selectOption('official_email');
+  await successDialog.getByLabel('Proposed value').fill('corrected.employee@example.invalid');
+  await successDialog.getByLabel('Reason for this correction').fill('Synthetic email correction.');
+  await successDialog.getByRole('button', { name: 'Submit request' }).click();
+  await expect(page.getByRole('status')).toContainText('Your correction request was submitted for HR review.');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const acceptedCall = await page.evaluate(() => window.__profileFixtureCalls
+    .filter(call => call.name === 'employee_submit_profile_change_request').at(-1));
+  expect(acceptedCall).toMatchObject({
+    args: {
+      p_tenant_id: 'local-visual-tenant',
+      p_field_key: 'official_email',
+      p_requested_value: 'corrected.employee@example.invalid',
+      p_reason: 'Synthetic email correction.',
+    },
+  });
+});
+
+test('profile sections display fixture values and keep identity and bank numbers masked by default', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en');
+  const personal = page.getByRole('tabpanel', { name: tabs[0] });
+  await expect(personal).toContainText('Synthetic father');
+  await expect(personal).toContainText('Synthetic University');
+  await expect(personal).toContainText('Synthetic design award');
+  await expect(personal).not.toContainText('synthetic-nid-0123456789');
+  await page.getByRole('button', { name: 'View', exact: true }).first().click();
+  await expect(personal).toContainText('synthetic-nid-0123456789');
+
+  await page.getByRole('tab', { name: tabs[1] }).click();
+  await expect(page.getByRole('tabpanel', { name: tabs[1] })).toContainText('Synthetic Studio');
+  await page.getByRole('tab', { name: tabs[2] }).click();
+  await expect(page.getByRole('tabpanel', { name: tabs[2] })).toContainText('Synthetic training');
+  await expect(page.getByRole('tabpanel', { name: tabs[2] })).toContainText('Synthetic certification');
+  await page.getByRole('tab', { name: tabs[3] }).click();
+  const bank = page.getByRole('tabpanel', { name: tabs[3] });
+  await expect(bank).toContainText('Synthetic Bank');
+  await expect(bank).not.toContainText('synthetic-bank-secret-123456');
+  await bank.getByRole('button', { name: 'View Account Number' }).click();
+  await expect(bank).toContainText('synthetic-bank-secret-123456');
+  await bank.getByRole('button', { name: 'Hide Account Number' }).click();
+  await expect(bank).not.toContainText('synthetic-bank-secret-123456');
+  await page.getByRole('tab', { name: tabs[4] }).click();
+  await expect(page.getByRole('tabpanel', { name: tabs[4] })).toContainText('Synthetic family member');
+  await expect(page.getByRole('tabpanel', { name: tabs[4] })).toContainText('Synthetic emergency contact');
+});
+
+test('family editor validates required fields and submits only the active-tenant family payload', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en');
+  await page.getByRole('tab', { name: tabs[4] }).click();
+  await page.getByRole('button', { name: 'Add' }).click();
+  const dialog = page.getByRole('dialog');
+  const countBefore = await page.evaluate(() => window.__profileFixtureCalls.filter(call =>
+    call.name === 'employee_save_my_family_member_v1',
+  ).length);
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Check the highlighted fields and try again.');
+  expect(await page.evaluate(() => window.__profileFixtureCalls.filter(call =>
+    call.name === 'employee_save_my_family_member_v1',
+  ).length)).toBe(countBefore);
+
+  await dialog.getByLabel('Family member name').fill('Synthetic family contact');
+  await dialog.getByLabel('Phone number').fill('+880 1700 000222');
+  await dialog.getByLabel('NID number').fill('SYNTHETIC-FAMILY-222');
+  await dialog.getByLabel('Date of birth').fill('1995-02-03');
+  await dialog.getByLabel('Relationship').fill('Sibling');
+  await dialog.getByLabel('Present address').fill('Synthetic present address');
+  await dialog.getByLabel('Permanent address').fill('Synthetic permanent address');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('status')).toContainText('Your profile information was saved.');
+  const savedCall = await page.evaluate(() => window.__profileFixtureCalls
+    .filter(call => call.name === 'employee_save_my_family_member_v1').at(-1));
+  expect(savedCall).toMatchObject({
+    args: {
+      p_tenant_id: 'local-visual-tenant',
+      p_payload: {
+        name: 'Synthetic family contact', phone: '+880 1700 000222',
+        nid_number: 'SYNTHETIC-FAMILY-222', date_of_birth: '1995-02-03',
+        relationship: 'Sibling', present_address: 'Synthetic present address',
+        permanent_address: 'Synthetic permanent address', is_nominee: false,
+      },
+    },
+  });
 });
 
 
