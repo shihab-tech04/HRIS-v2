@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261027090000_hris_requisition_pending_status_guard.sql', import.meta.url), 'utf8');
 const acceptance = readFileSync(new URL('../sql/isolated-auth/hris-release-rpc-acceptance.mjs', import.meta.url), 'utf8');
+const fixture = readFileSync(new URL('../sql/isolated-auth/recruitment-fixture.sql', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../../.github/workflows/disposable-auth-postgres-acceptance.yml', import.meta.url), 'utf8');
 
 function functionBlock(source, name) {
@@ -59,7 +60,9 @@ test('requisition resolver remains tenant-scoped, pending-only, auditable, and s
 test('isolated PostgreSQL acceptance applies the forward port and exercises privilege, tenant, and duplicate-resolution boundaries', () => {
   assert.match(acceptance, /applySql\('supabase\/migrations\/20261027090000_hris_requisition_pending_status_guard\.sql'\)/);
   assert.match(acceptance, /p_payload: \{ title: 'Synthetic pending-only requisition', status: 'approved' \}/);
+  assert.match(acceptance, /p_payload: \{ title: 'Synthetic draft payload requisition', status: 'draft' \}/);
   assert.match(acceptance, /Requisition creation forces pending, enforces permission and tenant scope, and resolution is single-use/);
+  assert.match(acceptance, /draftPayloadStatus === 'pending'/);
   assert.match(acceptance, /duplicateRequisitionDecision\.error\?\.code === 'P0002'/);
   assert.match(acceptance, /crossTenantRequisitionUpdate\.error\?\.code === 'P0002'/);
   assert.match(acceptance, /crossTenantRequisitionDecision\.error\?\.code === 'P0002'/);
@@ -68,6 +71,7 @@ test('isolated PostgreSQL acceptance applies the forward port and exercises priv
   assert.match(acceptance, /'requisition_rpc_signature_parity'/);
   assert.match(acceptance, /'requisition_rpc_acl'/);
   assert.match(acceptance, /'requisition_table_write_denied'/);
+  assert.match(fixture, /status IN \('draft','pending','approved','rejected','closed'\)/);
   assert.match(acceptance, /hostedRpcSignatures\.length === 43/);
   assert.match(acceptance, /SHOW server_version_num/);
   assert.match(acceptance, /must be PostgreSQL 17/);

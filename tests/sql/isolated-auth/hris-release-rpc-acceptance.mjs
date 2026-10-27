@@ -348,6 +348,14 @@ try {
   const requisitionStatus = requisitionCreatedId
     ? psql("SELECT status FROM public.manpower_requisitions WHERE id=" + sqlLiteral(requisitionCreatedId) + "::uuid;")
     : '';
+  const draftPayloadCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Synthetic draft payload requisition', status: 'draft' },
+  });
+  const draftPayloadCreatedId = draftPayloadCreate.data;
+  const draftPayloadStatus = draftPayloadCreatedId
+    ? psql("SELECT status FROM public.manpower_requisitions WHERE id=" + sqlLiteral(draftPayloadCreatedId) + "::uuid;")
+    : '';
   const directRequisitionStatusWrite = requisitionCreatedId
     ? await clients.recruiterA.from('manpower_requisitions')
       .update({ status: 'approved' }).eq('id', requisitionCreatedId)
@@ -398,6 +406,7 @@ try {
   );
   record('Requisition creation forces pending, enforces permission and tenant scope, and resolution is single-use',
     !requisitionCreate.error && typeof requisitionCreatedId === 'string' && requisitionStatus === 'pending'
+      && !draftPayloadCreate.error && typeof draftPayloadCreatedId === 'string' && draftPayloadStatus === 'pending'
       && directRequisitionStatusWrite.error?.code === '42501' && statusAfterDirectWrite === 'pending'
       && unauthorizedRequisition.error?.code === '42501' && unauthorizedRequisitionCount === '0'
       && crossTenantRequisitionUpdate.error?.code === 'P0002'
@@ -408,6 +417,7 @@ try {
       && resolvedRequisitionState === 'approved|1'
       && tenantBRequisitionAfterResolve === 'Synthetic tenant B requisition|pending',
     JSON.stringify({ createdPendingDespiteApprovedPayload: requisitionStatus === 'pending',
+      createdPendingDespiteDraftPayload: draftPayloadStatus === 'pending',
       directStatusWriteDenied: directRequisitionStatusWrite.error?.code === '42501' && statusAfterDirectWrite === 'pending',
       unauthorizedDenied: unauthorizedRequisition.error?.code === '42501',
       crossTenantSaveDenied: crossTenantRequisitionUpdate.error?.code === 'P0002',

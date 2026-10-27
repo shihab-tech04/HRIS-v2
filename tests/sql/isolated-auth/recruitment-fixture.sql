@@ -178,7 +178,7 @@ ALTER TABLE public.manpower_requisitions
   ADD COLUMN IF NOT EXISTS job_description text,
   ADD COLUMN IF NOT EXISTS reason text,
   ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','approved','rejected')),
+    CHECK (status IN ('draft','pending','approved','rejected','closed')),
   ADD COLUMN IF NOT EXISTS requested_by uuid,
   ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS resolved_by uuid,
