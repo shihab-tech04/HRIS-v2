@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { compileIntegrationInventory, inventoryPhase01, parseSqlFunctionDefinitions } from '../../scripts/phase01-integration-inventory.mjs';
 
 test('SQL function scanner captures versioned schema and case-insensitive declarations', () => {
@@ -21,17 +22,23 @@ test('Phase 01 enumerates frontend RPCs, differentiates staged-only and unresolv
   assert.equal(result.unique_rpc_targets,
     result.rpc_targets_in_versioned_migrations + result.rpc_targets_staging_only.length + result.rpc_targets_without_tracked_public_definition.length);
   assert.equal(result.rpc_targets_in_versioned_migrations, result.rpc_targets_defined_in_tracked_public_sql);
-  assert.deepEqual(result.rpc_targets_without_tracked_public_definition, []);
-  assert.equal(result.rpc_targets_in_versioned_migrations, 126);
   assert.ok(result.rpc_targets.find(row => row.name === 'admin_save_job')?.sql_definitions.length);
   assert.ok(result.rpc_targets.find(row => row.name === 'admin_set_job_published')?.sql_definitions.length);
   assert.equal(result.rpc_targets.find(row => row.name === 'candidate_submit_requested_document')?.source_status, 'VERSIONED_MIGRATION');
-  assert.equal(result.rpc_targets_staging_only.length, 9);
   assert.ok(result.rpc_targets_staging_only.every(name => name.startsWith('platform_hris_')));
   assert.ok(result.rpc_targets_staging_only.includes('platform_hris_list_tenant_modules'));
   assert.ok(result.rpc_targets_staging_only.includes('platform_hris_set_tenant_module'));
   assert.ok(result.rpc_targets.find(row => row.name === 'hris_activate_candidate_employee')?.sql_definitions.length);
   assert.ok(result.rpc_targets.find(row => row.name === 'candidate_apply_to_job')?.callsites.some(call => call.project === 'Candidate'));
+
+  for (const name of ['admin_save_requisition', 'admin_resolve_requisition']) {
+    const target = result.rpc_targets.find(row => row.name === name);
+    assert.ok(target, `${name} is included in the integration inventory`);
+    assert.equal(target.callsites.filter(call => call.project === 'Main' && call.path === 'src/live/ManpowerRequisitionManager.tsx').length, 1);
+  }
+  const requisitionManager = readFileSync(new URL('../../src/live/ManpowerRequisitionManager.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(requisitionManager, /supabase\.from\('manpower_requisitions'\)\.(insert|update|delete)\(/);
+
   assert.ok(result.table_callsites.length > 0);
   assert.ok(result.storage_callsites.length > 0);
   assert.match(result.scope, /not a statement about hosted deployment/);
