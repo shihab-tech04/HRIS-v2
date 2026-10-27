@@ -985,7 +985,7 @@ const invalidFamily = await employeeA.client.rpc('employee_save_my_family_member
 });
 
 const bankPayload = {
-  bank_name: 'Synthetic Profile Bank', account_number: 'SYNTHETIC-ACCOUNT-12345',
+  bank_name: 'Synthetic Profile Bank', account_name: 'Synthetic Bank Account Holder', account_number: 'SYNTHETIC-ACCOUNT-12345',
   branch_name: 'Synthetic Branch',
   routing_number: '123456789',
 };
