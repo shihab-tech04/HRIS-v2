@@ -91,6 +91,10 @@ let directEmployeeEmail = null;
 const password = randomBytes(24).toString('base64url');
 const tenantA = '11111111-1111-4111-8111-111111111111';
 const tenantB = '22222222-2222-4222-8222-222222222222';
+const tenantADepartment = 'eeeeeeee-0000-4000-8000-000000000001';
+const tenantBDepartment = 'eeeeeeee-0000-4000-8000-000000000002';
+const tenantADesignation = 'ffffffff-0000-4000-8000-000000000001';
+const tenantBDesignation = 'ffffffff-0000-4000-8000-000000000002';
 const jobId = 'a4444444-4444-4444-8444-444444444444';
 const applicationId = 'c4444444-4444-4444-8444-444444444444';
 const results = [];
@@ -342,7 +346,8 @@ try {
 
   const requisitionCreate = await clients.recruiterA.rpc('admin_save_requisition', {
     p_id: null,
-    p_payload: { title: 'Synthetic pending-only requisition', status: 'approved' },
+    p_payload: { title: 'Synthetic pending-only requisition', status: 'approved',
+      department_id: tenantADepartment, designation_id: tenantADesignation },
   });
   const requisitionCreatedId = requisitionCreate.data;
   const requisitionStatus = requisitionCreatedId
@@ -355,6 +360,36 @@ try {
   const draftPayloadCreatedId = draftPayloadCreate.data;
   const draftPayloadStatus = draftPayloadCreatedId
     ? psql("SELECT status FROM public.manpower_requisitions WHERE id=" + sqlLiteral(draftPayloadCreatedId) + "::uuid;")
+    : '';
+  const validTenantReferences = requisitionCreatedId
+    ? psql("SELECT department_id::text || '|' || designation_id::text FROM public.manpower_requisitions WHERE id="
+      + sqlLiteral(requisitionCreatedId) + "::uuid;")
+    : '';
+  const crossTenantDepartmentCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Cross-tenant department create attempt', department_id: tenantBDepartment },
+  });
+  const crossTenantDepartmentCreateCount = psql(
+    "SELECT count(*) FROM public.manpower_requisitions WHERE title='Cross-tenant department create attempt';",
+  );
+  const crossTenantDesignationCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Cross-tenant designation create attempt', designation_id: tenantBDesignation },
+  });
+  const crossTenantDesignationCreateCount = psql(
+    "SELECT count(*) FROM public.manpower_requisitions WHERE title='Cross-tenant designation create attempt';",
+  );
+  const crossTenantDepartmentUpdate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: requisitionCreatedId,
+    p_payload: { title: 'Cross-tenant department update attempt', department_id: tenantBDepartment },
+  });
+  const crossTenantDesignationUpdate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: requisitionCreatedId,
+    p_payload: { title: 'Cross-tenant designation update attempt', designation_id: tenantBDesignation },
+  });
+  const requisitionAfterForeignReferenceAttempts = requisitionCreatedId
+    ? psql("SELECT title || '|' || department_id::text || '|' || designation_id::text FROM public.manpower_requisitions WHERE id="
+      + sqlLiteral(requisitionCreatedId) + "::uuid;")
     : '';
   const directRequisitionStatusWrite = requisitionCreatedId
     ? await clients.recruiterA.from('manpower_requisitions')
@@ -406,7 +441,13 @@ try {
   );
   record('Requisition creation forces pending, enforces permission and tenant scope, and resolution is single-use',
     !requisitionCreate.error && typeof requisitionCreatedId === 'string' && requisitionStatus === 'pending'
+      && validTenantReferences === tenantADepartment + '|' + tenantADesignation
       && !draftPayloadCreate.error && typeof draftPayloadCreatedId === 'string' && draftPayloadStatus === 'pending'
+      && crossTenantDepartmentCreate.error?.code === 'P0002' && crossTenantDepartmentCreateCount === '0'
+      && crossTenantDesignationCreate.error?.code === 'P0002' && crossTenantDesignationCreateCount === '0'
+      && crossTenantDepartmentUpdate.error?.code === 'P0002'
+      && crossTenantDesignationUpdate.error?.code === 'P0002'
+      && requisitionAfterForeignReferenceAttempts === 'Synthetic pending-only requisition|' + tenantADepartment + '|' + tenantADesignation
       && directRequisitionStatusWrite.error?.code === '42501' && statusAfterDirectWrite === 'pending'
       && unauthorizedRequisition.error?.code === '42501' && unauthorizedRequisitionCount === '0'
       && crossTenantRequisitionUpdate.error?.code === 'P0002'
@@ -418,6 +459,12 @@ try {
       && tenantBRequisitionAfterResolve === 'Synthetic tenant B requisition|pending',
     JSON.stringify({ createdPendingDespiteApprovedPayload: requisitionStatus === 'pending',
       createdPendingDespiteDraftPayload: draftPayloadStatus === 'pending',
+      validSameTenantReferencesAccepted: validTenantReferences === tenantADepartment + '|' + tenantADesignation,
+      crossTenantDepartmentCreateDenied: crossTenantDepartmentCreate.error?.code === 'P0002' && crossTenantDepartmentCreateCount === '0',
+      crossTenantDesignationCreateDenied: crossTenantDesignationCreate.error?.code === 'P0002' && crossTenantDesignationCreateCount === '0',
+      crossTenantDepartmentUpdateDenied: crossTenantDepartmentUpdate.error?.code === 'P0002',
+      crossTenantDesignationUpdateDenied: crossTenantDesignationUpdate.error?.code === 'P0002',
+      crossTenantReferencesDidNotMutateRow: requisitionAfterForeignReferenceAttempts === 'Synthetic pending-only requisition|' + tenantADepartment + '|' + tenantADesignation,
       directStatusWriteDenied: directRequisitionStatusWrite.error?.code === '42501' && statusAfterDirectWrite === 'pending',
       unauthorizedDenied: unauthorizedRequisition.error?.code === '42501',
       crossTenantSaveDenied: crossTenantRequisitionUpdate.error?.code === 'P0002',
