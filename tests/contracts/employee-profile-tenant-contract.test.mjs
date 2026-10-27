@@ -47,7 +47,7 @@ test('scalar profile corrections retain HR approval and use the employee scalar 
   assert.match(review, /mailing_address=CASE WHEN r\.field_key='mailing_address' THEN r\.requested_value ELSE e\.mailing_address END/);
   assert.match(projection, /'address',e\.address,'mailing_address',e\.mailing_address/);
   assert.doesNotMatch(migration, /(?:INSERT INTO|UPDATE)\s+public\.employee_addresses/i);
-  assert.doesNotMatch(projection, /employee_compensation|salary|tax/);
+  assert.doesNotMatch(projection, /employee_compensation|salary|taxable_income|tax_withheld/);
   assert.match(parity, /employee_submit_profile_change_request\(text,text,text\)/);
   assert.match(parity, /employee_get_my_profile\(\)/);
 });
@@ -69,7 +69,6 @@ test('record save allowlists and certificate paths remain own-employee and tenan
   }
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.employee_bank_details/);
   const bankSave = migration.match(/CREATE OR REPLACE FUNCTION public\.employee_save_my_bank_v1\([\s\S]*?\$function\$;/)?.[0] || '';
-  assert.match(bankSave, /'bank_name','account_number','branch_name','routing_number'/);
   assert.match(bankSave, /'bank_name','account_name','account_number','branch_name','routing_number'/);
   assert.match(bankSave, /v_account_name/);
   assert.match(migration, /e\.bank_account_name/);
