@@ -1162,18 +1162,18 @@ const profileInvalidDob = await employeeA.client.rpc('employee_submit_profile_ch
   p_requested_value: '2999-12-31', p_reason: 'Invalid profile input acceptance.',
 });
 const profilePostWriteRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
-const employeeProfileReads = profilePostWriteRead.data?.employee;
+const profilePostWriteData = profilePostWriteRead.data;
 const retiredProfileRpcExecute = queryAdmin("SELECT jsonb_build_object(" +
   "'read',CASE WHEN to_regprocedure('public.employee_get_my_profile()') IS NULL THEN true ELSE NOT has_function_privilege('authenticated',to_regprocedure('public.employee_get_my_profile()'),'EXECUTE') END," +
   "'update',CASE WHEN to_regprocedure('public.employee_update_my_profile(jsonb)') IS NULL THEN true ELSE NOT has_function_privilege('authenticated',to_regprocedure('public.employee_update_my_profile(jsonb)'),'EXECUTE') END," +
   "'bank_update',CASE WHEN to_regprocedure('public.employee_update_my_bank(jsonb)') IS NULL THEN true ELSE NOT has_function_privilege('authenticated',to_regprocedure('public.employee_update_my_bank(jsonb)'),'EXECUTE') END)");
 record('E02 v1 profile projection returns saved employee-owned records and legacy tenantless writes are retired',
   !profilePostWriteRead.error
-    && employeeProfileReads?.education?.some(row => row.id === profileEducationSave.data)
-    && employeeProfileReads?.experience?.some(row => row.id === profileExperienceSave.data)
-    && employeeProfileReads?.training?.some(row => row.id === profileTrainingSave.data)
-    && employeeProfileReads?.family_members?.some(row => row.id === profileFamilySave.data)
-    && employeeProfileReads?.bank?.account_number === 'SYNTHETIC-ACCOUNT-12345'
+    && profilePostWriteData?.education?.some(row => row.id === profileEducationSave.data)
+    && profilePostWriteData?.experience?.some(row => row.id === profileExperienceSave.data)
+    && profilePostWriteData?.training?.some(row => row.id === profileTrainingSave.data)
+    && profilePostWriteData?.family_members?.some(row => row.id === profileFamilySave.data)
+    && profilePostWriteData?.bank?.account_number === 'SYNTHETIC-ACCOUNT-12345'
     && profileInvalidEmail.error?.code === '22023'
     && profileInvalidGender.error?.code === '22023'
     && profileInvalidDob.error?.code === '22023'
@@ -1182,13 +1182,13 @@ record('E02 v1 profile projection returns saved employee-owned records and legac
     && retiredProfileRpcExecute.bank_update === true,
   JSON.stringify({ readError: profilePostWriteRead.error?.code || null,
     readMessage: profilePostWriteRead.error?.message || null,
-    hasEmployee: Boolean(employeeProfileReads),
-    education: employeeProfileReads?.education?.length,
-    experience: employeeProfileReads?.experience?.length, training: employeeProfileReads?.training?.length,
-    family: { count: employeeProfileReads?.family_members?.length, savedId: profileFamilySave.data,
-      ids: employeeProfileReads?.family_members?.map(row => row.id),
-      savedRecordPresent: employeeProfileReads?.family_members?.some(row => row.id === profileFamilySave.data) },
-    bank: employeeProfileReads?.bank ?? null,
+    employeeId: profilePostWriteData?.employee?.id,
+    education: profilePostWriteData?.education?.length,
+    experience: profilePostWriteData?.experience?.length, training: profilePostWriteData?.training?.length,
+    family: { count: profilePostWriteData?.family_members?.length, savedId: profileFamilySave.data,
+      ids: profilePostWriteData?.family_members?.map(row => row.id),
+      savedRecordPresent: profilePostWriteData?.family_members?.some(row => row.id === profileFamilySave.data) },
+    bank: profilePostWriteData?.bank ?? null,
     invalidEmail: profileInvalidEmail.error?.code, invalidGender: profileInvalidGender.error?.code,
     invalidDob: profileInvalidDob.error?.code, retired: retiredProfileRpcExecute }));
 const profileRoleWithoutEmployeeWrite = await employeesViewer.client.rpc('employee_save_my_family_member_v1', {
