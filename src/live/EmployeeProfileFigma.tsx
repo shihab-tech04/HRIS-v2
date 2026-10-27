@@ -67,6 +67,7 @@ const copy = {
     nid: 'NID',
     passport: 'Passport',
     eTin: 'E-Tin',
+    taxCircle: 'Tax Circle',
     educationLevel: 'Level Of Education',
     institutionName: 'Institution Name',
     subjectMajor: 'Subject/Major/Concentration',
@@ -98,6 +99,7 @@ const copy = {
     certificate: 'Certificate',
     bankInformation: 'Bank Information',
     bankName: 'Bank Name',
+    bankAccountName: 'Bank Account Name',
     branchName: 'Branch Name',
     accountNumber: 'Account Number',
     routingNumber: 'Routing Number',
@@ -182,6 +184,7 @@ const copy = {
     nid: 'জাতীয় পরিচয়পত্র',
     passport: 'পাসপোর্ট',
     eTin: 'ই-টিন',
+    taxCircle: 'কর সার্কেল',
     educationLevel: 'শিক্ষার স্তর',
     institutionName: 'প্রতিষ্ঠানের নাম',
     subjectMajor: 'বিষয়/মেজর/বিশেষায়ন',
@@ -213,6 +216,7 @@ const copy = {
     certificate: 'সনদ',
     bankInformation: 'ব্যাংকের তথ্য',
     bankName: 'ব্যাংকের নাম',
+    bankAccountName: 'ব্যাংক অ্যাকাউন্টের নাম',
     branchName: 'শাখার নাম',
     accountNumber: 'অ্যাকাউন্ট নম্বর',
     routingNumber: 'রাউটিং নম্বর',
@@ -442,6 +446,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     { id: 'nid', label: words.nid, value: maskValue('nid_number') },
     { id: 'passport', label: words.passport, value: maskValue('passport_number') },
     { id: 'e-tin', label: words.eTin, value: maskValue('etin_number') },
+    { id: 'tax-circle', label: words.taxCircle, value: value('tax_circle') },
   ];
   const educationRows = records('education');
   const experienceRows = records('experience');
@@ -491,6 +496,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const bankValue = (key: string) => textValue(bankRecord?.[key], unavailable);
   const bankFields: DetailField[] = [
     { id:'bank-name',label:words.bankName,value:bankValue('bank_name') },
+    { id:'bank-account-name',label:words.bankAccountName,value:bankValue('account_name') },
     { id:'branch-name',label:words.branchName,value:bankValue('branch_name') },
     { id:'account-number',label:words.accountNumber,value:bankRecord?.account_number ? <span className="inline-flex flex-wrap items-center gap-2">
       <span>{showBankAccount ? bankValue('account_number') : '•'.repeat(Math.min(16, Math.max(8, String(bankRecord.account_number).length)))}</span>
