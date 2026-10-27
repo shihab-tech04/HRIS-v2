@@ -3,18 +3,20 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import {
   BookOpenCheck,
   BriefcaseBusiness,
+  Eye,
+  EyeOff,
   Landmark,
   RefreshCw,
   UsersRound,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
+import { EmployeeProfileEditModal, type ProfileEditKind } from './EmployeeProfileEditModal';
 import addressBookIcon from '../assets/employee-figma/address-book.svg';
 import documentCheckIcon from '../assets/employee-figma/document-check.svg';
 import editPenIcon from '../assets/employee-figma/edit-pen.svg';
 import graduationCapIcon from '../assets/employee-figma/graduation-cap.svg';
 import pdfDocumentIcon from '../assets/employee-figma/pdf-document-icon.svg';
-import viewEyeIcon from '../assets/employee-figma/view-eye.svg';
 
 type Profile = Record<string, unknown>;
 type Panel = 'personal' | 'experience' | 'training' | 'bank' | 'family';
@@ -43,6 +45,7 @@ const copy = {
     profileContentHeading: 'Personal, Contact, Verification & Educational Information',
     personalDetails: 'Personal Details',
     contactDetails: 'Personal Details',
+    editContactDetails: 'Edit Contact Details',
     verification: 'Verification',
     educationDetails: 'Education Information',
     employeeName: 'Employee Name',
@@ -119,6 +122,22 @@ const copy = {
     view: 'View',
     writeUnavailable: 'This action is disabled until WS02 confirms the employee RPC and RLS requirements.',
     viewUnavailable: 'This information is not available through an approved employee read service.',
+    requestSubmitted: 'Your correction request was submitted for HR review.',
+    profileSaved: 'Your profile information was saved.',
+    noRecords: 'No records are available yet.',
+    emergencyContact: 'Emergency Contact',
+    emergencyName: 'Contact name',
+    emergencyPhone: 'Contact phone',
+    reveal: 'View',
+    hide: 'Hide',
+    certificateAttached: 'Certificate attached',
+    familyMemberName: 'Family Member',
+    nomineeStatus: 'Nominee',
+    trainingNumber: 'Training Number',
+    yearOfHeld: 'Year of held',
+    currentlyStudying: 'Currently studying',
+    yes: 'Yes',
+    no: 'No',
   },
   bn: {
     heading: 'আমার প্রোফাইল',
@@ -141,6 +160,7 @@ const copy = {
     profileContentHeading: 'ব্যক্তিগত, যোগাযোগ, যাচাইকরণ ও শিক্ষাগত তথ্য',
     personalDetails: 'ব্যক্তিগত বিবরণ',
     contactDetails: 'ব্যক্তিগত বিবরণ',
+    editContactDetails: 'যোগাযোগের তথ্য সম্পাদনা',
     verification: 'যাচাইকরণ',
     educationDetails: 'শিক্ষাগত তথ্য',
     employeeName: 'কর্মীর নাম',
@@ -217,6 +237,22 @@ const copy = {
     view: 'দেখুন',
     writeUnavailable: 'WS02 কর্মী RPC ও RLS শর্ত নিশ্চিত না করা পর্যন্ত এই কাজটি বন্ধ থাকবে।',
     viewUnavailable: 'অনুমোদিত কর্মী তথ্যসেবা থেকে এই তথ্য পাওয়া যাচ্ছে না।',
+    requestSubmitted: 'তথ্য সংশোধনের অনুরোধ HR পর্যালোচনার জন্য জমা হয়েছে।',
+    profileSaved: 'আপনার প্রোফাইলের তথ্য সংরক্ষণ হয়েছে।',
+    noRecords: 'এখনও কোনো তথ্য যোগ করা হয়নি।',
+    emergencyContact: 'জরুরি যোগাযোগ',
+    emergencyName: 'যোগাযোগের নাম',
+    emergencyPhone: 'যোগাযোগের ফোন',
+    reveal: 'দেখুন',
+    hide: 'লুকান',
+    certificateAttached: 'সনদ সংযুক্ত আছে',
+    familyMemberName: 'পরিবারের সদস্য',
+    nomineeStatus: 'মনোনীত ব্যক্তি',
+    trainingNumber: 'প্রশিক্ষণ নম্বর',
+    yearOfHeld: 'অনুষ্ঠানের বছর',
+    currentlyStudying: 'বর্তমানে অধ্যয়নরত',
+    yes: 'হ্যাঁ',
+    no: 'না',
   },
 } as const;
 
@@ -244,37 +280,51 @@ function SectionHeading({ id, icon, title }: { id?: string; icon: ReactNode; tit
   </div>;
 }
 
-function DisabledAction({ label, unavailable, icon }: { label: string; unavailable: string; icon?: ReactNode }) {
-  return <button type="button" disabled title={unavailable} aria-label={`${label}: ${unavailable}`}
-    className="inline-flex min-h-10 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded border border-[#08558B] px-3 py-2 text-sm text-[#08558B] opacity-50">
-    {label}{icon}
-  </button>;
-}
-
 export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; locale: Locale }) {
   const words = copy[locale === 'bn' ? 'bn' : 'en'];
   const [panel, setPanel] = useState<Panel>('personal');
   const [loadedTenantId, setLoadedTenantId] = useState(tenantId);
   const [employee, setEmployee] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [employment, setEmployment] = useState<Profile | null>(null);
   const [status, setStatus] = useState<LoadState>('loading');
   const [revision, setRevision] = useState(0);
+  const [edit, setEdit] = useState<{ kind: ProfileEditKind; initial?: Profile } | null>(null);
+  const [notice, setNotice] = useState('');
+  const [showSensitive, setShowSensitive] = useState(false);
+  const [showBankAccount, setShowBankAccount] = useState(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    setShowSensitive(false);
+    setShowBankAccount(false);
+    setEdit(null);
+    setNotice('');
+  }, [tenantId]);
+
+  useEffect(() => {
+    setShowSensitive(false);
+    setShowBankAccount(false);
+  }, [panel]);
 
   useEffect(() => {
     let current = true;
     setLoadedTenantId(tenantId);
     setEmployee(null);
+    setProfile(null);
     setEmployment(null);
     setStatus('loading');
     void (async () => {
       try {
-        const { data, error } = await supabase.rpc('hris_get_my_dashboard_data', { p_tenant_id: tenantId });
+        const { data, error } = await supabase.rpc('employee_get_my_profile_v1', { p_tenant_id: tenantId });
         if (error) throw error;
         const record: unknown = data;
         if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('Invalid employee profile response');
         const response = record as Profile;
-        if (typeof response.tenant_id === 'string' && response.tenant_id !== tenantId) throw new Error('Tenant mismatch');
+        if (response.tenant_id !== tenantId) throw new Error('Tenant mismatch');
+        for (const section of ['education','experience','training','certifications','family_members']) {
+          if (!Array.isArray(response[section])) throw new Error('Invalid employee profile section');
+        }
         const rawEmployee: unknown = response.employee;
         if (rawEmployee === null || rawEmployee === undefined) {
           if (current) setStatus('empty');
@@ -283,8 +333,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         if (typeof rawEmployee !== 'object' || Array.isArray(rawEmployee)) throw new Error('Invalid employee profile record');
         const profile = rawEmployee as Profile;
         if (typeof profile.tenant_id === 'string' && profile.tenant_id !== tenantId) throw new Error('Tenant mismatch');
-        // E02-09 is separately scoped to the authenticated employee.
-        // Until WS02 approves/installs the contract, leave unsupported fields unavailable.
+        // Employment metadata remains on its already approved tenant-scoped read RPC.
         let workDetails: Profile | null = null;
         try {
           const { data: detailsData, error: detailsError } = await supabase.rpc(
@@ -310,6 +359,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         if (current) {
           setEmployment(workDetails);
           setEmployee(profile);
+          setProfile(response);
           setStatus('ready');
         }
       } catch {
@@ -322,12 +372,22 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const currentTenant = loadedTenantId === tenantId;
   const currentEmployee = currentTenant ? employee : null;
   const currentStatus = currentTenant ? status : 'loading';
+  const unavailable = words.unavailable;
   const value = (key: string) => textValue(currentEmployee?.[key] ?? (currentTenant ? employment?.[key] : null), words.unavailable);
   const employmentValue = (key: string) => textValue(currentTenant ? employment?.[key] : null, words.unavailable);
+  const records = (key: string) => currentTenant && Array.isArray(profile?.[key])
+    ? (profile?.[key] as unknown[]).filter((item): item is Profile => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    : [];
+  const profileRecordValue = (record: Profile, key: string) => textValue(record[key], unavailable);
+  const maskValue = (key: string) => {
+    const current = value(key);
+    return current === unavailable || showSensitive ? current : '•'.repeat(Math.min(16, Math.max(8, current.length)));
+  };
   const name = value('full_name');
   const initials = name === words.unavailable
     ? '—'
     : name.split(/\s+/).filter(Boolean).slice(0, 2).map(item => item[0].toUpperCase()).join('');
+  const actionClass = 'inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded border border-[#08558B] px-3 py-2 text-sm text-[#08558B] hover:bg-[#EFF7F8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08558B]';
 
   const tabs: { id: Panel; text: string; figma: string }[] = [
     { id: 'personal', text: words.personalTab, figma: '66:72042' },
@@ -351,18 +411,17 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     tabRefs.current[target]?.focus();
   }
 
-  const unavailable = words.unavailable;
   const personalFields: DetailField[] = [
     { id: 'employee-name', label: words.employeeName, value: value('full_name') },
-    { id: 'father-name', label: words.fatherName, value: unavailable },
-    { id: 'mother-name', label: words.motherName, value: unavailable },
-    { id: 'date-of-birth', label: words.dateOfBirth, value: unavailable },
-    { id: 'birthplace', label: words.birthplace, value: unavailable },
-    { id: 'blood-group', label: words.bloodGroup, value: unavailable },
-    { id: 'gender', label: words.gender, value: unavailable },
-    { id: 'religion', label: words.religion, value: unavailable },
-    { id: 'nationality', label: words.nationality, value: unavailable },
-    { id: 'marital-status', label: words.maritalStatus, value: unavailable },
+    { id: 'father-name', label: words.fatherName, value: value('father_name') },
+    { id: 'mother-name', label: words.motherName, value: value('mother_name') },
+    { id: 'date-of-birth', label: words.dateOfBirth, value: value('date_of_birth') },
+    { id: 'birthplace', label: words.birthplace, value: value('birthplace') },
+    { id: 'blood-group', label: words.bloodGroup, value: value('blood_group') },
+    { id: 'gender', label: words.gender, value: value('gender') },
+    { id: 'religion', label: words.religion, value: value('religion') },
+    { id: 'nationality', label: words.nationality, value: value('nationality') },
+    { id: 'marital-status', label: words.maritalStatus, value: value('marital_status') },
     {
       id: 'digital-signature', label: words.digitalSignature,
       value: <span className="inline-flex min-h-10 max-w-full items-center gap-3 rounded-lg border border-[#DEE0E3] px-3 py-2 text-sm text-slate-500">
@@ -372,73 +431,94 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     },
   ];
   const contactFields: DetailField[] = [
-    { id: 'phone-number', label: words.phoneNumber, value: unavailable },
-    { id: 'personal-email', label: words.personalEmail, value: unavailable },
+    { id: 'phone-number', label: words.phoneNumber, value: value('phone') },
+    { id: 'personal-email', label: words.personalEmail, value: value('personal_email') },
     { id: 'official-phone', label: words.officialPhone, value: value('official_phone') },
     { id: 'work-location', label: words.workLocation, value: employmentValue('work_location_name') },
-    { id: 'present-address', label: words.presentAddress, value: unavailable },
-    { id: 'permanent-address', label: words.permanentAddress, value: unavailable },
+    { id: 'present-address', label: words.presentAddress, value: value('address') },
+    { id: 'permanent-address', label: words.permanentAddress, value: value('mailing_address') },
   ];
   const verificationFields: DetailField[] = [
-    { id: 'nid', label: words.nid, value: unavailable },
-    { id: 'passport', label: words.passport, value: unavailable },
-    { id: 'e-tin', label: words.eTin, value: unavailable },
+    { id: 'nid', label: words.nid, value: maskValue('nid_number') },
+    { id: 'passport', label: words.passport, value: maskValue('passport_number') },
+    { id: 'e-tin', label: words.eTin, value: maskValue('etin_number') },
   ];
-  const educationFields: DetailField[] = [
-    { id: 'education-level', label: words.educationLevel, value: unavailable },
-    { id: 'institution-name', label: words.institutionName, value: unavailable },
-    { id: 'subject-major', label: words.subjectMajor, value: unavailable },
-    { id: 'degree-title', label: words.degreeTitle, value: unavailable },
-    { id: 'result-type', label: words.resultType, value: unavailable },
-    { id: 'current-result', label: words.currentResult, value: unavailable },
-    { id: 'starting-year', label: words.startingYear, value: unavailable },
-    { id: 'passing-year', label: words.passingYear, value: unavailable },
-    { id: 'education-duration', label: words.duration, value: unavailable },
-    { id: 'achievements', label: words.achievements, value: unavailable },
+  const educationRows = records('education');
+  const experienceRows = records('experience');
+  const trainingRows = records('training');
+  const certificationRows = records('certifications');
+  const familyRows = records('family_members');
+  const educationFields = (record: Profile): DetailField[] => [
+    { id:'education-level',label:words.educationLevel,value:profileRecordValue(record,'education_level') },
+    { id:'institution-name',label:words.institutionName,value:profileRecordValue(record,'institution') },
+    { id:'subject-major',label:words.subjectMajor,value:profileRecordValue(record,'subject_major') },
+    { id:'degree-title',label:words.degreeTitle,value:profileRecordValue(record,'degree_title') },
+    { id:'result-type',label:words.resultType,value:profileRecordValue(record,'result_type') },
+    { id:'current-result',label:words.currentResult,value:profileRecordValue(record,'result') },
+    { id:'starting-year',label:words.startingYear,value:profileRecordValue(record,'starting_year') },
+    { id:'passing-year',label:words.passingYear,value:record.currently_studying === true ? words.currentlyStudying : profileRecordValue(record,'passing_year') },
+    { id:'education-duration',label:words.duration,value:profileRecordValue(record,'duration') },
+    { id:'achievements',label:words.achievements,value:profileRecordValue(record,'achievements') },
   ];
-  const experienceFields: DetailField[] = [
-    { id: 'job-title', label: words.jobTitle, value: unavailable },
-    { id: 'organization-name', label: words.organizationName, value: unavailable },
-    { id: 'job-type', label: words.jobType, value: unavailable },
-    { id: 'work-duration', label: words.workDuration, value: unavailable },
-    { id: 'company-website', label: words.websiteLink, value: unavailable },
-    { id: 'responsibilities', label: words.responsibilities, value: unavailable },
-    { id: 'work-address', label: words.address, value: unavailable },
-    { id: 'work-date-of-joining', label: words.dateOfJoining, value: unavailable },
-    { id: 'work-date-of-departure', label: words.dateOfDeparture, value: unavailable },
+  const experienceFields = (record: Profile): DetailField[] => [
+    { id:'job-title',label:words.jobTitle,value:profileRecordValue(record,'role_title') },
+    { id:'organization-name',label:words.organizationName,value:profileRecordValue(record,'company') },
+    { id:'job-type',label:words.jobType,value:profileRecordValue(record,'job_type') },
+    { id:'work-duration',label:words.workDuration,value:profileRecordValue(record,'total_duration') },
+    { id:'company-website',label:words.websiteLink,value:profileRecordValue(record,'company_website') },
+    { id:'responsibilities',label:words.responsibilities,value:profileRecordValue(record,'description') },
+    { id:'work-address',label:words.address,value:profileRecordValue(record,'office_address') },
+    { id:'work-date-of-joining',label:words.dateOfJoining,value:profileRecordValue(record,'joining_date') },
+    { id:'work-date-of-departure',label:words.dateOfDeparture,value:profileRecordValue(record,'departure_date') },
   ];
-  const trainingFields: DetailField[] = [
-    { id: 'training-name', label: words.trainingName, value: unavailable },
-    { id: 'institute-name', label: words.instituteName, value: unavailable },
-    { id: 'training-start-date', label: words.startDate, value: unavailable },
-    { id: 'training-end-date', label: words.endDate, value: unavailable },
-    { id: 'training-duration', label: words.duration, value: unavailable },
-    { id: 'training-certificate', label: words.certificate, value: unavailable },
+  const trainingFields = (record: Profile): DetailField[] => [
+    { id:'training-name',label:words.trainingName,value:profileRecordValue(record,'title') },
+    { id:'institute-name',label:words.instituteName,value:profileRecordValue(record,'institute_name') },
+    { id:'training-number',label:words.trainingNumber,value:profileRecordValue(record,'training_number') },
+    { id:'training-year',label:words.yearOfHeld,value:profileRecordValue(record,'year') },
+    { id:'training-duration',label:words.duration,value:profileRecordValue(record,'duration') },
+    { id:'training-certificate',label:words.certificate,value:record.certificate_url ? words.certificateAttached : unavailable },
   ];
-  const certificationFields: DetailField[] = [
-    { id: 'certification-name', label: words.trainingName, value: unavailable },
-    { id: 'certification-organization', label: words.organizationName, value: unavailable },
-    { id: 'certification-start-date', label: words.startDate, value: unavailable },
-    { id: 'certification-end-date', label: words.endDate, value: unavailable },
-    { id: 'certification-document', label: words.certificate, value: unavailable },
+  const certificationFields = (record: Profile): DetailField[] => [
+    { id:'certification-name',label:words.trainingName,value:profileRecordValue(record,'title') },
+    { id:'certification-organization',label:words.organizationName,value:profileRecordValue(record,'institute_name') },
+    { id:'certification-start-date',label:words.startDate,value:profileRecordValue(record,'issue_date') },
+    { id:'certification-end-date',label:words.endDate,value:profileRecordValue(record,'expiry_date') },
+    { id:'certification-document',label:words.certificate,value:record.certificate_document_url ? words.certificateAttached : unavailable },
   ];
+  const bankRecord = currentTenant && profile?.bank && typeof profile.bank === 'object' && !Array.isArray(profile.bank)
+    ? profile.bank as Profile : null;
+  const bankValue = (key: string) => textValue(bankRecord?.[key], unavailable);
   const bankFields: DetailField[] = [
-    { id: 'bank-name', label: words.bankName, value: unavailable },
-    { id: 'branch-name', label: words.branchName, value: unavailable },
-    { id: 'account-number', label: words.accountNumber, value: unavailable },
-    { id: 'routing-number', label: words.routingNumber, value: unavailable },
+    { id:'bank-name',label:words.bankName,value:bankValue('bank_name') },
+    { id:'branch-name',label:words.branchName,value:bankValue('branch_name') },
+    { id:'account-number',label:words.accountNumber,value:bankRecord?.account_number ? <span className="inline-flex flex-wrap items-center gap-2">
+      <span>{showBankAccount ? bankValue('account_number') : '•'.repeat(Math.min(16, Math.max(8, String(bankRecord.account_number).length)))}</span>
+      <button type="button" aria-label={`${showBankAccount ? words.hide : words.reveal} ${words.accountNumber}`} aria-pressed={showBankAccount}
+        onClick={() => setShowBankAccount(current => !current)} className={actionClass}>{showBankAccount ? words.hide : words.reveal}</button>
+    </span> : unavailable },
+    { id:'routing-number',label:words.routingNumber,value:bankValue('routing_number') },
   ];
-  const familyFields: DetailField[] = [
-    { id: 'nominee-name', label: words.nomineeName, value: unavailable },
-    { id: 'nominee-phone', label: words.phoneNumber, value: unavailable },
-    { id: 'nominee-nid', label: words.nidNumber, value: unavailable },
-    { id: 'nominee-date-of-birth', label: words.dateOfBirth, value: unavailable },
-    { id: 'nominee-relation', label: words.relation, value: unavailable },
-    { id: 'nominee-present-address', label: words.presentAddress, value: unavailable },
+  const familyFields = (record: Profile): DetailField[] => [
+    { id:'family-name',label:words.familyMemberName,value:profileRecordValue(record,'name') },
+    { id:'family-phone',label:words.phoneNumber,value:profileRecordValue(record,'phone') },
+    { id:'family-nid',label:words.nidNumber,value:profileRecordValue(record,'nid_number') },
+    { id:'family-date-of-birth',label:words.dateOfBirth,value:profileRecordValue(record,'date_of_birth') },
+    { id:'family-relation',label:words.relation,value:profileRecordValue(record,'relationship') },
+    { id:'family-present-address',label:words.presentAddress,value:profileRecordValue(record,'present_address') },
+    { id:'family-permanent-address',label:words.permanentAddress,value:profileRecordValue(record,'permanent_address') },
+    { id:'family-nominee',label:words.nomineeStatus,value:record.is_nominee === true ? words.yes : words.no },
   ];
+
+  function afterProfileSave() {
+    setNotice(edit?.kind.startsWith('request-') ? words.requestSubmitted : words.profileSaved);
+    setRevision(current => current + 1);
+  }
 
   return <section data-employee-figma-profile data-figma-node="66:72042" className="mx-auto min-w-0 max-w-[1397px] space-y-6" aria-labelledby="employee-figma-profile-heading">
     <h1 id="employee-figma-profile-heading" className="sr-only">{words.heading}</h1>
+
+    {notice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
 
     {currentStatus === 'loading' && <div role="status" className="space-y-4 rounded-xl bg-white p-5 text-sm text-slate-600">
       <p>{words.loading}</p>
@@ -510,7 +590,9 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
             <section className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-personal-title">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
                 <SectionHeading id="employee-figma-personal-title" title={words.personalDetails} icon={<img src={addressBookIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
-                <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
+                <button type="button" aria-label={`${words.edit} ${words.personalDetails}`} onClick={() => setEdit({ kind:'request-personal', initial:currentEmployee || {} })} className={actionClass}>
+                  {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                </button>
               </div>
               <DetailRows fields={personalFields} />
             </section>
@@ -519,7 +601,9 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
               <section className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-contact-title">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
                   <SectionHeading id="employee-figma-contact-title" title={words.contactDetails} icon={<img src={addressBookIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
-                  <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
+                  <button type="button" aria-label={words.editContactDetails} onClick={() => setEdit({ kind:'request-contact', initial:currentEmployee || {} })} className={actionClass}>
+                    {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                  </button>
                 </div>
                 <DetailRows fields={contactFields} />
               </section>
@@ -528,8 +612,12 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
                   <SectionHeading id="employee-figma-verification-title" title={words.verification} icon={<img src={documentCheckIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
                   <div className="flex shrink-0 gap-2">
-                    <DisabledAction label={words.view} unavailable={words.viewUnavailable} icon={<img src={viewEyeIcon} alt="" aria-hidden="true" className="h-[14px] w-[14px]" />} />
-                    <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
+                    <button type="button" aria-pressed={showSensitive} onClick={() => setShowSensitive(current => !current)} className={actionClass}>
+                      {showSensitive ? <><EyeOff aria-hidden="true" className="h-4 w-4" />{words.hide}</> : <><Eye aria-hidden="true" className="h-4 w-4" />{words.reveal}</>}
+                    </button>
+                    <button type="button" aria-label={`${words.edit} ${words.verification}`} onClick={() => setEdit({ kind:'request-personal', initial:currentEmployee || {} })} className={actionClass}>
+                      {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                    </button>
                   </div>
                 </div>
                 <DetailRows fields={verificationFields} />
@@ -541,44 +629,66 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
           <section className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-education-title">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
               <SectionHeading id="employee-figma-education-title" title={words.educationDetails} icon={<img src={graduationCapIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
-              <div className="flex shrink-0 gap-2">
-                <DisabledAction label={words.add} unavailable={words.writeUnavailable} icon={<span aria-hidden="true" className="text-lg leading-none">+</span>} />
-                <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
-              </div>
+              <button type="button" onClick={() => setEdit({ kind:'education' })} className={actionClass}>{words.add}<span aria-hidden="true" className="text-lg leading-none">+</span></button>
             </div>
-            <p role="status" className="mt-4 text-sm text-slate-600">{words.educationUnavailable}</p>
-            <DetailRows fields={educationFields} />
+            {educationRows.length === 0 ? <p role="status" className="mt-4 text-sm text-slate-600">{words.noRecords}</p>
+              : <div className="mt-4 divide-y divide-[#E7EEF2]">
+                {educationRows.map((record,index) => <article key={String(record.id || index)} className="py-4 first:pt-0 last:pb-0">
+                  <div className="mb-2 flex justify-end">
+                    <button type="button" onClick={() => setEdit({ kind:'education', initial:record })} aria-label={`${words.edit} ${words.educationDetails} ${index+1}`} className={actionClass}>
+                      {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                    </button>
+                  </div>
+                  <DetailRows fields={educationFields(record)} />
+                </article>)}
+              </div>}
           </section>
         </section>}
 
         {tab.id === 'experience' && <section className="min-w-0 rounded-2xl bg-white p-4 sm:p-6 lg:p-8" aria-labelledby="employee-figma-experience-title">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-5">
             <SectionHeading id="employee-figma-experience-title" title={words.experienceInformation} icon={<BriefcaseBusiness className="h-[18px] w-[18px] text-[#08558B]" />} />
-            <DisabledAction label={words.add} unavailable={words.writeUnavailable} icon={<span aria-hidden="true" className="text-lg leading-none">+</span>} />
+            <button type="button" onClick={() => setEdit({ kind:'experience' })} className={actionClass}>{words.add}<span aria-hidden="true" className="text-lg leading-none">+</span></button>
           </div>
-          <article className="mt-5 min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6">
-            <p role="status" className="text-sm text-slate-600">{words.experienceUnavailable}</p>
-            <DetailRows fields={experienceFields} />
-            <div className="mt-4 flex justify-end border-t border-[#E7EEF2] pt-4">
-              <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
-            </div>
-          </article>
+          {experienceRows.length === 0 ? <p role="status" className="mt-5 text-sm text-slate-600">{words.noRecords}</p>
+            : <div className="mt-5 grid min-w-0 gap-3">{experienceRows.map((record,index) => <article key={String(record.id || index)} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6">
+              <div className="mb-3 flex justify-end"><button type="button" onClick={() => setEdit({ kind:'experience', initial:record })} aria-label={`${words.edit} ${words.experienceTab} ${index+1}`} className={actionClass}>
+                {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+              </button></div>
+              <DetailRows fields={experienceFields(record)} />
+            </article>)}</div>}
         </section>}
 
         {tab.id === 'training' && <section className="min-w-0 rounded-2xl bg-white p-4 sm:p-6 lg:p-8" aria-labelledby="employee-figma-training-title">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-5">
             <SectionHeading id="employee-figma-training-title" title={words.trainingInformation} icon={<BookOpenCheck className="h-[18px] w-[18px] text-[#08558B]" />} />
-            <DisabledAction label={words.add} unavailable={words.writeUnavailable} icon={<span aria-hidden="true" className="text-lg leading-none">+</span>} />
           </div>
-          <p role="status" className="mt-4 text-sm text-slate-600">{words.trainingUnavailable}</p>
           <div className="mt-5 grid min-w-0 gap-3">
             <article className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-professional-training-title">
-              <SectionHeading id="employee-figma-professional-training-title" title={words.professionalTraining} icon={<img src={documentCheckIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
-              <DetailRows fields={trainingFields} />
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
+                <SectionHeading id="employee-figma-professional-training-title" title={words.professionalTraining} icon={<img src={documentCheckIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
+                <button type="button" onClick={() => setEdit({ kind:'training' })} className={actionClass}>{words.add}<span aria-hidden="true" className="text-lg leading-none">+</span></button>
+              </div>
+              {trainingRows.length === 0 ? <p role="status" className="mt-4 text-sm text-slate-600">{words.noRecords}</p>
+                : <div className="divide-y divide-[#E7EEF2]">{trainingRows.map((record,index) => <div key={String(record.id || index)} className="py-4 first:pb-4">
+                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setEdit({ kind:'training', initial:record })} aria-label={`${words.edit} ${words.professionalTraining} ${index+1}`} className={actionClass}>
+                    {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                  </button></div>
+                  <DetailRows fields={trainingFields(record)} />
+                </div>)}</div>}
             </article>
             <article className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-professional-certification-title">
-              <SectionHeading id="employee-figma-professional-certification-title" title={words.professionalCertification} icon={<img src={documentCheckIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
-              <DetailRows fields={certificationFields} />
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
+                <SectionHeading id="employee-figma-professional-certification-title" title={words.professionalCertification} icon={<img src={documentCheckIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
+                <button type="button" onClick={() => setEdit({ kind:'certification' })} className={actionClass}>{words.add}<span aria-hidden="true" className="text-lg leading-none">+</span></button>
+              </div>
+              {certificationRows.length === 0 ? <p role="status" className="mt-4 text-sm text-slate-600">{words.noRecords}</p>
+                : <div className="divide-y divide-[#E7EEF2]">{certificationRows.map((record,index) => <div key={String(record.id || index)} className="py-4 first:pt-0 last:pb-0">
+                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setEdit({ kind:'certification', initial:record })} aria-label={`${words.edit} ${words.professionalCertification} ${index+1}`} className={actionClass}>
+                    {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                  </button></div>
+                  <DetailRows fields={certificationFields(record)} />
+                </div>)}</div>}
             </article>
           </div>
         </section>}
@@ -586,24 +696,46 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
         {tab.id === 'bank' && <section className="min-w-0 rounded-2xl bg-white p-4 sm:p-6 lg:p-8" aria-labelledby="employee-figma-bank-title">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-5">
             <SectionHeading id="employee-figma-bank-title" title={words.bankInformation} icon={<Landmark className="h-[18px] w-[18px] text-[#08558B]" />} />
-            <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
+            <button type="button" onClick={() => setEdit({ kind:'bank', initial:bankRecord || {} })} className={actionClass}>
+              {bankRecord ? words.edit : words.add}{bankRecord ? <img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" /> : <span aria-hidden="true" className="text-lg leading-none">+</span>}
+            </button>
           </div>
-          <p role="status" className="mt-4 text-sm text-slate-600">{words.bankUnavailable}</p>
-          <DetailRows fields={bankFields} />
+          {!bankRecord && <p role="status" className="mt-4 text-sm text-slate-600">{words.noRecords}</p>}
+          {bankRecord && <DetailRows fields={bankFields} />}
         </section>}
 
         {tab.id === 'family' && <section className="min-w-0 rounded-2xl bg-white p-4 sm:p-6 lg:p-8" aria-labelledby="employee-figma-family-title">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-5">
             <SectionHeading id="employee-figma-family-title" title={words.familyInformation} icon={<UsersRound className="h-[18px] w-[18px] text-[#08558B]" />} />
-            <DisabledAction label={words.add} unavailable={words.writeUnavailable} icon={<span aria-hidden="true" className="text-lg leading-none">+</span>} />
+            <button type="button" onClick={() => setEdit({ kind:'family' })} className={actionClass}>{words.add}<span aria-hidden="true" className="text-lg leading-none">+</span></button>
           </div>
-          <p role="status" className="mt-4 text-sm text-slate-600">{words.familyUnavailable}</p>
-          <DetailRows fields={familyFields} />
-          <div className="mt-4 flex justify-end border-t border-[#E7EEF2] pt-4">
-            <DisabledAction label={words.edit} unavailable={words.writeUnavailable} icon={<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />} />
-          </div>
+          <section className="mt-4 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-emergency-contact-title">
+            <h3 id="employee-figma-emergency-contact-title" className="text-lg text-[#424242]">{words.emergencyContact}</h3>
+            <DetailRows fields={[
+              { id:'emergency-name',label:words.emergencyName,value:value('emergency_contact_name') },
+              { id:'emergency-phone',label:words.emergencyPhone,value:value('emergency_contact_phone') },
+              { id:'emergency-relation',label:words.relation,value:value('emergency_contact_relation') },
+            ]} />
+            <div className="mt-4 flex justify-end border-t border-[#E7EEF2] pt-4">
+              <button type="button" aria-label={words.editContactDetails} onClick={() => setEdit({ kind:'request-contact', initial:currentEmployee || {} })} className={actionClass}>
+                {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+              </button>
+            </div>
+          </section>
+          {familyRows.length === 0 ? <p role="status" className="mt-4 text-sm text-slate-600">{words.noRecords}</p>
+            : <div className="mt-4 grid min-w-0 gap-3">{familyRows.map((record,index) => <article key={String(record.id || index)} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
+                <SectionHeading title={record.is_nominee === true ? words.nomineeName : words.familyMemberName} icon={<UsersRound className="h-[18px] w-[18px] text-[#08558B]" />} />
+                <button type="button" onClick={() => setEdit({ kind:'family', initial:record })} aria-label={`${words.edit} ${words.familyInformation} ${index+1}`} className={actionClass}>
+                  {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                </button>
+              </div>
+              <DetailRows fields={familyFields(record)} />
+            </article>)}</div>}
         </section>}
       </div>)}
     </>}
+    {edit && <EmployeeProfileEditModal kind={edit.kind} tenantId={tenantId} locale={locale} initial={edit.initial}
+      onClose={() => setEdit(null)} onSaved={afterProfileSave} />}
   </section>;
 }
