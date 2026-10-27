@@ -52,6 +52,13 @@ test('scalar profile corrections retain HR approval and use the employee scalar 
   assert.match(parity, /employee_get_my_profile\(\)/);
 });
 
+test('original verification Tax Circle stays a tenant-scoped reviewed field', () => {
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS tax_circle text/);
+  assert.match(migration, /'tax_circle',e\.tax_circle/);
+  assert.match(migration, /WHEN 'tax_circle' THEN e\.tax_circle/);
+  assert.match(migration, /tax_circle=CASE WHEN r\.field_key='tax_circle'/);
+});
+
 test('record save allowlists and certificate paths remain own-employee and tenant scoped', () => {
   const saveFunctions = [...migration.matchAll(/(CREATE OR REPLACE FUNCTION public\.employee_save_my_[a-z_]+_v1\([\s\S]*?\$function\$;)/g)];
   assert.equal(saveFunctions.length, 6);
@@ -63,7 +70,9 @@ test('record save allowlists and certificate paths remain own-employee and tenan
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.employee_bank_details/);
   const bankSave = migration.match(/CREATE OR REPLACE FUNCTION public\.employee_save_my_bank_v1\([\s\S]*?\$function\$;/)?.[0] || '';
   assert.match(bankSave, /'bank_name','account_number','branch_name','routing_number'/);
-  assert.doesNotMatch(bankSave, /account_name/);
+  assert.match(bankSave, /'bank_name','account_name','account_number','branch_name','routing_number'/);
+  assert.match(bankSave, /v_account_name/);
+  assert.match(migration, /e\.bank_account_name/);
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /REVOKE ALL PRIVILEGES ON TABLE public\.employee_bank_details FROM PUBLIC, anon, authenticated, service_role/);
   assert.match(migration, /split_part\(name,'\/',1\)=\(SELECT auth\.uid\(\)\)::text/);
