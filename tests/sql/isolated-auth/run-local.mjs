@@ -1005,7 +1005,10 @@ record('E02 v1 education, experience, family, and bank RPCs persist their approv
     && profileBankStored.data?.account_number === 'SYNTHETIC-ACCOUNT-12345',
   JSON.stringify({ education: profileEducationSave.error?.code || profileEducationStored.data?.institution,
     experience: profileExperienceSave.error?.code || profileExperienceStored.data?.company,
-    family: profileFamilySave.error?.code || profileFamilyStored.data?.name,
+    family: { save: profileFamilySave.error?.code || profileFamilySave.data,
+      update: profileFamilyUpdate.error?.code || 'ok', storedError: profileFamilyStored.error?.code || null,
+      employee: profileFamilyStored.data?.employee_id, name: profileFamilyStored.data?.name,
+      relationship: profileFamilyStored.data?.relationship, is_nominee: profileFamilyStored.data?.is_nominee },
     bank: profileBankSave.error?.code || profileBankStored.data?.bank_name }));
 
 record('E02 v1 profile RPCs reject invalid values, unauthorized roles, cross-tenant calls, and direct table writes',
@@ -1179,7 +1182,10 @@ record('E02 v1 profile projection returns saved employee-owned records and legac
     && retiredProfileRpcExecute.bank_update === true,
   JSON.stringify({ education: employeeProfileReads?.education?.length,
     experience: employeeProfileReads?.experience?.length, training: employeeProfileReads?.training?.length,
-    family: employeeProfileReads?.family_members?.length, bank: employeeProfileReads?.bank?.bank_name,
+    family: { count: employeeProfileReads?.family_members?.length, savedId: profileFamilySave.data,
+      ids: employeeProfileReads?.family_members?.map(row => row.id),
+      savedRecordPresent: employeeProfileReads?.family_members?.some(row => row.id === profileFamilySave.data) },
+    bank: employeeProfileReads?.bank?.bank_name,
     invalidEmail: profileInvalidEmail.error?.code, invalidGender: profileInvalidGender.error?.code,
     invalidDob: profileInvalidDob.error?.code, retired: retiredProfileRpcExecute }));
 const profileRoleWithoutEmployeeWrite = await employeesViewer.client.rpc('employee_save_my_family_member_v1', {
@@ -1245,13 +1251,17 @@ const directAnonymousFamilyRead = attemptAs(null, 'SELECT id FROM public.employe
 record('Anonymous role has no direct employee-family-table privileges', !directAnonymousFamilyRead.ok);
 record('Family read/manage access returns only rows from each manager active tenant',
   !familyAdminA.error && !familyAdminB.error
-    && familyAdminA.data?.length === 1 && familyAdminA.data[0]?.id === familyRowA
+    && familyAdminA.data?.length === 2 && familyAdminA.data.some(row => row.id === familyRowA)
+    && familyAdminA.data.some(row => row.id === profileFamilySave.data)
     && familyAdminB.data?.length === 1 && familyAdminB.data[0]?.id === familyRowB);
 record('Employee directory viewer reads only family rows in its tenant',
-  !familyViewerA.error && familyViewerA.data?.length === 1 && familyViewerA.data[0]?.id === familyRowA);
+  !familyViewerA.error && familyViewerA.data?.length === 2
+    && familyViewerA.data.some(row => row.id === familyRowA)
+    && familyViewerA.data.some(row => row.id === profileFamilySave.data));
 record('Employees read only their own linked family rows in either tenant',
   !familyEmployeeA.error && !familyEmployeeB.error
-    && familyEmployeeA.data?.length === 1 && familyEmployeeA.data[0]?.id === familyRowA
+    && familyEmployeeA.data?.length === 2 && familyEmployeeA.data.some(row => row.id === familyRowA)
+    && familyEmployeeA.data.some(row => row.id === profileFamilySave.data)
     && familyEmployeeB.data?.length === 1 && familyEmployeeB.data[0]?.id === familyRowB);
 record('Global legacy role without tenant membership cannot read family rows',
   !familyGlobalOnly.error && familyGlobalOnly.data?.length === 0);
