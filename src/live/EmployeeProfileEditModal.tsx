@@ -25,7 +25,7 @@ const words = {
     full_name: 'Employee name', father_name: 'Father’s name', mother_name: 'Mother’s name',
     date_of_birth: 'Date of birth', birthplace: 'Birthplace', blood_group: 'Blood group',
     gender: 'Gender', religion: 'Religion', nationality: 'Nationality', marital_status: 'Marital status',
-    nid_number: 'NID number', passport_number: 'Passport', etin_number: 'E-TIN', phone: 'Phone number',
+    nid_number: 'NID number', passport_number: 'Passport', etin_number: 'E-TIN', tax_circle: 'Tax Circle', phone: 'Phone number',
     official_email: 'Official email', personal_email: 'Personal email', official_phone: 'Official phone number',
     male: 'Male', female: 'Female', other: 'Other',
     address: 'Present address', mailing_address: 'Permanent address',
@@ -40,7 +40,7 @@ const words = {
     institute_name: 'Institute name', training_number: 'Training number', year: 'Year of held',
     issue_date: 'Date of issue', expiry_date: 'Expiry date',
     name: 'Family member name', relationship: 'Relationship', present_address: 'Present address',
-    permanent_address: 'Permanent address', bank_name: 'Bank name', account_number: 'Bank account number',
+    permanent_address: 'Permanent address', bank_name: 'Bank name', account_name: 'Bank account name', account_number: 'Bank account number',
     branch_name: 'Branch name', routing_number: 'Routing number',
     invalid: 'Check the highlighted fields and try again.',
     emailError: 'Enter a valid email address.', phoneError: 'Enter a valid phone number.',
@@ -61,7 +61,7 @@ const words = {
     full_name: 'কর্মীর নাম', father_name: 'পিতার নাম', mother_name: 'মাতার নাম',
     date_of_birth: 'জন্মতারিখ', birthplace: 'জন্মস্থান', blood_group: 'রক্তের গ্রুপ',
     gender: 'লিঙ্গ', religion: 'ধর্ম', nationality: 'জাতীয়তা', marital_status: 'বৈবাহিক অবস্থা',
-    nid_number: 'জাতীয় পরিচয়পত্র নম্বর', passport_number: 'পাসপোর্ট', etin_number: 'ই-টিন', phone: 'ফোন নম্বর',
+    nid_number: 'জাতীয় পরিচয়পত্র নম্বর', passport_number: 'পাসপোর্ট', etin_number: 'ই-টিন', tax_circle: 'কর সার্কেল', phone: 'ফোন নম্বর',
     official_email: 'অফিসিয়াল ইমেইল', personal_email: 'ব্যক্তিগত ইমেইল', official_phone: 'অফিসিয়াল ফোন নম্বর',
     male: 'পুরুষ', female: 'নারী', other: 'অন্যান্য',
     address: 'বর্তমান ঠিকানা', mailing_address: 'স্থায়ী ঠিকানা',
@@ -76,7 +76,7 @@ const words = {
     institute_name: 'প্রতিষ্ঠানের নাম', training_number: 'প্রশিক্ষণ নম্বর', year: 'অনুষ্ঠানের বছর',
     issue_date: 'প্রদানের তারিখ', expiry_date: 'মেয়াদ শেষের তারিখ',
     name: 'পরিবারের সদস্যের নাম', relationship: 'সম্পর্ক', present_address: 'বর্তমান ঠিকানা',
-    permanent_address: 'স্থায়ী ঠিকানা', bank_name: 'ব্যাংকের নাম', account_number: 'ব্যাংক অ্যাকাউন্ট নম্বর',
+    permanent_address: 'স্থায়ী ঠিকানা', bank_name: 'ব্যাংকের নাম', account_name: 'ব্যাংক অ্যাকাউন্টের নাম', account_number: 'ব্যাংক অ্যাকাউন্ট নম্বর',
     branch_name: 'শাখার নাম', routing_number: 'রাউটিং নম্বর',
     invalid: 'চিহ্নিত ক্ষেত্রগুলো ঠিক করে আবার চেষ্টা করুন।',
     emailError: 'একটি সঠিক ইমেইল ঠিকানা দিন।', phoneError: 'একটি সঠিক ফোন নম্বর দিন।',
@@ -87,7 +87,7 @@ const words = {
 } as const;
 
 const requestFieldSets: Record<'request-personal' | 'request-contact', string[]> = {
-  'request-personal': ['full_name','father_name','mother_name','date_of_birth','birthplace','blood_group','gender','religion','nationality','marital_status','nid_number','passport_number','etin_number'],
+  'request-personal': ['full_name','father_name','mother_name','date_of_birth','birthplace','blood_group','gender','religion','nationality','marital_status','nid_number','passport_number','etin_number','tax_circle'],
   'request-contact': ['official_email','phone','personal_email','official_phone','address','mailing_address','emergency_contact_name','emergency_contact_phone','emergency_contact_relation'],
 };
 
@@ -125,7 +125,7 @@ const recordFields: Record<Exclude<ProfileEditKind, 'request-personal' | 'reques
     { id:'present_address',label:'present_address',required:true,max:500 }, { id:'permanent_address',label:'permanent_address',required:true,max:500 },
   ],
   bank: [
-    { id:'bank_name',label:'bank_name',required:true,max:200,wide:true }, { id:'account_number',label:'account_number',required:true,max:64 },
+    { id:'bank_name',label:'bank_name',required:true,max:200,wide:true }, { id:'account_name',label:'account_name',required:true,max:200 }, { id:'account_number',label:'account_number',required:true,max:64 },
     { id:'branch_name',label:'branch_name',required:true,max:200 },
     { id:'routing_number',label:'routing_number',type:'tel',required:true,max:32 },
   ],
@@ -134,7 +134,7 @@ const recordFields: Record<Exclude<ProfileEditKind, 'request-personal' | 'reques
 const inputTypeByField: Record<string, string> = {
   full_name:'text', father_name:'text', mother_name:'text', date_of_birth:'date', birthplace:'text',
   blood_group:'text', gender:'text', religion:'text', nationality:'text', marital_status:'text',
-  nid_number:'text', passport_number:'text', etin_number:'text', phone:'tel', official_email:'email',
+  nid_number:'text', passport_number:'text', etin_number:'text', tax_circle:'text', phone:'tel', official_email:'email',
   personal_email:'email', official_phone:'tel', address:'text', mailing_address:'text',
   emergency_contact_name:'text', emergency_contact_phone:'tel', emergency_contact_relation:'text',
 };

@@ -6,6 +6,9 @@
 -- by the Employee Profile screen.
 BEGIN;
 
+-- P1-01 original verification-form parity: tax circle is a separate field from E-TIN.
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS tax_circle text;
+
 -- These two source-backed fields exist in the approved Figma forms but were
 -- missing from the prior row contracts. No other columns are introduced.
 ALTER TABLE public.employee_education
@@ -21,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.employee_bank_details (
   employee_id uuid PRIMARY KEY REFERENCES public.employees(id) ON DELETE CASCADE,
   tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   bank_name text CHECK (length(btrim(bank_name)) BETWEEN 1 AND 200),
+  account_name text CHECK (length(btrim(account_name)) BETWEEN 1 AND 200),
   account_number text CHECK (length(btrim(account_number)) BETWEEN 1 AND 64),
   branch_name text CHECK (length(btrim(branch_name)) BETWEEN 1 AND 200),
   routing_number text CHECK (length(btrim(routing_number)) BETWEEN 1 AND 32),
@@ -33,14 +37,14 @@ REVOKE ALL PRIVILEGES ON TABLE public.employee_bank_details FROM PUBLIC, anon, a
 -- Preserve bank values already stored in the former compensation/employee
 -- columns, while leaving every salary and tax field untouched.
 INSERT INTO public.employee_bank_details (
-  employee_id, tenant_id, bank_name, account_number, branch_name, routing_number
+  employee_id, tenant_id, bank_name, account_name, account_number, branch_name, routing_number
 )
-SELECT e.id, e.tenant_id, c.bank_name, c.bank_account_no,
+SELECT e.id, e.tenant_id, c.bank_name, e.bank_account_name, c.bank_account_no,
        e.bank_branch_name, e.bank_routing_number
 FROM public.employees e
 LEFT JOIN public.employee_compensation c ON c.employee_id=e.id
 WHERE c.bank_name IS NOT NULL OR c.bank_account_no IS NOT NULL
-   OR e.bank_branch_name IS NOT NULL OR e.bank_routing_number IS NOT NULL
+   OR e.bank_account_name IS NOT NULL OR e.bank_branch_name IS NOT NULL OR e.bank_routing_number IS NOT NULL
 ON CONFLICT (employee_id) DO NOTHING;
 
 -- Internal resolver: only an authenticated live session with active
@@ -92,6 +96,7 @@ BEGIN
       'emergency_contact_phone',e.emergency_contact_phone,
       'emergency_contact_relation',e.emergency_contact_relation,
       'nid_number',e.nid_number,'passport_number',e.passport_number,'etin_number',e.etin_number,
+      'tax_circle',e.tax_circle,
       'designation_title',ds.title,'department_name',d.name,'team_name',tm.name,
       'work_location_name',wl.name
     ),
@@ -142,7 +147,7 @@ BEGIN
       FROM public.employee_family_members x WHERE x.employee_id=e.id
     ),'[]'::jsonb),
     'bank',(SELECT jsonb_build_object(
-        'bank_name',b.bank_name,'account_number',b.account_number,
+        'bank_name',b.bank_name,'account_name',b.account_name,'account_number',b.account_number,
         'branch_name',b.branch_name,'routing_number',b.routing_number
       ) FROM public.employee_bank_details b
       WHERE b.employee_id=e.id AND b.tenant_id=p_tenant_id)
@@ -170,7 +175,7 @@ ALTER TABLE public.employee_profile_change_requests
     'address','mailing_address','emergency_contact_name','emergency_contact_phone',
     'emergency_contact_relation','father_name','mother_name','date_of_birth',
     'birthplace','blood_group','gender','religion','nationality','marital_status',
-    'nid_number','passport_number','etin_number'
+    'nid_number','passport_number','etin_number','tax_circle'
   ]::text[]));
 
 CREATE OR REPLACE FUNCTION public.employee_submit_profile_change_request(
@@ -194,7 +199,7 @@ BEGIN
     'address','mailing_address','emergency_contact_name','emergency_contact_phone',
     'emergency_contact_relation','father_name','mother_name','date_of_birth',
     'birthplace','blood_group','gender','religion','nationality','marital_status',
-    'nid_number','passport_number','etin_number'
+    'nid_number','passport_number','etin_number','tax_circle'
   ) THEN
     RAISE EXCEPTION 'This profile field is not available for an employee change request.' USING errcode='22023';
   END IF;
@@ -252,6 +257,7 @@ BEGIN
     WHEN 'nid_number' THEN e.nid_number
     WHEN 'passport_number' THEN e.passport_number
     WHEN 'etin_number' THEN e.etin_number
+    WHEN 'tax_circle' THEN e.tax_circle
   END INTO v_current
   FROM public.employees e WHERE e.id=v_employee AND e.tenant_id=p_tenant_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Linked employee record not found.' USING errcode='P0002'; END IF;
@@ -300,7 +306,7 @@ BEGIN
     'address','mailing_address','emergency_contact_name','emergency_contact_phone',
     'emergency_contact_relation','father_name','mother_name','date_of_birth',
     'birthplace','blood_group','gender','religion','nationality','marital_status',
-    'nid_number','passport_number','etin_number'
+    'nid_number','passport_number','etin_number','tax_circle'
   ) THEN
     RAISE EXCEPTION 'This profile field is not supported by the employee schema.' USING errcode='22023';
   END IF;
@@ -328,6 +334,7 @@ BEGIN
       nid_number=CASE WHEN r.field_key='nid_number' THEN r.requested_value ELSE e.nid_number END,
       passport_number=CASE WHEN r.field_key='passport_number' THEN r.requested_value ELSE e.passport_number END,
       etin_number=CASE WHEN r.field_key='etin_number' THEN r.requested_value ELSE e.etin_number END,
+      tax_circle=CASE WHEN r.field_key='tax_circle' THEN r.requested_value ELSE e.tax_circle END,
       updated_at=now()
     WHERE e.id=r.employee_id AND e.tenant_id=p_tenant_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'Linked employee record not found.' USING errcode='P0002'; END IF;
@@ -637,7 +644,7 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = '' AS $function$
 DECLARE
   v_employee uuid := private.hris_profile_own_employee(p_tenant_id);
-  v_bank text; v_account text; v_branch text; v_routing text;
+  v_bank text; v_account_name text; v_account text; v_branch text; v_routing text;
 BEGIN
   IF v_employee IS NULL THEN RAISE EXCEPTION 'Linked employee record is required.' USING errcode='42501'; END IF;
   IF jsonb_typeof(p_payload) IS DISTINCT FROM 'object' THEN
@@ -645,26 +652,27 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT 1 FROM jsonb_object_keys(coalesce(p_payload,'{}'::jsonb)) k
-    WHERE k NOT IN ('bank_name','account_number','branch_name','routing_number')
+    WHERE k NOT IN ('bank_name','account_name','account_number','branch_name','routing_number')
   ) THEN RAISE EXCEPTION 'Unsupported bank detail fields.' USING errcode='22023'; END IF;
   v_bank := nullif(btrim(p_payload->>'bank_name'),'');
+  v_account_name := nullif(btrim(p_payload->>'account_name'),'');
   v_account := nullif(btrim(p_payload->>'account_number'),'');
   v_branch := nullif(btrim(p_payload->>'branch_name'),'');
   v_routing := nullif(btrim(p_payload->>'routing_number'),'');
-  IF v_bank IS NULL OR v_account IS NULL OR v_branch IS NULL OR v_routing IS NULL
-     OR length(v_bank)>200 OR length(v_account)>64 OR length(v_branch)>200
+  IF v_bank IS NULL OR v_account_name IS NULL OR v_account IS NULL OR v_branch IS NULL OR v_routing IS NULL
+     OR length(v_bank)>200 OR length(v_account_name)>200 OR length(v_account)>64 OR length(v_branch)>200
      OR length(v_routing)>32 OR length(regexp_replace(v_routing,'[^0-9]','','g')) NOT BETWEEN 5 AND 20 THEN
     RAISE EXCEPTION 'Complete the required bank details using the allowed lengths.' USING errcode='22023';
   END IF;
-  INSERT INTO public.employee_bank_details(employee_id,tenant_id,bank_name,account_number,branch_name,routing_number)
-  VALUES(v_employee,p_tenant_id,v_bank,v_account,v_branch,v_routing)
+  INSERT INTO public.employee_bank_details(employee_id,tenant_id,bank_name,account_name,account_number,branch_name,routing_number)
+  VALUES(v_employee,p_tenant_id,v_bank,v_account_name,v_account,v_branch,v_routing)
   ON CONFLICT(employee_id) DO UPDATE SET tenant_id=excluded.tenant_id,
-    bank_name=excluded.bank_name,account_number=excluded.account_number,
+    bank_name=excluded.bank_name,account_name=excluded.account_name,account_number=excluded.account_number,
     branch_name=excluded.branch_name,
     routing_number=excluded.routing_number,updated_at=now();
   INSERT INTO public.admin_audit_logs(actor_id,action,target_type,target_id,details)
   VALUES(auth.uid(),'employee.profile.bank_details.saved_v1','employee',v_employee::text,
-    jsonb_build_object('fields',ARRAY['bank_name','account_number','branch_name','routing_number']));
+    jsonb_build_object('fields',ARRAY['bank_name','account_name','account_number','branch_name','routing_number']));
   RETURN v_employee;
 END;
 $function$;
