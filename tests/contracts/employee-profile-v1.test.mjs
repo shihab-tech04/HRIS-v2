@@ -62,6 +62,18 @@ test('profile record editors call only tenant-scoped v1 save RPCs for Figma-back
   assert.match(history, /employee_get_my_profile_change_requests/);
 });
 
+test('original HRIS education experience and family delete actions require confirmation and own-tenant RPC', () => {
+  assert.match(profile, /supabase\.rpc\('employee_delete_my_profile_record_v1'/);
+  assert.match(profile, /p_tenant_id: tenantId, p_kind: pendingDelete\.kind, p_record_id: pendingDelete\.id/);
+  for (const kind of ['education','experience','family']) {
+    assert.ok(profile.includes(`requestDelete('${kind}', record)`), `${kind} must offer delete`);
+  }
+  assert.match(profile, /role="alertdialog"/);
+  assert.match(profile, /aria-modal="true"/);
+  assert.match(profile, /deleteFailed:/);
+  assert.match(profile, /deleteSucceeded:/);
+});
+
 test('employee profile acceptance covers errors, responsive EN/BN, sensitive-value masking, and persisted sections', () => {
   for (const token of [
     'state=save-error','Check the highlighted fields','employee_submit_profile_change_request',
