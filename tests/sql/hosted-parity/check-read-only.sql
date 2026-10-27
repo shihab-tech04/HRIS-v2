@@ -13,24 +13,24 @@ WITH required_procedures(signature, source) AS (
     ('public.hris_change_tenant_employee_shift(uuid,uuid,uuid,uuid)', '20261017095321'),
     ('public.hris_get_my_shift_changes(uuid,date,date)', '20261017095321'),
     ('public.hris_profile_change_active_member(uuid)', '20261017130000'),
-    ('private.hris_profile_document_is_unlinked(uuid,text)', '20261027030311'),
+    ('private.hris_profile_document_is_unlinked(uuid,text)', '20261027040642'),
     ('public.hris_notices_super_admin_tenant_member(uuid)', '20261017030000'),
-    ('public.employee_get_my_profile_v1(uuid)', '20261027030311'),
-    ('public.employee_save_my_education_v1(uuid,jsonb)', '20261027030311'),
-    ('public.employee_save_my_experience_v1(uuid,jsonb)', '20261027030311'),
-    ('public.employee_save_my_family_member_v1(uuid,jsonb)', '20261027030311'),
-    ('public.employee_save_my_bank_v1(uuid,jsonb)', '20261027030311'),
-    ('public.employee_save_my_training_v1(uuid,jsonb)', '20261027030311'),
-    ('public.employee_save_my_certification_v1(uuid,jsonb)', '20261027030311'),
-    ('public.employee_submit_profile_change_request(uuid,text,text,text)', '20261027030311'),
+    ('public.employee_get_my_profile_v1(uuid)', '20261027040642'),
+    ('public.employee_save_my_education_v1(uuid,jsonb)', '20261027040642'),
+    ('public.employee_save_my_experience_v1(uuid,jsonb)', '20261027040642'),
+    ('public.employee_save_my_family_member_v1(uuid,jsonb)', '20261027040642'),
+    ('public.employee_save_my_bank_v1(uuid,jsonb)', '20261027040642'),
+    ('public.employee_save_my_training_v1(uuid,jsonb)', '20261027040642'),
+    ('public.employee_save_my_certification_v1(uuid,jsonb)', '20261027040642'),
+    ('public.employee_submit_profile_change_request(uuid,text,text,text)', '20261027040642'),
     ('public.employee_get_my_profile_change_requests(uuid)', '20261017130000'),
     ('public.admin_list_profile_change_requests(uuid)', '20261017130000'),
-    ('public.admin_review_profile_change_request(uuid,uuid,text,text)', '20261027030311')
+    ('public.admin_review_profile_change_request(uuid,uuid,text,text)', '20261027040642')
 ),
 required_internal_procedures(signature, source) AS (
   VALUES
     ('private.hris_record_employee_shift_change()', '20261017095321'),
-    ('private.hris_profile_own_employee(uuid)', '20261027030311')
+    ('private.hris_profile_own_employee(uuid)', '20261027040642')
 ),
 required_prerequisites(kind, signature, source) AS (
   VALUES
@@ -38,8 +38,8 @@ required_prerequisites(kind, signature, source) AS (
     ('function', 'public.hris_is_active_tenant_member(uuid)', '20261012230100'),
     ('table', 'public.roster_change_notifications', '20261016230201'),
     ('table', 'public.employee_shift_assignment_changes', '20261017095321'),
-    ('protected_table', 'public.employee_bank_details', '20261027030311'),
-    ('private_bucket', 'employee-documents', '20261027030311')
+    ('protected_table', 'public.employee_bank_details', '20261027040642'),
+    ('private_bucket', 'employee-documents', '20261027040642')
 ),
 retired_procedures(signature, source) AS (
   VALUES
@@ -50,21 +50,21 @@ retired_procedures(signature, source) AS (
 ),
 revoked_procedures(signature, source) AS (
   VALUES
-    ('public.employee_get_my_profile()', '20261027030311'),
-    ('public.employee_update_my_profile(jsonb)', '20261027030311'),
-    ('public.employee_update_my_bank(jsonb)', '20261027030311'),
-    ('public.employee_save_my_addresses_v2(jsonb)', '20261027030311'),
-    ('public.employee_save_my_education_v2(jsonb)', '20261027030311'),
-    ('public.employee_save_my_experience_v2(jsonb)', '20261027030311'),
-    ('public.employee_save_my_family_members_v2(jsonb)', '20261027030311'),
-    ('public.employee_replace_my_profile_section(text,jsonb)', '20261027030311')
+    ('public.employee_get_my_profile()', '20261027040642'),
+    ('public.employee_update_my_profile(jsonb)', '20261027040642'),
+    ('public.employee_update_my_bank(jsonb)', '20261027040642'),
+    ('public.employee_save_my_addresses_v2(jsonb)', '20261027040642'),
+    ('public.employee_save_my_education_v2(jsonb)', '20261027040642'),
+    ('public.employee_save_my_experience_v2(jsonb)', '20261027040642'),
+    ('public.employee_save_my_family_members_v2(jsonb)', '20261027040642'),
+    ('public.employee_replace_my_profile_section(text,jsonb)', '20261027040642')
 ),
 required_policies(schemaname, table_name, policy_name, expected_permissive, source) AS (
   VALUES
     ('public', 'notices', 'hris_notices_membership_guard', 'RESTRICTIVE', '20261017030000'),
     ('public', 'employee_profile_change_requests', 'employee_profile_change_read_own_or_authorized_review', 'PERMISSIVE', '20261017130000'),
-    ('storage', 'objects', 'employee_profile_certificate_insert', 'PERMISSIVE', '20261027030311'),
-    ('storage', 'objects', 'employee_profile_certificate_orphan_delete', 'PERMISSIVE', '20261027030311')
+    ('storage', 'objects', 'employee_profile_certificate_insert', 'PERMISSIVE', '20261027040642'),
+    ('storage', 'objects', 'employee_profile_certificate_orphan_delete', 'PERMISSIVE', '20261027040642')
 ),
 checks AS (
   SELECT 'required_rpc'::text AS kind, signature AS object, source,

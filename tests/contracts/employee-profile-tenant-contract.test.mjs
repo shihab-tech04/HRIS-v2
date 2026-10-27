@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
-const migration = read('../../supabase/migrations/20261027030311_employee_profile_tenant_scoped_contract.sql');
+const migration = read('../../supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql');
 const runner = read('../sql/isolated-auth/run-local.mjs');
 const fixture = read('../sql/isolated-auth/fixture.sql');
 const parity = read('../sql/hosted-parity/check-read-only.sql');
@@ -74,7 +74,7 @@ test('record save allowlists and certificate paths remain own-employee and tenan
 });
 
 test('disposable Auth/RLS journey covers valid, invalid, cross-tenant, unlinked, and direct-write cases', () => {
-  assert.match(runner, /20261027030311_employee_profile_tenant_scoped_contract\.sql/);
+  assert.match(runner, /20261027040642_employee_profile_tenant_scoped_contract\.sql/);
   assert.match(runner, /profileCrossTenantEducation/);
   assert.match(runner, /profileRoleWithoutEmployeeWrite/);
   assert.match(runner, /invalidTraining\.error\?\.code === '22023'/);

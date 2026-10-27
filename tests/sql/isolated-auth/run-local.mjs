@@ -486,7 +486,7 @@ for (const file of [
   path.join(here, 'overgrant-leave-types-for-hosted-parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'),
   path.join(mainRoot, 'supabase/migrations/20261023130800_hris_private_storage_tenant_read_guard.sql'),
-  path.join(mainRoot, 'supabase/migrations/20261027030311_employee_profile_tenant_scoped_contract.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',

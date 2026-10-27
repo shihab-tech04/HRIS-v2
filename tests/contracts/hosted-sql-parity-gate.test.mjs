@@ -19,7 +19,7 @@ const migrationNames = [
   '20261017095321_roster_shift_change_history.sql',
   '20261017100000_employee_profile_change_request_tenant_scope.sql',
   '20261017130000_employee_profile_change_schema_contract.sql',
-  '20261027030311_employee_profile_tenant_scoped_contract.sql',
+  '20261027040642_employee_profile_tenant_scoped_contract.sql',
 ];
 
 test('hosted parity SQL remains a read-only catalog probe', () => {
