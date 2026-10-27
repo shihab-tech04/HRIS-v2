@@ -1026,6 +1026,7 @@ const profileCertificateUpload = await employeeA.client.storage.from('employee-d
   profileCertificatePath, new Blob(['%PDF-1.4\nSynthetic profile training certificate\n'], { type: 'application/pdf' }),
   { contentType: 'application/pdf', upsert: false },
 );
+if (!profileCertificateUpload.error) employeeDocumentStoragePaths.push(profileCertificatePath);
 const profileTrainingSave = await employeeA.client.rpc('employee_save_my_training_v1', {
   p_tenant_id: ids.tenantA,
   p_payload: {
@@ -1057,6 +1058,7 @@ const profileCertificationUpload = await employeeA.client.storage.from('employee
   profileCertificationPath, new Blob([new Uint8Array([137,80,78,71,13,10,26,10])], { type: 'image/png' }),
   { contentType: 'image/png', upsert: false },
 );
+if (!profileCertificationUpload.error) employeeDocumentStoragePaths.push(profileCertificationPath);
 const profileCertificationSave = await employeeA.client.rpc('employee_save_my_certification_v1', {
   p_tenant_id: ids.tenantA,
   p_payload: {
@@ -1303,12 +1305,15 @@ const documentRowA = 'a3333333-3333-4333-8333-333333333333';
 const documentRowB = 'a4444444-4444-4444-8444-444444444444';
 record('Employee-document managers and directory viewers read only documents in their active tenant',
   !documentManagerA.error && !documentManagerB.error && !documentViewerA.error
-    && documentManagerA.data?.length === 2 && documentManagerA.data.some(row => row.id === documentRowA)
+    && documentManagerA.data?.length >= 2 && documentManagerA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && documentManagerA.data.some(row => row.id === documentRowA)
     && documentManagerB.data?.length === 1 && documentManagerB.data[0]?.id === documentRowB
-    && documentViewerA.data?.length === 2 && documentViewerA.data.some(row => row.id === documentRowA));
+    && documentViewerA.data?.length >= 2 && documentViewerA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && documentViewerA.data.some(row => row.id === documentRowA));
 record('Employees read only their own document metadata and global roles alone grant no document access',
   !documentEmployeeA.error && !documentEmployeeB.error && !documentGlobalOnly.error
-    && documentEmployeeA.data?.length === 2 && documentEmployeeA.data.some(row => row.id === documentRowA)
+    && documentEmployeeA.data?.length >= 2 && documentEmployeeA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && documentEmployeeA.data.some(row => row.id === documentRowA)
     && documentEmployeeB.data?.length === 1 && documentEmployeeB.data[0]?.id === documentRowB
     && documentGlobalOnly.data?.length === 0);
 const directAnonymousEmployeeDocuments = attemptAs(null,
@@ -1434,8 +1439,9 @@ const rejectedEmployeeDocument = ownDocumentRows?.find(row => row.id === 'a33333
 record('Employee document self-service returns only own metadata and exposes correction reasons only for rejected documents',
   !ownEmployeeDocuments.error && ownEmployeeDocuments.data?.tenant_id === ids.tenantA
     && ownEmployeeDocuments.data?.employee_id === '55555555-5555-4555-8555-555555555555'
-    && ownDocumentRows?.length === 2
+    && ownDocumentRows?.length >= 2
     && ownDocumentRows.some(row => row.id === documentRowA && row.verification_note === null)
+    && !ownDocumentRows.some(row => row.id === documentRowB)
     && rejectedEmployeeDocument?.verification_note === 'Synthetic correction reason for the employee.');
 record('Employee document self-service denies mismatched tenant, cross-tenant identity, manager, and anonymous sessions',
   Boolean(otherTenantEmployeeDocuments.error) && Boolean(crossTenantEmployeeDocuments.error)
@@ -8566,6 +8572,8 @@ if (!hr0106ProfileBaseline.error) {
       const suffix = randomUUID();
       const value = field.endsWith('email')
         ? `hr0106-${suffix}@example.test`
+        : field.endsWith('phone')
+          ? `+880${Date.now().toString().slice(-10)}`
         : `HR01-06 synthetic ${field} ${suffix}`;
       const submitted = await employeeA.client.rpc('employee_submit_profile_change_request', {
         p_tenant_id: ids.tenantA,

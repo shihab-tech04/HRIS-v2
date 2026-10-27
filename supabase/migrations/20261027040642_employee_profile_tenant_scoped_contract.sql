@@ -608,8 +608,9 @@ BEGIN
   IF v_dob>CURRENT_DATE THEN RAISE EXCEPTION 'Family member date of birth cannot be in the future.' USING errcode='22023'; END IF;
   IF v_id IS NULL THEN
     INSERT INTO public.employee_family_members(
-      employee_id,name,phone,nid_number,date_of_birth,relationship,present_address,permanent_address,is_nominee
-    ) VALUES(v_employee,v_name,v_phone,v_nid,v_dob,v_relation,v_present,v_permanent,v_nominee)
+      employee_id,name,phone,nid_number,date_of_birth,relationship,present_address,permanent_address,
+      is_nominee,working_in_synesis
+    ) VALUES(v_employee,v_name,v_phone,v_nid,v_dob,v_relation,v_present,v_permanent,v_nominee,false)
     RETURNING id INTO v_id;
   ELSE
     UPDATE public.employee_family_members SET name=v_name,phone=v_phone,nid_number=v_nid,

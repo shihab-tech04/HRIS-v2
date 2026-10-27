@@ -600,7 +600,7 @@ CREATE TABLE public.notices (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.org_locations (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL, name text NOT NULL DEFAULT 'Synthetic location'
 );
 CREATE TABLE public.pay_periods (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
