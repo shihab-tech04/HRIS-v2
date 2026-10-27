@@ -27,6 +27,10 @@ test('requisition creation ignores caller-supplied approval status while preserv
   assert.match(saveRequisition, /SECURITY DEFINER/i);
   assert.match(saveRequisition, /SET search_path TO 'pg_catalog', 'public', 'auth'/i);
   assert.match(saveRequisition, /has_permission\('recruitment\.manage'\)/i);
+  assert.match(saveRequisition, /from public\.departments d where d\.id=v_department_id and d\.tenant_id=v_tenant/i);
+  assert.match(saveRequisition, /from public\.designations d where d\.id=v_designation_id and d\.tenant_id=v_tenant/i);
+  assert.match(saveRequisition, /Department not found\.[\s\S]*?errcode='P0002'/i);
+  assert.match(saveRequisition, /Designation not found\.[\s\S]*?errcode='P0002'/i);
   assert.match(saveRequisition, /if p_id is null then[\s\S]*?insert into public\.manpower_requisitions/i);
   assert.match(saveRequisition, /'pending',auth\.uid\(\)\) returning id into v_id/i);
   assert.doesNotMatch(saveRequisition, /p_payload\s*->>\s*'status'/i);
@@ -59,8 +63,13 @@ test('requisition resolver remains tenant-scoped, pending-only, auditable, and s
 
 test('isolated PostgreSQL acceptance applies the forward port and exercises privilege, tenant, and duplicate-resolution boundaries', () => {
   assert.match(acceptance, /applySql\('supabase\/migrations\/20261027090000_hris_requisition_pending_status_guard\.sql'\)/);
-  assert.match(acceptance, /p_payload: \{ title: 'Synthetic pending-only requisition', status: 'approved' \}/);
+  assert.match(acceptance, /p_payload: \{ title: 'Synthetic pending-only requisition', status: 'approved',[\s\S]*?department_id: tenantADepartment, designation_id: tenantADesignation \}/);
   assert.match(acceptance, /p_payload: \{ title: 'Synthetic draft payload requisition', status: 'draft' \}/);
+  assert.match(acceptance, /validSameTenantReferencesAccepted/);
+  assert.match(acceptance, /crossTenantDepartmentCreateDenied/);
+  assert.match(acceptance, /crossTenantDesignationCreateDenied/);
+  assert.match(acceptance, /crossTenantDepartmentUpdateDenied/);
+  assert.match(acceptance, /crossTenantDesignationUpdateDenied/);
   assert.match(acceptance, /Requisition creation forces pending, enforces permission and tenant scope, and resolution is single-use/);
   assert.match(acceptance, /draftPayloadStatus === 'pending'/);
   assert.match(acceptance, /duplicateRequisitionDecision\.error\?\.code === 'P0002'/);
