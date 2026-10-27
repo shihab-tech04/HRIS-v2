@@ -126,6 +126,8 @@ const copy = {
     viewUnavailable: 'This information is not available through an approved employee read service.',
     requestSubmitted: 'Your correction request was submitted for HR review.',
     profileSaved: 'Your profile information was saved.',
+    delete: 'Delete', cancel: 'Cancel', deleteConfirm: 'Delete this profile record?',
+    deleteSucceeded: 'The profile record was deleted.', deleteFailed: 'The record could not be deleted. Try again.',
     noRecords: 'No records are available yet.',
     emergencyContact: 'Emergency Contact',
     emergencyName: 'Contact name',
@@ -243,6 +245,8 @@ const copy = {
     viewUnavailable: 'অনুমোদিত কর্মী তথ্যসেবা থেকে এই তথ্য পাওয়া যাচ্ছে না।',
     requestSubmitted: 'তথ্য সংশোধনের অনুরোধ HR পর্যালোচনার জন্য জমা হয়েছে।',
     profileSaved: 'আপনার প্রোফাইলের তথ্য সংরক্ষণ হয়েছে।',
+    delete: 'মুছুন', cancel: 'বাতিল', deleteConfirm: 'প্রোফাইলের এই তথ্যটি মুছে ফেলবেন?',
+    deleteSucceeded: 'প্রোফাইলের তথ্য মুছে ফেলা হয়েছে।', deleteFailed: 'তথ্যটি মুছে ফেলা যায়নি। আবার চেষ্টা করুন।',
     noRecords: 'এখনও কোনো তথ্য যোগ করা হয়নি।',
     emergencyContact: 'জরুরি যোগাযোগ',
     emergencyName: 'যোগাযোগের নাম',
@@ -295,6 +299,9 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const [revision, setRevision] = useState(0);
   const [edit, setEdit] = useState<{ kind: ProfileEditKind; initial?: Profile } | null>(null);
   const [notice, setNotice] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'education' | 'experience' | 'family'; id: string } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [showSensitive, setShowSensitive] = useState(false);
   const [showBankAccount, setShowBankAccount] = useState(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -303,6 +310,8 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     setShowSensitive(false);
     setShowBankAccount(false);
     setEdit(null);
+    setPendingDelete(null);
+    setDeleteError('');
     setNotice('');
   }, [tenantId]);
 
@@ -516,6 +525,28 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     { id:'family-nominee',label:words.nomineeStatus,value:record.is_nominee === true ? words.yes : words.no },
   ];
 
+  function requestDelete(kind: 'education' | 'experience' | 'family', record: Profile) {
+    if (typeof record.id !== 'string' || !record.id) return;
+    setDeleteError('');
+    setPendingDelete({ kind, id: record.id });
+  }
+
+  async function confirmDeleteRecord() {
+    if (!pendingDelete || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError('');
+    const { error } = await supabase.rpc('employee_delete_my_profile_record_v1', {
+      p_tenant_id: tenantId, p_kind: pendingDelete.kind, p_record_id: pendingDelete.id,
+    });
+    if (error) setDeleteError(words.deleteFailed);
+    else {
+      setPendingDelete(null);
+      setNotice(words.deleteSucceeded);
+      setRevision(current => current + 1);
+    }
+    setDeleteBusy(false);
+  }
+
   function afterProfileSave() {
     setNotice(edit?.kind.startsWith('request-') ? words.requestSubmitted : words.profileSaved);
     setRevision(current => current + 1);
@@ -644,6 +675,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
                     <button type="button" onClick={() => setEdit({ kind:'education', initial:record })} aria-label={`${words.edit} ${words.educationDetails} ${index+1}`} className={actionClass}>
                       {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
                     </button>
+                    <button type="button" onClick={() => requestDelete('education', record)} aria-label={`${words.delete} ${words.educationDetails} ${index+1}`} className={actionClass}>{words.delete}</button>
                   </div>
                   <DetailRows fields={educationFields(record)} />
                 </article>)}
@@ -660,7 +692,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
             : <div className="mt-5 grid min-w-0 gap-3">{experienceRows.map((record,index) => <article key={String(record.id || index)} className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6">
               <div className="mb-3 flex justify-end"><button type="button" onClick={() => setEdit({ kind:'experience', initial:record })} aria-label={`${words.edit} ${words.experienceTab} ${index+1}`} className={actionClass}>
                 {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
-              </button></div>
+              </button><button type="button" onClick={() => requestDelete('experience', record)} aria-label={`${words.delete} ${words.experienceTab} ${index+1}`} className={actionClass}>{words.delete}</button></div>
               <DetailRows fields={experienceFields(record)} />
             </article>)}</div>}
         </section>}
@@ -735,12 +767,23 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
                 <button type="button" onClick={() => setEdit({ kind:'family', initial:record })} aria-label={`${words.edit} ${words.familyInformation} ${index+1}`} className={actionClass}>
                   {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
                 </button>
+                <button type="button" onClick={() => requestDelete('family', record)} aria-label={`${words.delete} ${words.familyInformation} ${index+1}`} className={actionClass}>{words.delete}</button>
               </div>
               <DetailRows fields={familyFields(record)} />
             </article>)}</div>}
         </section>}
       </div>)}
     </>}
+    {pendingDelete && <div className="fixed inset-0 z-[105] grid place-items-center bg-black/40 p-4">
+      <section role="alertdialog" aria-modal="true" aria-labelledby="profile-delete-title" className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h2 id="profile-delete-title" className="text-lg font-semibold text-slate-900">{words.deleteConfirm}</h2>
+        {deleteError && <p role="alert" className="mt-3 text-sm text-red-700">{deleteError}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" disabled={deleteBusy} onClick={() => { setPendingDelete(null); setDeleteError(''); }} className={actionClass}>{words.cancel}</button>
+          <button type="button" autoFocus disabled={deleteBusy} onClick={() => void confirmDeleteRecord()} className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{words.delete}</button>
+        </div>
+      </section>
+    </div>}
     {edit && <EmployeeProfileEditModal kind={edit.kind} tenantId={tenantId} locale={locale} initial={edit.initial}
       onClose={() => setEdit(null)} onSaved={afterProfileSave} />}
   </section>;

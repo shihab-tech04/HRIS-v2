@@ -16,6 +16,7 @@ WITH required_procedures(signature, source) AS (
     ('private.hris_profile_document_is_unlinked(uuid,text)', '20261027040642'),
     ('public.hris_notices_super_admin_tenant_member(uuid)', '20261017030000'),
     ('public.employee_get_my_profile_v1(uuid)', '20261027040642'),
+    ('public.employee_delete_my_profile_record_v1(uuid,text,uuid)', '20261027040642'),
     ('public.employee_save_my_education_v1(uuid,jsonb)', '20261027040642'),
     ('public.employee_save_my_experience_v1(uuid,jsonb)', '20261027040642'),
     ('public.employee_save_my_family_member_v1(uuid,jsonb)', '20261027040642'),

@@ -40,6 +40,7 @@ WITH expected(client_file,rpc) AS (
   ('Main/src/live/EmployeeProfileFigma.tsx','employee_get_my_profile_v1'),
   ('Main/src/live/EmployeeProfileFigma.tsx','employee_get_my_employment_info_v1'),
   ('Main/src/live/EmployeeProfileEditModal.tsx','employee_submit_profile_change_request'),
+  ('Main/src/live/EmployeeProfileFigma.tsx','employee_delete_my_profile_record_v1'),
   ('Main/src/live/EmployeeProfileEditModal.tsx','employee_save_my_education_v1'),
   ('Main/src/live/EmployeeProfileEditModal.tsx','employee_save_my_experience_v1'),
   ('Main/src/live/EmployeeProfileEditModal.tsx','employee_save_my_family_member_v1'),

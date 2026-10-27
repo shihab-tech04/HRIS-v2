@@ -1304,6 +1304,47 @@ const directFamilyWrite = await employeeA.client.from('employee_family_members')
 }).select('id');
 record('Direct family table writes remain denied', !!directFamilyWrite.error);
 
+// Exercise the original HRIS record Delete action after all profile read tests.
+const deleteUnsupported = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'training', p_record_id: profileEducationSave.data,
+});
+const deleteCrossTenant = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantB, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deleteForeignActor = await managerA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deleteEducation = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deleteExperience = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'experience', p_record_id: profileExperienceSave.data,
+});
+const deleteFamily = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'family', p_record_id: profileFamilySave.data,
+});
+const deleteRepeated = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deletedRows = queryAdmin(`SELECT jsonb_build_object(
+  'education',(SELECT count(*) FROM public.employee_education WHERE id='${profileEducationSave.data}'::uuid),
+  'experience',(SELECT count(*) FROM public.employee_experience WHERE id='${profileExperienceSave.data}'::uuid),
+  'family',(SELECT count(*) FROM public.employee_family_members WHERE id='${profileFamilySave.data}'::uuid)
+)`);
+record('E02 original education experience and family delete: allowed own rows, rejected other tenant, blocked foreign role',
+  deleteUnsupported.error?.code === '22023'
+    && deleteCrossTenant.error?.code === '42501'
+    && deleteForeignActor.error?.code === '42501'
+    && !deleteEducation.error && !deleteExperience.error && !deleteFamily.error
+    && deleteRepeated.error?.code === '42501'
+    && Number(deletedRows?.education) === 0
+    && Number(deletedRows?.experience) === 0
+    && Number(deletedRows?.family) === 0,
+  JSON.stringify({ invalid: deleteUnsupported.error?.code, crossTenant: deleteCrossTenant.error?.code,
+    foreign: deleteForeignActor.error?.code, education: deleteEducation.error?.code || 'ok',
+    experience: deleteExperience.error?.code || 'ok', family: deleteFamily.error?.code || 'ok',
+    repeated: deleteRepeated.error?.code, remaining: deletedRows }));
+
 const employeeDocumentPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
   'manager_policy', (SELECT jsonb_build_object('permissive',permissive,'qual',qual)

@@ -12,6 +12,7 @@ const inventory = read('../sql/hosted-parity/frontends-admin-candidate-rpc-inven
 test('profile v1 exposes the approved scalar and record contracts with exact tenant-scoped RPCs', () => {
   for (const signature of [
     'employee_get_my_profile_v1(uuid)',
+    'employee_delete_my_profile_record_v1(uuid,text,uuid)',
     'employee_save_my_education_v1(uuid,jsonb)',
     'employee_save_my_experience_v1(uuid,jsonb)',
     'employee_save_my_family_member_v1(uuid,jsonb)',

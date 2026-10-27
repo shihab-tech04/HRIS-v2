@@ -831,4 +831,49 @@ GRANT EXECUTE ON FUNCTION public.employee_save_my_bank_v1(uuid,jsonb) TO authent
 GRANT EXECUTE ON FUNCTION public.employee_save_my_training_v1(uuid,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.employee_save_my_certification_v1(uuid,jsonb) TO authenticated;
 
+
+-- Original HRIS profile retained per-record Delete action. Records owned by a
+-- different employee, inactive member, or another tenant are never deleted.
+-- Certificate and training documents remain outside this endpoint because
+-- their linked private document retention requires a separate contract.
+CREATE OR REPLACE FUNCTION public.employee_delete_my_profile_record_v1(
+  p_tenant_id uuid,p_kind text,p_record_id uuid
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $function$
+DECLARE
+  v_employee uuid := private.hris_profile_own_employee(p_tenant_id);
+BEGIN
+  IF v_employee IS NULL THEN
+    RAISE EXCEPTION 'Linked employee record is required.' USING errcode='42501';
+  END IF;
+  IF p_record_id IS NULL OR p_kind IS NULL
+     OR p_kind NOT IN ('education','experience','family') THEN
+    RAISE EXCEPTION 'Unsupported profile record.' USING errcode='22023';
+  END IF;
+
+  IF p_kind='education' THEN
+    DELETE FROM public.employee_education
+    WHERE id=p_record_id AND employee_id=v_employee;
+  ELSIF p_kind='experience' THEN
+    DELETE FROM public.employee_experience
+    WHERE id=p_record_id AND employee_id=v_employee;
+  ELSE
+    DELETE FROM public.employee_family_members
+    WHERE id=p_record_id AND employee_id=v_employee;
+  END IF;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Profile record is not owned by this employee.' USING errcode='42501';
+  END IF;
+  INSERT INTO public.admin_audit_logs(actor_id,action,target_type,target_id,details)
+  VALUES(auth.uid(),'employee.profile.'||p_kind||'.deleted_v1','employee',v_employee::text,
+    jsonb_build_object('row_id',p_record_id));
+  RETURN p_record_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.employee_delete_my_profile_record_v1(uuid,text,uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.employee_delete_my_profile_record_v1(uuid,text,uuid)
+  TO authenticated;
+
 COMMIT;
