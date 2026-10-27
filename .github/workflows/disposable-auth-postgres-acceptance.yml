@@ -65,7 +65,9 @@ jobs:
           supabase init --workdir "$HRIS_SUPABASE_TEST_WORKDIR" --force >/dev/null
           sed -i 's/^port = 54321$/port = 55421/' "$HRIS_SUPABASE_TEST_WORKDIR/supabase/config.toml"
           sed -i 's/^port = 54322$/port = 55422/' "$HRIS_SUPABASE_TEST_WORKDIR/supabase/config.toml"
+          sed -i '/^\[db\]$/,/^\[/s/^major_version = [0-9][0-9]*$/major_version = 17/' "$HRIS_SUPABASE_TEST_WORKDIR/supabase/config.toml"
           grep -q '^project_id = "synesis-local-hris-test"$' "$HRIS_SUPABASE_TEST_WORKDIR/supabase/config.toml"
+          grep -q '^major_version = 17$' "$HRIS_SUPABASE_TEST_WORKDIR/supabase/config.toml"
       - name: Start disposable local Auth, Postgres and Storage
         run: |
           set -euo pipefail

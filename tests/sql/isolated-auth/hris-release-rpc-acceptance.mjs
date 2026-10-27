@@ -56,6 +56,11 @@ function psql(sql) {
     '-X', '-A', '-t', '-q', '--set=ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres',
   ], { input: sql, encoding: 'utf8' }).trim();
 }
+const postgresVersion = psql('SHOW server_version_num;');
+if (!postgresVersion.startsWith('17')) {
+  throw new Error('Refusing release RPC acceptance: the disposable database must be PostgreSQL 17.');
+}
+console.log('PASS isolated acceptance is running on PostgreSQL ' + postgresVersion);
 function sqlLiteral(value) {
   return "'" + String(value).replaceAll("'", "''") + "'";
 }
@@ -86,6 +91,10 @@ let directEmployeeEmail = null;
 const password = randomBytes(24).toString('base64url');
 const tenantA = '11111111-1111-4111-8111-111111111111';
 const tenantB = '22222222-2222-4222-8222-222222222222';
+const tenantADepartment = 'eeeeeeee-0000-4000-8000-000000000001';
+const tenantBDepartment = 'eeeeeeee-0000-4000-8000-000000000002';
+const tenantADesignation = 'ffffffff-0000-4000-8000-000000000001';
+const tenantBDesignation = 'ffffffff-0000-4000-8000-000000000002';
 const jobId = 'a4444444-4444-4444-8444-444444444444';
 const applicationId = 'c4444444-4444-4444-8444-444444444444';
 const results = [];
@@ -151,6 +160,7 @@ try {
     + "CREATE TABLE IF NOT EXISTS public.candidate_application_drafts(candidate_user_id uuid NOT NULL,job_id uuid NOT NULL,PRIMARY KEY(candidate_user_id,job_id));");
   applySql('supabase/migrations/20261026060231_hris_employee_invitation.sql');
   applySql('supabase/migrations/20261026060240_candidate_screening_answer_validation.sql');
+  applySql('supabase/migrations/20261027090000_hris_requisition_pending_status_guard.sql');
   psql("NOTIFY pgrst, 'reload schema';");
   await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -196,6 +206,8 @@ try {
     'public.hris_resume_employee_invitation(uuid,uuid)',
     'public.hris_accept_employee_invitation(uuid)',
     'public.candidate_apply_to_job(uuid,jsonb)',
+    'public.admin_save_requisition(uuid,jsonb)',
+    'public.admin_resolve_requisition(uuid,text,text)',
   ];
   const signatureSql = hostedRpcSignatures.map(sqlLiteral).join(',');
   const contractSql = "SELECT jsonb_build_object("
@@ -244,14 +256,27 @@ try {
     + "'employee_role', (SELECT count(*)=1 FROM public.roles WHERE active IS TRUE AND lower(btrim(name))='employee'),"
     + "'screening_rpc',to_regprocedure('public.candidate_apply_to_job(uuid,jsonb)') IS NOT NULL"
     + " AND has_function_privilege('authenticated','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE')"
-    + " AND NOT has_function_privilege('anon','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE'))::text;";
+    + " AND NOT has_function_privilege('anon','public.candidate_apply_to_job(uuid,jsonb)','EXECUTE'),"
+    + "'requisition_rpc_security',COALESCE((SELECT bool_and(p.prosecdef AND p.proconfig @> ARRAY['search_path=pg_catalog, public, auth']::text[]) FROM pg_catalog.pg_proc p WHERE p.oid IN (to_regprocedure('public.admin_save_requisition(uuid,jsonb)'),to_regprocedure('public.admin_resolve_requisition(uuid,text,text)'))),false),"
+    + "'requisition_rpc_signature_parity',COALESCE((SELECT p.proargnames=ARRAY['p_id','p_payload']::text[] AND p.pronargs=2 AND p.pronargdefaults=0 AND p.prorettype='uuid'::regtype FROM pg_catalog.pg_proc p WHERE p.oid=to_regprocedure('public.admin_save_requisition(uuid,jsonb)')),false)"
+    + " AND COALESCE((SELECT p.proargnames=ARRAY['p_id','p_decision','p_note']::text[] AND p.pronargs=3 AND p.pronargdefaults=1 AND p.prorettype='jsonb'::regtype FROM pg_catalog.pg_proc p WHERE p.oid=to_regprocedure('public.admin_resolve_requisition(uuid,text,text)')),false),"
+    + "'requisition_rpc_acl',has_function_privilege('authenticated','public.admin_save_requisition(uuid,jsonb)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.admin_save_requisition(uuid,jsonb)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.admin_save_requisition(uuid,jsonb)','EXECUTE')"
+    + " AND has_function_privilege('authenticated','public.admin_resolve_requisition(uuid,text,text)','EXECUTE')"
+    + " AND NOT has_function_privilege('anon','public.admin_resolve_requisition(uuid,text,text)','EXECUTE')"
+    + " AND has_function_privilege('service_role','public.admin_resolve_requisition(uuid,text,text)','EXECUTE'),"
+    + "'requisition_table_write_denied',NOT has_table_privilege('authenticated','public.manpower_requisitions','INSERT')"
+    + " AND NOT has_table_privilege('authenticated','public.manpower_requisitions','UPDATE')"
+    + " AND NOT has_table_privilege('anon','public.manpower_requisitions','INSERT')"
+    + " AND NOT has_table_privilege('anon','public.manpower_requisitions','UPDATE'))::text;";
   const contractState = JSON.parse(psql(contractSql));
-  const rpcContractsPass = hostedRpcSignatures.length === 41
+  const rpcContractsPass = hostedRpcSignatures.length === 43
     && contractState.missing_signatures.length === 0
     && contractState.anonymous_execute.length === 0
     && contractState.authenticated_missing.length === 0
     && contractState.private_roster === true;
-  record('All 41 client-executable public RPC signatures have authenticated execution and anonymous access is denied',
+  record('All 43 client-executable public RPC signatures have authenticated execution and anonymous access is denied',
     rpcContractsPass, JSON.stringify(contractState));
   if (!rpcContractsPass || Object.entries(contractState).some(([key, value]) => key !== 'missing_signatures'
     && key !== 'anonymous_execute' && key !== 'authenticated_missing' && value !== true)) {
@@ -309,6 +334,7 @@ try {
     + "(" + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(users.recruiterA.id) + "::uuid,'qa_tenant_recruitment_manager_a','active'),"
     + "(" + sqlLiteral(tenantB) + "::uuid," + sqlLiteral(users.recruiterB.id) + "::uuid,'qa_tenant_manager_b','active'),"
     + "(" + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(users.employeeManager.id) + "::uuid,'hr_admin','active');"
+    + "INSERT INTO public.user_roles(user_id,role_id) VALUES (" + sqlLiteral(users.recruiterA.id) + "::uuid,'qa_tenant_recruitment_manager_a') ON CONFLICT (user_id) DO UPDATE SET role_id=EXCLUDED.role_id;"
     + "INSERT INTO public.candidate_profiles(user_id,tenant_id,profile_status,profile_data,full_name,email,phone,years_experience,skills) VALUES "
     + "(" + sqlLiteral(users.candidateA.id) + "::uuid," + sqlLiteral(tenantA) + "::uuid,'active','{}'::jsonb,'Synthetic Release Candidate'," + sqlLiteral(emails.candidateA) + ",'555-0101',4,ARRAY['sql']),"
     + "(" + sqlLiteral(users.candidateB.id) + "::uuid," + sqlLiteral(tenantB) + "::uuid,'active','{}'::jsonb,'Synthetic Candidate B'," + sqlLiteral(emails.candidateB) + ",'555-0102',2,ARRAY['design']);"
@@ -317,6 +343,137 @@ try {
     + "INSERT INTO public.job_applications(id,tenant_id,job_id,candidate_user_id,full_name,email,stage,applied_at) VALUES "
     + "(" + sqlLiteral(applicationId) + "::uuid," + sqlLiteral(tenantA) + "::uuid," + sqlLiteral(jobId) + "::uuid,"
     + sqlLiteral(users.candidateA.id) + "::uuid,'Synthetic Release Candidate'," + sqlLiteral(emails.candidateA) + ",'submitted',now());");
+
+  const requisitionCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Synthetic pending-only requisition', status: 'approved',
+      department_id: tenantADepartment, designation_id: tenantADesignation },
+  });
+  const requisitionCreatedId = requisitionCreate.data;
+  const requisitionStatus = requisitionCreatedId
+    ? psql("SELECT status FROM public.manpower_requisitions WHERE id=" + sqlLiteral(requisitionCreatedId) + "::uuid;")
+    : '';
+  const draftPayloadCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Synthetic draft payload requisition', status: 'draft' },
+  });
+  const draftPayloadCreatedId = draftPayloadCreate.data;
+  const draftPayloadStatus = draftPayloadCreatedId
+    ? psql("SELECT status FROM public.manpower_requisitions WHERE id=" + sqlLiteral(draftPayloadCreatedId) + "::uuid;")
+    : '';
+  const validTenantReferences = requisitionCreatedId
+    ? psql("SELECT department_id::text || '|' || designation_id::text FROM public.manpower_requisitions WHERE id="
+      + sqlLiteral(requisitionCreatedId) + "::uuid;")
+    : '';
+  const crossTenantDepartmentCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Cross-tenant department create attempt', department_id: tenantBDepartment },
+  });
+  const crossTenantDepartmentCreateCount = psql(
+    "SELECT count(*) FROM public.manpower_requisitions WHERE title='Cross-tenant department create attempt';",
+  );
+  const crossTenantDesignationCreate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Cross-tenant designation create attempt', designation_id: tenantBDesignation },
+  });
+  const crossTenantDesignationCreateCount = psql(
+    "SELECT count(*) FROM public.manpower_requisitions WHERE title='Cross-tenant designation create attempt';",
+  );
+  const crossTenantDepartmentUpdate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: requisitionCreatedId,
+    p_payload: { title: 'Cross-tenant department update attempt', department_id: tenantBDepartment },
+  });
+  const crossTenantDesignationUpdate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: requisitionCreatedId,
+    p_payload: { title: 'Cross-tenant designation update attempt', designation_id: tenantBDesignation },
+  });
+  const requisitionAfterForeignReferenceAttempts = requisitionCreatedId
+    ? psql("SELECT title || '|' || department_id::text || '|' || designation_id::text FROM public.manpower_requisitions WHERE id="
+      + sqlLiteral(requisitionCreatedId) + "::uuid;")
+    : '';
+  const directRequisitionStatusWrite = requisitionCreatedId
+    ? await clients.recruiterA.from('manpower_requisitions')
+      .update({ status: 'approved' }).eq('id', requisitionCreatedId)
+    : { error: new Error('Create did not return a requisition ID.'), data: null };
+  const statusAfterDirectWrite = requisitionCreatedId
+    ? psql("SELECT status FROM public.manpower_requisitions WHERE id=" + sqlLiteral(requisitionCreatedId) + "::uuid;")
+    : '';
+  const unauthorizedRequisition = await clients.candidateA.rpc('admin_save_requisition', {
+    p_id: null,
+    p_payload: { title: 'Unauthorized synthetic requisition', status: 'approved' },
+  });
+  const unauthorizedRequisitionCount = psql(
+    "SELECT count(*) FROM public.manpower_requisitions WHERE title='Unauthorized synthetic requisition';",
+  );
+
+  const tenantBRequisitionId = randomUUID();
+  psql("INSERT INTO public.manpower_requisitions(id,tenant_id,reference_number,title,status) VALUES ("
+    + sqlLiteral(tenantBRequisitionId) + "::uuid," + sqlLiteral(tenantB) + "::uuid,'QA-TENANT-B-REQ','Synthetic tenant B requisition','pending');");
+  const crossTenantRequisitionUpdate = await clients.recruiterA.rpc('admin_save_requisition', {
+    p_id: tenantBRequisitionId,
+    p_payload: { title: 'Cross-tenant update attempt' },
+  });
+  const tenantBRequisitionAfterUpdate = psql(
+    "SELECT title || '|' || status FROM public.manpower_requisitions WHERE id="
+    + sqlLiteral(tenantBRequisitionId) + "::uuid;",
+  );
+  const firstRequisitionDecision = requisitionCreatedId
+    ? await clients.recruiterA.rpc('admin_resolve_requisition', {
+      p_id: requisitionCreatedId, p_decision: 'approved', p_note: 'Synthetic isolated approval',
+    })
+    : { error: new Error('Create did not return a requisition ID.'), data: null };
+  const duplicateRequisitionDecision = requisitionCreatedId
+    ? await clients.recruiterA.rpc('admin_resolve_requisition', {
+      p_id: requisitionCreatedId, p_decision: 'approved', p_note: 'Duplicate must fail',
+    })
+    : { error: new Error('Create did not return a requisition ID.'), data: null };
+  const crossTenantRequisitionDecision = await clients.recruiterA.rpc('admin_resolve_requisition', {
+    p_id: tenantBRequisitionId, p_decision: 'rejected', p_note: 'Cross-tenant attempt',
+  });
+  const resolvedRequisitionState = requisitionCreatedId
+    ? psql("SELECT status || '|' || (SELECT count(*) FROM public.admin_audit_logs WHERE target_type='requisition' AND target_id="
+      + sqlLiteral(requisitionCreatedId) + " AND action='recruitment.requisition.approved') FROM public.manpower_requisitions WHERE id="
+      + sqlLiteral(requisitionCreatedId) + "::uuid;")
+    : '';
+  const tenantBRequisitionAfterResolve = psql(
+    "SELECT title || '|' || status FROM public.manpower_requisitions WHERE id="
+    + sqlLiteral(tenantBRequisitionId) + "::uuid;",
+  );
+  record('Requisition creation forces pending, enforces permission and tenant scope, and resolution is single-use',
+    !requisitionCreate.error && typeof requisitionCreatedId === 'string' && requisitionStatus === 'pending'
+      && validTenantReferences === tenantADepartment + '|' + tenantADesignation
+      && !draftPayloadCreate.error && typeof draftPayloadCreatedId === 'string' && draftPayloadStatus === 'pending'
+      && crossTenantDepartmentCreate.error?.code === 'P0002' && crossTenantDepartmentCreateCount === '0'
+      && crossTenantDesignationCreate.error?.code === 'P0002' && crossTenantDesignationCreateCount === '0'
+      && crossTenantDepartmentUpdate.error?.code === 'P0002'
+      && crossTenantDesignationUpdate.error?.code === 'P0002'
+      && requisitionAfterForeignReferenceAttempts === 'Synthetic pending-only requisition|' + tenantADepartment + '|' + tenantADesignation
+      && directRequisitionStatusWrite.error?.code === '42501' && statusAfterDirectWrite === 'pending'
+      && unauthorizedRequisition.error?.code === '42501' && unauthorizedRequisitionCount === '0'
+      && crossTenantRequisitionUpdate.error?.code === 'P0002'
+      && tenantBRequisitionAfterUpdate === 'Synthetic tenant B requisition|pending'
+      && !firstRequisitionDecision.error && firstRequisitionDecision.data?.success === true
+      && duplicateRequisitionDecision.error?.code === 'P0002'
+      && crossTenantRequisitionDecision.error?.code === 'P0002'
+      && resolvedRequisitionState === 'approved|1'
+      && tenantBRequisitionAfterResolve === 'Synthetic tenant B requisition|pending',
+    JSON.stringify({ createdPendingDespiteApprovedPayload: requisitionStatus === 'pending',
+      createdPendingDespiteDraftPayload: draftPayloadStatus === 'pending',
+      validSameTenantReferencesAccepted: validTenantReferences === tenantADepartment + '|' + tenantADesignation,
+      crossTenantDepartmentCreateDenied: crossTenantDepartmentCreate.error?.code === 'P0002' && crossTenantDepartmentCreateCount === '0',
+      crossTenantDesignationCreateDenied: crossTenantDesignationCreate.error?.code === 'P0002' && crossTenantDesignationCreateCount === '0',
+      crossTenantDepartmentUpdateDenied: crossTenantDepartmentUpdate.error?.code === 'P0002',
+      crossTenantDesignationUpdateDenied: crossTenantDesignationUpdate.error?.code === 'P0002',
+      crossTenantReferencesDidNotMutateRow: requisitionAfterForeignReferenceAttempts === 'Synthetic pending-only requisition|' + tenantADepartment + '|' + tenantADesignation,
+      directStatusWriteDenied: directRequisitionStatusWrite.error?.code === '42501' && statusAfterDirectWrite === 'pending',
+      unauthorizedDenied: unauthorizedRequisition.error?.code === '42501',
+      crossTenantSaveDenied: crossTenantRequisitionUpdate.error?.code === 'P0002',
+      crossTenantRowUnchanged: tenantBRequisitionAfterUpdate === 'Synthetic tenant B requisition|pending',
+      firstResolutionSucceeded: !firstRequisitionDecision.error,
+      duplicateResolutionDenied: duplicateRequisitionDecision.error?.code === 'P0002',
+      crossTenantResolutionDenied: crossTenantRequisitionDecision.error?.code === 'P0002',
+      oneApprovalAudit: resolvedRequisitionState === 'approved|1',
+      crossTenantAfterResolution: tenantBRequisitionAfterResolve }));
 
   const employeeEmail = 'release-employee-' + suffix + '@hris.test';
   const employeeNumber = 'E-' + suffix.replaceAll('-', '').slice(0, 12).toUpperCase();
