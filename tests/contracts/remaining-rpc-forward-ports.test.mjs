@@ -121,6 +121,7 @@ test('isolated release acceptance applies the reviewed timesheet port and all ne
     '20261024231001_hris_attendance_shift_rpc_forward_port.sql',
     '20261024232001_hris_employee_payroll_learning_rpc_forward_port.sql',
     '20261024220001_platform_tenant_invitations.sql',
+    '20261027090000_hris_requisition_pending_status_guard.sql',
   ];
   let previous = -1;
   for (const path of paths) {
@@ -128,7 +129,7 @@ test('isolated release acceptance applies the reviewed timesheet port and all ne
     assert.ok(next > previous, `${path} is applied in release order`);
     previous = next;
   }
-  assert.match(acceptance, /All 41 client-executable public RPC signatures/);
+  assert.match(acceptance, /All 43 client-executable public RPC signatures/);
   assert.match(acceptance, /anonymous_execute/);
   assert.match(acceptance, /authenticated_missing/);
 });

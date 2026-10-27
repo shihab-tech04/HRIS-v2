@@ -160,6 +160,40 @@ CREATE TABLE public.candidate_assessments (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- The live requisition RPC references columns not needed by the older generic
+-- fixture. Keep its isolated PostgreSQL acceptance schema close to the live
+-- table without importing or writing any hosted data.
+ALTER TABLE public.manpower_requisitions
+  ADD COLUMN IF NOT EXISTS reference_number text NOT NULL DEFAULT 'QA-REQ-FIXTURE',
+  ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT 'Synthetic requisition fixture',
+  ADD COLUMN IF NOT EXISTS department_id uuid,
+  ADD COLUMN IF NOT EXISTS designation_id uuid,
+  ADD COLUMN IF NOT EXISTS employment_type text NOT NULL DEFAULT 'full_time',
+  ADD COLUMN IF NOT EXISTS project_name text,
+  ADD COLUMN IF NOT EXISTS required_positions integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS desired_joining_date date,
+  ADD COLUMN IF NOT EXISTS years_experience numeric,
+  ADD COLUMN IF NOT EXISTS education_qualifications text,
+  ADD COLUMN IF NOT EXISTS certifications text,
+  ADD COLUMN IF NOT EXISTS job_description text,
+  ADD COLUMN IF NOT EXISTS reason text,
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','approved','rejected')),
+  ADD COLUMN IF NOT EXISTS requested_by uuid,
+  ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS resolved_by uuid,
+  ADD COLUMN IF NOT EXISTS resolved_at timestamptz,
+  ADD COLUMN IF NOT EXISTS resolution_note text,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE SEQUENCE IF NOT EXISTS public.qa_manpower_requisition_number_seq;
+CREATE OR REPLACE FUNCTION public.next_requisition_number()
+RETURNS text LANGUAGE sql VOLATILE SET search_path TO 'pg_catalog', 'public' AS $function$
+  SELECT 'QA-REQ-' || lpad(nextval('public.qa_manpower_requisition_number_seq')::text, 6, '0');
+$function$;
+REVOKE ALL ON FUNCTION public.next_requisition_number() FROM PUBLIC, anon, authenticated;
+
 CREATE INDEX job_applications_tenant_applied_idx
   ON public.job_applications(tenant_id,applied_at DESC,id);
 CREATE INDEX candidate_stage_history_application_idx
