@@ -852,6 +852,35 @@ record('E02 profile review is denied to employees and users without permission a
     && !profileManagerAQueue.error
     && profileManagerBQueue.error?.code === '42501'
     && profileCrossTenantSubmit.error?.code === '42501');
+// Regression: a reviewer with valid tenant permission must not decide a request
+// when the request itself identifies that reviewer as its submitter. Mutate only
+// the disposable local fixture, then restore it for the positive manager test.
+psqlSync(`UPDATE public.employee_profile_change_requests SET requested_by=${sqlLiteral(managerA.userId)}::uuid
+  WHERE id=${sqlLiteral(profileChangeId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+let profileSelfApproval;
+let profileSelfRejection;
+let profileSelfReviewState;
+try {
+  profileSelfApproval = await managerA.client.rpc('admin_review_profile_change_request', {
+    p_tenant_id: ids.tenantA, p_id: profileChangeId, p_decision: 'approved', p_note: 'Must deny self-approval.',
+  });
+  profileSelfRejection = await managerA.client.rpc('admin_review_profile_change_request', {
+    p_tenant_id: ids.tenantA, p_id: profileChangeId, p_decision: 'rejected', p_note: 'Must deny self-rejection.',
+  });
+  profileSelfReviewState = queryAdmin(`SELECT jsonb_build_object('status',status,'reviewed_by',reviewed_by)
+    FROM public.employee_profile_change_requests WHERE id=${sqlLiteral(profileChangeId)}::uuid`);
+} finally {
+  psqlSync(`UPDATE public.employee_profile_change_requests SET requested_by=${sqlLiteral(employeeA.userId)}::uuid
+    WHERE id=${sqlLiteral(profileChangeId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('E02 self-approval and self-rejection are denied even for a permitted tenant manager',
+  profileSelfApproval.error?.code === '42501'
+    && profileSelfRejection.error?.code === '42501'
+    && profileSelfReviewState.status === 'pending'
+    && profileSelfReviewState.reviewed_by === null,
+  JSON.stringify({ selfApproval: profileSelfApproval.error?.code,
+    selfRejection: profileSelfRejection.error?.code, state: profileSelfReviewState }));
+
 const profileApproval = await managerA.client.rpc('admin_review_profile_change_request', {
   p_tenant_id: ids.tenantA,
   p_id: profileChangeId, p_decision: 'approved', p_note: 'Verified synthetic employee correction.',
