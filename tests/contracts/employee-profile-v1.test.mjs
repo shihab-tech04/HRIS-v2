@@ -25,7 +25,7 @@ test('profile correction controls use the approved HR review RPC and tenant/valu
   const fields = source => [...source.matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
   assert.deepEqual(fields(personal), [
     'full_name','father_name','mother_name','date_of_birth','birthplace','blood_group','gender',
-    'religion','nationality','marital_status','nid_number','passport_number','etin_number',
+    'religion','nationality','marital_status','nid_number','passport_number','etin_number','tax_circle',
   ]);
   assert.deepEqual(fields(contact), [
     'official_email','phone','personal_email','official_phone','address','mailing_address',
@@ -56,7 +56,9 @@ test('profile record editors call only tenant-scoped v1 save RPCs for Figma-back
   assert.match(modal, /currently_studying/);
   assert.match(modal, /company_website/);
   assert.match(modal, /present_address/);
-  assert.doesNotMatch(modal, /account_name/);
+  assert.match(modal, /id:'account_name',label:'account_name',required:true/);
+  assert.match(profile, /words\.bankAccountName,value:bankValue\('account_name'\)/);
+  assert.match(profile, /words\.taxCircle, value: value\('tax_circle'\)/);
   assert.match(history, /employee_get_my_profile_change_requests/);
 });
 
