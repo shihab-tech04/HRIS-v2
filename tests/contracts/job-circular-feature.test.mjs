@@ -35,8 +35,15 @@ test('job circular changes preserve official linked identities and structured qu
   assert.match(manager, /: screeningQuestions\.map\(question =>/);
   assert.match(manager, /team_id: editing\?\.team_id \|\| null/);
   assert.match(manager, /designation_id: editing\?\.designation_id \|\| null/);
-  assert.match(manager, /requisition_id: editing\?\.requisition_id \|\| null/);
+  assert.match(manager, /requisitionId: job\.requisition_id \|\| ''/);
+  assert.match(manager, /requisition_id: draft\.requisitionId \|\| null/);
   assert.match(manager, /setRevision\(v => v \+ 1\)/);
+});
+
+test('requisition picker is tenant-scoped to approved records and SQL rechecks both conditions', () => {
+  assert.match(manager, /\.from\('manpower_requisitions'\)\.select\('id,reference_number,title,required_positions'\)[\s\S]*?\.eq\('tenant_id', tenantId\)\.eq\('status', 'approved'\)/);
+  assert.match(manager, /Approved requisition/);
+  assert.match(readFileSync(new URL('../../supabase/migrations/20261024101414_hris_job_circular_source_recovery.sql', import.meta.url), 'utf8'), /where id=v_req and tenant_id=v_tenant and status='approved'/);
 });
 
 test('publishing validates a deadline and salary, waits for authoritative RPC response', () => {

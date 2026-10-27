@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
+import { ManpowerRequisitionManager } from './ManpowerRequisitionManager';
 
 type Job = {
   id: string; reference_number: string; title: string;
@@ -18,6 +19,7 @@ type Job = {
   instructions: string | null; status: string; is_published: boolean; is_active: boolean;
 };
 type Master = { id: string; name: string };
+type RequisitionOption = { id: string; reference_number: string; title: string; required_positions: number };
 type ScreeningQuestion = {
   id: string; questionText: string; type: string; required: boolean;
   options?: string[];
@@ -64,7 +66,7 @@ function validateQuestions(questions: ScreeningQuestion[]): string | null {
 }
 
 type Draft = {
-  title: string; departmentId: string; locationId: string;
+  title: string; departmentId: string; locationId: string; requisitionId: string;
   workplaceType: string; employmentType: string; experienceLevel: string;
   vacancies: string; experienceYears: string; deadline: string; education: string;
   skills: string; responsibilities: string; requirements: string; benefits: string;
@@ -72,7 +74,7 @@ type Draft = {
   salaryMin: string; salaryMax: string; showSalary: boolean;
 };
 const blank = (): Draft => ({
-  title: '', departmentId: '', locationId: '',
+  title: '', departmentId: '', locationId: '', requisitionId: '',
   workplaceType: 'on-site', employmentType: 'full-time', experienceLevel: 'mid',
   vacancies: '1', experienceYears: '0', deadline: '', education: '',
   skills: '', responsibilities: '', requirements: '', benefits: '',
@@ -87,7 +89,7 @@ const primaryButton = 'min-h-10 rounded-md bg-[#085587] px-4 py-2 text-sm font-s
 
 function fromJob(job: Job): Draft {
   return {
-    title: job.title, departmentId: job.department_id || '', locationId: job.location_id || '',
+    title: job.title, departmentId: job.department_id || '', locationId: job.location_id || '', requisitionId: job.requisition_id || '',
     workplaceType: job.workplace_type, employmentType: job.employment_type,
     experienceLevel: job.experience_level || 'mid',
     vacancies: String(job.vacancy_count), experienceYears: String(job.min_experience_years),
@@ -105,6 +107,9 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
   const [jobs, setJobs] = useState<Job[]>([]);
   const [departments, setDepartments] = useState<Master[]>([]);
   const [locations, setLocations] = useState<Master[]>([]);
+  const [approvedRequisitions, setApprovedRequisitions] = useState<RequisitionOption[]>([]);
+  const [requisitionLoadError, setRequisitionLoadError] = useState(false);
+  const [activeSection, setActiveSection] = useState<'jobs' | 'requisitions'>('jobs');
   const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -123,6 +128,8 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
     setError('');
     setJobs([]);
     setCanManage(false);
+    setApprovedRequisitions([]);
+    setRequisitionLoadError(false);
     setFormOpen(false);
     setEditing(null);
     setScreeningQuestions([]);
@@ -139,13 +146,17 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
       if (records.error) setError('Unable to load this organization’s job circulars. Check recruitment permissions.');
       else setJobs((records.data || []) as Job[]);
       if (!permission.error && permission.data === true) {
-        const [dep, loc] = await Promise.all([
+        const [dep, loc, requisitions] = await Promise.all([
           supabase.from('departments').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name'),
           supabase.from('org_locations').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name'),
+          supabase.from('manpower_requisitions').select('id,reference_number,title,required_positions')
+            .eq('tenant_id', tenantId).eq('status', 'approved').order('requested_at', { ascending: false }).limit(100),
         ]);
         if (!current) return;
         setDepartments((dep.data || []) as Master[]);
         setLocations((loc.data || []) as Master[]);
+        setApprovedRequisitions((requisitions.data || []) as RequisitionOption[]);
+        setRequisitionLoadError(Boolean(requisitions.error));
       }
     })().catch(() => { if (current) setError('Job circulars could not be loaded. Retry the request.'); })
       .finally(() => { if (current) setLoading(false); });
@@ -198,7 +209,7 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
         title: draft.title.trim(), application_deadline: draft.deadline || null,
         department_id: draft.departmentId || null, location_id: draft.locationId || null,
         team_id: editing?.team_id || null, designation_id: editing?.designation_id || null,
-        requisition_id: editing?.requisition_id || null,
+        requisition_id: draft.requisitionId || null,
         workplace_type: draft.workplaceType, employment_type: draft.employmentType,
         experience_level: draft.experienceLevel,
         vacancy_count: Number(draft.vacancies), min_experience_years: Number(draft.experienceYears),
@@ -257,6 +268,16 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
   }
 
   return <section aria-label="Job circular management" className="space-y-4">
+    <nav aria-label={t('Recruitment workflows')} className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3">
+      <button type="button" aria-current={activeSection === 'jobs' ? 'page' : undefined} onClick={() => {
+        if (activeSection === 'requisitions') setRevision(value => value + 1);
+        setActiveSection('jobs');
+      }}
+        className={activeSection === 'jobs' ? primaryButton : secondaryButton}>{t('Job circulars')}</button>
+      <button type="button" aria-current={activeSection === 'requisitions' ? 'page' : undefined} onClick={() => setActiveSection('requisitions')}
+        className={activeSection === 'requisitions' ? primaryButton : secondaryButton}>{t('Manpower requisitions')}</button>
+    </nav>
+    {activeSection === 'jobs' ? <>
     <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-wrap items-center justify-between gap-3">
       <div><h3 className="font-semibold text-slate-900">Job circulars</h3>
         <p className="text-sm text-slate-600">Create, edit and publish approved vacancies through the authenticated recruitment service.</p>
@@ -280,6 +301,19 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
         </label>
         <label className="text-sm font-medium">Work location
           <select className={fieldClass} value={draft.locationId} onChange={e => change('locationId',e.target.value)}>{selectOption(locations,draft.locationId)}</select>
+        </label>
+        <label className="text-sm font-medium">{t('Approved requisition')}
+          <select className={fieldClass} value={draft.requisitionId} disabled={saving} onChange={e => change('requisitionId',e.target.value)}>
+            <option value="">{t('No requisition linked')}</option>
+            {draft.requisitionId && !approvedRequisitions.some(item => item.id === draft.requisitionId) &&
+              <option value={draft.requisitionId}>{t('Previously linked requisition')}</option>}
+            {approvedRequisitions.map(requisition => <option key={requisition.id} value={requisition.id}>
+              {requisition.reference_number} — {requisition.title} ({requisition.required_positions} {t('positions')})
+            </option>)}
+          </select>
+          <span className="mt-1 block text-xs text-slate-500">{t('Only approved requisitions from this organization are shown. The server checks tenant ownership and approval status when saving.')}</span>
+          {requisitionLoadError && <span role="status" className="mt-1 block text-xs text-amber-800">{t('Approved requisitions could not be loaded. Save without a new link or refresh to try again.')}</span>}
+          {!loading && !requisitionLoadError && approvedRequisitions.length === 0 && <span role="status" className="mt-1 block text-xs text-slate-500">{t('No approved requisitions are available for this organization.')}</span>}
         </label>
         <label className="text-sm font-medium">Workplace type
           <select className={fieldClass} value={draft.workplaceType} onChange={e => change('workplaceType',e.target.value)}>
@@ -386,8 +420,8 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
             </div>
           </fieldset>)}
       </section>
-      {editing && (editing.team_id || editing.designation_id || editing.requisition_id) &&
-        <p className="text-xs text-slate-600">Existing team, designation and requisition links are preserved when editing.</p>}
+      {editing && (editing.team_id || editing.designation_id) &&
+        <p className="text-xs text-slate-600">Existing team and designation links are preserved when editing.</p>}
       <div className="flex flex-wrap gap-2">
         <button type="submit" className={primaryButton} disabled={saving}>{saving ? 'Saving…' : 'Save job circular'}</button>
         <button type="button" disabled={saving} className={secondaryButton} onClick={() => {setFormOpen(false);setEditing(null);setError('');}}>Cancel</button>
@@ -417,5 +451,6 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
             </div>
           </li>)}</ul>}
     </section>
+    </> : <ManpowerRequisitionManager tenantId={tenantId} refreshKey={refreshKey + revision} locale={locale}/>}
   </section>;
 }
