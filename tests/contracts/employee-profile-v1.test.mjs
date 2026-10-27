@@ -45,8 +45,10 @@ test('profile record editors call only tenant-scoped v1 save RPCs for Figma-back
     'employee_save_my_education_v1','employee_save_my_experience_v1','employee_save_my_training_v1',
     'employee_save_my_certification_v1','employee_save_my_family_member_v1','employee_save_my_bank_v1',
   ];
-  const actual = [...modal.matchAll(/:\s*'(employee_save_my_[a-z_]+_v1)'/g)].map(match => match[1]);
+  const actual = [...modal.matchAll(/supabase\.rpc\('(employee_save_my_[a-z_]+_v1)'/g)].map(match => match[1]);
   assert.deepEqual(actual.sort(), expected.sort());
+  assert.doesNotMatch(modal, /supabase\.rpc\(\s*[a-zA-Z_$][\w$]*\s*[,)]/,
+    'each profile save RPC must remain a statically inventoried literal');
   assert.match(modal, /p_tenant_id: tenantId, p_payload: payload/);
   assert.match(modal, /employee-documents'\)\.upload\(path, file/);
   assert.match(modal, /file\.size > 10 \* 1024 \* 1024/);

@@ -131,12 +131,6 @@ const recordFields: Record<Exclude<ProfileEditKind, 'request-personal' | 'reques
   ],
 };
 
-const rpcByKind = {
-  education: 'employee_save_my_education_v1', experience: 'employee_save_my_experience_v1',
-  training: 'employee_save_my_training_v1', certification: 'employee_save_my_certification_v1',
-  family: 'employee_save_my_family_member_v1', bank: 'employee_save_my_bank_v1',
-} as const;
-
 const inputTypeByField: Record<string, string> = {
   full_name:'text', father_name:'text', mother_name:'text', date_of_birth:'date', birthplace:'text',
   blood_group:'text', gender:'text', religion:'text', nationality:'text', marital_status:'text',
@@ -230,10 +224,18 @@ export function EmployeeProfileEditModal({
           const key = kind === 'training' ? 'certificate_url' : 'certificate_document_url';
           payload[key] = uploadedPath;
         }
-        const { error: rpcError } = await supabase.rpc(rpcByKind[kind as keyof typeof rpcByKind], {
-          p_tenant_id: tenantId, p_payload: payload,
-        });
-        if (rpcError) throw rpcError;
+        const args = { p_tenant_id: tenantId, p_payload: payload };
+        let saveError: unknown = null;
+        switch (kind) {
+          case 'education': saveError = (await supabase.rpc('employee_save_my_education_v1', args)).error; break;
+          case 'experience': saveError = (await supabase.rpc('employee_save_my_experience_v1', args)).error; break;
+          case 'training': saveError = (await supabase.rpc('employee_save_my_training_v1', args)).error; break;
+          case 'certification': saveError = (await supabase.rpc('employee_save_my_certification_v1', args)).error; break;
+          case 'family': saveError = (await supabase.rpc('employee_save_my_family_member_v1', args)).error; break;
+          case 'bank': saveError = (await supabase.rpc('employee_save_my_bank_v1', args)).error; break;
+          default: throw new Error('Unsupported profile section');
+        }
+        if (saveError) throw saveError;
       }
       onSaved();
       onClose();
