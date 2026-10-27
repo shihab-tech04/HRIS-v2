@@ -966,9 +966,8 @@ const profileBankSave = await employeeA.client.rpc('employee_save_my_bank_v1', {
 const profileBankUpdate = await employeeA.client.rpc('employee_save_my_bank_v1', {
   p_tenant_id: ids.tenantA, p_payload: { ...bankPayload, branch_name: 'Synthetic Updated Branch' },
 });
-const profileBankStored = await adminAuth.from('employee_bank_details')
-  .select('employee_id,tenant_id,bank_name,account_number,branch_name,routing_number')
-  .eq('employee_id', '55555555-5555-4555-8555-555555555555').single();
+const profileBankStored = queryAdmin(`SELECT to_jsonb(b) FROM public.employee_bank_details b
+  WHERE b.employee_id='55555555-5555-4555-8555-555555555555'::uuid`);
 const invalidBank = await employeeA.client.rpc('employee_save_my_bank_v1', {
   p_tenant_id: ids.tenantA, p_payload: { ...bankPayload, routing_number: 'ABC' },
 });
@@ -1000,16 +999,17 @@ record('E02 v1 education, experience, family, and bank RPCs persist their approv
     && profileFamilyStored.data?.name === 'Synthetic Profile Family Member'
     && profileFamilyStored.data?.relationship === 'Spouse'
     && profileFamilyStored.data?.is_nominee === true
-    && !profileBankSave.error && !profileBankUpdate.error && !profileBankStored.error
-    && profileBankStored.data?.branch_name === 'Synthetic Updated Branch'
-    && profileBankStored.data?.account_number === 'SYNTHETIC-ACCOUNT-12345',
+    && !profileBankSave.error && !profileBankUpdate.error
+    && profileBankStored?.branch_name === 'Synthetic Updated Branch'
+    && profileBankStored?.account_number === 'SYNTHETIC-ACCOUNT-12345',
   JSON.stringify({ education: profileEducationSave.error?.code || profileEducationStored.data?.institution,
     experience: profileExperienceSave.error?.code || profileExperienceStored.data?.company,
     family: { save: profileFamilySave.error?.code || profileFamilySave.data,
       update: profileFamilyUpdate.error?.code || 'ok', storedError: profileFamilyStored.error?.code || null,
       employee: profileFamilyStored.data?.employee_id, name: profileFamilyStored.data?.name,
       relationship: profileFamilyStored.data?.relationship, is_nominee: profileFamilyStored.data?.is_nominee },
-    bank: profileBankSave.error?.code || profileBankStored.data?.bank_name }));
+    bank: { save: profileBankSave.error?.code || profileBankSave.data,
+      update: profileBankUpdate.error?.code || 'ok', stored: profileBankStored } }));
 
 record('E02 v1 profile RPCs reject invalid values, unauthorized roles, cross-tenant calls, and direct table writes',
   invalidEducation.error?.code === '22023'
@@ -1180,12 +1180,15 @@ record('E02 v1 profile projection returns saved employee-owned records and legac
     && retiredProfileRpcExecute.read === true
     && retiredProfileRpcExecute.update === true
     && retiredProfileRpcExecute.bank_update === true,
-  JSON.stringify({ education: employeeProfileReads?.education?.length,
+  JSON.stringify({ readError: profilePostWriteRead.error?.code || null,
+    readMessage: profilePostWriteRead.error?.message || null,
+    hasEmployee: Boolean(employeeProfileReads),
+    education: employeeProfileReads?.education?.length,
     experience: employeeProfileReads?.experience?.length, training: employeeProfileReads?.training?.length,
     family: { count: employeeProfileReads?.family_members?.length, savedId: profileFamilySave.data,
       ids: employeeProfileReads?.family_members?.map(row => row.id),
       savedRecordPresent: employeeProfileReads?.family_members?.some(row => row.id === profileFamilySave.data) },
-    bank: employeeProfileReads?.bank?.bank_name,
+    bank: employeeProfileReads?.bank ?? null,
     invalidEmail: profileInvalidEmail.error?.code, invalidGender: profileInvalidGender.error?.code,
     invalidDob: profileInvalidDob.error?.code, retired: retiredProfileRpcExecute }));
 const profileRoleWithoutEmployeeWrite = await employeesViewer.client.rpc('employee_save_my_family_member_v1', {
