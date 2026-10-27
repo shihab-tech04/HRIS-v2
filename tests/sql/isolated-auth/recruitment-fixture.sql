@@ -187,6 +187,14 @@ ALTER TABLE public.manpower_requisitions
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
+-- Match the deployed table ACL: clients may read through RLS but all writes
+-- must go through the permission- and tenant-scoped SECURITY DEFINER RPCs.
+-- Supabase's disposable project's default grants otherwise leave direct writes
+-- available even though the base fixture only explicitly grants SELECT.
+REVOKE ALL PRIVILEGES ON TABLE public.manpower_requisitions
+  FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.manpower_requisitions TO anon, authenticated;
+
 CREATE SEQUENCE IF NOT EXISTS public.qa_manpower_requisition_number_seq;
 CREATE OR REPLACE FUNCTION public.next_requisition_number()
 RETURNS text LANGUAGE sql VOLATILE SET search_path TO 'pg_catalog', 'public' AS $function$
