@@ -97,7 +97,7 @@ test('Admin creates synthetic users and previews a role without production write
   await row.getByRole('button', { name: `View profile: ${regeneratedName}` }).click();
   const profileDialog = page.getByRole('dialog', { name: regeneratedName });
   await expect(profileDialog).toContainText('not loaded from SQL');
-  await profileDialog.getByRole('button', { name: `View as User: ${regeneratedName}` }).click();
+  await profileDialog.getByRole('button', { name: 'View as User', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'My overview' })).toBeVisible();
   await expect(page.getByText(/does not switch accounts/)).toBeVisible();
   await page.getByRole('button', { name: 'Complete sample step' }).first().click();
