@@ -1,0 +1,64 @@
+name: WS05 one-time authorized Admin preview production release
+on:
+  push:
+    branches:
+      - release/ws05-admin-preview-7fd2389f-20261030
+    paths:
+      - .github/workflows/ws05-one-time-approved-admin-preview-release.yml
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: ws05-admin-preview-release-7fd2389f
+  cancel-in-progress: false
+jobs:
+  verify-and-dispatch:
+    if: github.repository == 'shihab-tech04/HRIS-v2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Verify exact Main and approved pre-merge CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected=7fd2389fb32fe967cec503c34c1c8ec6fc9138aa
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)"
+          test "$actual" = "$expected" || { echo "::error::Main changed; abort"; exit 1; }
+          for run in 41039644383 41039644456; do
+            result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .conclusion)"
+            test "$result" = success || { echo "::error::Required CI $run is not success"; exit 1; }
+          done
+          echo 'PASS: exact Main and both approved Admin CI workflows'
+      - name: Recheck independently archived full-history source bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/hris-release-source"
+          mkdir -p "$dir"
+          gh run download 41079125335 --repo "$GITHUB_REPOSITORY" --name hris-ws05-independent-source-transfer --dir "$dir"
+          (cd "$dir" && sha256sum -c hris-ws05-source.sha256)
+          echo 'de5985afe7a6d813e546d5efca43e733cf95dd102d01d8b20fd1124db1e64945  '"$dir"'/hris-ws05-release.git.bundle' | sha256sum -c -
+          git init -q "$dir/verify"
+          git -C "$dir/verify" bundle verify "$dir/hris-ws05-release.git.bundle"
+          git clone -q "$dir/hris-ws05-release.git.bundle" "$dir/restore"
+          git -C "$dir/restore" cat-file -e '7fd2389fb32fe967cec503c34c1c8ec6fc9138aa^{commit}'
+          git -C "$dir/restore" fsck --full --strict
+          echo 'PASS: portable Git history verified, restored, and exact Main recovered'
+          echo 'Previously verified independent off-GitHub Drive copy: 1PIvwuIYx4-RSCcVTRBwgW_mXswchLs7z'
+      - name: Invoke unchanged explicitly approved GitHub Pages production workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected=7fd2389fb32fe967cec503c34c1c8ec6fc9138aa
+          test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)" = "$expected"
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq '.workflow_runs[] | select(.name == "Publish HRIS on GitHub Pages" and .head_sha == "7fd2389fb32fe967cec503c34c1c8ec6fc9138aa") | .id' )"
+          if [ -n "$existing" ]; then
+            echo "::notice::Official publish already requested: $existing"
+            exit 0
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-pages.yml/dispatches" -f ref=main -f 'inputs[release_approved]=true'
+          echo 'Authorized dispatch requested for unchanged official deployment workflow on exact Main'
+          echo 'Production is not LIVE until the official Pages deployment and browser verification both pass'
