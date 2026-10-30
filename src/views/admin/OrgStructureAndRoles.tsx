@@ -9,6 +9,7 @@ import { Toggle } from '../../components/ui/Toggle';
 import { Table, Column } from '../../components/ui/Table';
 import { Tabs } from '../../components/ui/Tabs';
 import { DynamicOrgRole, Department } from '../../types';
+import { PreviewUserManagement } from './PreviewUserManagement';
 import { Plus, Shield, Building, Trash2, Edit2, CheckCircle2 } from 'lucide-react';
 
 export const OrgStructureAndRoles: React.FC = () => {
@@ -195,7 +196,7 @@ export const OrgStructureAndRoles: React.FC = () => {
               >
                 Add Dynamic Role
               </Button>
-            ) : (
+            ) : activeTab === 'depts' ? (
               <Button
                 variant="primary"
                 size="sm"
@@ -204,7 +205,7 @@ export const OrgStructureAndRoles: React.FC = () => {
               >
                 Add Department
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -213,6 +214,7 @@ export const OrgStructureAndRoles: React.FC = () => {
             tabs={[
               { id: 'roles', label: 'Configurable Roles', count: roles.length },
               { id: 'depts', label: 'Departments & Cost Centers', count: departments.length },
+              { id: 'users', label: 'Preview Users' },
             ]}
             activeTab={activeTab}
             onChange={setActiveTab}
@@ -233,7 +235,7 @@ export const OrgStructureAndRoles: React.FC = () => {
             keyExtractor={(r) => r.id}
           />
         </Card>
-      ) : (
+      ) : activeTab === 'depts' ? (
         <Card
           title="Configured Departments"
           subtitle="Cost centers and organizational reporting divisions"
@@ -245,6 +247,8 @@ export const OrgStructureAndRoles: React.FC = () => {
             keyExtractor={(r) => r.id}
           />
         </Card>
+      ) : (
+        <PreviewUserManagement />
       )}
 
       {/* Role Creation Modal */}
