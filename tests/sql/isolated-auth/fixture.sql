@@ -1517,6 +1517,31 @@ CREATE POLICY employee_documents_own_select ON storage.objects
     AND ((storage.foldername(name))[1]=(SELECT auth.uid())::text
       OR public.has_permission('employees.view') OR public.has_permission('employees.manage'))
   );
+-- Mirror the replacement project's legacy permissive write policies. The
+-- profile-certificate guard migration must narrow only its reserved path
+-- namespace and preserve ordinary employee-document writes.
+DROP POLICY IF EXISTS employee_documents_own_insert ON storage.objects;
+CREATE POLICY employee_documents_own_insert ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+    AND public.employee_for_auth_user() IS NOT NULL
+  );
+DROP POLICY IF EXISTS employee_documents_own_update ON storage.objects;
+CREATE POLICY employee_documents_own_update ON storage.objects
+  FOR UPDATE TO authenticated USING (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+  ) WITH CHECK (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+  );
+DROP POLICY IF EXISTS employee_documents_own_delete ON storage.objects;
+CREATE POLICY employee_documents_own_delete ON storage.objects
+  FOR DELETE TO authenticated USING (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+  );
 CREATE POLICY leave_evidence_employee_delete ON storage.objects
   FOR DELETE TO authenticated USING (
     bucket_id='leave-evidence'

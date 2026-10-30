@@ -8,6 +8,7 @@ const runner = read('../sql/isolated-auth/run-local.mjs');
 const fixture = read('../sql/isolated-auth/fixture.sql');
 const parity = read('../sql/hosted-parity/check-read-only.sql');
 const inventory = read('../sql/hosted-parity/frontends-admin-candidate-rpc-inventory.sql');
+const certificatePolicyGuards = read('../../supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql');
 
 test('profile v1 exposes the approved scalar and record contracts with exact tenant-scoped RPCs', () => {
   for (const signature of [
@@ -87,6 +88,7 @@ test('record save allowlists and certificate paths remain own-employee and tenan
 
 test('disposable Auth/RLS journey covers valid, invalid, cross-tenant, unlinked, and direct-write cases', () => {
   assert.match(runner, /20261027040642_employee_profile_tenant_scoped_contract\.sql/);
+  assert.match(runner, /20261030114500_employee_profile_certificate_policy_guards\.sql/);
   assert.match(runner, /profileCrossTenantEducation/);
   assert.match(runner, /profileRoleWithoutEmployeeWrite/);
   assert.match(runner, /invalidTraining\.error\?\.code === '22023'/);
@@ -97,4 +99,21 @@ test('disposable Auth/RLS journey covers valid, invalid, cross-tenant, unlinked,
   assert.match(fixture, /CREATE TABLE public\.employee_experience/);
   assert.match(parity, /protected_table', 'public\.employee_bank_details'/);
   assert.match(parity, /revoked_procedures\(signature, source\)/);
+});
+
+test('restrictive certificate guards close permissive-policy OR bypasses without replacing legacy document rules', () => {
+  assert.match(certificatePolicyGuards, /employee_profile_certificate_insert_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR INSERT/);
+  assert.match(certificatePolicyGuards, /employee_profile_certificate_update_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR UPDATE/);
+  assert.match(certificatePolicyGuards, /employee_profile_certificate_delete_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR DELETE/);
+  assert.equal((certificatePolicyGuards.match(/array_position\(storage\.foldername\(name\),'profile-certificates'\) IS NULL/g) || []).length, 4);
+  assert.match(certificatePolicyGuards, /public\.hris_profile_change_active_member\(split_part\(name,'\/',2\)::uuid\)/);
+  assert.match(certificatePolicyGuards, /private\.hris_profile_document_is_unlinked\(split_part\(name,'\/',2\)::uuid,name\)/);
+  assert.doesNotMatch(certificatePolicyGuards, /DROP POLICY|CREATE POLICY employee_documents_own_(?:insert|update|delete)/);
+  assert.match(fixture, /CREATE POLICY employee_documents_own_insert[\s\S]+?public\.employee_for_auth_user\(\)/);
+  assert.match(fixture, /CREATE POLICY employee_documents_own_update[\s\S]+?CREATE POLICY employee_documents_own_delete/);
+  assert.match(runner, /Existing non-profile employee-document owner upload, overwrite, and delete behavior is preserved/);
+  assert.match(runner, /Profile certificate paths cannot bypass tenant\/format, overwrite, or linked-delete checks while orphan cleanup remains available/);
+  assert.match(parity, /employee_profile_certificate_insert_namespace_guard/);
+  assert.match(parity, /employee_profile_certificate_update_namespace_guard/);
+  assert.match(parity, /employee_profile_certificate_delete_namespace_guard/);
 });

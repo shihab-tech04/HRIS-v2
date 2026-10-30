@@ -65,7 +65,13 @@ required_policies(schemaname, table_name, policy_name, expected_permissive, sour
     ('public', 'notices', 'hris_notices_membership_guard', 'RESTRICTIVE', '20261017030000'),
     ('public', 'employee_profile_change_requests', 'employee_profile_change_read_own_or_authorized_review', 'PERMISSIVE', '20261017130000'),
     ('storage', 'objects', 'employee_profile_certificate_insert', 'PERMISSIVE', '20261027040642'),
-    ('storage', 'objects', 'employee_profile_certificate_orphan_delete', 'PERMISSIVE', '20261027040642')
+    ('storage', 'objects', 'employee_profile_certificate_orphan_delete', 'PERMISSIVE', '20261027040642'),
+    ('storage', 'objects', 'employee_profile_certificate_insert_namespace_guard', 'RESTRICTIVE', '20261030114500'),
+    ('storage', 'objects', 'employee_profile_certificate_update_namespace_guard', 'RESTRICTIVE', '20261030114500'),
+    ('storage', 'objects', 'employee_profile_certificate_delete_namespace_guard', 'RESTRICTIVE', '20261030114500'),
+    ('storage', 'objects', 'employee_documents_own_insert', 'PERMISSIVE', 'replacement-baseline'),
+    ('storage', 'objects', 'employee_documents_own_update', 'PERMISSIVE', 'replacement-baseline'),
+    ('storage', 'objects', 'employee_documents_own_delete', 'PERMISSIVE', 'replacement-baseline')
 ),
 checks AS (
   SELECT 'required_rpc'::text AS kind, signature AS object, source,
@@ -134,6 +140,37 @@ checks AS (
           WHEN policy_name = 'employee_profile_certificate_orphan_delete'
             THEN p.qual LIKE '%hris_profile_document_is_unlinked%'
               AND p.qual LIKE '%profile-certificates%'
+          WHEN policy_name = 'employee_profile_certificate_insert_namespace_guard'
+            THEN p.with_check LIKE '%array_position%'
+              AND p.with_check LIKE '%profile-certificates%'
+              AND p.with_check LIKE '%hris_profile_change_active_member%'
+              AND p.with_check LIKE '%hris_own_employee_for_tenant%'
+          WHEN policy_name = 'employee_profile_certificate_update_namespace_guard'
+            THEN p.qual LIKE '%array_position%'
+              AND p.with_check LIKE '%array_position%'
+              AND p.qual LIKE '%profile-certificates%'
+              AND p.with_check LIKE '%profile-certificates%'
+          WHEN policy_name = 'employee_profile_certificate_delete_namespace_guard'
+            THEN p.qual LIKE '%array_position%'
+              AND p.qual LIKE '%profile-certificates%'
+              AND p.qual LIKE '%hris_profile_change_active_member%'
+              AND p.qual LIKE '%hris_own_employee_for_tenant%'
+              AND p.qual LIKE '%hris_profile_document_is_unlinked%'
+          WHEN policy_name = 'employee_documents_own_insert'
+            THEN p.cmd='INSERT'
+              AND p.with_check LIKE '%employee-documents%'
+              AND p.with_check LIKE '%foldername%'
+              AND p.with_check LIKE '%employee_for_auth_user%'
+          WHEN policy_name = 'employee_documents_own_update'
+            THEN p.cmd='UPDATE'
+              AND p.qual LIKE '%employee-documents%'
+              AND p.qual LIKE '%foldername%'
+              AND p.with_check LIKE '%employee-documents%'
+              AND p.with_check LIKE '%foldername%'
+          WHEN policy_name = 'employee_documents_own_delete'
+            THEN p.cmd='DELETE'
+              AND p.qual LIKE '%employee-documents%'
+              AND p.qual LIKE '%foldername%'
           ELSE FALSE
         END
     ), 'tenant-scoped predicate; legacy notices guard absent where applicable'
