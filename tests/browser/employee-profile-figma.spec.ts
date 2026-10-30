@@ -354,3 +354,48 @@ test('profile delete retry succeeds after a transient Bengali RPC error', async 
     && (call.args as { p_kind?: string }).p_kind === 'family'
     && (call.args as { p_record_id?: string }).p_record_id === 'synthetic-family-id')).toBe(true);
 });
+
+test('employee can download only their own tenant-scoped private certificates in EN/BN', async ({ page }) => {
+  for (const locale of locales) {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto(`/tests/browser/employee-profile-harness.html?state=synthetic&locale=${locale}`);
+    await page.getByRole('tab', { name: locale === 'en' ? tabs[2] : 'প্রশিক্ষণ ও সনদ' }).click();
+    const label = locale === 'en' ? 'Download certificate' : 'সনদ ডাউনলোড করুন';
+    const buttons = page.getByRole('button', { name: label });
+    await expect(buttons).toHaveCount(2);
+    const first = page.waitForEvent('download');
+    await buttons.first().click();
+    expect((await first).suggestedFilename()).toBe('employee-certificate.pdf');
+    const second = page.waitForEvent('download');
+    await buttons.nth(1).click();
+    expect((await second).suggestedFilename()).toBe('employee-certificate.png');
+    expect(await page.evaluate(() => window.__profileCertificateDownloads)).toEqual([
+      { bucket: 'employee-documents',
+        path: '00000000-0000-4000-8000-000000000001/local-visual-tenant/profile-certificates/11111111-1111-4111-8111-111111111111.pdf' },
+      { bucket: 'employee-documents',
+        path: '00000000-0000-4000-8000-000000000001/local-visual-tenant/profile-certificates/22222222-2222-4222-8222-222222222222.png' },
+    ]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  }
+});
+
+test('employee certificate download rejects a foreign tenant key before contacting storage', async ({ page }) => {
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en&certificate=other-tenant');
+  await page.getByRole('tab', { name: tabs[2] }).click();
+  await page.getByRole('button', { name: 'Download certificate' }).first().click();
+  await expect(page.getByRole('alert')).toContainText('The certificate could not be downloaded.');
+  expect(await page.evaluate(() => window.__profileCertificateDownloads)).toHaveLength(0);
+});
+
+test('employee certificate download exposes private-storage failure and succeeds on retry', async ({ page }) => {
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en&certificate=error-once');
+  await page.getByRole('tab', { name: tabs[2] }).click();
+  const button = page.getByRole('button', { name: 'Download certificate' }).first();
+  await button.click();
+  await expect(page.getByRole('alert')).toContainText('The certificate could not be downloaded.');
+  const downloaded = page.waitForEvent('download');
+  await button.click();
+  expect((await downloaded).suggestedFilename()).toBe('employee-certificate.pdf');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__profileCertificateDownloads)).toHaveLength(2);
+});
