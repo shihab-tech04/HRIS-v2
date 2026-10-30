@@ -99,15 +99,15 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   expect(userIdInput).not.toBe(employeeNumber);
 
   await form.getByRole('combobox', { name: 'Role' }).selectOption({ label: 'Employee' });
-  await form.getByLabel('Department').selectOption('dept-1');
-  await form.getByLabel('Designation').selectOption({ label: 'People Assistant' });
+  await form.getByLabel('Department', { exact: true }).selectOption('dept-1');
+  await form.getByLabel('Designation', { exact: true }).selectOption({ label: 'People Assistant' });
   await form.getByRole('button', { name: 'Regenerate' }).click();
   const regeneratedEmail = await form.getByLabel('Synthetic email').inputValue();
   const regeneratedName = await form.getByLabel('Full name').inputValue();
   expect(regeneratedEmail).not.toBe(email);
   expect(regeneratedName).not.toBe(originalName);
-  expect(await form.getByLabel('Department').inputValue()).toBe('dept-1');
-  expect(await form.getByLabel('Designation').inputValue()).toBe('des-1');
+  expect(await form.getByLabel('Department', { exact: true }).inputValue()).toBe('dept-1');
+  expect(await form.getByLabel('Designation', { exact: true }).inputValue()).toBe('des-1');
   await form.getByRole('button', { name: 'Save preview user' }).click();
 
   let row = page.getByRole('row').filter({ hasText: regeneratedEmail });
@@ -119,9 +119,9 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   await row.getByRole('button', { name: `Edit user: ${regeneratedName}` }).click();
   form = page.getByRole('dialog', { name: 'Edit preview user' });
   await form.getByLabel('Full name').fill('Recovered Synthetic Employee');
-  await form.getByLabel('Department').selectOption('dept-2');
-  await expect(form.getByLabel('Designation').locator('option')).toHaveText(['Select a designation', 'Finance Analyst']);
-  await form.getByLabel('Designation').selectOption({ label: 'Finance Analyst' });
+  await form.getByLabel('Department', { exact: true }).selectOption('dept-2');
+  await expect(form.getByLabel('Designation', { exact: true }).locator('option')).toHaveText(['Select a designation', 'Finance Analyst']);
+  await form.getByLabel('Designation', { exact: true }).selectOption({ label: 'Finance Analyst' });
   await form.getByRole('button', { name: 'Save changes' }).click();
 
   const editedRow = page.getByRole('row').filter({ hasText: regeneratedEmail });

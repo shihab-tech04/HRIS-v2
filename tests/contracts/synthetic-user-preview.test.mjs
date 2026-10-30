@@ -21,6 +21,8 @@ test('synthetic user records stay in tenant-scoped browser storage and reference
   assert.match(workspace, /supabase\.from\('designations'\)\.select\('id,title,department_id'\)\.eq\('tenant_id', tenantId\)/);
   assert.match(workspace, /\.eq\('active', true\)/);
   assert.deepEqual([...workspace.matchAll(/supabase\.from\('([^']+)'\)/g)].map(([, table]) => table).sort(), ['departments', 'designations']);
+  assert.match(workspace, /htmlFor="synthetic-department"/);
+  assert.match(workspace, /htmlFor="synthetic-designation"/);
   assert.doesNotMatch(workspace, /\.rpc\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
   assert.doesNotMatch(workspace, /supabase\.auth\.|auth\.admin|signUp\(|inviteUserByEmail/);
   assert.match(workspace, /No email is sent and no production account is created/);
