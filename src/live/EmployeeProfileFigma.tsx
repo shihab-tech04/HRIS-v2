@@ -321,13 +321,13 @@ function CertificateDownload({
     }
   }
 
-  return <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
+  return <div className="inline-flex min-w-0 flex-wrap items-center gap-2">
     <button type="button" disabled={busy} onClick={() => void download()}
       className="inline-flex min-h-10 items-center rounded border border-[var(--color-brand-primary)] px-3 py-2 text-sm text-[var(--color-brand-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-primary)] disabled:opacity-60">
       {busy ? t.certificateLoading : t.downloadCertificate}
     </button>
-    {error && <span role="alert" className="text-sm text-red-700">{t.certificateFailed}</span>}
-  </span>;
+    {error && <p role="alert" className="text-sm text-red-700">{t.certificateFailed}</p>}
+  </div>;
 }
 
 function IconTile({ children }: { children: ReactNode }) {
