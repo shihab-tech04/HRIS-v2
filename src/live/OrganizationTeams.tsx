@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Download, RefreshCw, Search, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
+import { readAllOrganizationPages } from './organizationTeamsPages.mjs';
 
 type TeamRow = {
   id: string;
@@ -38,23 +39,30 @@ export function OrganizationTeams({ tenantId }: { tenantId: string }) {
 
     async function load() {
       try {
-        const [teamResult, departmentResult] = await Promise.all([
-          supabase.from('teams')
-            .select('id,name,code,department_id,active')
-            .eq('tenant_id', tenantId)
-            .order('name', { ascending: true })
-            .limit(500),
-          supabase.from('departments')
-            .select('id,name')
-            .eq('tenant_id', tenantId)
-            .order('name', { ascending: true })
-            .limit(500),
+        const isCurrent = () => requestId === requestSequence.current && activeTenantId.current === tenantId;
+        const [loadedTeams, loadedDepartments] = await Promise.all([
+          readAllOrganizationPages(async (start, end) => {
+            const result = await supabase.from('teams')
+              .select('id,name,code,department_id,active')
+              .eq('tenant_id', tenantId)
+              .order('name', { ascending: true })
+              .order('id', { ascending: true })
+              .range(start, end);
+            return { data: result.data as TeamRow[] | null, error: result.error };
+          }, isCurrent),
+          readAllOrganizationPages(async (start, end) => {
+            const result = await supabase.from('departments')
+              .select('id,name')
+              .eq('tenant_id', tenantId)
+              .order('name', { ascending: true })
+              .order('id', { ascending: true })
+              .range(start, end);
+            return { data: result.data as DepartmentRow[] | null, error: result.error };
+          }, isCurrent),
         ]);
-        if (teamResult.error) throw teamResult.error;
-        if (departmentResult.error) throw departmentResult.error;
-        if (requestId !== requestSequence.current || activeTenantId.current !== tenantId) return;
-        setTeams((teamResult.data || []) as TeamRow[]);
-        setDepartments((departmentResult.data || []) as DepartmentRow[]);
+        if (!isCurrent()) return;
+        setTeams(loadedTeams);
+        setDepartments(loadedDepartments);
       } catch (cause) {
         if (requestId === requestSequence.current && activeTenantId.current === tenantId) {
           setError(cause instanceof Error ? cause.message : 'Unable to load organization teams.');
