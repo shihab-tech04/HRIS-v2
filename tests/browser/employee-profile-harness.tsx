@@ -18,7 +18,7 @@ const state = query.get('state') || 'sparse';
 const tenantId = query.get('tenant') || 'local-visual-tenant';
 document.documentElement.lang = locale;
 
-const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' || state === 'save-error' ? {
+const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' || state === 'save-error' || state === 'delete-error' ? {
   full_name: 'Synthetic QA Employee',
   employee_number: 'QA-EMP-001',
   official_email: 'qa.employee@example.invalid',
@@ -49,6 +49,9 @@ const employee = state === 'synthetic' || state === 'tenant-switch' || state ===
 
 const client = supabase as unknown as FixtureClient;
 const calls: Window['__profileFixtureCalls'] = [];
+const deletedRecordIds = new Set<string>();
+let deletionFailureBudget = state === 'delete-error' ? 1 : 0;
+const hasProfileRecords = state === 'synthetic' || state === 'delete-error';
 window.__profileFixtureCalls = calls;
 Object.defineProperty(client, 'rpc', {
   configurable: true,
@@ -67,6 +70,25 @@ Object.defineProperty(client, 'rpc', {
       if (state === 'save-error') return { data: null, error: new Error('Synthetic profile request rejection') };
       return { data: 'synthetic-profile-request-id', error: null };
     }
+    if (name === 'employee_delete_my_profile_record_v1') {
+      const payload = args as { p_tenant_id?: string; p_kind?: string; p_record_id?: string };
+      const expectedIds: Record<string, string> = {
+        education: 'synthetic-education-id',
+        experience: 'synthetic-experience-id',
+        family: 'synthetic-family-id',
+      };
+      if (payload.p_tenant_id !== tenantId || !payload.p_kind ||
+          expectedIds[payload.p_kind] !== payload.p_record_id ||
+          deletedRecordIds.has(payload.p_record_id)) {
+        return { data: null, error: new Error('Synthetic ownership rejection') };
+      }
+      if (deletionFailureBudget > 0) {
+        deletionFailureBudget -= 1;
+        return { data: null, error: new Error('Synthetic transient delete failure') };
+      }
+      deletedRecordIds.add(payload.p_record_id);
+      return { data: payload.p_record_id, error: null };
+    }
     if (name.startsWith('employee_save_my_')) return { data: 'synthetic-profile-row-id', error: null };
     if (name !== 'employee_get_my_profile_v1') return { data: null, error: new Error('Unexpected local fixture RPC') };
     if (state === 'loading') return new Promise<FixtureResult>(() => undefined);
@@ -82,35 +104,35 @@ Object.defineProperty(client, 'rpc', {
     return { data: {
       tenant_id: responseTenant,
       employee: responseEmployee,
-      education: state === 'synthetic' ? [{
+      education: hasProfileRecords && !deletedRecordIds.has('synthetic-education-id') ? [{
         id: 'synthetic-education-id', education_level: 'Bachelor', institution: 'Synthetic University',
         subject_major: 'Design', degree_title: 'Bachelor of Design', result_type: 'GPA', result: '3.8',
         currently_studying: false, starting_year: 2015, passing_year: 2019, duration: '4 years',
         achievements: 'Synthetic design award',
       }] : [],
-      experience: state === 'synthetic' ? [{
+      experience: hasProfileRecords && !deletedRecordIds.has('synthetic-experience-id') ? [{
         id: 'synthetic-experience-id', role_title: 'Product Designer', company: 'Synthetic Studio',
         job_type: 'Full time', company_website: 'https://example.invalid', joining_date: '2020-01-01',
         departure_date: '2022-01-01', total_duration: '2 years', office_address: 'Synthetic office',
         description: 'Synthetic responsibilities',
       }] : [],
-      training: state === 'synthetic' ? [{
+      training: hasProfileRecords ? [{
         id: 'synthetic-training-id', title: 'Synthetic training', institute_name: 'QA Institute',
         training_number: 'TRAIN-001', year: '2024', duration: '3 days',
         certificate_url: 'synthetic/profile-certificates/training.pdf',
       }] : [],
-      certifications: state === 'synthetic' ? [{
+      certifications: hasProfileRecords ? [{
         id: 'synthetic-certification-id', title: 'Synthetic certification', institute_name: 'QA Board',
         issue_date: '2023-01-01', expiry_date: '2027-01-01',
         certificate_document_url: 'synthetic/profile-certificates/certification.pdf',
       }] : [],
-      family_members: state === 'synthetic' ? [{
+      family_members: hasProfileRecords && !deletedRecordIds.has('synthetic-family-id') ? [{
         id: 'synthetic-family-id', name: 'Synthetic family member', phone: '+880 1700 000202',
         nid_number: 'synthetic-family-nid', date_of_birth: '1992-02-03', relationship: 'Sibling',
         present_address: 'Synthetic family present address', permanent_address: 'Synthetic family permanent address',
         is_nominee: true,
       }] : [],
-      bank: state === 'synthetic' ? {
+      bank: hasProfileRecords ? {
         bank_name: 'Synthetic Bank', account_number: 'synthetic-bank-secret-123456',
         branch_name: 'QA Branch', routing_number: '123456789',
       } : null,
