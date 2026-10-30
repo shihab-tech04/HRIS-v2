@@ -1,0 +1,512 @@
+{
+  "schema_version": "WS09-source-to-story-tests-v1",
+  "observed_on": "2026-10-31",
+  "main_sha": "7fd2389fb32fe967cec503c34c1c8ec6fc9138aa",
+  "candidate_main_sha": "5c03fddd2511a49e92687c0fb0e9b4d57f7500a3",
+  "candidate_published_sha": "d55df89e4f86af33ca6bb27fa944b98c1e567df5",
+  "canonical_source_path": "docs/programme/recovered-source/CANONICAL_USER_STORY_MATRIX.json",
+  "canonical_source_sha256": "d68449755a0ad821921f566d9cb3a3183ddfe6c194e1ffc8e08346a71cf7d5be",
+  "original_source_story_count": 1047,
+  "original_source_module_count": 153,
+  "derived_overlay_covered_distinct_ids": 64,
+  "historical_exact_story_isolated_ids": 39,
+  "historical_partial_ids": 11,
+  "historical_blocked_ids": 14,
+  "unclassified_source_story_ids": 983,
+  "current_source_implemented_rate": "NOT MEASURED",
+  "current_hosted_integration_rate": "NOT MEASURED",
+  "current_production_story_verification": "NOT MEASURED",
+  "historical_verified_aggregate": {
+    "count": 82,
+    "exact_ids": "NOT PRESERVED",
+    "deduplication_with_evidence_sets": "UNKNOWN",
+    "add_to_39": false
+  },
+  "mapping_rules": [
+    "Exact canonical story IDs only; statuses are historical source classifications, not new tests",
+    "A test run cannot certify unrelated stories lacking exact-ID assertions",
+    "Do not confuse historical disposable Auth/Postgres with the replacement hosted Supabase project",
+    "Do not attribute a production Pages run to every story or infer real signed-in authentication from public Pages",
+    "Approval-design node must be exact; Candidate approval not established"
+  ],
+  "evidence_sets": [
+    {
+      "id": "candidate-ca14-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "CA14-01",
+        "CA14-02",
+        "CA14-03",
+        "CA14-04",
+        "CA14-05",
+        "CA14-06",
+        "CA14-07",
+        "CA14-08",
+        "CA14-09",
+        "CA14-10",
+        "CA14-11",
+        "CA14-12"
+      ],
+      "repository": "shihab-tech04/HRIS-Candidate-v2",
+      "commit": "e3cb9c178cbfb66eb611c640f885a13581b50f51",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/39025809497",
+      "runtime_test_path": "tests/candidate-application-local-e2e.mjs",
+      "runtime_marker": "CANDIDATE_CA14_STORY_EVIDENCE PASS=12 FAIL=0",
+      "evidence_scope": "isolated synthetic authentication, Postgres persistence, application browser journey, mobile/desktop checks",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e03-documents-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E03-01",
+        "E03-04",
+        "E03-05",
+        "E03-07",
+        "E03-08"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "426527fd45a983e6958a0ca5ef063305d69bd48a",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39018685182",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/employee-document-self-service-E03-20261017.md",
+      "runtime_marker": "EMPLOYEE_DOCUMENTS_BROWSER_ACCEPTANCE=PASS",
+      "evidence_scope": "isolated employee document projection, owner-scoped private download, rejected verification note, EN/BN desktop/mobile browser and persisted Auth/RLS acceptance",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e04-digital-id-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E04-01",
+        "E04-02",
+        "E04-03",
+        "E04-04"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "426527fd45a983e6958a0ca5ef063305d69bd48a",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39018685182",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/employee-identity-card-E04-20261017.md",
+      "runtime_marker": "E04-01_EMPLOYEE_NUMBER_BROWSER_PASS; E04-02_DIGITAL_CARD_RECOVERY_BROWSER_PASS; E04-03_DESIGNATION_DEPARTMENT_BROWSER_PASS; E04-04_ACTIVE_EMPLOYMENT_BROWSER_PASS",
+      "evidence_scope": "isolated employee ID and digital card ownership, official department/designation, active employment status, EN/BN desktop/mobile browser and persisted Auth/RLS acceptance",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e02-profile-change-20261018",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-03",
+        "E02-17"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "445feeff8ec2eeadc09ccc2f2bac0fd7c39207b5",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39147470480",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-profile-change-browser.mjs",
+      "runtime_marker": "E02_PROFILE_CHANGE_BROWSER_ACCEPTANCE=PASS",
+      "evidence_scope": "disposable real Auth/Postgres/RLS employee protected-field request/status, duplicate-denial, manager review, redacted private values, persisted audit, EN/BN 375px/1280px browser and refresh/retry",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e13-shift-change-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E13-04",
+        "E13-05"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "01b20934a9a63e0f220eb30c9a65d55daf4010b4",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39025622956",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "runtime_marker": "E13-04/05 attendance managers change only the shift with concurrency checks, durable employee history and a private notification",
+      "evidence_scope": "isolated manager shift replacement, expected-value concurrency, append-only employee history, notification and Auth/RLS denials",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e37-directory-privacy-20261017",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E37-01",
+        "E37-05"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "01b20934a9a63e0f220eb30c9a65d55daf4010b4",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39025622956",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "runtime_marker": "E37-01 employee directory search returns only persisted tenant-authorized matches; privacy-limited fields",
+      "evidence_scope": "isolated tenant-scoped directory search, non-PII projection and browser privacy checks",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "phase03-saas-tenant-modules-20261019",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "SA01-01",
+        "SA01-02",
+        "SA01-03",
+        "SA01-04",
+        "SA12-01",
+        "SA12-02",
+        "SA12-03"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "214ccbcf8d33ca30cd09813107f89162a79003ed",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39203699646",
+      "full_suite_workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39203699636",
+      "runtime_test_path": "tests/sql/phase2a/run-local.mjs; tests/sql/phase03/run-auth-api.mjs; tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/programme/PHASE03_SOURCE_EVIDENCE_2026-10-19.md",
+      "runtime_marker": "Phase 03 tenant provisioning and optional module source acceptance passed on the exact tested Main checkpoint.",
+      "evidence_scope": "Fresh disposable Supabase Auth, PostgreSQL, Storage, synthetic tenants/users, desktop/mobile browser journeys, tenant isolation, audit and historical-row preservation.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e02-personal-information-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-01"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "6ff29e898aef54c2779e44cfdd5e465c79e6c11c",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs",
+      "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
+      "runtime_marker": "E02-01_PERSONAL_INFORMATION_BROWSER_PASS",
+      "evidence_scope": "Authenticated self-only employee profile exposes the linked employee's name, official email and phone; direct cross-tenant, global-only and anonymous requests are denied. The existing profile card is checked in Chromium on the synthetic Auth/Postgres tenant fixture.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e02-employment-information-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-08"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "6ff29e898aef54c2779e44cfdd5e465c79e6c11c",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs",
+      "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
+      "runtime_marker": "E02-08_EMPLOYMENT_INFORMATION_BROWSER_PASS",
+      "evidence_scope": "Authenticated self-only employment information from the tenant-checked employee identity-card RPC: employee number, designation, department and employment status; direct-access, cross-tenant, anonymous and browser behavior were exercised in the disposable Auth/Postgres journey.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-e02-skill-profile-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "E02-12"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "6ff29e898aef54c2779e44cfdd5e465c79e6c11c",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39371994771",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-learning-browser.mjs",
+      "evidence_document": "docs/evidence/employee-self-service-E02-20261020.md",
+      "runtime_marker": "E02-12_SKILL_PROFILE_BROWSER_PASS",
+      "evidence_scope": "Employee-owned skill create/edit/delete persistence, duplicate rejection, cross-tenant and unauthenticated denials, and protection of verified skills were exercised with disposable Auth/Postgres and responsive browser journeys.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-hr01-workforce-search-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "HR01-03"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "81eb677847fc19007cfb790dfc8cf7126c4c759d",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39373694520",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-workforce-search-20261020.md",
+      "runtime_marker": "HR01-03_WORKFORCE_SEARCH_FILTER_BROWSER_PASS",
+      "evidence_scope": "Synthetic Auth/Postgres/RLS acceptance for an active tenant member using employees.view: workforce search by name, department and active status plus team filtering; no-permission, global-only and cross-tenant denial; EN/BN browser acceptance at mobile and desktop widths. Hosted acceptance remains separate.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "employee-hr01-status-visibility-20261020",
+      "classification": "VERIFIED_IN_DISPOSABLE_AUTH_POSTGRES_BROWSER_JOURNEY",
+      "story_ids": [
+        "HR01-04"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "d22de6793784bf55b67f34fe00253289dc624772",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39377300851",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-employment-status-visibility-20261020.md",
+      "runtime_marker": "HR01-04_EMPLOYMENT_STATUS_VISIBILITY_BROWSER_PASS",
+      "evidence_scope": "Synthetic Auth/Postgres/RLS acceptance for the employees.view directory: all six tenant A configured statuses are returned as tenant-specific options and individually filter to one matching employee; tenant B's unique status is absent; no-permission, global-only, cross-tenant, and anonymous requests are denied; Chromium verifies EN/BN mobile and desktop behavior. Hosted signed-in acceptance remains separate.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "ISOLATED PASS",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "snapshot-blocked-approved-contracts-20261017",
+      "classification": "BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT",
+      "story_ids": [
+        "E03-02",
+        "E03-03",
+        "E03-06",
+        "E07-05",
+        "E07-06",
+        "E07-07",
+        "E08-15",
+        "E08-16",
+        "E12-06",
+        "E12-07",
+        "E12-08",
+        "E12-09",
+        "E35-04"
+      ],
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "meaning": "The 13 explicitly named blocked stories are not implemented/verified by the source snapshot; technical and business contract gaps need controlled resolution.",
+      "ledger_status": "BLOCKED APPROVAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "snapshot-partial-identified-20261017",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "E04-05",
+        "E37-02",
+        "E37-03",
+        "E37-04"
+      ],
+      "evidence_document": "docs/evidence/acceptance-and-story-snapshot-20261017.md",
+      "additional_evidence_document": "docs/evidence/employee-identity-card-E04-20261017.md",
+      "meaning": "Explicit source-linked partial cases; the remaining historical partial-ID membership is not known.",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "hr01-employee-creation-candidate-activation-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-01"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-hr01-01-employee-creation-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-01-candidate-activation-partial-20261020.md",
+      "runtime_marker": "HR01-01_PARTIAL_CANDIDATE_ACTIVATION_BROWSER_PASS",
+      "runtime_record": "HR01-01 partial: the HR workspace activates a verified candidate into a tenant employee record with safe retry",
+      "meaning": "A disposable Auth/Postgres/browser journey verifies the accepted-offer, submitted and HR-verified candidate activation path, including employees.manage and tenant denial, completion checks, persisted employee/membership/audit state, and idempotent retry. This is partial HR01-01 coverage; a general manual HR employee-create journey and hosted acceptance remain unverified.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "hr01-contact-only-update-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-02"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-production-contact-contract-gap-20261020.md",
+      "runtime_marker": "HR01-02_CONTACT_ONLY_UPDATE_SCOPE_BROWSER_PASS",
+      "meaning": "The live employee directory updates only the nine allowlisted contact fields through an employees.manage RPC; direct authenticated table/lifecycle updates remain denied. This is partial employee-record update coverage, and the hosted RPC is absent.",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_record": "HR01-02 partial: employee-directory updates stay within the allowlisted contact fields",
+      "source_compatibility_record": "HR01-02/06 contact RPC source migration reapplies after current authorization schema with the expected signatures, ACL, and search path",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "hr01-sensitive-change-audit-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-06"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-sensitive-change-audit-partial-20261020.md",
+      "runtime_marker": "HR01-06_CONTACT_AUDIT_BROWSER_PASS",
+      "meaning": "Disposable Auth/Postgres/browser evidence covers redacted changed-field audit names and excludes changed values for all nine employee contact fields supported by the contact RPC and all nine fields in the protected profile-request path. Local PGRST202 checks prove that a missing contact-read RPC exposes no edit action and a missing contact-update RPC preserves the draft without false success. Broader sensitive-data categories and hosted signed-in API behavior remain unverified.",
+      "runtime_record": "HR01-06 partial: authorized HR contact changes emit a redacted changed-field audit event",
+      "source_compatibility_record": "HR01-02/06 contact RPC source migration reapplies after current authorization schema with the expected signatures, ACL, and search path",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "hr01-safe-bulk-export-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-07"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-employee-directory-browser.mjs",
+      "evidence_document": "docs/evidence/hr01-07-safe-bulk-export-partial-20261020.md",
+      "runtime_marker": "HR01-07_SAFE_BULK_EXPORT_BROWSER_PASS",
+      "meaning": "The existing read-only employee directory export includes only the current authorized page and six approved non-contact columns; the synthetic tenant-B row and contact values are absent. Bulk writes and other bulk operations are not evidenced.",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "hr01-duplicate-guard-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "HR01-08"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "evidence_document": "docs/evidence/hr01-08-duplicate-guard-partial-20261020.md",
+      "meaning": "Disposable Postgres rejects duplicate tenant employee numbers and official emails with 23505, while the same official email in another tenant is accepted and cleaned up. Duplicate-person matching and create-flow warnings remain unverified.",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "hr03-01-legal-entity-contract-gap-20261020",
+      "classification": "BLOCKED_ON_UNAPPROVED_OR_ABSENT_CONTRACT",
+      "story_ids": [
+        "HR03-01"
+      ],
+      "evidence_document": "docs/evidence/hr03-01-legal-entity-contract-gap-20261020.md",
+      "meaning": "The deployed schema has no legal-entity relation or field and no live legal-entity API; cardinality, fields, authority, and employee-history behavior are unspecified. Production schema changes are outside this workstream.",
+      "ledger_status": "BLOCKED APPROVAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "x03-07-employee-activation-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "X03-07"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-hr01-01-employee-creation-browser.mjs",
+      "evidence_document": "docs/evidence/x03-07-08-candidate-employee-activation-partial-20261020.md",
+      "runtime_marker": "X03-07_PARTIAL_HR_ONBOARDING_ACTIVATION_BROWSER_PASS",
+      "runtime_record": "X03-07 partial: HR activates the accepted-offer candidate as an active employee through the existing onboarding handoff",
+      "meaning": "The existing HR onboarding handoff creates an active tenant employee from an accepted-offer candidate, preserves the candidate Auth identity, completes verification, and safely retries. This is partial X03-07 coverage for that path only; earlier offer, candidate-acceptance, hosted, and broader lifecycle acceptance are not claimed.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    },
+    {
+      "id": "x03-08-candidate-data-reuse-partial-20261020",
+      "classification": "PARTIAL_ACCEPTANCE",
+      "story_ids": [
+        "X03-08"
+      ],
+      "repository": "shihab-tech04/HRIS-v2",
+      "commit": "1f0bec2fc40f27e600685661a83c6815dd43cf08",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/39425355049",
+      "runtime_test_path": "tests/sql/isolated-auth/run-local.mjs",
+      "runtime_browser_test_path": "tests/sql/isolated-auth/run-hr01-01-employee-creation-browser.mjs",
+      "evidence_document": "docs/evidence/x03-07-08-candidate-employee-activation-partial-20261020.md",
+      "runtime_marker": "X03-08_PARTIAL_CANDIDATE_DATA_REUSE_BROWSER_PASS",
+      "runtime_record": "X03-08 partial: HR activation reuses the candidate name, email, and Auth identity in the employee record",
+      "meaning": "The isolated database verifies that employee name, official email, and Auth user ID equal the originating candidate application values during HR activation. This is partial X03-08 coverage for the existing activation path; Candidate-side, other candidate-data, and hosted acceptance are not claimed.",
+      "hosted_cross_system_acceptance": "NOT_VERIFIED",
+      "ledger_status": "PARTIAL",
+      "historical_evidence_only": true,
+      "hosted_independently_retested_by_ws09": false,
+      "production_story_verified": false
+    }
+  ],
+  "release_candidate_refs": [
+    {
+      "pr": 129,
+      "head": "0af8b70d091e009b5eb693c1bf7e5f5068a18021",
+      "code_state": "UNMERGED",
+      "story_ids_mapped_individually_from_exact_current_pr": []
+    },
+    {
+      "pr": 138,
+      "head": "89e611218f9ddbcff01a16e01d477946638e3ad1",
+      "code_state": "UNMERGED DRAFT",
+      "note": "descendant of #129; 12 commits ahead, 0 behind; not separate additive 1047-story credit",
+      "story_ids_mapped_individually_from_exact_current_pr": []
+    },
+    {
+      "pr": 139,
+      "head": "22b8a03fa051f13691c0575890e36656075efa04",
+      "code_state": "UNMERGED",
+      "note": "release mechanism only, not SQL application",
+      "story_ids_mapped_individually_from_exact_current_pr": []
+    }
+  ]
+}
