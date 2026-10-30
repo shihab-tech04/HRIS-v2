@@ -265,3 +265,92 @@ test('E02-09 displays the authorized employee work details without leaking priva
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   }
 });
+
+
+test('profile delete confirms, cancels and refreshes only the selected education, experience or family record', async ({ page }) => {
+  const cases = [
+    { tab: tabs[0], action: 'Delete Education Information 1', kind: 'education', id: 'synthetic-education-id', value: 'Synthetic University', width: 375 },
+    { tab: tabs[1], action: 'Delete Work Experience 1', kind: 'experience', id: 'synthetic-experience-id', value: 'Synthetic Studio', width: 768 },
+    { tab: tabs[4], action: 'Delete Family & Nominee Information 1', kind: 'family', id: 'synthetic-family-id', value: 'Synthetic family member', width: 1280 },
+  ] as const;
+
+  for (const entry of cases) {
+    await page.setViewportSize({ width: entry.width, height: 900 });
+    await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en');
+    await page.getByRole('tab', { name: entry.tab }).click();
+    const panel = page.getByRole('tabpanel', { name: entry.tab });
+    await expect(panel).toContainText(entry.value);
+    await panel.getByRole('button', { name: entry.action }).click();
+    const confirmation = page.getByRole('alertdialog');
+    await expect(confirmation).toContainText('Delete this profile record?');
+
+    // Cancel must not call SQL or remove the row.
+    await confirmation.getByRole('button', { name: 'Cancel' }).click();
+    await expect(confirmation).toHaveCount(0);
+    await expect(panel).toContainText(entry.value);
+    expect(await page.evaluate(() => window.__profileFixtureCalls
+      .filter(call => call.name === 'employee_delete_my_profile_record_v1').length)).toBe(0);
+
+    // Confirm must target exactly the active tenant, allowed record type and selected row.
+    await panel.getByRole('button', { name: entry.action }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(page.getByText('The profile record was deleted.', { exact: true })).toBeVisible();
+    await expect(panel).not.toContainText(entry.value);
+    const deletes = await page.evaluate(() => window.__profileFixtureCalls
+      .filter(call => call.name === 'employee_delete_my_profile_record_v1'));
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]).toMatchObject({
+      args: { p_tenant_id: 'local-visual-tenant', p_kind: entry.kind, p_record_id: entry.id },
+    });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  }
+});
+
+test('profile delete retains the record and exposes recovery when its RPC fails, including Bengali confirmation', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=bn&delete=error');
+  await page.getByRole('tab', { name: 'পরিবার ও মনোনীত ব্যক্তি' }).click();
+  const family = page.getByRole('tabpanel', { name: 'পরিবার ও মনোনীত ব্যক্তি' });
+  await expect(family).toContainText('Synthetic family member');
+  await family.getByRole('button', { name: /^মুছুন / }).click();
+  const confirmation = page.getByRole('alertdialog');
+  await expect(confirmation).toContainText('প্রোফাইলের এই তথ্যটি মুছে ফেলবেন?');
+  await confirmation.getByRole('button', { name: 'মুছুন', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('আবার চেষ্টা করুন');
+  await expect(family).toContainText('Synthetic family member');
+  const rejectedCalls = await page.evaluate(() => window.__profileFixtureCalls
+    .filter(call => call.name === 'employee_delete_my_profile_record_v1'));
+  expect(rejectedCalls).toHaveLength(1);
+  expect(rejectedCalls[0]).toMatchObject({
+    args: { p_tenant_id: 'local-visual-tenant', p_kind: 'family', p_record_id: 'synthetic-family-id' },
+  });
+  await confirmation.getByRole('button', { name: 'বাতিল' }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(family).toContainText('Synthetic family member');
+});
+
+test('profile delete retry succeeds after a transient Bengali RPC error', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=bn&delete=error-once');
+  await page.getByRole('tab', { name: 'পরিবার ও মনোনীত ব্যক্তি' }).click();
+  const family = page.getByRole('tabpanel', { name: 'পরিবার ও মনোনীত ব্যক্তি' });
+  await expect(family).toContainText('Synthetic family member');
+  await family.getByRole('button', { name: /^মুছুন / }).click();
+  const confirmation = page.getByRole('alertdialog');
+  await confirmation.getByRole('button', { name: 'মুছুন', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('আবার চেষ্টা করুন');
+  await expect(family).toContainText('Synthetic family member');
+
+  await confirmation.getByRole('button', { name: 'মুছুন', exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByText('প্রোফাইলের তথ্য মুছে ফেলা হয়েছে।', { exact: true })).toBeVisible();
+  await expect(family).not.toContainText('Synthetic family member');
+  const calls = await page.evaluate(() => window.__profileFixtureCalls
+    .filter(call => call.name === 'employee_delete_my_profile_record_v1'));
+  expect(calls).toHaveLength(2);
+  expect(calls.every(call => (call.args as { p_tenant_id?: string; p_kind?: string; p_record_id?: string })
+    .p_tenant_id === 'local-visual-tenant'
+    && (call.args as { p_kind?: string }).p_kind === 'family'
+    && (call.args as { p_record_id?: string }).p_record_id === 'synthetic-family-id')).toBe(true);
+});
