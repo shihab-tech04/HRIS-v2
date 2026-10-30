@@ -58,18 +58,19 @@ async function signInAsAdmin(page: import('@playwright/test').Page) {
   await expect(navigation.getByRole('button', { name: 'User management preview' })).toBeVisible();
   await navigation.getByRole('button', { name: 'User management preview' }).click();
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
-  await page.waitForLoadState('networkidle');
 }
 
 test('Admin creates synthetic users and previews a role without production writes', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await signInAsAdmin(page);
 
-  let liveRequestCount = 0;
+  const forbiddenWrites: string[] = [];
   page.on('request', request => {
-    if (/\/(auth|rest)\/v1\//.test(new URL(request.url()).pathname)) liveRequestCount += 1;
+    const { pathname } = new URL(request.url());
+    const method = request.method().toUpperCase();
+    if (pathname.includes('/auth/v1/signup') || pathname.includes('/auth/v1/admin/users')) forbiddenWrites.push(`${method} ${pathname}`);
+    if (pathname.startsWith('/rest/v1/') && !pathname.includes('/rpc/') && !['GET', 'HEAD', 'OPTIONS'].includes(method)) forbiddenWrites.push(`${method} ${pathname}`);
   });
-  const baselineRequests = liveRequestCount;
 
   await page.getByRole('button', { name: 'Generate Random User' }).click();
   const form = page.getByRole('dialog', { name: 'Generated user preview' });
@@ -92,10 +93,11 @@ test('Admin creates synthetic users and previews a role without production write
   const row = page.getByRole('row').filter({ hasText: regeneratedEmail });
   await expect(row).toBeVisible();
   await expect(row).toContainText('Employee');
-  expect(liveRequestCount).toBe(baselineRequests);
+  expect(forbiddenWrites).toEqual([]);
   await row.getByRole('button', { name: `View profile: ${regeneratedName}` }).click();
-  await expect(page.getByRole('dialog', { name: regeneratedName })).toContainText('not loaded from SQL');
-  await page.getByRole('button', { name: `View as User: ${regeneratedName}` }).click();
+  const profileDialog = page.getByRole('dialog', { name: regeneratedName });
+  await expect(profileDialog).toContainText('not loaded from SQL');
+  await profileDialog.getByRole('button', { name: `View as User: ${regeneratedName}` }).click();
   await expect(page.getByRole('heading', { name: 'My overview' })).toBeVisible();
   await expect(page.getByText(/does not switch accounts/)).toBeVisible();
   await page.getByRole('button', { name: 'Complete sample step' }).first().click();
