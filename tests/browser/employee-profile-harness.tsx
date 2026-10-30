@@ -50,6 +50,7 @@ const employee = state === 'synthetic' || state === 'tenant-switch' || state ===
 
 // Synthetic Auth/Storage fixtures only. The production download still uses private Storage.
 const fixtureUserId = '00000000-0000-4000-8000-000000000001';
+let certificateFailureBudget = query.get('certificate') === 'error-once' ? 1 : 0;
 const certDownloads: Window['__profileCertificateDownloads'] = [];
 window.__profileCertificateDownloads = certDownloads;
 Object.defineProperty(supabase.auth, 'getUser', {
@@ -61,7 +62,8 @@ Object.defineProperty(supabase.storage, 'from', {
   value: (bucket: string) => ({
     download: async (path: string) => {
       certDownloads.push({ bucket, path });
-      if (query.get('certificate') === 'error') {
+      if (query.get('certificate') === 'error' || certificateFailureBudget > 0) {
+        if (certificateFailureBudget > 0) certificateFailureBudget -= 1;
         return { data: null, error: new Error('Synthetic private file unavailable') };
       }
       return { data: new Blob(['Synthetic private certificate'], { type: 'application/pdf' }), error: null };
