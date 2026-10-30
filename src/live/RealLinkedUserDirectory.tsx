@@ -106,11 +106,11 @@ export function RealLinkedUserDirectory({ tenantId, tenantName, locale }: {
       <p className="mt-2 text-sm font-medium">{copy.scope}: {tenantName}</p>
     </header>
     <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-4">
-      <label htmlFor="ws08-real-linked-search" className="min-w-[200px] flex-1 text-sm font-medium">{copy.search}
+      <label htmlFor="ws08-real-linked-search" className="min-w-0 flex-1 text-sm font-medium">{copy.search}
         <input id="ws08-real-linked-search" maxLength={80} value={nameInput} onChange={event => setNameInput(event.target.value)}
           className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)]" />
       </label>
-      <button type="submit" className="min-h-11 rounded-lg bg-[var(--color-figma-primary-600)] px-4 text-sm font-medium text-white">{copy.submit}</button>
+      <button type="submit" className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-[var(--color-figma-primary-600)]">{copy.submit}</button>
       <button type="button" onClick={() => { setNameInput(''); setNameSearch(''); setPage(0); setRevision(i => i + 1); }}
         className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm">{copy.all}</button>
     </form>
@@ -125,7 +125,7 @@ export function RealLinkedUserDirectory({ tenantId, tenantName, locale }: {
         <p role="status" className="text-sm text-slate-600">{visible.total} {copy.records}</p>
         {visible.rows.length ? <div role="region" aria-label={copy.title} tabIndex={0}
           className="mt-3 min-w-0 overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)]">
-          <table className="w-full min-w-[880px] text-left text-sm">
+          <table className="w-full min-w-[680px] text-left text-sm">
             <thead className="bg-slate-50"><tr>
               {[copy.employee,copy.email,copy.role,copy.department,copy.designation,copy.employment,copy.admin].map(label =>
                 <th scope="col" key={label} className="p-3 font-medium">{label}</th>)}
