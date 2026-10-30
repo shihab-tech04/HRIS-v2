@@ -39,7 +39,15 @@ async function interceptAuthAndTenant(page: import('@playwright/test').Page) {
     else if (endpoint === 'tenant_memberships') data = [{ tenant_id: tenantId, role: 'qa_tenant_superadmin', status: 'active' }];
     else if (endpoint === 'admin_users') data = { active: true, is_super_admin: true };
     else if (endpoint === 'tenants') data = [{ id: tenantId, name: 'Preview Organization', slug: 'preview-org', timezone: 'Asia/Dhaka' }];
-    else if (endpoint === 'departments') data = [{ id: 'dept-1', name: 'People Operations', code: 'PEOPLE' }];
+    else if (endpoint === 'departments') data = [
+      { id: 'dept-1', tenant_id: tenantId, name: 'People Operations', code: 'PEOPLE', active: true },
+      { id: 'dept-2', tenant_id: tenantId, name: 'Finance', code: 'FIN', active: true },
+    ];
+    else if (endpoint === 'designations') data = [
+      { id: 'des-1', tenant_id: tenantId, department_id: 'dept-1', title: 'People Assistant', active: true },
+      { id: 'des-2', tenant_id: tenantId, department_id: 'dept-1', title: 'People Partner', active: true },
+      { id: 'des-3', tenant_id: tenantId, department_id: 'dept-2', title: 'Finance Analyst', active: true },
+    ];
     if (route.request().method() === 'HEAD') {
       await route.fulfill({ status: 200, headers: { 'content-range': '0-0/1' }, body: '' });
       return;
@@ -58,9 +66,10 @@ async function signInAsAdmin(page: import('@playwright/test').Page) {
   await expect(navigation.getByRole('button', { name: 'User management preview' })).toBeVisible();
   await navigation.getByRole('button', { name: 'User management preview' }).click();
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Generate Random User' })).toBeEnabled();
 }
 
-test('Admin creates synthetic users and previews a role without production writes', async ({ page }) => {
+test('Admin completes the synthetic Employee journey, returns to Admin, and recovers it after reload', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await signInAsAdmin(page);
 
@@ -68,48 +77,115 @@ test('Admin creates synthetic users and previews a role without production write
   page.on('request', request => {
     const { pathname } = new URL(request.url());
     const method = request.method().toUpperCase();
-    if (pathname.includes('/auth/v1/signup') || pathname.includes('/auth/v1/admin/users')) forbiddenWrites.push(`${method} ${pathname}`);
-    if (pathname.startsWith('/rest/v1/') && !pathname.includes('/rpc/') && !['GET', 'HEAD', 'OPTIONS'].includes(method)) forbiddenWrites.push(`${method} ${pathname}`);
+    if (pathname.includes('/auth/v1/signup') || pathname.includes('/auth/v1/admin/users') || pathname.includes('/auth/v1/invite')) {
+      forbiddenWrites.push(`${method} ${pathname}`);
+    }
+    if (pathname.startsWith('/rest/v1/') && !pathname.includes('/rpc/') && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      forbiddenWrites.push(`${method} ${pathname}`);
+    }
   });
 
   await page.getByRole('button', { name: 'Generate Random User' }).click();
-  const form = page.getByRole('dialog', { name: 'Generated user preview' });
+  let form = page.getByRole('dialog', { name: 'Generated user preview' });
   await expect(form).toBeVisible();
-  const fullName = await form.getByLabel('Full name').inputValue();
+  const originalName = await form.getByLabel('Full name').inputValue();
   const email = await form.getByLabel('Synthetic email').inputValue();
   const userIdInput = await form.getByLabel('User ID', { exact: true }).inputValue();
   const employeeNumber = await form.getByLabel('Employee number').inputValue();
-  expect(fullName.length).toBeGreaterThan(1);
+  expect(originalName.length).toBeGreaterThan(1);
   expect(email).toMatch(/^[^@]+\.[a-f0-9]{6}@example\.com$/i);
   expect(userIdInput).toMatch(/^USR-[A-F0-9]{8}$/);
   expect(employeeNumber).toMatch(/^EMP-\d{4}-\d{4}$/);
   expect(userIdInput).not.toBe(employeeNumber);
+
+  await form.getByRole('combobox', { name: 'Role' }).selectOption({ label: 'Employee' });
+  await form.getByLabel('Department').selectOption('dept-1');
+  await form.getByLabel('Designation').selectOption({ label: 'People Assistant' });
   await form.getByRole('button', { name: 'Regenerate' }).click();
   const regeneratedEmail = await form.getByLabel('Synthetic email').inputValue();
   const regeneratedName = await form.getByLabel('Full name').inputValue();
   expect(regeneratedEmail).not.toBe(email);
+  expect(regeneratedName).not.toBe(originalName);
+  expect(await form.getByLabel('Department').inputValue()).toBe('dept-1');
+  expect(await form.getByLabel('Designation').inputValue()).toBe('des-1');
   await form.getByRole('button', { name: 'Save preview user' }).click();
 
-  const row = page.getByRole('row').filter({ hasText: regeneratedEmail });
+  let row = page.getByRole('row').filter({ hasText: regeneratedEmail });
   await expect(row).toBeVisible();
   await expect(row).toContainText('Employee');
-  expect(forbiddenWrites).toEqual([]);
-  await row.getByRole('button', { name: `View profile: ${regeneratedName}` }).click();
-  const profileDialog = page.getByRole('dialog', { name: regeneratedName });
+  await expect(row).toContainText('People Operations');
+  await expect(row).toContainText('People Assistant');
+
+  await row.getByRole('button', { name: `Edit user: ${regeneratedName}` }).click();
+  form = page.getByRole('dialog', { name: 'Edit preview user' });
+  await form.getByLabel('Full name').fill('Recovered Synthetic Employee');
+  await form.getByLabel('Department').selectOption('dept-2');
+  await expect(form.getByLabel('Designation').locator('option')).toHaveText(['Select a designation', 'Finance Analyst']);
+  await form.getByLabel('Designation').selectOption({ label: 'Finance Analyst' });
+  await form.getByRole('button', { name: 'Save changes' }).click();
+
+  const editedRow = page.getByRole('row').filter({ hasText: regeneratedEmail });
+  await expect(editedRow).toContainText('Recovered Synthetic Employee');
+  await expect(editedRow).toContainText('Employee');
+  await expect(editedRow).toContainText('Finance');
+  await expect(editedRow).toContainText('Finance Analyst');
+
+  await editedRow.getByRole('button', { name: 'View profile: Recovered Synthetic Employee' }).click();
+  const profileDialog = page.getByRole('dialog', { name: 'Recovered Synthetic Employee' });
   await expect(profileDialog).toContainText('not loaded from SQL');
   await profileDialog.getByRole('button', { name: 'View as User', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'My overview' })).toBeVisible();
   await expect(page.getByText(/does not switch accounts/)).toBeVisible();
-  await page.getByRole('button', { name: 'Complete sample step' }).first().click();
-  await expect(page.getByRole('button', { name: 'Completed in preview' }).first()).toBeDisabled();
+  await page.getByRole('button', { name: /^My profile/ }).click();
+  await expect(page.getByRole('heading', { name: 'My profile' })).toBeVisible();
+  await expect(page.getByText('Recovered Synthetic Employee')).toBeVisible();
+  await expect(page.getByText('Finance Analyst')).toBeVisible();
+  await page.getByRole('button', { name: /^Leave and balances/ }).click();
+  await expect(page.getByRole('heading', { name: 'Leave request preview' })).toBeVisible();
+
+  await page.getByLabel('From date').fill('2026-11-03');
+  await page.getByLabel('To date').fill('2026-11-01');
+  await page.getByLabel('Reason').fill('Synthetic acceptance run');
+  await page.getByRole('button', { name: 'Save preview draft' }).click();
+  await expect(page.getByText('The end date must be on or after the start date.')).toBeVisible();
+  await page.getByLabel('To date').fill('2026-11-05');
+  await page.getByRole('button', { name: 'Save preview draft' }).click();
+  await expect(page.getByText('Draft saved in this browser; no SQL request was created.')).toBeVisible();
+  await expect(page.getByText('Synthetic acceptance run')).toBeVisible();
+  expect(forbiddenWrites).toEqual([]);
+
+  await page.getByRole('button', { name: 'Back to User Management' }).click();
+  await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'ব্যবহারকারী ব্যবস্থাপনা' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
 
   await page.reload();
   const navigation = page.getByRole('navigation', { name: 'HRIS modules' });
   await navigation.getByRole('button', { name: 'User management preview' }).click();
-  await expect(page.getByRole('row').filter({ hasText: regeneratedEmail })).toBeVisible();
-  await page.getByRole('row').filter({ hasText: regeneratedEmail }).getByRole('button', { name: `View as User: ${regeneratedName}` }).click();
-  await expect(page.getByRole('button', { name: 'Completed in preview' }).first()).toBeDisabled();
+  row = page.getByRole('row').filter({ hasText: regeneratedEmail });
+  await expect(row).toContainText('Recovered Synthetic Employee');
+  await expect(row).toContainText('Finance Analyst');
+  await row.getByRole('button', { name: 'View as User: Recovered Synthetic Employee' }).click();
+  await page.getByRole('button', { name: /^Leave and balances/ }).click();
+  await expect(page.getByText('Synthetic acceptance run')).toBeVisible();
+  await expect(page.getByText('2026-11-03 – 2026-11-05')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to User Management' }).click();
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await page.getByRole('row').filter({ hasText: regeneratedEmail })
+    .getByRole('button', { name: 'Edit user: Recovered Synthetic Employee' }).click();
+  form = page.getByRole('dialog', { name: 'Edit preview user' });
+  await expect(form).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('row').filter({ hasText: regeneratedEmail })
+    .getByRole('button', { name: 'View as User: Recovered Synthetic Employee' }).click();
+  await expect(page.getByRole('heading', { name: 'My overview' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await page.getByRole('button', { name: 'Back to User Management' }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  expect(forbiddenWrites).toEqual([]);
 });

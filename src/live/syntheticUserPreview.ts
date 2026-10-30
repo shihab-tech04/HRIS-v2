@@ -9,6 +9,13 @@ export const PREVIEW_USER_ROLES = [
 
 export type PreviewUserRole = typeof PREVIEW_USER_ROLES[number];
 export type PreviewUserStatus = 'active' | 'inactive';
+export type SyntheticPreviewLeaveDraft = {
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  savedAt: string;
+  status: 'draft';
+};
 
 export type SyntheticPreviewUser = {
   recordKey: string;
@@ -19,14 +26,18 @@ export type SyntheticPreviewUser = {
   userId: string;
   employeeNumber: string;
   role: PreviewUserRole;
+  /** Optional for backwards compatibility with preview records created before reference IDs were stored. */
+  departmentId?: string | null;
+  designationId?: string | null;
   department: string;
   designation: string;
   status: PreviewUserStatus;
   createdAt: string;
   completedPreviewActions: string[];
+  previewLeaveDraft?: SyntheticPreviewLeaveDraft | null;
 };
 
-export type SyntheticPreviewUserDraft = Omit<SyntheticPreviewUser, 'createdAt' | 'completedPreviewActions'>;
+export type SyntheticPreviewUserDraft = Omit<SyntheticPreviewUser, 'createdAt' | 'completedPreviewActions' | 'previewLeaveDraft'>;
 
 const STORAGE_PREFIX = 'synesis-hris-preview-users:v1:';
 const firstNames = ['Rahim', 'Nabila', 'Arif', 'Farhana', 'Tariq', 'Maliha', 'Sadia', 'Imran', 'Nusrat', 'Hasan'];
@@ -57,9 +68,22 @@ function isPreviewUser(value: unknown, tenantId: string): value is SyntheticPrev
     && typeof row.email === 'string'
     && typeof row.userId === 'string'
     && typeof row.employeeNumber === 'string'
+    && (row.departmentId == null || typeof row.departmentId === 'string')
+    && (row.designationId == null || typeof row.designationId === 'string')
     && PREVIEW_USER_ROLES.includes(row.role as PreviewUserRole)
     && (row.status === 'active' || row.status === 'inactive')
-    && typeof row.createdAt === 'string';
+    && typeof row.createdAt === 'string'
+    && (row.previewLeaveDraft == null || isSyntheticPreviewLeaveDraft(row.previewLeaveDraft));
+}
+
+function isSyntheticPreviewLeaveDraft(value: unknown): value is SyntheticPreviewLeaveDraft {
+  if (!value || typeof value !== 'object') return false;
+  const draft = value as Partial<SyntheticPreviewLeaveDraft>;
+  return typeof draft.fromDate === 'string'
+    && typeof draft.toDate === 'string'
+    && typeof draft.reason === 'string'
+    && typeof draft.savedAt === 'string'
+    && draft.status === 'draft';
 }
 
 export function readSyntheticPreviewUsers(tenantId: string): SyntheticPreviewUser[] {
@@ -122,6 +146,8 @@ export function createSyntheticPreviewDraft(
     userId,
     employeeNumber: `EMP-${year}-${String(sequence).padStart(4, '0')}`,
     role,
+    departmentId: null,
+    designationId: null,
     department: '',
     designation: '',
     status: 'active',
@@ -149,6 +175,9 @@ export function validateSyntheticPreviewDraft(
   if (!/^[^\s@]+@example\.com$/i.test(email)) return 'Use a reserved synthetic address ending in @example.com.';
   if (!/^USR-[A-Z0-9-]{6,32}$/.test(userId)) return 'Use a user ID in the format USR-XXXXXXXX.';
   if (!/^EMP-\d{4}-\d{4,}$/.test(employeeNumber)) return 'Use an employee number in the format EMP-YYYY-0001.';
+  if (!PREVIEW_USER_ROLES.includes(draft.role)) return 'Select a preview role.';
+  if (!draft.department.trim()) return 'Choose a department from this organization.';
+  if (!draft.designation.trim()) return 'Enter a designation label for this organization.';
   const collision = existing.find(user => user.recordKey !== draft.recordKey && (
     user.userId.toUpperCase() === userId
     || user.email.toLowerCase() === email
@@ -169,5 +198,6 @@ export function materializeSyntheticPreviewUser(draft: SyntheticPreviewUserDraft
     designation: draft.designation.trim(),
     createdAt: new Date().toISOString(),
     completedPreviewActions: [],
+    previewLeaveDraft: null,
   };
 }

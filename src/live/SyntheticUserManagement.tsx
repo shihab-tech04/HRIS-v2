@@ -17,6 +17,10 @@ import {
   writeSyntheticPreviewUsers,
 } from './syntheticUserPreview';
 import type { PreviewUserRole, PreviewUserStatus, SyntheticPreviewUser, SyntheticPreviewUserDraft } from './syntheticUserPreview';
+import { supabase } from '../lib/supabase';
+
+type DepartmentReference = { id: string; name: string };
+type DesignationReference = { id: string; title: string; department_id: string | null };
 
 const workspaceModules: Record<PreviewUserRole, string[]> = {
   'Administrator / HR Administrator': ['Organization structure', 'Employee directory', 'Employee lifecycle', 'Manpower requisitions', 'Recruitment', 'Policies and learning', 'Reports'],
@@ -54,8 +58,8 @@ const workspaceActions: Record<PreviewUserRole, { id: string; label: string }[]>
   ],
 };
 
-const buttonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#085587] disabled:cursor-not-allowed disabled:opacity-50';
-const primaryButtonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#085587] px-4 text-sm font-semibold text-white hover:bg-[#06456d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] disabled:cursor-not-allowed disabled:opacity-50';
+const buttonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] disabled:cursor-not-allowed disabled:opacity-50';
+const primaryButtonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--color-brand-primary)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-figma-primary-600)] disabled:cursor-not-allowed disabled:opacity-50';
 const previewBengali: Record<string, string> = {
   'User Management': 'ব্যবহারকারী ব্যবস্থাপনা', 'User management preview': 'ব্যবহারকারী ব্যবস্থাপনা প্রিভিউ',
   'Admin workspace': 'প্রশাসক কর্মক্ষেত্র', 'Create user': 'ব্যবহারকারী তৈরি করুন', 'Generate Random User': 'এলোমেলো ব্যবহারকারী তৈরি করুন',
@@ -76,6 +80,20 @@ const previewBengali: Record<string, string> = {
   'Showing {start}–{end} of {count}': '{count}টির মধ্যে {start}–{end} দেখানো হচ্ছে', '0 users': '০ জন ব্যবহারকারী', 'Previous': 'আগের', 'Next': 'পরের',
   'Full name': 'পূর্ণ নাম', 'Synthetic email': 'কৃত্রিম ইমেইল', 'Only reserved @example.com addresses are accepted.': 'শুধু সংরক্ষিত @example.com ঠিকানা গ্রহণ করা হয়।',
   'User ID': 'ব্যবহারকারী আইডি', 'Employee number': 'কর্মী নম্বর', 'Department': 'বিভাগ', 'Designation': 'পদবি',
+  'Select a department': 'একটি বিভাগ নির্বাচন করুন', 'Select a designation': 'একটি পদবি নির্বাচন করুন',
+  'No active departments are configured for this organization.': 'এই প্রতিষ্ঠানে কোনো সক্রিয় বিভাগ নির্ধারিত নেই।',
+  'Loading organization references…': 'প্রতিষ্ঠানের রেফারেন্স তথ্য লোড হচ্ছে…', 'Retry loading references': 'রেফারেন্স তথ্য আবার লোড করুন',
+  'Choose a department from this organization.': 'এই প্রতিষ্ঠান থেকে একটি বিভাগ নির্বাচন করুন।',
+  'Choose a designation for the selected department.': 'নির্বাচিত বিভাগের জন্য একটি পদবি নির্বাচন করুন।',
+  'Designation is not configured for this department; enter a preview label.': 'এই বিভাগের জন্য পদবি নির্ধারিত নেই; প্রিভিউ লেবেল লিখুন।',
+  'Enter a designation label for this organization.': 'এই প্রতিষ্ঠানের জন্য একটি পদবির লেবেল লিখুন।',
+  'Select a preview role.': 'একটি প্রিভিউ ভূমিকা নির্বাচন করুন।',
+  'Organization references are unavailable. Retry loading references.': 'প্রতিষ্ঠানের রেফারেন্স তথ্য পাওয়া যায়নি। আবার চেষ্টা করুন।',
+  'Leave request preview': 'ছুটির অনুরোধ প্রিভিউ', 'Saved preview draft': 'সংরক্ষিত প্রিভিউ খসড়া', 'From date': 'শুরুর তারিখ', 'To date': 'শেষের তারিখ',
+  'Reason': 'কারণ', 'Save preview draft': 'প্রিভিউ খসড়া সংরক্ষণ করুন', 'Draft': 'খসড়া', 'No draft request saved.': 'কোনো খসড়া অনুরোধ সংরক্ষিত নেই।',
+  'This is a local preview draft; no policy or balance was checked and no request was submitted.': 'এটি স্থানীয় প্রিভিউ খসড়া; কোনো নীতি বা অবশিষ্ট যাচাই করা হয়নি এবং কোনো অনুরোধ জমা হয়নি।',
+  'Draft saved in this browser; no SQL request was created.': 'এই ব্রাউজারে খসড়া সংরক্ষিত হয়েছে; কোনো SQL অনুরোধ তৈরি হয়নি।',
+  'Enter a valid date range and a reason.': 'সঠিক তারিখের পরিসর ও কারণ লিখুন।', 'The end date must be on or after the start date.': 'শেষের তারিখ শুরুর তারিখের সমান বা পরের হতে হবে।',
   'Generated information is editable before saving.': 'সংরক্ষণের আগে তৈরি করা তথ্য সম্পাদনা করা যাবে।', 'Regenerate': 'আবার তৈরি করুন',
   'This form saves synthetic preview data in this browser only. No email is sent and no production account is created.': 'এই ফর্মের কৃত্রিম প্রিভিউ ডেটা শুধু এই ব্রাউজারে সংরক্ষিত হয়। কোনো ইমেইল পাঠানো বা উৎপাদন অ্যাকাউন্ট তৈরি করা হয় না।',
   'Use a reserved synthetic address ending in @example.com.': 'শেষে @example.com থাকা সংরক্ষিত কৃত্রিম ঠিকানা ব্যবহার করুন।',
@@ -141,6 +159,11 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
   const [users, setUsers] = useState<SyntheticPreviewUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [departments, setDepartments] = useState<DepartmentReference[]>([]);
+  const [designations, setDesignations] = useState<DesignationReference[]>([]);
+  const [referenceLoading, setReferenceLoading] = useState(true);
+  const [referenceError, setReferenceError] = useState('');
+  const [referenceRetry, setReferenceRetry] = useState(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
@@ -155,6 +178,11 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
   const [statusChangeRecordKey, setStatusChangeRecordKey] = useState('');
   const [previewRecordKey, setPreviewRecordKey] = useState('');
   const [activeModule, setActiveModule] = useState('');
+  const [leaveFromDate, setLeaveFromDate] = useState('');
+  const [leaveToDate, setLeaveToDate] = useState('');
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveError, setLeaveError] = useState('');
+  const [leaveNotice, setLeaveNotice] = useState('');
   const formPanelRef = useRef<HTMLElement>(null);
   const formInitialFocusRef = useRef<HTMLButtonElement>(null);
   const removePanelRef = useRef<HTMLElement>(null);
@@ -188,6 +216,34 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
   }, [tenantId]);
 
   useEffect(() => {
+    let active = true;
+    setReferenceLoading(true);
+    setReferenceError('');
+    setDepartments([]);
+    setDesignations([]);
+    async function loadOrganizationReferences() {
+      try {
+        const [departmentResult, designationResult] = await Promise.all([
+          supabase.from('departments').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name').limit(200),
+          supabase.from('designations').select('id,title,department_id').eq('tenant_id', tenantId).eq('active', true).order('title').limit(500),
+        ]);
+        if (departmentResult.error) throw departmentResult.error;
+        if (designationResult.error) throw designationResult.error;
+        if (!active) return;
+        setDepartments((departmentResult.data || []) as DepartmentReference[]);
+        setDesignations((designationResult.data || []) as DesignationReference[]);
+      } catch (cause) {
+        if (active) setReferenceError(cause instanceof Error ? cause.message : 'Unable to read this organization’s department references.');
+      } finally {
+        if (active) setReferenceLoading(false);
+      }
+    }
+    if (tenantId) void loadOrganizationReferences();
+    else setReferenceLoading(false);
+    return () => { active = false; };
+  }, [tenantId, referenceRetry]);
+
+  useEffect(() => {
     if (!formMode) return;
     return activateModalFocusTrap(formPanelRef.current, {
       initialFocus: formInitialFocusRef.current,
@@ -219,6 +275,18 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
   const profileUser = users.find(user => user.recordKey === profileRecordKey) || null;
   const removeUser = users.find(user => user.recordKey === removeRecordKey) || null;
   const statusChangeUser = users.find(user => user.recordKey === statusChangeRecordKey) || null;
+  const previewDesignations = draft?.departmentId
+    ? designations.filter(item => item.department_id === draft.departmentId)
+    : [];
+
+  useEffect(() => {
+    if (!previewUser) return;
+    setLeaveFromDate(previewUser.previewLeaveDraft?.fromDate || '');
+    setLeaveToDate(previewUser.previewLeaveDraft?.toDate || '');
+    setLeaveReason(previewUser.previewLeaveDraft?.reason || '');
+    setLeaveError('');
+    setLeaveNotice('');
+  }, [previewUser?.recordKey]);
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
     return users.filter(user => (
@@ -285,7 +353,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
   function openEdit(user: SyntheticPreviewUser) {
     setError('');
     setNotice('');
-    const { createdAt: _createdAt, completedPreviewActions: _actions, ...editable } = user;
+    const { createdAt: _createdAt, completedPreviewActions: _actions, previewLeaveDraft: _leaveDraft, ...editable } = user;
     setDraft(editable);
     setGeneratedDraft(false);
     setFormMode('edit');
@@ -297,7 +365,8 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
     const allUsers = allPreviewUsers();
     if (!allUsers) return;
     const generated = createSyntheticPreviewDraft(tenantId, tenantName, allUsers, current.role);
-    setDraft({ ...generated, department: current.department, designation: current.designation, status: current.status });
+    setDraft({ ...generated, departmentId: current.departmentId ?? null, designationId: current.designationId ?? null,
+      department: current.department, designation: current.designation, status: current.status });
     setGeneratedDraft(true);
     setError('');
   }
@@ -306,11 +375,42 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
     setDraft(current => current ? { ...current, [key]: value } : current);
   }
 
+  function selectDepartment(departmentId: string) {
+    const department = departments.find(item => item.id === departmentId);
+    setDraft(current => current ? {
+      ...current,
+      departmentId: department?.id || null,
+      department: department?.name || '',
+      designationId: null,
+      designation: '',
+    } : current);
+  }
+
+  function selectDesignation(designationId: string) {
+    const designation = previewDesignations.find(item => item.id === designationId);
+    setDraft(current => current ? {
+      ...current,
+      designationId: designation?.id || null,
+      designation: designation?.title || '',
+    } : current);
+  }
+
   function submitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft || !formMode) return;
     const allUsers = allPreviewUsers();
     if (!allUsers) return;
+    if (referenceError) { setError(tx('Organization references are unavailable. Retry loading references.')); return; }
+    if (!draft.departmentId || !departments.some(item => item.id === draft.departmentId)) {
+      setError(tx('Choose a department from this organization.'));
+      return;
+    }
+    const selectedDepartmentDesignations = designations.filter(item => item.department_id === draft.departmentId);
+    if (selectedDepartmentDesignations.length > 0
+      && (!draft.designationId || !selectedDepartmentDesignations.some(item => item.id === draft.designationId))) {
+      setError(tx('Choose a designation for the selected department.'));
+      return;
+    }
     const validation = validateSyntheticPreviewDraft(draft, allUsers);
     if (validation) {
       setError(tx(validation));
@@ -336,6 +436,36 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
     if (saveUsers([created, ...users], 'Preview user created in this browser.')) {
       setPage(0);
       closeForm();
+    }
+  }
+
+  function saveEmployeeLeaveDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!previewUser) return;
+    if (!leaveFromDate || !leaveToDate || !leaveReason.trim()) {
+      setLeaveError(tx('Enter a valid date range and a reason.'));
+      setLeaveNotice('');
+      return;
+    }
+    if (leaveToDate < leaveFromDate) {
+      setLeaveError(tx('The end date must be on or after the start date.'));
+      setLeaveNotice('');
+      return;
+    }
+    const updated: SyntheticPreviewUser = {
+      ...previewUser,
+      previewLeaveDraft: {
+        fromDate: leaveFromDate,
+        toDate: leaveToDate,
+        reason: leaveReason.trim(),
+        savedAt: new Date().toISOString(),
+        status: 'draft',
+      },
+    };
+    const next = users.map(user => user.recordKey === updated.recordKey ? updated : user);
+    if (saveUsers(next, 'Draft saved in this browser; no SQL request was created.')) {
+      setLeaveError('');
+      setLeaveNotice(tx('Draft saved in this browser; no SQL request was created.'));
     }
   }
 
@@ -383,7 +513,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-[#085587]">{previewUser.tenantName}</p>
+            <p className="text-sm font-semibold text-[var(--color-brand-primary)]">{previewUser.tenantName}</p>
             <h1 id="preview-workspace-heading" className="mt-1 text-2xl font-semibold text-slate-900">{tx(workspaceModules[previewUser.role][0])}</h1>
             <p className="mt-2 text-sm text-slate-600">{previewUser.fullName} · {tx(previewUser.role)} · {previewUser.employeeNumber}</p>
           </div>
@@ -392,38 +522,85 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {workspaceModules[previewUser.role].map((module, index) => (
             <button key={module} type="button" onClick={() => setActiveModule(module)} aria-pressed={activeModule === module}
-              className={`min-h-24 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#085587] ${activeModule === module ? 'border-[#085587] bg-sky-50' : 'border-slate-200 bg-white hover:border-slate-400'}`}>
-              <span className="flex items-center gap-2 text-sm font-semibold text-slate-900"><BriefcaseBusiness className="h-4 w-4 text-[#085587]" aria-hidden="true" />{tx(module)}</span>
+              className={`min-h-24 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)] ${activeModule === module ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-light)]' : 'border-slate-200 bg-white hover:border-slate-400'}`}>
+              <span className="flex items-center gap-2 text-sm font-semibold text-slate-900"><BriefcaseBusiness className="h-4 w-4 text-[var(--color-brand-primary)]" aria-hidden="true" />{tx(module)}</span>
               <span className="mt-2 block text-xs text-slate-500">{index === 0 ? tx('Role overview') : tx('Sample workspace section')}</span>
             </button>
           ))}
         </div>
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-live="polite">
-          <h2 className="font-semibold text-slate-900">{tx(activeModule || 'Role preview data')}</h2>
-          <p className="mt-1 text-sm text-slate-600">{activeModule
-            ? tx('Sample section opened. The information below is synthetic preview content only.')
-            : tx('Choose a role-specific section above. Sample records here never connect to live SQL.')}</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Workspace')}</p><p className="mt-1 text-sm font-medium">{tx(previewUser.role)}</p></div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Department')}</p><p className="mt-1 text-sm font-medium">{previewUser.department || tx('Not set')}</p></div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Preview state')}</p><p className="mt-1 text-sm font-medium">{tx('Browser-only sample')}</p></div>
+        {previewUser.role === 'Employee' ? (
+          <div className="mt-5" aria-live="polite">
+            {activeModule === 'My profile' ? (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="synthetic-employee-profile-heading">
+                <h2 id="synthetic-employee-profile-heading" className="text-lg font-semibold text-slate-900">{tx('My profile')}</h2>
+                <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {[[tx('Full name'), previewUser.fullName], [tx('Synthetic email'), previewUser.email], [tx('User ID'), previewUser.userId],
+                    [tx('Employee number'), previewUser.employeeNumber], [tx('Department'), previewUser.department],
+                    [tx('Designation'), previewUser.designation || tx('Not set')]].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-slate-200 p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words text-sm font-medium text-slate-900">{value}</dd></div>
+                  ))}
+                </dl>
+              </section>
+            ) : activeModule === 'Leave and balances' ? (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="synthetic-leave-preview-heading">
+                <h2 id="synthetic-leave-preview-heading" className="text-lg font-semibold text-slate-900">{tx('Leave request preview')}</h2>
+                <p className="mt-1 text-sm text-slate-600">{tx('This is a local preview draft; no policy or balance was checked and no request was submitted.')}</p>
+                {leaveError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{leaveError}</p>}
+                {leaveNotice && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{leaveNotice}</p>}
+                <form onSubmit={saveEmployeeLeaveDraft} className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-medium text-slate-700">{tx('From date')}<input required type="date" value={leaveFromDate} onChange={event => setLeaveFromDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+                  <label className="block text-sm font-medium text-slate-700">{tx('To date')}<input required type="date" value={leaveToDate} onChange={event => setLeaveToDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+                  <label className="block text-sm font-medium text-slate-700 sm:col-span-2">{tx('Reason')}<textarea required maxLength={500} value={leaveReason} onChange={event => setLeaveReason(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm" /></label>
+                  <div className="sm:col-span-2"><button type="submit" className={primaryButtonClass}>{tx('Save preview draft')}</button></div>
+                </form>
+                {previewUser.previewLeaveDraft && <dl className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <dt className="text-xs font-medium text-slate-600">{tx('Saved preview draft')} · {tx('Draft')}</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{previewUser.previewLeaveDraft.fromDate} – {previewUser.previewLeaveDraft.toDate}</dd>
+                  <dd className="mt-1 text-sm text-slate-700">{previewUser.previewLeaveDraft.reason}</dd>
+                </dl>}
+              </section>
+            ) : (
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4" aria-labelledby="synthetic-employee-overview-heading">
+                <h2 id="synthetic-employee-overview-heading" className="font-semibold text-slate-900">{tx(activeModule || 'My overview')}</h2>
+                <p className="mt-1 text-sm text-slate-600">{tx('Choose a role-specific section above. Sample records here never connect to live SQL.')}</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Workspace')}</p><p className="mt-1 text-sm font-medium">{tx(previewUser.role)}</p></div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Department')}</p><p className="mt-1 text-sm font-medium">{previewUser.department || tx('Not set')}</p></div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Preview state')}</p><p className="mt-1 text-sm font-medium">{tx('Browser-only sample')}</p></div>
+                </div>
+              </section>
+            )}
           </div>
-        </div>
-        <div className="mt-6">
-          <h2 className="text-lg font-semibold text-slate-900">{tx('Sample actions')}</h2>
-          <p className="mt-1 text-sm text-slate-600">{tx('Complete a sample step to verify the role preview interaction. It only updates this synthetic preview record.')}</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {actions.map(action => {
-              const done = completed.has(action.id);
-              return <div key={action.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
-                <span className="text-sm font-medium text-slate-800">{tx(action.label)}</span>
-                <button type="button" disabled={done} onClick={() => completePreviewAction(previewUser, action.id)} className={done ? `${buttonClass} border-emerald-200 bg-emerald-50 text-emerald-800` : primaryButtonClass}>
-                  {done ? <><Check className="h-4 w-4" aria-hidden="true" />{tx('Completed in preview')}</> : tx('Complete sample step')}
-                </button>
-              </div>;
-            })}
-          </div>
-        </div>
+        ) : (
+          <>
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-live="polite">
+              <h2 className="font-semibold text-slate-900">{tx(activeModule || 'Role preview data')}</h2>
+              <p className="mt-1 text-sm text-slate-600">{activeModule
+                ? tx('Sample section opened. The information below is synthetic preview content only.')
+                : tx('Choose a role-specific section above. Sample records here never connect to live SQL.')}</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Workspace')}</p><p className="mt-1 text-sm font-medium">{tx(previewUser.role)}</p></div>
+                <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Department')}</p><p className="mt-1 text-sm font-medium">{previewUser.department || tx('Not set')}</p></div>
+                <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{tx('Preview state')}</p><p className="mt-1 text-sm font-medium">{tx('Browser-only sample')}</p></div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-slate-900">{tx('Sample actions')}</h2>
+              <p className="mt-1 text-sm text-slate-600">{tx('Complete a sample step to verify the role preview interaction. It only updates this synthetic preview record.')}</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {actions.map(action => {
+                  const done = completed.has(action.id);
+                  return <div key={action.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+                    <span className="text-sm font-medium text-slate-800">{tx(action.label)}</span>
+                    <button type="button" disabled={done} onClick={() => completePreviewAction(previewUser, action.id)} className={done ? `${buttonClass} border-emerald-200 bg-emerald-50 text-emerald-800` : primaryButtonClass}>
+                      {done ? <><Check className="h-4 w-4" aria-hidden="true" />{tx('Completed in preview')}</> : tx('Complete sample step')}
+                    </button>
+                  </div>;
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </section>;
   }
@@ -431,15 +608,19 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
   return <section className="mx-auto w-full max-w-[1386px] space-y-5" aria-labelledby="synthetic-user-heading">
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className="text-sm font-semibold text-[#085587]">{tx('Admin workspace')}</p>
-        <h1 id="synthetic-user-heading" className="mt-1 text-2xl font-semibold text-[#1E1B39]">{tx('User Management')}</h1>
+        <p className="text-sm font-semibold text-[var(--color-brand-primary)]">{tx('Admin workspace')}</p>
+        <h1 id="synthetic-user-heading" className="mt-1 text-2xl font-semibold text-slate-900">{tx('User Management')}</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">{tx('Create browser-only synthetic users and inspect their role workspaces without another login.')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={openManualCreate} className={buttonClass}><Plus className="h-4 w-4" aria-hidden="true" />{tx('Create user')}</button>
-        <button type="button" onClick={openGeneratedCreate} className={primaryButtonClass}><UserRoundPlus className="h-4 w-4" aria-hidden="true" />{tx('Generate Random User')}</button>
+        <button type="button" disabled={referenceLoading || Boolean(referenceError) || departments.length === 0} onClick={openManualCreate} className={buttonClass}><Plus className="h-4 w-4" aria-hidden="true" />{tx('Create user')}</button>
+        <button type="button" disabled={referenceLoading || Boolean(referenceError) || departments.length === 0} onClick={openGeneratedCreate} className={primaryButtonClass}><UserRoundPlus className="h-4 w-4" aria-hidden="true" />{tx('Generate Random User')}</button>
       </div>
     </header>
+
+    {referenceLoading && <p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">{tx('Loading organization references…')}</p>}
+    {referenceError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><span>{tx('Organization references are unavailable. Retry loading references.')} {referenceError}</span><button type="button" className={buttonClass} onClick={() => setReferenceRetry(value => value + 1)}>{tx('Retry loading references')}</button></div>}
+    {!referenceLoading && !referenceError && departments.length === 0 && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{tx('No active departments are configured for this organization.')}</p>}
 
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
       <p className="font-semibold">{tx('Frontend preview data')}</p>
@@ -451,7 +632,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
     {notice && !error && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
 
     <div className="grid gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-medium text-slate-500">{tx('Selected organization')}</p><p className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-900"><Building2 className="h-4 w-4 text-[#085587]" aria-hidden="true" />{tenantName}</p></div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-medium text-slate-500">{tx('Selected organization')}</p><p className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-900"><Building2 className="h-4 w-4 text-[var(--color-brand-primary)]" aria-hidden="true" />{tenantName}</p></div>
       <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-medium text-slate-500">{tx('Synthetic users')}</p><p className="mt-1 text-2xl font-semibold text-slate-900">{users.length}</p></div>
       <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-medium text-slate-500">{tx('Active in preview')}</p><p className="mt-1 text-2xl font-semibold text-slate-900">{activeCount}</p></div>
     </div>
@@ -459,7 +640,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
         <label className="min-w-0 flex-1 text-sm font-medium text-slate-700" htmlFor="preview-user-search">{tx('Search users')}
-          <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 focus-within:outline-2 focus-within:outline-[#085587]"><Search className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" /><input id="preview-user-search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" placeholder={tx('Search name, email, ID, department')} /></span>
+          <span className="mt-1 flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 focus-within:outline-2 focus-within:outline-[var(--color-figma-primary-600)]"><Search className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" /><input id="preview-user-search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" placeholder={tx('Search name, email, ID, department')} /></span>
         </label>
         <label className="text-sm font-medium text-slate-700">{tx('Role')}
           <select value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPage(0); }} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm sm:w-56">
@@ -474,7 +655,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
       </div>
       {loading ? <div className="flex items-center gap-2 p-6 text-sm text-slate-600"><RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />{tx('Loading preview users…')}</div>
         : visibleUsers.length === 0 ? <div className="p-8 text-center"><Users className="mx-auto h-8 w-8 text-slate-400" aria-hidden="true" /><h2 className="mt-3 font-semibold text-slate-900">{users.length ? tx('No users match these filters') : tx('No synthetic users yet')}</h2><p className="mt-1 text-sm text-slate-600">{users.length ? tx('Change the search or filters and try again.') : tx('Create a preview user or generate one to begin.')}</p></div>
-          : <div role="region" aria-label={tx('Scrollable synthetic user list')} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[#085587]">
+          : <div role="region" aria-label={tx('Scrollable synthetic user list')} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-[var(--color-figma-primary-600)]">
             <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600"><tr><th className="px-4 py-3">{tx('User')}</th><th className="px-4 py-3">{tx('Role')}</th><th className="px-4 py-3">{tx('User ID / Employee No.')}</th><th className="px-4 py-3">{tx('Department / Designation')}</th><th className="px-4 py-3">{tx('Status')}</th><th className="px-4 py-3 text-right">{tx('Actions')}</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
@@ -504,7 +685,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
     {formMode && draft && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/40 sm:justify-end" onMouseDown={event => { if (event.target === event.currentTarget) closeForm(); }}>
       <section ref={formPanelRef} role="dialog" aria-modal="true" aria-labelledby="preview-user-form-heading" tabIndex={-1} className="max-h-[94vh] w-full overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:h-full sm:max-h-none sm:max-w-xl sm:rounded-none">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white p-5">
-          <div><p className="text-sm font-semibold text-[#085587]">{tenantName}</p><h2 id="preview-user-form-heading" className="mt-1 text-xl font-semibold text-slate-900">{tx(formMode === 'edit' ? 'Edit preview user' : generatedDraft ? 'Generated user preview' : 'Create preview user')}</h2></div>
+          <div><p className="text-sm font-semibold text-[var(--color-brand-primary)]">{tenantName}</p><h2 id="preview-user-form-heading" className="mt-1 text-xl font-semibold text-slate-900">{tx(formMode === 'edit' ? 'Edit preview user' : generatedDraft ? 'Generated user preview' : 'Create preview user')}</h2></div>
           <button ref={formInitialFocusRef} type="button" className={buttonClass} onClick={closeForm} aria-label={tx('Close')}><X className="h-4 w-4" aria-hidden="true" /></button>
         </div>
         <form onSubmit={submitDraft} className="space-y-4 p-5">
@@ -516,14 +697,16 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-slate-700">{tx('User ID')}<input required value={draft.userId} onChange={event => updateDraft('userId', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-mono text-sm" /></label>
             <label className="block text-sm font-medium text-slate-700">{tx('Employee number')}<input required value={draft.employeeNumber} onChange={event => updateDraft('employeeNumber', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-mono text-sm" /></label>
-            <label className="block text-sm font-medium text-slate-700">{tx('Role')}<select value={draft.role} onChange={event => updateDraft('role', event.target.value as PreviewUserRole)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">{PREVIEW_USER_ROLES.map(role => <option key={role} value={role}>{tx(role)}</option>)}</select></label>
+            <label className="block text-sm font-medium text-slate-700">{tx('Role')}<select required value={draft.role} onChange={event => updateDraft('role', event.target.value as PreviewUserRole)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">{PREVIEW_USER_ROLES.map(role => <option key={role} value={role}>{tx(role)}</option>)}</select></label>
             {formMode === 'create'
               ? <label className="block text-sm font-medium text-slate-700">{tx('Status')}<select value={draft.status} onChange={event => updateDraft('status', event.target.value as PreviewUserStatus)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="active">{tx('Active')}</option><option value="inactive">{tx('Inactive')}</option></select></label>
               : <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">{tx('Status')}</p><p className="mt-1 text-sm font-semibold text-slate-800">{tx(draft.status === 'active' ? 'Active' : 'Inactive')}</p><p className="mt-1 text-xs text-slate-600">{tx('Change status from the user list; confirmation is required.')}</p></div>}
-            <label className="block text-sm font-medium text-slate-700">{tx('Department')}<input maxLength={100} value={draft.department} onChange={event => updateDraft('department', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
-            <label className="block text-sm font-medium text-slate-700">{tx('Designation')}<input maxLength={100} value={draft.designation} onChange={event => updateDraft('designation', event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></label>
+            <label className="block text-sm font-medium text-slate-700">{tx('Department')}<select required value={draft.departmentId ?? ''} onChange={event => selectDepartment(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="">{tx('Select a department')}</option>{departments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{!draft.departmentId && draft.department && <span className="mt-1 block text-xs text-amber-800">{tx('Choose a department from this organization.')} ({draft.department})</span>}</label>
+            {previewDesignations.length > 0
+              ? <label className="block text-sm font-medium text-slate-700">{tx('Designation')}<select required value={draft.designationId ?? ''} onChange={event => selectDesignation(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="">{tx('Select a designation')}</option>{previewDesignations.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+              : <label className="block text-sm font-medium text-slate-700">{tx('Designation')}<input required maxLength={100} value={draft.designation} onChange={event => { updateDraft('designationId', null); updateDraft('designation', event.target.value); }} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /><span className="mt-1 block text-xs text-slate-500">{tx('Designation is not configured for this department; enter a preview label.')}</span></label>}
           </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">{tx('Selected organization')}</p><p className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-800"><Building2 className="h-4 w-4 text-[#085587]" aria-hidden="true" />{tenantName}</p><p className="mt-1 break-all font-mono text-[11px] text-slate-500">{tenantId}</p></div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">{tx('Selected organization')}</p><p className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-800"><Building2 className="h-4 w-4 text-[var(--color-brand-primary)]" aria-hidden="true" />{tenantName}</p><p className="mt-1 break-all font-mono text-[11px] text-slate-500">{tenantId}</p></div>
           <p className="text-xs text-slate-600">{tx('Super Admin remains the existing single account and is not available for synthetic generation.')}</p>
           <div className="sticky bottom-0 -mx-5 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
             <button type="button" className={buttonClass} onClick={closeForm}>{tx('Cancel')}</button><button type="submit" className={primaryButtonClass}><Check className="h-4 w-4" aria-hidden="true" />{tx(formMode === 'edit' ? 'Save changes' : 'Save preview user')}</button>
@@ -534,7 +717,7 @@ export function SyntheticUserManagement({ tenantId, tenantName, locale }: {
 
     {profileUser && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/40 sm:justify-end" onMouseDown={event => { if (event.target === event.currentTarget) setProfileRecordKey(''); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="synthetic-profile-heading" className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:h-full sm:max-h-none sm:max-w-lg sm:rounded-none">
-        <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[#085587]">{tx('Synthetic employee profile')}</p><h2 id="synthetic-profile-heading" className="mt-1 text-xl font-semibold text-slate-900">{profileUser.fullName}</h2></div><button type="button" className={buttonClass} onClick={() => setProfileRecordKey('')} aria-label={tx('Close')}><X className="h-4 w-4" aria-hidden="true" /></button></div>
+        <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[var(--color-brand-primary)]">{tx('Synthetic employee profile')}</p><h2 id="synthetic-profile-heading" className="mt-1 text-xl font-semibold text-slate-900">{profileUser.fullName}</h2></div><button type="button" className={buttonClass} onClick={() => setProfileRecordKey('')} aria-label={tx('Close')}><X className="h-4 w-4" aria-hidden="true" /></button></div>
         <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{tx('This associated employee profile is synthetic preview data and is not loaded from SQL.')}</p>
         <dl className="mt-5 grid gap-3 sm:grid-cols-2">{[
           [tx('Email'), profileUser.email], [tx('User ID'), profileUser.userId], [tx('Employee number'), profileUser.employeeNumber],
