@@ -1,5 +1,5 @@
 {
-  "schema_version": "WS09-source-to-story-tests-v1",
+  "schema_version": "WS09-source-to-story-tests-v1.1",
   "observed_on": "2026-10-31",
   "main_sha": "7fd2389fb32fe967cec503c34c1c8ec6fc9138aa",
   "candidate_main_sha": "5c03fddd2511a49e92687c0fb0e9b4d57f7500a3",
@@ -12,7 +12,7 @@
   "historical_exact_story_isolated_ids": 39,
   "historical_partial_ids": 11,
   "historical_blocked_ids": 14,
-  "unclassified_source_story_ids": 983,
+  "unclassified_source_story_ids": 981,
   "current_source_implemented_rate": "NOT MEASURED",
   "current_hosted_integration_rate": "NOT MEASURED",
   "current_production_story_verification": "NOT MEASURED",
@@ -507,6 +507,84 @@
       "code_state": "UNMERGED",
       "note": "release mechanism only, not SQL application",
       "story_ids_mapped_individually_from_exact_current_pr": []
+    },
+    {
+      "pr": 141,
+      "head": "cc9eda415f25a417238977b8bfd9a5e4105a5a87",
+      "code_state": "UNMERGED DRAFT",
+      "ci": {
+        "build": "41113108018 PASS",
+        "disposableAuth": "41113107747 PASS"
+      },
+      "hosted_integration": "NOT VERIFIED",
+      "production": "NOT LIVE"
+    },
+    {
+      "pr": 145,
+      "head": "a91271a020c46c74c3e20fd81bc28ac95cf7c03a",
+      "code_state": "UNMERGED DRAFT",
+      "note": "standalone read-only readiness UI; no real Auth users directory or invite",
+      "production": "NOT LIVE"
     }
-  ]
+  ],
+  "ledger_evidence_status_counts_after_direct_source_check": {
+    "ISOLATED PASS": 39,
+    "PARTIAL": 12,
+    "BLOCKED APPROVAL": 14,
+    "MISSING": 1,
+    "NOT CLASSIFIED": 981,
+    "LIVE VERIFIED": 0
+  },
+  "current_source_review_records": [
+    {
+      "story_id": "E02-09",
+      "status": "PARTIAL",
+      "exact_head": "cc9eda415f25a417238977b8bfd9a5e4105a5a87",
+      "source_path": "tests/browser/employee-profile-figma.spec.ts",
+      "lines": "255-267",
+      "exact_test_id": "E02-09 displays the authorized employee work details without leaking private records",
+      "test_type": "synthetic browser harness EN/BN mobile 375px",
+      "workflow_run": "https://github.com/shihab-tech04/HRIS-v2/actions/runs/41113108018",
+      "observed": "2026-10-31",
+      "hosted_proof": "NOT VERIFIED",
+      "ws04_verdict": "NOT RECORDED",
+      "note": "Selected employment fields verified in isolated UI but original full story requires signed-in hosted response and Figma review."
+    },
+    {
+      "story_id": "E02-15",
+      "status": "MISSING",
+      "exact_head": "cc9eda415f25a417238977b8bfd9a5e4105a5a87",
+      "source_paths": [
+        "src/live/EmployeeProfileFigma.tsx",
+        "src/live/EmployeeProfileEditModal.tsx"
+      ],
+      "test_type": "source inspection only",
+      "observed": "2026-10-31",
+      "ws04_verdict": "NOT RECORDED",
+      "hosted_proof": "NOT LIVE",
+      "note": "No photo upload/replacement handler in profile view or edit modal; only certificate attachment upload exists. WS06-owned change required."
+    }
+  ],
+  "fresh_hosted_readonly_20261031": {
+    "replacement_project": "xfuxnljfrgvusbrpvxpa",
+    "migration_count": 131,
+    "head": "20261027033218",
+    "required_source_migrations_installed": false,
+    "missing_profile_signatures": [
+      "public.employee_get_my_profile_v1(uuid)",
+      "public.employee_save_my_education_v1(uuid,jsonb)",
+      "public.employee_save_my_family_member_v1(uuid,jsonb)",
+      "public.employee_delete_my_profile_record_v1(uuid,text,uuid)",
+      "public.employee_get_my_profile_change_requests()"
+    ],
+    "missing_relation": "public.employee_bank_details",
+    "present_metadata_only": [
+      "public.employee_get_my_employment_info_v1(uuid)",
+      "public.admin_get_my_provisioning_context()",
+      "public.has_tenant_permission(uuid,text)",
+      "public.synesis_tenant_id()"
+    ],
+    "proof_path": "docs/evidence/ws09/release2-hosted-readonly-20261031.md",
+    "note": "SELECT metadata only; does not establish RLS, payload or signed-in authorization; no production write."
+  }
 }
