@@ -163,11 +163,15 @@ const output = execFileSync('docker', [
 ], { input: wrappedSql, encoding: 'utf8' }).trim();
 const rows = JSON.parse(output);
 const failures = (rows || []).filter((row) => row.passed !== true);
-if (!Array.isArray(rows) || rows.length !== 48 || failures.length) {
+// The audited catalogue has 24 RPCs, 2 internal functions, 6 prerequisites,
+// 4 retired overloads, 8 revoked legacy RPCs and 10 storage/data policies.
+const expectedContractCount = 54;
+const uniqueContracts = new Set((rows || []).map((row) => `${row.kind}:${row.object}`));
+if (!Array.isArray(rows) || rows.length !== expectedContractCount || uniqueContracts.size !== expectedContractCount || failures.length) {
   const missing = failures.map((row) => `${row.kind}:${row.object}`).join(', ');
-  throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/48): ${missing || 'unexpected contract count'}`);
+  throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/${expectedContractCount}): ${missing || 'unexpected contract count'}`);
 }
-console.log(`Phase 04 SQL/API parity contract: ${rows.length}/48 passed on Auth-tested disposable schema.`);
+console.log(`Phase 04 SQL/API parity contract: ${rows.length}/${expectedContractCount} passed on Auth-tested disposable schema.`);
 
 const hostedTransitionSql = readFileSync(
   path.join(root, 'supabase/staging/phase03/20261019_phase03_phase04_hosted_compatibility.staging.sql'),
