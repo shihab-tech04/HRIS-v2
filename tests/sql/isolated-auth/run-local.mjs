@@ -1216,7 +1216,9 @@ record('Profile certificate paths cannot bypass tenant/format, overwrite, or lin
     && Boolean(profileCertificateOverwrite.error)
     && !profileCertificateAfterDeniedDelete.error
     && !profileCertificateAfterDeniedDeleteAsAdmin.error
-    && !orphanProfileCertificateUpload.error && !orphanProfileCertificateAfterDelete.error,
+    && !orphanProfileCertificateUpload.error
+    && !orphanProfileCertificateDelete.error
+    && Boolean(orphanProfileCertificateAfterDelete.error),
   JSON.stringify({ malformedUpload: malformedProfileCertificateUpload.error?.statusCode || malformedProfileCertificateUpload.error?.code || null,
     crossTenantUpload: crossTenantProfileCertificateUpload.error?.statusCode || crossTenantProfileCertificateUpload.error?.code || null,
     overwrite: profileCertificateOverwrite.error?.statusCode || profileCertificateOverwrite.error?.code || null,
