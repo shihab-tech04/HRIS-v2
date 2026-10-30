@@ -232,7 +232,7 @@ test('family editor validates required fields and submits only the active-tenant
   await dialog.getByLabel('NID number').fill('SYNTHETIC-FAMILY-222');
   await dialog.getByLabel('Date of birth').fill('1995-02-03');
   await dialog.getByLabel('Relationship').fill('Sibling');
-  await dialog.getByLabel('Present address').fill('Synthetic present address');
+  await dialog.getByLabel('Present address', { exact: true }).fill('Synthetic present address');
   await dialog.getByLabel('Permanent address').fill('Synthetic permanent address');
   await dialog.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('status')).toContainText('Your profile information was saved.');
@@ -364,7 +364,7 @@ test('family address copy supports selection, unselection and EN/BN save without
       const editName = locale === 'en' ? 'Edit Family & Nominee Information 1' : 'সম্পাদনা পরিবার ও মনোনীত ব্যক্তির তথ্য 1';
       await page.getByRole('button', { name: editName }).click();
       const dialog = page.getByRole('dialog');
-      const present = dialog.getByLabel(locale === 'en' ? 'Present address' : 'বর্তমান ঠিকানা');
+      const present = dialog.getByLabel(locale === 'en' ? 'Present address' : 'বর্তমান ঠিকানা', { exact: true });
       const permanent = dialog.getByLabel(locale === 'en' ? 'Permanent address' : 'স্থায়ী ঠিকানা');
       const copy = dialog.getByRole('checkbox', { name: locale === 'en' ? 'Same as present address' : 'বর্তমান ঠিকানার মতোই' });
 
