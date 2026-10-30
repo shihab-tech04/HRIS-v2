@@ -102,10 +102,13 @@ test('disposable Auth/RLS journey covers valid, invalid, cross-tenant, unlinked,
 });
 
 test('restrictive certificate guards close permissive-policy OR bypasses without replacing legacy document rules', () => {
+  assert.match(certificatePolicyGuards, /employee_profile_certificate_select_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR SELECT/);
+  assert.match(certificatePolicyGuards, /public\.has_tenant_permission\(split_part\(name,'\/',2\)::uuid,'employees\.view'\)/);
+  assert.match(certificatePolicyGuards, /public\.has_tenant_permission\(split_part\(name,'\/',2\)::uuid,'employees\.manage'\)/);
   assert.match(certificatePolicyGuards, /employee_profile_certificate_insert_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR INSERT/);
   assert.match(certificatePolicyGuards, /employee_profile_certificate_update_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR UPDATE/);
   assert.match(certificatePolicyGuards, /employee_profile_certificate_delete_namespace_guard[\s\S]+AS RESTRICTIVE[\s\S]+FOR DELETE/);
-  assert.equal((certificatePolicyGuards.match(/array_position\(storage\.foldername\(name\),'profile-certificates'\) IS NULL/g) || []).length, 4);
+  assert.equal((certificatePolicyGuards.match(/array_position\(storage\.foldername\(name\),'profile-certificates'\) IS NULL/g) || []).length, 5);
   assert.match(certificatePolicyGuards, /public\.hris_profile_change_active_member\(split_part\(name,'\/',2\)::uuid\)/);
   assert.match(certificatePolicyGuards, /private\.hris_profile_document_is_unlinked\(split_part\(name,'\/',2\)::uuid,name\)/);
   assert.doesNotMatch(certificatePolicyGuards, /DROP POLICY|CREATE POLICY employee_documents_own_(?:insert|update|delete)/);
@@ -113,6 +116,8 @@ test('restrictive certificate guards close permissive-policy OR bypasses without
   assert.match(fixture, /CREATE POLICY employee_documents_own_update[\s\S]+?CREATE POLICY employee_documents_own_delete/);
   assert.match(runner, /Existing non-profile employee-document owner upload, overwrite, and delete behavior is preserved/);
   assert.match(runner, /Profile certificate paths cannot bypass tenant\/format, overwrite, or linked-delete checks while orphan cleanup remains available/);
+  assert.match(runner, /Profile certificate SELECT enforces the document tenant for authorized HR reviewers/);
+  assert.match(parity, /employee_profile_certificate_select_namespace_guard/);
   assert.match(parity, /employee_profile_certificate_insert_namespace_guard/);
   assert.match(parity, /employee_profile_certificate_update_namespace_guard/);
   assert.match(parity, /employee_profile_certificate_delete_namespace_guard/);
