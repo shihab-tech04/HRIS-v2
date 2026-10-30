@@ -26,6 +26,12 @@
   }
 }
 
+/* Contain the wide Admin preview table's scroll area so it cannot widen the
+   page on mobile; the table remains horizontally scrollable inside its region. */
+div.overflow-x-auto:has(> table[class*="min-w-[1040px]"]) {
+  contain: paint;
+}
+
 /* Figma node 17:28321 separates its report header from the first row by 17px;
    data rows and the Attendance Information table retain their 6px gutters. */
 .aggregate-attendance-table tbody::before {
