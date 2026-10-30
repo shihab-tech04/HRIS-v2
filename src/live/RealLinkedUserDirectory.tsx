@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { loadRealLinkedUserPage } from './realUserDirectoryApi';
 import type { RealLinkedUserPage } from './realUserDirectoryApi';
 import type { Locale } from './project-locale';
@@ -91,7 +92,7 @@ export function RealLinkedUserDirectory({ tenantId, tenantName, locale }: {
   }, [tenantId, page, nameSearch, revision]);
 
   const visible = response?.tenantId === tenantId ? response : null;
-  function submit(event: React.FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPage(0);
     setNameSearch(nameInput);
