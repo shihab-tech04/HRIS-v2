@@ -8,7 +8,7 @@ test('generated preview users have complete reserved emails, unique IDs and expl
   const user = generateSyntheticPreviewUser({ ...input, makeCode: () => 'F02C81' });
   assert.equal(user.userId, 'USR-F02C81');
   assert.equal(user.employeeId, 'EMP-F02C81');
-  assert.match(user.email, /^[a-z0-9.]+\\.[a-f0-9]{6}@example\\.com$/);
+  assert.match(user.email, /^[a-z0-9.]+\.[a-f0-9]{6}@example\.com$/);
   assert.equal(PREVIEW_EMAIL_DOMAIN, 'example.com');
   assert.equal(user.status, 'active');
   assert.equal(user.persistence, 'preview');
