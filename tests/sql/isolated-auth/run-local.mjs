@@ -1120,6 +1120,24 @@ const profileCertificateOwnerDownload = await employeeA.client.storage
   .from('employee-documents').download(profileCertificatePath);
 const profileCertificateForeignDownload = await employeeB.client.storage
   .from('employee-documents').download(profileCertificatePath);
+// Profile certificate SELECT must verify the tenant embedded in the storage
+// path, not merely employees.view on the reviewer's currently active tenant.
+// Use a real tenant-B object so the negative test cannot pass from a 404.
+const tenantBCertificatePath = employeeB.userId + '/' + ids.tenantB + '/profile-certificates/' + randomUUID() + '.pdf';
+const tenantBCertificateUpload = await employeeB.client.storage.from('employee-documents').upload(
+  tenantBCertificatePath, new Blob(['%PDF-1.4\nSynthetic tenant-B certificate\n'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!tenantBCertificateUpload.error) employeeDocumentStoragePaths.push(tenantBCertificatePath);
+const profileCertificateSameTenantReviewer = await employeesViewer.client.storage
+  .from('employee-documents').download(profileCertificatePath);
+const tenantBCertificateOwnerDownload = await employeeB.client.storage
+  .from('employee-documents').download(tenantBCertificatePath);
+const tenantBCertificateForeignReviewer = await employeesViewer.client.storage
+  .from('employee-documents').download(tenantBCertificatePath);
+const tenantBCertificateForeignSigned = await employeesViewer.client.storage
+  .from('employee-documents').createSignedUrl(tenantBCertificatePath, 60);
+
 const profileCertificationPath = employeeA.userId + '/' + ids.tenantA + '/profile-certificates/' + randomUUID() + '.png';
 const profileCertificationUpload = await employeeA.client.storage.from('employee-documents').upload(
   profileCertificationPath, new Blob([new Uint8Array([137,80,78,71,13,10,26,10])], { type: 'image/png' }),
@@ -1209,6 +1227,18 @@ record('E02 v1 training certificate upload is owner and tenant scoped, persists 
     foreignDownload: profileCertificateForeignDownload.error?.message || 'denied',
     invalidYear: invalidTraining.error?.code, crossTenant: profileCrossTenantEducation.error?.code,
     otherEmployee: profileOtherEmployeeUpdate.error?.code }));
+
+record('Profile certificate SELECT enforces the document tenant for authorized HR reviewers',
+  !tenantBCertificateUpload.error
+    && !profileCertificateSameTenantReviewer.error
+    && !tenantBCertificateOwnerDownload.error
+    && Boolean(tenantBCertificateForeignReviewer.error)
+    && Boolean(tenantBCertificateForeignSigned.error),
+  JSON.stringify({ tenantBUpload: tenantBCertificateUpload.error?.message || 'ok',
+    sameTenantHRRead: profileCertificateSameTenantReviewer.error?.message || 'ok',
+    ownerBRead: tenantBCertificateOwnerDownload.error?.message || 'ok',
+    foreignTenantHRRead: tenantBCertificateForeignReviewer.error?.message || 'denied',
+    foreignTenantHRSignedUrl: tenantBCertificateForeignSigned.error?.message || 'denied' }));
 
 record('Profile certificate paths cannot bypass tenant/format, overwrite, or linked-delete checks while orphan cleanup remains available',
   Boolean(malformedProfileCertificateUpload.error)
