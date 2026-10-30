@@ -24,6 +24,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
+      - name: Checkout the exact Candidate source required by repository contract tests
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          expected_sha='39d07585c854709f5c16b2712a6634da386c5c4d'
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
+          actual_sha="$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)"
+          test "$actual_sha" = "$expected_sha"
       - name: Match required exact-source checks
         run: |
           npm install --include=optional --no-audit --no-fund
