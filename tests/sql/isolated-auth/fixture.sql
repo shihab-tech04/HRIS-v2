@@ -230,8 +230,24 @@ CREATE TABLE public.employees (
   shift_id uuid REFERENCES public.shifts(id),
   employee_number text NOT NULL,
   full_name text NOT NULL,
+  preferred_name text,
   official_email text NOT NULL,
   personal_email text,
+  date_of_birth date,
+  father_name text,
+  mother_name text,
+  birthplace text,
+  blood_group text,
+  religion text,
+  nationality text,
+  marital_status text,
+  nid_number text,
+  passport_number text,
+  etin_number text,
+  bank_account_name text,
+  bank_branch_name text,
+  bank_routing_number text,
+  work_location_id uuid,
   phone text,
   official_phone text,
   address text,
@@ -273,7 +289,7 @@ GRANT TRUNCATE, TRIGGER, REFERENCES ON public.employee_documents TO authenticate
 -- Synthetic copy of the hosted family table. Its first policy intentionally
 -- mirrors the legacy global permission rule that the migration must replace.
 CREATE TABLE public.employee_family_members (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL REFERENCES public.employees(id),
   name text NOT NULL,
   relationship text,
@@ -291,6 +307,73 @@ CREATE TABLE public.employee_family_members (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 GRANT SELECT ON public.employee_family_members TO authenticated;
+
+-- Source-backed Employee Profile tables used by the tenant-scoped profile RPCs.
+CREATE TABLE public.employee_education (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  education_level text,
+  subject_major text,
+  degree_title text,
+  institution text NOT NULL,
+  result_type text,
+  result text,
+  starting_year integer,
+  passing_year integer,
+  duration text,
+  achievements text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.employee_experience (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  company text NOT NULL,
+  role_title text NOT NULL,
+  department text,
+  office_address text,
+  joining_date date,
+  departure_date date,
+  currently_working boolean NOT NULL DEFAULT false,
+  total_duration text,
+  description text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.employee_training (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  title text NOT NULL,
+  institute_name text NOT NULL,
+  training_number text,
+  start_date date,
+  end_date date,
+  year text,
+  duration text,
+  summary text,
+  certificate_url text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.employee_certifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL REFERENCES public.employees(id),
+  title text NOT NULL,
+  institute_name text,
+  issued_by text,
+  certification_number text,
+  license_number text,
+  issue_date date,
+  expiry_date date,
+  year text,
+  duration text,
+  summary text,
+  certificate_document_url text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.employee_compensation (
+  employee_id uuid PRIMARY KEY REFERENCES public.employees(id),
+  bank_name text,
+  bank_account_no text,
+  tax_identification_no text
+);
 
 -- Synthetic Learning & Development tables for the disposable local Auth suite.
 -- These mirror only the production columns used by the employee self-service flow.
@@ -517,7 +600,7 @@ CREATE TABLE public.notices (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.org_locations (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL, name text NOT NULL DEFAULT 'Synthetic location'
 );
 CREATE TABLE public.pay_periods (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
@@ -1433,6 +1516,31 @@ CREATE POLICY employee_documents_own_select ON storage.objects
     bucket_id='employee-documents'
     AND ((storage.foldername(name))[1]=(SELECT auth.uid())::text
       OR public.has_permission('employees.view') OR public.has_permission('employees.manage'))
+  );
+-- Mirror the replacement project's legacy permissive write policies. The
+-- profile-certificate guard migration must narrow only its reserved path
+-- namespace and preserve ordinary employee-document writes.
+DROP POLICY IF EXISTS employee_documents_own_insert ON storage.objects;
+CREATE POLICY employee_documents_own_insert ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+    AND public.employee_for_auth_user() IS NOT NULL
+  );
+DROP POLICY IF EXISTS employee_documents_own_update ON storage.objects;
+CREATE POLICY employee_documents_own_update ON storage.objects
+  FOR UPDATE TO authenticated USING (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+  ) WITH CHECK (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
+  );
+DROP POLICY IF EXISTS employee_documents_own_delete ON storage.objects;
+CREATE POLICY employee_documents_own_delete ON storage.objects
+  FOR DELETE TO authenticated USING (
+    bucket_id='employee-documents'
+    AND (storage.foldername(name))[1]=(SELECT auth.uid())::text
   );
 CREATE POLICY leave_evidence_employee_delete ON storage.objects
   FOR DELETE TO authenticated USING (

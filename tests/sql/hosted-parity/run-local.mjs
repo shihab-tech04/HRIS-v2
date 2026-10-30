@@ -30,6 +30,20 @@ const container = execFileSync('docker', [
 if (container !== `supabase_db_${path.basename(workdir)}`) {
   throw new Error('Refusing parity test: no matching disposable local Supabase Postgres container was found.');
 }
+const runDisposableSql = sql => execFileSync('docker', [
+  '--context', dockerContext, 'exec', '-i', container, 'psql',
+  '-X', '-A', '-t', '-q', '--set=ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres',
+], { input: sql, encoding: 'utf8' }).trim();
+const employeeDocumentsBucketPublic = runDisposableSql(
+  "SELECT public::text FROM storage.buckets WHERE id='employee-documents';",
+);
+if (employeeDocumentsBucketPublic === '') {
+  runDisposableSql(`INSERT INTO storage.buckets(id,name,public)
+    VALUES('employee-documents','employee-documents',false)
+    ON CONFLICT (id) DO NOTHING;`);
+} else if (employeeDocumentsBucketPublic !== 'false') {
+  throw new Error('Refusing parity test: the disposable employee-documents bucket must remain private.');
+}
 
 const legacyGuardRetirementSql = readFileSync(
   path.join(root, 'supabase/staging/hosted-legacy-notices/retire-legacy-security-guard.staging.sql'),
@@ -149,11 +163,11 @@ const output = execFileSync('docker', [
 ], { input: wrappedSql, encoding: 'utf8' }).trim();
 const rows = JSON.parse(output);
 const failures = (rows || []).filter((row) => row.passed !== true);
-if (!Array.isArray(rows) || rows.length !== 26 || failures.length) {
+if (!Array.isArray(rows) || rows.length !== 54 || failures.length) {
   const missing = failures.map((row) => `${row.kind}:${row.object}`).join(', ');
-  throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/26): ${missing || 'unexpected contract count'}`);
+  throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/54): ${missing || 'unexpected contract count'}`);
 }
-console.log(`Phase 04 SQL/API parity contract: ${rows.length}/26 passed on Auth-tested disposable schema.`);
+console.log(`Phase 04 SQL/API parity contract: ${rows.length}/54 passed on Auth-tested disposable schema.`);
 
 const hostedTransitionSql = readFileSync(
   path.join(root, 'supabase/staging/phase03/20261019_phase03_phase04_hosted_compatibility.staging.sql'),
