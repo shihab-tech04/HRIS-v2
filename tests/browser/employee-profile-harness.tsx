@@ -9,6 +9,7 @@ type FixtureClient = { rpc: (name: string, args: unknown) => Promise<FixtureResu
 declare global {
   interface Window {
     __profileFixtureCalls: Array<{ name: string; args: unknown }>;
+    __profileCertificateDownloads: Array<{ bucket: string; path: string }>;
   }
 }
 
@@ -46,6 +47,29 @@ const employee = state === 'synthetic' || state === 'tenant-switch' || state ===
   department_name: 'Synthetic Organization',
   team_name: 'Visual QA',
 } : {};
+
+// Synthetic Auth/Storage fixtures only. The production download still uses private Storage.
+const fixtureUserId = '00000000-0000-4000-8000-000000000001';
+const certDownloads: Window['__profileCertificateDownloads'] = [];
+window.__profileCertificateDownloads = certDownloads;
+Object.defineProperty(supabase.auth, 'getUser', {
+  configurable: true,
+  value: async () => ({ data: { user: { id: fixtureUserId } }, error: null }),
+});
+Object.defineProperty(supabase.storage, 'from', {
+  configurable: true,
+  value: (bucket: string) => ({
+    download: async (path: string) => {
+      certDownloads.push({ bucket, path });
+      if (query.get('certificate') === 'error') {
+        return { data: null, error: new Error('Synthetic private file unavailable') };
+      }
+      return { data: new Blob(['Synthetic private certificate'], { type: 'application/pdf' }), error: null };
+    },
+  }),
+});
+const trainingCertificatePath = `${fixtureUserId}/${query.get('certificate') === 'other-tenant' ? 'different-local-tenant' : tenantId}/profile-certificates/11111111-1111-4111-8111-111111111111.pdf`;
+const certificationDocumentPath = `${fixtureUserId}/${tenantId}/profile-certificates/22222222-2222-4222-8222-222222222222.png`;
 
 const client = supabase as unknown as FixtureClient;
 const calls: Window['__profileFixtureCalls'] = [];
@@ -112,12 +136,12 @@ Object.defineProperty(client, 'rpc', {
       training: state === 'synthetic' ? [{
         id: 'synthetic-training-id', title: 'Synthetic training', institute_name: 'QA Institute',
         training_number: 'TRAIN-001', year: '2024', duration: '3 days',
-        certificate_url: 'synthetic/profile-certificates/training.pdf',
+        certificate_url: trainingCertificatePath,
       }] : [],
       certifications: state === 'synthetic' ? [{
         id: 'synthetic-certification-id', title: 'Synthetic certification', institute_name: 'QA Board',
         issue_date: '2023-01-01', expiry_date: '2027-01-01',
-        certificate_document_url: 'synthetic/profile-certificates/certification.pdf',
+        certificate_document_url: certificationDocumentPath,
       }] : [],
       family_members: state === 'synthetic' && !deletedProfileRecords.has('family:synthetic-family-id') ? [{
         id: 'synthetic-family-id', name: 'Synthetic family member', phone: '+880 1700 000202',
