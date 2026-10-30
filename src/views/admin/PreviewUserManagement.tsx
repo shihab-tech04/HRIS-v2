@@ -73,6 +73,8 @@ export const PreviewUserManagement: React.FC = () => {
     setError('');
     try {
       if (users.length >= 200) throw new Error('This browser preview supports up to 200 users.');
+      if (!tenantRoles.some(role => role.id === roleId)) throw new Error('Select a current-tenant role.');
+      if (!tenantDepartments.some(item => item.name === department)) throw new Error('Select a current-tenant department.');
       const newUser = generateSyntheticPreviewUser({
         tenantId: currentTenant.id, roleId, department, designation, existingUsers: users,
         ...(fullName.trim() ? { name: fullName.trim() } : {}),
