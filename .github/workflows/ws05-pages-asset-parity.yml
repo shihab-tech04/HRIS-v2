@@ -4,6 +4,7 @@ on:
     branches:
       - work/ws05-free-tier-release-candidate-20261022
       - integration/ws05-main-final-review-20261022
+      - feat/ws06-employee-family-cert-reconciled-20261030
     paths-ignore:
       - 'assets/**'
       - 'index.html'
@@ -31,6 +32,7 @@ jobs:
       - name: Build the exact Pages asset set
         env:
           GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
         run: |
           npm run lint
           npm run build
@@ -46,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$GITHUB_REF" in
-            refs/heads/work/ws05-free-tier-release-candidate-20261022|refs/heads/integration/ws05-main-final-review-20261022) ;;
+            refs/heads/work/ws05-free-tier-release-candidate-20261022|refs/heads/integration/ws05-main-final-review-20261022|refs/heads/feat/ws06-employee-family-cert-reconciled-20261030) ;;
             *) echo "Not an approved WS05 branch; refuse generated asset commit"; exit 1 ;;
           esac
           git add -A -- package-lock.json index.html assets .nojekyll
