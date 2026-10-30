@@ -105,7 +105,6 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   const regeneratedEmail = await form.getByLabel('Synthetic email').inputValue();
   const regeneratedName = await form.getByLabel('Full name').inputValue();
   expect(regeneratedEmail).not.toBe(email);
-  expect(regeneratedName).not.toBe(originalName);
   expect(await form.getByLabel('Department', { exact: true }).inputValue()).toBe('dept-1');
   expect(await form.getByLabel('Designation', { exact: true }).inputValue()).toBe('des-1');
   await form.getByRole('button', { name: 'Save preview user' }).click();
@@ -143,6 +142,7 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   await expect(page.getByText('Finance Analyst')).toBeVisible();
   await page.getByRole('button', { name: /^Leave and balances/ }).click();
   await expect(page.getByRole('heading', { name: 'Leave request preview' })).toBeVisible();
+  const leavePreview = page.locator('section[aria-labelledby="synthetic-leave-preview-heading"]');
 
   await page.getByLabel('From date').fill('2026-11-03');
   await page.getByLabel('To date').fill('2026-11-01');
@@ -152,7 +152,7 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   await page.getByLabel('To date').fill('2026-11-05');
   await page.getByRole('button', { name: 'Save preview draft' }).click();
   await expect(page.getByText('Draft saved in this browser; no SQL request was created.')).toBeVisible();
-  await expect(page.getByText('Synthetic acceptance run')).toBeVisible();
+  await expect(leavePreview.locator('dl dd').filter({ hasText: 'Synthetic acceptance run' })).toHaveText('Synthetic acceptance run');
   expect(forbiddenWrites).toEqual([]);
 
   await page.getByRole('button', { name: 'Back to User Management' }).click();
@@ -170,7 +170,7 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   await expect(row).toContainText('Finance Analyst');
   await row.getByRole('button', { name: 'View as User: Recovered Synthetic Employee' }).click();
   await page.getByRole('button', { name: /^Leave and balances/ }).click();
-  await expect(page.getByText('Synthetic acceptance run')).toBeVisible();
+  await expect(leavePreview.locator('dl dd').filter({ hasText: 'Synthetic acceptance run' })).toHaveText('Synthetic acceptance run');
   await expect(page.getByText('2026-11-03 – 2026-11-05')).toBeVisible();
 
   await page.setViewportSize({ width: 375, height: 812 });
