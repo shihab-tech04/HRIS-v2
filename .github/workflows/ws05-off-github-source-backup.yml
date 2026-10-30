@@ -4,6 +4,7 @@ on:
     branches:
       - work/ws05-free-tier-release-candidate-20261022
       - integration/ws05-main-final-review-20261022
+      - backup/ws05-main-full-history-20261030
   workflow_dispatch:
 permissions:
   contents: read
