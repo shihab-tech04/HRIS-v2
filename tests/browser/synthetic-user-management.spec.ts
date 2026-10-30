@@ -134,11 +134,12 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   const profileDialog = page.getByRole('dialog', { name: 'Recovered Synthetic Employee' });
   await expect(profileDialog).toContainText('not loaded from SQL');
   await profileDialog.getByRole('button', { name: 'View as User', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'My overview' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My overview', level: 1 })).toBeVisible();
   await expect(page.getByText(/does not switch accounts/)).toBeVisible();
   await page.getByRole('button', { name: /^My profile/ }).click();
   await expect(page.getByRole('heading', { name: 'My profile' })).toBeVisible();
-  await expect(page.getByText('Recovered Synthetic Employee')).toBeVisible();
+  const employeeProfile = page.locator('section[aria-labelledby="synthetic-employee-profile-heading"]');
+  await expect(employeeProfile.getByText('Recovered Synthetic Employee', { exact: true })).toBeVisible();
   await expect(page.getByText('Finance Analyst')).toBeVisible();
   await page.getByRole('button', { name: /^Leave and balances/ }).click();
   await expect(page.getByRole('heading', { name: 'Leave request preview' })).toBeVisible();
@@ -192,7 +193,7 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   await form.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('row').filter({ hasText: regeneratedEmail })
     .getByRole('button', { name: 'View as User: Recovered Synthetic Employee' }).click();
-  await expect(page.getByRole('heading', { name: 'My overview' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My overview', level: 1 })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await page.getByRole('button', { name: 'Back to User Management' }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
