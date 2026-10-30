@@ -171,9 +171,18 @@ test('Admin completes the synthetic Employee journey, returns to Admin, and reco
   await page.getByRole('button', { name: /^Leave and balances/ }).click();
   await expect(page.getByText('Synthetic acceptance run')).toBeVisible();
   await expect(page.getByText('2026-11-03 – 2026-11-05')).toBeVisible();
-  await page.getByRole('button', { name: 'Back to User Management' }).click();
 
   await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  await expect(page.getByRole('heading', { name: 'ছুটির অনুরোধ প্রিভিউ' })).toBeVisible();
+  await expect(page.getByText(/এটি স্থানীয় প্রিভিউ খসড়া/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await page.getByRole('button', { name: 'Back to User Management' }).click();
+  await expect(page.getByRole('heading', { name: 'ব্যবহারকারী ব্যবস্থাপনা' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
+  await page.getByRole('button', { name: 'Switch language to English' }).click();
+  await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
+
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
   await page.getByRole('row').filter({ hasText: regeneratedEmail })
     .getByRole('button', { name: 'Edit user: Recovered Synthetic Employee' }).click();
