@@ -49,6 +49,8 @@ const employee = state === 'synthetic' || state === 'tenant-switch' || state ===
 
 const client = supabase as unknown as FixtureClient;
 const calls: Window['__profileFixtureCalls'] = [];
+// Only the disposable browser fixture tracks deleted rows; no production records are modified.
+const deletedProfileRecords = new Set<string>();
 window.__profileFixtureCalls = calls;
 Object.defineProperty(client, 'rpc', {
   configurable: true,
@@ -67,6 +69,17 @@ Object.defineProperty(client, 'rpc', {
       if (state === 'save-error') return { data: null, error: new Error('Synthetic profile request rejection') };
       return { data: 'synthetic-profile-request-id', error: null };
     }
+    if (name === 'employee_delete_my_profile_record_v1') {
+      if (query.get('delete') === 'error') {
+        return { data: null, error: new Error('Synthetic profile deletion rejection') };
+      }
+      const record = args as { p_kind?: string; p_record_id?: string };
+      if (!record.p_record_id || !['education', 'experience', 'family'].includes(record.p_kind || '')) {
+        return { data: null, error: new Error('Invalid synthetic profile record') };
+      }
+      deletedProfileRecords.add(`${record.p_kind}:${record.p_record_id}`);
+      return { data: true, error: null };
+    }
     if (name.startsWith('employee_save_my_')) return { data: 'synthetic-profile-row-id', error: null };
     if (name !== 'employee_get_my_profile_v1') return { data: null, error: new Error('Unexpected local fixture RPC') };
     if (state === 'loading') return new Promise<FixtureResult>(() => undefined);
@@ -82,13 +95,13 @@ Object.defineProperty(client, 'rpc', {
     return { data: {
       tenant_id: responseTenant,
       employee: responseEmployee,
-      education: state === 'synthetic' ? [{
+      education: state === 'synthetic' && !deletedProfileRecords.has('education:synthetic-education-id') ? [{
         id: 'synthetic-education-id', education_level: 'Bachelor', institution: 'Synthetic University',
         subject_major: 'Design', degree_title: 'Bachelor of Design', result_type: 'GPA', result: '3.8',
         currently_studying: false, starting_year: 2015, passing_year: 2019, duration: '4 years',
         achievements: 'Synthetic design award',
       }] : [],
-      experience: state === 'synthetic' ? [{
+      experience: state === 'synthetic' && !deletedProfileRecords.has('experience:synthetic-experience-id') ? [{
         id: 'synthetic-experience-id', role_title: 'Product Designer', company: 'Synthetic Studio',
         job_type: 'Full time', company_website: 'https://example.invalid', joining_date: '2020-01-01',
         departure_date: '2022-01-01', total_duration: '2 years', office_address: 'Synthetic office',
@@ -104,7 +117,7 @@ Object.defineProperty(client, 'rpc', {
         issue_date: '2023-01-01', expiry_date: '2027-01-01',
         certificate_document_url: 'synthetic/profile-certificates/certification.pdf',
       }] : [],
-      family_members: state === 'synthetic' ? [{
+      family_members: state === 'synthetic' && !deletedProfileRecords.has('family:synthetic-family-id') ? [{
         id: 'synthetic-family-id', name: 'Synthetic family member', phone: '+880 1700 000202',
         nid_number: 'synthetic-family-nid', date_of_birth: '1992-02-03', relationship: 'Sibling',
         present_address: 'Synthetic family present address', permanent_address: 'Synthetic family permanent address',
