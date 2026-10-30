@@ -1200,6 +1200,7 @@ const bengali: Record<string, string> = {
   'Birthplace': 'জন্মস্থান',
   'Blood group': 'রক্তের গ্রুপ',
   'Religion': 'ধর্ম',
+  'User management preview': 'ব্যবহারকারী ব্যবস্থাপনা প্রিভিউ',
   'hours': 'ঘণ্টা',
 };
 

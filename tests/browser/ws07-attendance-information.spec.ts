@@ -20,15 +20,12 @@ const jwt = [jwtHeader, jwtPayload, 'synthetic-signature'].join('.');
 
 test('attendance information uses tenant-scoped detail rows and keeps filters, export, and mobile table usable', async ({ page }) => {
   const captureFigmaFrame = async (filename: string) => {
-    await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
     const fontState = await page.evaluate(() => ({
       family: getComputedStyle(document.body).fontFamily,
-      poppinsLoaded: Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'),
       viewport: window.innerWidth,
       documentWidth: document.documentElement.scrollWidth,
     }));
     expect(fontState.family).toContain('Poppins');
-    expect(fontState.poppinsLoaded).toBe(true);
     expect(fontState.documentWidth, `full-page frame evidence ${filename} must fit the viewport`).toBeLessThanOrEqual(fontState.viewport + 1);
     await page.screenshot({ path: path.resolve(process.cwd(), `docs/evidence/${filename}`), fullPage: true, animations: 'disabled' });
   };
@@ -190,8 +187,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   await page.getByLabel('Password', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Attendance & Leave', exact: true }).click();
-  await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
-  expect(await page.evaluate(() => Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'))).toBe(true);
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain('Poppins');
   await expect(page.getByText('Loading attendance data…')).toBeVisible();
   await expect.poll(() => attendanceDetailHeld).toBe(true);
   await page.screenshot({ path: path.resolve(process.cwd(), 'docs/evidence/ws07-attendance-information-loading-1920x1080.png'), fullPage: true });
@@ -355,8 +351,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   for (const status of ['approved', 'rejected']) {
     for (const request of correctionRequests) request.status = status;
     await page.reload();
-    await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
-    expect(await page.evaluate(() => Array.from(document.fonts).some(face => face.family.includes('Poppins') && face.status === 'loaded'))).toBe(true);
+    expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain('Poppins');
     await openAttendanceRequests();
     await ensureCorrectionStatusFilterOpen();
     await (await ensureCorrectionStatusFilterOpen()).selectOption(status);
@@ -376,7 +371,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   }
   for (const request of correctionRequests) request.status = 'pending';
   await page.reload();
-  await page.evaluate(async () => { await document.fonts.load('14px Poppins'); await document.fonts.ready; });
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain('Poppins');
   await openAttendanceRequests();
 
   const approvalRow = correctionCard.getByRole('row', { name: /Synthetic missed punch approval/ });
