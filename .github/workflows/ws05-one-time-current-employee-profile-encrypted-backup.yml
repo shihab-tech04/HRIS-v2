@@ -1,0 +1,27 @@
+name: WS05 one-time replacement HRIS encrypted backup dispatch
+on:
+  push:
+    branches:
+      - backup/ws05-employee-profile-current-db-20261030
+    paths:
+      - .github/workflows/ws05-one-time-current-employee-profile-encrypted-backup.yml
+permissions:
+  contents: read
+  actions: write
+jobs:
+  verify-and-dispatch:
+    if: github.repository == 'shihab-tech04/HRIS-v2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify current protected source and request existing read-only export
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected=7fd2389fb32fe967cec503c34c1c8ec6fc9138aa
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)"
+          test "$actual" = "$expected" || { echo '::error::Main changed; no export dispatched'; exit 1; }
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/41087861491" --jq .conclusion)" = success
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/hris-step1-encrypted-db-export.yml/dispatches" -f ref=main -f 'inputs[session_pooler_host]=aws-0-ap-northeast-2.pooler.supabase.com'
+          echo 'Requested existing protected Main read-only encrypted pg_dump; no hosted schema or user modifications'
