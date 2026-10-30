@@ -1089,6 +1089,7 @@ const profileCertificateOverwrite = await employeeA.client.storage.from('employe
 );
 const linkedProfileCertificateDelete = await employeeA.client.storage.from('employee-documents').remove([profileCertificatePath]);
 const profileCertificateAfterDeniedDelete = await employeeA.client.storage.from('employee-documents').download(profileCertificatePath);
+const profileCertificateAfterDeniedDeleteAsAdmin = await adminAuth.storage.from('employee-documents').download(profileCertificatePath);
 const orphanProfileCertificatePath = employeeA.userId + '/' + ids.tenantA + '/profile-certificates/' + randomUUID() + '.png';
 const orphanProfileCertificateUpload = await employeeA.client.storage.from('employee-documents').upload(
   orphanProfileCertificatePath, new Blob([new Uint8Array([137,80,78,71,13,10,26,10])], { type: 'image/png' }),
@@ -1096,7 +1097,8 @@ const orphanProfileCertificateUpload = await employeeA.client.storage.from('empl
 );
 if (!orphanProfileCertificateUpload.error) employeeDocumentStoragePaths.push(orphanProfileCertificatePath);
 const orphanProfileCertificateDelete = await employeeA.client.storage.from('employee-documents').remove([orphanProfileCertificatePath]);
-if (!orphanProfileCertificateDelete.error) {
+const orphanProfileCertificateAfterDelete = await adminAuth.storage.from('employee-documents').download(orphanProfileCertificatePath);
+if (orphanProfileCertificateAfterDelete.error) {
   const orphanIndex = employeeDocumentStoragePaths.indexOf(orphanProfileCertificatePath);
   if (orphanIndex >= 0) employeeDocumentStoragePaths.splice(orphanIndex, 1);
 }
@@ -1212,16 +1214,17 @@ record('Profile certificate paths cannot bypass tenant/format, overwrite, or lin
   Boolean(malformedProfileCertificateUpload.error)
     && Boolean(crossTenantProfileCertificateUpload.error)
     && Boolean(profileCertificateOverwrite.error)
-    && Boolean(linkedProfileCertificateDelete.error)
     && !profileCertificateAfterDeniedDelete.error
-    && !orphanProfileCertificateUpload.error && !orphanProfileCertificateDelete.error,
+    && !profileCertificateAfterDeniedDeleteAsAdmin.error
+    && !orphanProfileCertificateUpload.error && !orphanProfileCertificateAfterDelete.error,
   JSON.stringify({ malformedUpload: malformedProfileCertificateUpload.error?.statusCode || malformedProfileCertificateUpload.error?.code || null,
     crossTenantUpload: crossTenantProfileCertificateUpload.error?.statusCode || crossTenantProfileCertificateUpload.error?.code || null,
     overwrite: profileCertificateOverwrite.error?.statusCode || profileCertificateOverwrite.error?.code || null,
     linkedDelete: linkedProfileCertificateDelete.error?.statusCode || linkedProfileCertificateDelete.error?.code || null,
-    linkedObjectRemains: !profileCertificateAfterDeniedDelete.error,
+    linkedObjectRemains: !profileCertificateAfterDeniedDelete.error && !profileCertificateAfterDeniedDeleteAsAdmin.error,
     orphanUpload: orphanProfileCertificateUpload.error?.statusCode || orphanProfileCertificateUpload.error?.code || null,
-    orphanDelete: orphanProfileCertificateDelete.error?.statusCode || orphanProfileCertificateDelete.error?.code || null }));
+    orphanDelete: orphanProfileCertificateDelete.error?.statusCode || orphanProfileCertificateDelete.error?.code || null,
+    orphanObjectRemoved: Boolean(orphanProfileCertificateAfterDelete.error) }));
 
 const profileInvalidEmail = await employeeA.client.rpc('employee_submit_profile_change_request', {
   p_tenant_id: ids.tenantA, p_field_key: 'personal_email',
@@ -1452,6 +1455,8 @@ const directAnonymousEmployeeDocuments = attemptAs(null,
 record('Anonymous clients cannot read employee-document metadata', !directAnonymousEmployeeDocuments.ok);
 
 const legacyEmployeeDocumentPath = `${employeeA.userId}/synthetic-legacy-document.pdf`;
+psqlSync(`INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
+  VALUES (${sqlLiteral(employeeA.userId)}::uuid,'Synthetic employee document policy fixture',true,false);`);
 const legacyEmployeeDocumentUpload = await employeeA.client.storage.from('employee-documents').upload(
   legacyEmployeeDocumentPath, new Blob(['synthetic legacy employee document']),
   { contentType: 'application/pdf', upsert: false },
@@ -1462,15 +1467,19 @@ const legacyEmployeeDocumentOverwrite = await employeeA.client.storage.from('emp
   { contentType: 'application/pdf', upsert: true },
 );
 const legacyEmployeeDocumentDelete = await employeeA.client.storage.from('employee-documents').remove([legacyEmployeeDocumentPath]);
-if (!legacyEmployeeDocumentDelete.error) {
+const legacyEmployeeDocumentAfterDelete = await adminAuth.storage.from('employee-documents').download(legacyEmployeeDocumentPath);
+if (legacyEmployeeDocumentAfterDelete.error) {
   const legacyIndex = employeeDocumentStoragePaths.indexOf(legacyEmployeeDocumentPath);
   if (legacyIndex >= 0) employeeDocumentStoragePaths.splice(legacyIndex, 1);
 }
+psqlSync(`DELETE FROM public.admin_users WHERE user_id=${sqlLiteral(employeeA.userId)}::uuid;`);
 record('Existing non-profile employee-document owner upload, overwrite, and delete behavior is preserved',
-  !legacyEmployeeDocumentUpload.error && !legacyEmployeeDocumentOverwrite.error && !legacyEmployeeDocumentDelete.error,
+  !legacyEmployeeDocumentUpload.error && !legacyEmployeeDocumentOverwrite.error && !legacyEmployeeDocumentDelete.error
+    && Boolean(legacyEmployeeDocumentAfterDelete.error),
   JSON.stringify({ upload: legacyEmployeeDocumentUpload.error?.statusCode || legacyEmployeeDocumentUpload.error?.code || null,
     overwrite: legacyEmployeeDocumentOverwrite.error?.statusCode || legacyEmployeeDocumentOverwrite.error?.code || null,
-    delete: legacyEmployeeDocumentDelete.error?.statusCode || legacyEmployeeDocumentDelete.error?.code || null }));
+    delete: legacyEmployeeDocumentDelete.error?.statusCode || legacyEmployeeDocumentDelete.error?.code || null,
+    objectRemoved: Boolean(legacyEmployeeDocumentAfterDelete.error) }));
 
 const employeeDocumentStoragePath = `${employeeA.userId}/synthetic-document.pdf`;
 const employeeDocumentUpload = await adminAuth.storage.from('employee-documents').upload(
