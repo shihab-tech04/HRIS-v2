@@ -28,7 +28,7 @@ const words = {
     nid_number: 'NID number', passport_number: 'Passport', etin_number: 'E-TIN', tax_circle: 'Tax Circle', phone: 'Phone number',
     official_email: 'Official email', personal_email: 'Personal email', official_phone: 'Official phone number',
     male: 'Male', female: 'Female', other: 'Other',
-    address: 'Present address', mailing_address: 'Permanent address',
+    address: 'Present address', mailing_address: 'Permanent address', sameAsPresentAddress: 'Same as present address',
     emergency_contact_name: 'Emergency contact name', emergency_contact_phone: 'Emergency contact phone',
     emergency_contact_relation: 'Emergency contact relation',
     education_level: 'Level of education', institution: 'Institution name', subject_major: 'Subject/Major/Concentration',
@@ -64,7 +64,7 @@ const words = {
     nid_number: 'জাতীয় পরিচয়পত্র নম্বর', passport_number: 'পাসপোর্ট', etin_number: 'ই-টিন', tax_circle: 'কর সার্কেল', phone: 'ফোন নম্বর',
     official_email: 'অফিসিয়াল ইমেইল', personal_email: 'ব্যক্তিগত ইমেইল', official_phone: 'অফিসিয়াল ফোন নম্বর',
     male: 'পুরুষ', female: 'নারী', other: 'অন্যান্য',
-    address: 'বর্তমান ঠিকানা', mailing_address: 'স্থায়ী ঠিকানা',
+    address: 'বর্তমান ঠিকানা', mailing_address: 'স্থায়ী ঠিকানা', sameAsPresentAddress: 'বর্তমান ঠিকানার মতোই',
     emergency_contact_name: 'জরুরি যোগাযোগের নাম', emergency_contact_phone: 'জরুরি যোগাযোগের ফোন',
     emergency_contact_relation: 'জরুরি যোগাযোগের সম্পর্ক',
     education_level: 'শিক্ষার স্তর', institution: 'প্রতিষ্ঠানের নাম', subject_major: 'বিষয়/মেজর/বিশেষায়ন',
@@ -123,6 +123,7 @@ const recordFields: Record<Exclude<ProfileEditKind, 'request-personal' | 'reques
     { id:'phone',label:'phone',type:'tel',required:true,max:32 }, { id:'nid_number',label:'nid_number',required:true,max:100 },
     { id:'date_of_birth',label:'date_of_birth',type:'date',required:true }, { id:'relationship',label:'relationship',required:true,max:120 },
     { id:'present_address',label:'present_address',required:true,max:500 }, { id:'permanent_address',label:'permanent_address',required:true,max:500 },
+    { id:'same_as_present_address',label:'sameAsPresentAddress',type:'address-copy' },
   ],
   bank: [
     { id:'bank_name',label:'bank_name',required:true,max:200,wide:true }, { id:'account_name',label:'account_name',required:true,max:200 }, { id:'account_number',label:'account_number',required:true,max:64 },
@@ -158,6 +159,7 @@ export function EmployeeProfileEditModal({
   }));
   const [selectedField, setSelectedField] = useState(initialRequestField);
   const [file, setFile] = useState<File | null>(null);
+  const [copyPresentAddress, setCopyPresentAddress] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -165,7 +167,9 @@ export function EmployeeProfileEditModal({
   useEffect(() => { titleRef.current?.focus(); }, []);
 
   function setValue(field: string, value: string | boolean) {
-    setValues(current => ({ ...current, [field]: value }));
+    setValues(current => ({ ...current, [field]: value,
+      ...(kind === 'family' && copyPresentAddress && field === 'present_address' ? { permanent_address: value } : {}),
+    }));
   }
 
   async function uploadCertificate(): Promise<string | undefined> {
@@ -212,7 +216,7 @@ export function EmployeeProfileEditModal({
       } else {
         const payload: Record<string, unknown> = Object.fromEntries(
           recordFields[recordKind!]
-            .filter(field => field.type !== 'file')
+            .filter(field => field.type !== 'file' && field.type !== 'address-copy')
             .map(field => [field.id, field.type === 'checkbox'
               ? values[field.id] === true || values[field.id] === 'true'
               : values[field.id] ?? '']),
@@ -300,6 +304,17 @@ export function EmployeeProfileEditModal({
               className="min-h-20 rounded border border-[#DEE0E3] px-3 py-2 text-base text-[#424242]" />
           </label>
         </> : recordFields[recordKind!].map(field => {
+          if (field.type === 'address-copy') return <label key={field.id} className="flex min-h-11 items-center gap-3 text-sm text-[#777] sm:col-span-2">
+            <input type="checkbox" aria-label={t.sameAsPresentAddress} checked={copyPresentAddress}
+              onChange={event => {
+                const checked = event.target.checked;
+                setCopyPresentAddress(checked);
+                if (checked) setValues(current => ({
+                  ...current, permanent_address: String(current.present_address ?? ''),
+                }));
+              }} className="h-4 w-4 accent-[#08558B]" />
+            {t.sameAsPresentAddress}
+          </label>;
           if (field.type === 'checkbox') return <label key={field.id} className="flex min-h-12 items-center gap-3 rounded border border-[#DEE0E3] px-4 text-sm text-[#777] sm:col-span-2">
             <input type="checkbox" checked={values[field.id] === true || values[field.id] === 'true'}
               onChange={event => setValue(field.id,event.target.checked)} className="h-4 w-4 accent-[#08558B]" />
@@ -320,7 +335,7 @@ export function EmployeeProfileEditModal({
             {renderLabel(field.label,field.required)}
             <input type={inputType} required={field.required} maxLength={field.max}
               min={isDate ? minDate : field.min} max={isDate ? undefined : field.maxNumber}
-              disabled={field.id==='passing_year' && (values.currently_studying === true || values.currently_studying === 'true')}
+              disabled={(field.id==='passing_year' && (values.currently_studying === true || values.currently_studying === 'true')) || (kind === 'family' && field.id === 'permanent_address' && copyPresentAddress)}
               value={isDate ? String(values[field.id] || '') : String(values[field.id] ?? '')}
               onChange={event => setValue(field.id,event.target.value)}
               className="min-h-11 min-w-0 rounded border border-[#DEE0E3] bg-white px-3 text-base text-[#424242] disabled:bg-slate-100" />
