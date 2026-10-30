@@ -135,6 +135,8 @@ const copy = {
     reveal: 'View',
     hide: 'Hide',
     certificateAttached: 'Certificate attached',
+    downloadCertificate: 'Download certificate', certificateLoading: 'Downloading…',
+    certificateFailed: 'The certificate could not be downloaded. Try again.',
     familyMemberName: 'Family Member',
     nomineeStatus: 'Nominee',
     trainingNumber: 'Training Number',
@@ -254,6 +256,8 @@ const copy = {
     reveal: 'দেখুন',
     hide: 'লুকান',
     certificateAttached: 'সনদ সংযুক্ত আছে',
+    downloadCertificate: 'সনদ ডাউনলোড করুন', certificateLoading: 'ডাউনলোড হচ্ছে…',
+    certificateFailed: 'সনদ ডাউনলোড করা যায়নি। আবার চেষ্টা করুন।',
     familyMemberName: 'পরিবারের সদস্য',
     nomineeStatus: 'মনোনীত ব্যক্তি',
     trainingNumber: 'প্রশিক্ষণ নম্বর',
@@ -275,6 +279,55 @@ function DetailRows({ fields }: { fields: DetailField[] }) {
       <dd className="min-w-0 break-words text-sm text-[#424242] sm:text-base">{field.value}</dd>
     </div>)}
   </dl>;
+}
+
+function CertificateDownload({
+  path, tenantId, locale,
+}: { path: string; tenantId: string; locale: Locale }) {
+  const t = copy[locale === 'bn' ? 'bn' : 'en'];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function download() {
+    if (busy) return;
+    setBusy(true);
+    setError(false);
+    try {
+      const { data: session, error: authError } = await supabase.auth.getUser();
+      if (authError || !session.user) throw new Error('No authorized employee session');
+      // Never pass an arbitrary URL or another tenant's object key to private Storage.
+      const pieces = path.split('/');
+      const leaf = pieces[3] || '';
+      const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(pdf|png|jpg|jpeg)$/.exec(leaf);
+      if (pieces.length !== 4 || pieces[0] !== session.user.id
+          || pieces[1] !== tenantId || pieces[2] !== 'profile-certificates' || !match) {
+        throw new Error('Certificate path is outside this employee and organization');
+      }
+      const result = await supabase.storage.from('employee-documents').download(path);
+      if (result.error || !result.data) throw new Error('Private certificate retrieval denied');
+      const url = URL.createObjectURL(result.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `employee-certificate.${match[2]}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Keep the object URL briefly for browsers that start downloads asynchronously.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <div className="inline-flex min-w-0 flex-wrap items-center gap-2">
+    <button type="button" disabled={busy} onClick={() => void download()}
+      className="inline-flex min-h-10 items-center rounded border border-[var(--color-brand-primary)] px-3 py-2 text-sm text-[var(--color-brand-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-primary)] disabled:opacity-60">
+      {busy ? t.certificateLoading : t.downloadCertificate}
+    </button>
+    {error && <p role="alert" className="text-sm text-red-700">{t.certificateFailed}</p>}
+  </div>;
 }
 
 function IconTile({ children }: { children: ReactNode }) {
@@ -491,14 +544,16 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     { id:'training-number',label:words.trainingNumber,value:profileRecordValue(record,'training_number') },
     { id:'training-year',label:words.yearOfHeld,value:profileRecordValue(record,'year') },
     { id:'training-duration',label:words.duration,value:profileRecordValue(record,'duration') },
-    { id:'training-certificate',label:words.certificate,value:record.certificate_url ? words.certificateAttached : unavailable },
+    { id:'training-certificate',label:words.certificate,value:typeof record.certificate_url === 'string' && record.certificate_url
+      ? <CertificateDownload path={record.certificate_url} tenantId={tenantId} locale={locale} /> : unavailable },
   ];
   const certificationFields = (record: Profile): DetailField[] => [
     { id:'certification-name',label:words.trainingName,value:profileRecordValue(record,'title') },
     { id:'certification-organization',label:words.organizationName,value:profileRecordValue(record,'institute_name') },
     { id:'certification-start-date',label:words.startDate,value:profileRecordValue(record,'issue_date') },
     { id:'certification-end-date',label:words.endDate,value:profileRecordValue(record,'expiry_date') },
-    { id:'certification-document',label:words.certificate,value:record.certificate_document_url ? words.certificateAttached : unavailable },
+    { id:'certification-document',label:words.certificate,value:typeof record.certificate_document_url === 'string' && record.certificate_document_url
+      ? <CertificateDownload path={record.certificate_document_url} tenantId={tenantId} locale={locale} /> : unavailable },
   ];
   const bankRecord = currentTenant && profile?.bank && typeof profile.bank === 'object' && !Array.isArray(profile.bank)
     ? profile.bank as Profile : null;
