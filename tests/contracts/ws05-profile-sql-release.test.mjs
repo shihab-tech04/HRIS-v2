@@ -24,7 +24,7 @@ test('remote migration catalogue is preserved and exactly two source files can b
   const copied = [...workflow.matchAll(/^\s*cp supabase\/migrations\/(\d{14}_[a-z0-9_]+[.]sql)/gm)]
     .map(m => m[1]);
   assert.deepEqual(copied, profileSql);
-  assert.match(workflow, /schema_migrations\.schema_migrations ORDER BY version/);
+  assert.match(workflow, /supabase_migrations\.schema_migrations ORDER BY version/);
   assert.match(workflow, /before\.tsv/);
   assert.match(workflow, /wc -l/);
   assert.match(workflow, /-eq 131/);
