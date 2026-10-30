@@ -265,3 +265,73 @@ test('E02-09 displays the authorized employee work details without leaking priva
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   }
 });
+
+
+test('WS04 delete cancellation and confirmation preserve owner/tenant parameters and refresh each section', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=en');
+  const cases = [
+    { tab: 'Personal & Educational Information', button: 'Delete Education Information 1',
+      id: 'synthetic-education-id', kind: 'education', value: 'Synthetic University' },
+    { tab: 'Work Experience', button: 'Delete Work Experience 1',
+      id: 'synthetic-experience-id', kind: 'experience', value: 'Synthetic Studio' },
+    { tab: 'Family & Nominee', button: 'Delete Family & Nominee Information 1',
+      id: 'synthetic-family-id', kind: 'family', value: 'Synthetic family member' },
+  ] as const;
+  for (const [index, item] of cases.entries()) {
+    await page.getByRole('tab', { name: item.tab }).click();
+    const panel = page.getByRole('tabpanel', { name: item.tab });
+    await expect(panel.getByText(item.value)).toBeVisible();
+    await panel.getByRole('button', { name: item.button }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Delete this profile record?');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(panel.getByText(item.value)).toBeVisible();
+    expect(await page.evaluate(() => window.__profileFixtureCalls.filter(call =>
+      call.name === 'employee_delete_my_profile_record_v1').length)).toBe(index);
+    await panel.getByRole('button', { name: item.button }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(panel.getByText(item.value)).toHaveCount(0);
+    await expect(page.getByText('The profile record was deleted.')).toBeVisible();
+    const lastCall = await page.evaluate(() => window.__profileFixtureCalls
+      .filter(call => call.name === 'employee_delete_my_profile_record_v1').at(-1));
+    expect(lastCall).toMatchObject({
+      name: 'employee_delete_my_profile_record_v1',
+      args: { p_tenant_id: 'local-visual-tenant', p_kind: item.kind, p_record_id: item.id },
+    });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  }
+});
+
+test('WS04 delete failure is recoverable without losing confirmation or removing data early', async ({ page }) => {
+  await page.goto('/tests/browser/employee-profile-harness.html?state=delete-error&locale=en');
+  await page.getByRole('button', { name: 'Delete Education Information 1' }).click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('The record could not be deleted. Try again.');
+  await expect(page.getByText('Synthetic University')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText('Synthetic University')).toHaveCount(0);
+  const calls = await page.evaluate(() => window.__profileFixtureCalls
+    .filter(call => call.name === 'employee_delete_my_profile_record_v1'));
+  expect(calls).toHaveLength(2);
+});
+
+test('WS04 Bengali mobile delete confirmation and cancellation remain localized', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=synthetic&locale=bn');
+  await page.getByRole('tab', { name: 'পরিবার ও মনোনীত ব্যক্তি' }).click();
+  const deleteButton = page.getByRole('tabpanel', { name: 'পরিবার ও মনোনীত ব্যক্তি' })
+    .getByRole('button', { name: /মুছুন/ });
+  await deleteButton.click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('প্রোফাইলের এই তথ্যটি মুছে ফেলবেন?');
+  await dialog.getByRole('button', { name: 'বাতিল' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => window.__profileFixtureCalls.some(call =>
+    call.name === 'employee_delete_my_profile_record_v1'))).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+});
