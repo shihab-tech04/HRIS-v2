@@ -354,3 +354,46 @@ test('profile delete retry succeeds after a transient Bengali RPC error', async 
     && (call.args as { p_kind?: string }).p_kind === 'family'
     && (call.args as { p_record_id?: string }).p_record_id === 'synthetic-family-id')).toBe(true);
 });
+
+test('family address copy supports selection, unselection and EN/BN save without an extra SQL field', async ({ page }) => {
+  for (const locale of locales) {
+    for (const shouldKeepCopy of [true, false]) {
+      await page.setViewportSize({ width: 375, height: 900 });
+      await page.goto(`/tests/browser/employee-profile-harness.html?state=synthetic&locale=${locale}`);
+      await page.getByRole('tab', { name: locale === 'en' ? tabs[4] : 'পরিবার ও মনোনীত ব্যক্তি' }).click();
+      const editName = locale === 'en' ? 'Edit Family & Nominee Information 1' : 'সম্পাদনা পরিবার ও মনোনীত ব্যক্তির তথ্য 1';
+      await page.getByRole('button', { name: editName }).click();
+      const dialog = page.getByRole('dialog');
+      const present = dialog.getByLabel(locale === 'en' ? 'Present address' : 'বর্তমান ঠিকানা');
+      const permanent = dialog.getByLabel(locale === 'en' ? 'Permanent address' : 'স্থায়ী ঠিকানা');
+      const copy = dialog.getByRole('checkbox', { name: locale === 'en' ? 'Same as present address' : 'বর্তমান ঠিকানার মতোই' });
+
+      await expect(copy).not.toBeChecked();
+      await copy.check();
+      await expect(permanent).toBeDisabled();
+      await expect(permanent).toHaveValue('Synthetic family present address');
+      await present.fill('Changed synthetic present address');
+      await expect(permanent).toHaveValue('Changed synthetic present address');
+
+      if (!shouldKeepCopy) {
+        await copy.uncheck();
+        await expect(permanent).toBeEnabled();
+        await permanent.fill('Different synthetic permanent address');
+      }
+      await dialog.getByRole('button', { name: locale === 'en' ? 'Save' : 'সংরক্ষণ' }).click();
+      await expect(dialog).toHaveCount(0);
+      const saved = await page.evaluate(() => window.__profileFixtureCalls
+        .filter(call => call.name === 'employee_save_my_family_member_v1').at(-1));
+      expect(saved).toMatchObject({ args: {
+        p_tenant_id: 'local-visual-tenant',
+        p_payload: {
+          present_address: 'Changed synthetic present address',
+          permanent_address: shouldKeepCopy ? 'Changed synthetic present address' : 'Different synthetic permanent address',
+        },
+      } });
+      expect((saved?.args as { p_payload?: Record<string, unknown> })?.p_payload)
+        .not.toHaveProperty('same_as_present_address');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+    }
+  }
+});
