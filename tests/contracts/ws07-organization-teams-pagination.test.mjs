@@ -61,5 +61,5 @@ test('live Teams remains tenant-filtered, deterministically ordered, read-only, 
   assert.doesNotMatch(source, /\.limit\(500\)/);
   assert.doesNotMatch(source, /\.insert\s*\(|\.upsert\s*\(|\.update\s*\(|\.delete\s*\(|\.rpc\s*\(/);
   assert.match(source, /visibleTeams\.map\(team => \[team\.name, team\.code/);
-  assert.match(source, /requestId !== requestSequence\.current \|\| activeTenantId\.current !== tenantId/);
+  assert.match(source, /const isCurrent = \(\) => requestId === requestSequence\.current && activeTenantId\.current === tenantId/);
 });
