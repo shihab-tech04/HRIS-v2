@@ -265,6 +265,24 @@ CREATE TABLE public.employees (
   UNIQUE (tenant_id, official_email)
 );
 
+-- Exact current hosted structured-address columns; these are not new
+-- production schema fields. This local fixture is used only by disposable Auth
+-- acceptance for the tenant-explicit Employee Profile address RPC.
+CREATE TABLE public.employee_addresses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id uuid NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+  address_type text NOT NULL CHECK (address_type IN ('Present','Permanent','Other')),
+  district text,
+  thana text,
+  post_code text,
+  city_village text,
+  road_block_house text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.employee_addresses ENABLE ROW LEVEL SECURITY;
+-- No authenticated INSERT/UPDATE/DELETE or general direct SELECT grant:
+-- self-service access is exclusively through the audited profile RPCs.
+
 -- Synthetic copy of the production document metadata contract. The legacy
 -- global permission policy and excessive grants are deliberate so the
 -- tenant-read migration must close the same exposure in isolated acceptance.
