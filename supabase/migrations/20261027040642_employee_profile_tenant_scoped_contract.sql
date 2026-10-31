@@ -1,9 +1,9 @@
 -- WS02: restore the Employee Profile fields and mutations represented by the
 -- approved profile frames with explicit active-tenant/own-employee checks.
 -- Scalar employee corrections continue through the HR review queue. The
--- current profile address fields map to employees.address/mailing_address;
--- employee_addresses remains a separate structured model and is not written
--- by the Employee Profile screen.
+-- scalar corrections remain in employees.address/mailing_address;
+-- original structured address rows retain their separate existing table and
+-- get an explicit-tenant, owner-scoped read/save contract (no new fields).
 BEGIN;
 
 -- P1-01 original verification-form parity: tax circle is a separate field from E-TIN.
@@ -78,7 +78,7 @@ DECLARE
 BEGIN
   IF v_employee IS NULL THEN
     RETURN jsonb_build_object('tenant_id',p_tenant_id,'employee',NULL,
-      'education','[]'::jsonb,'experience','[]'::jsonb,'training','[]'::jsonb,
+      'addresses','[]'::jsonb,'education','[]'::jsonb,'experience','[]'::jsonb,'training','[]'::jsonb,
       'certifications','[]'::jsonb,'family_members','[]'::jsonb,'bank',NULL);
   END IF;
 
@@ -100,6 +100,15 @@ BEGIN
       'designation_title',ds.title,'department_name',d.name,'team_name',tm.name,
       'work_location_name',wl.name
     ),
+    'addresses',coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+        'id',a.id,'address_type',a.address_type,'district',a.district,
+        'thana',a.thana,'post_code',a.post_code,'city_village',a.city_village,
+        'road_block_house',a.road_block_house
+      ) ORDER BY CASE a.address_type WHEN 'Present' THEN 0 WHEN 'Permanent' THEN 1 ELSE 2 END,
+        a.created_at,a.id)
+      FROM public.employee_addresses a WHERE a.employee_id=e.id
+    ),'[]'::jsonb),
     'education',coalesce((
       SELECT jsonb_agg(jsonb_build_object(
         'id',x.id,'education_level',x.education_level,'institution',x.institution,
@@ -164,6 +173,97 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.employee_get_my_profile_v1(uuid) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.employee_get_my_profile_v1(uuid) TO authenticated;
+
+-- Structured employee addresses retain the already deployed row/field model.
+-- This is the tenant-explicit successor of the previous implicit-tenant writer.
+-- It never deletes an existing address by omission or alters scalar
+-- employees.address / employees.mailing_address correction-workflow fields.
+CREATE OR REPLACE FUNCTION public.employee_save_my_addresses_v1(
+  p_tenant_id uuid, p_rows jsonb
+)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $function$
+DECLARE
+  v_employee uuid := private.hris_profile_own_employee(p_tenant_id);
+  v_id uuid;
+  v_existing uuid;
+  v_seen uuid[] := '{}'::uuid[];
+  v_count integer := 0;
+  v_omitted integer;
+  v_type text;
+  r jsonb;
+BEGIN
+  IF v_employee IS NULL THEN
+    RAISE EXCEPTION 'Active employee record is required.' USING errcode='42501';
+  END IF;
+  IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array'
+     OR jsonb_array_length(p_rows) > 100 THEN
+    RAISE EXCEPTION 'Expected an array of up to 100 address records.' USING errcode='22023';
+  END IF;
+  PERFORM 1 FROM public.employees e
+    WHERE e.id=v_employee AND e.tenant_id=p_tenant_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Employee record not found in this tenant.' USING errcode='42501';
+  END IF;
+  FOR r IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+    IF jsonb_typeof(r) <> 'object' OR EXISTS (
+      SELECT 1 FROM jsonb_object_keys(r) AS k
+      WHERE k NOT IN (
+        'id','address_type','district','thana','post_code','city_village','road_block_house'
+      )
+    ) THEN
+      RAISE EXCEPTION 'Unsupported address fields.' USING errcode='22023';
+    END IF;
+    v_id := nullif(r->>'id','')::uuid;
+    v_type := coalesce(nullif(r->>'address_type',''),'Other');
+    IF v_type NOT IN ('Present','Permanent','Other') THEN
+      RAISE EXCEPTION 'Unsupported address type.' USING errcode='22023';
+    END IF;
+    IF v_id IS NOT NULL AND v_id=ANY(v_seen) THEN
+      RAISE EXCEPTION 'Duplicate address ID.' USING errcode='22023';
+    END IF;
+    IF v_id IS NULL THEN
+      INSERT INTO public.employee_addresses (
+        employee_id,address_type,district,thana,post_code,city_village,road_block_house
+      ) VALUES (
+        v_employee,v_type,nullif(r->>'district',''),nullif(r->>'thana',''),
+        nullif(r->>'post_code',''),nullif(r->>'city_village',''),
+        nullif(r->>'road_block_house','')
+      ) RETURNING id INTO v_id;
+    ELSE
+      SELECT a.id INTO v_existing FROM public.employee_addresses a
+      WHERE a.id=v_id AND a.employee_id=v_employee FOR UPDATE;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'Address row does not belong to current employee.' USING errcode='42501';
+      END IF;
+      UPDATE public.employee_addresses SET
+        address_type=CASE WHEN r ? 'address_type' THEN v_type ELSE address_type END,
+        district=CASE WHEN r ? 'district' THEN nullif(r->>'district','') ELSE district END,
+        thana=CASE WHEN r ? 'thana' THEN nullif(r->>'thana','') ELSE thana END,
+        post_code=CASE WHEN r ? 'post_code' THEN nullif(r->>'post_code','') ELSE post_code END,
+        city_village=CASE WHEN r ? 'city_village' THEN nullif(r->>'city_village','') ELSE city_village END,
+        road_block_house=CASE WHEN r ? 'road_block_house' THEN nullif(r->>'road_block_house','') ELSE road_block_house END
+      WHERE id=v_id AND employee_id=v_employee;
+    END IF;
+    v_seen := array_append(v_seen,v_id);
+    v_count := v_count+1;
+  END LOOP;
+  SELECT count(*) INTO v_omitted FROM public.employee_addresses a
+    WHERE a.employee_id=v_employee AND NOT (a.id=ANY(v_seen));
+  IF v_omitted <> 0 THEN
+    RAISE EXCEPTION 'Existing addresses cannot be removed by saving the list.' USING errcode='22023';
+  END IF;
+  INSERT INTO public.admin_audit_logs(actor_id,action,target_type,target_id,details)
+  VALUES(auth.uid(),'employee.profile.addresses.saved_v1','employee',v_employee::text,
+    jsonb_build_object('row_count',v_count,'preserved_ids',true,'tenant_id',p_tenant_id));
+  RETURN v_count;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.employee_save_my_addresses_v1(uuid,jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.employee_save_my_addresses_v1(uuid,jsonb)
+  TO authenticated;
 
 -- Extend the current one-field HR review workflow only to scalar fields that
 -- already exist in employees and appear in the approved Employee Profile UI.
