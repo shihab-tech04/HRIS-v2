@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useHRIS } from '../../context/HRISContext';
-import { X, Building2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Sidebar } from './Sidebar';
+import { activateModalFocusTrap } from '../../live/modal-focus';
 
 interface MobileNavProps {
   isOpen: boolean;
@@ -17,6 +18,16 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   onSelectTab,
 }) => {
   const { currentTenant, tenants, switchTenant } = useHRIS();
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return activateModalFocusTrap(drawerRef.current, {
+      onEscape: () => onCloseRef.current(),
+    });
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -31,6 +42,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
       {/* Drawer */}
       <div
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-label="Mobile Navigation"
@@ -55,10 +67,11 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
         {/* Tenant selector on mobile */}
         <div className="p-3 border-b border-slate-800 bg-slate-950/30">
-          <label className="text-[10px] text-slate-400 font-medium block mb-1 uppercase tracking-wider">
+          <label htmlFor="mobile-active-tenant" className="text-[10px] text-slate-400 font-medium block mb-1 uppercase tracking-wider">
             Active Tenant
           </label>
           <select
+            id="mobile-active-tenant"
             value={currentTenant.id}
             onChange={(e) => switchTenant(e.target.value)}
             className="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-md py-1.5 px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
