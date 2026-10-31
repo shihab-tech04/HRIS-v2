@@ -67,3 +67,12 @@ test('the actual HR11 screen uses a tenant-filtered stable page range with gener
   assert.match(manager, /setMoreJobsError\(locale === 'bn'/);
   assert.match(manager, /canManage && <button type="button" onClick=\{openCreate\}/);
 });
+
+test('WS05 merge reconciliation preserves HR03 Teams pagination alongside HR11 job circular paging', () => {
+  const teams = readFileSync(new URL('../../src/live/OrganizationTeams.tsx', import.meta.url), 'utf8');
+  const teamsHelper = readFileSync(new URL('../../src/live/organizationTeamsPages.mjs', import.meta.url), 'utf8');
+  assert.match(teams, /readAllOrganizationPages/);
+  assert.match(teamsHelper, /export async function readAllOrganizationPages/);
+  assert.match(manager, /fetchJobCircularPage/);
+  assert.match(manager, /appendUniqueJobCirculars/);
+});
