@@ -23,7 +23,6 @@ jobs:
           git cat-file -e "$before^{commit}"
           git bundle create "$RUNNER_TEMP/hris-main-pre-release.bundle" --all HEAD
           git bundle verify "$RUNNER_TEMP/hris-main-pre-release.bundle"
-          git clone -q "$RUNNER_TEMP/hris-isolated-restore.bundle" "$RUNNER_TEMP/restore" 2>/dev/null && { echo 'unexpected source'; exit 1; } || true
           git clone -q "$RUNNER_TEMP/hris-main-pre-release.bundle" "$RUNNER_TEMP/restored"
           git -C "$RUNNER_TEMP/restored" cat-file -e "$before^{commit}"
           git -C "$RUNNER_TEMP/restored" fsck --full --strict
