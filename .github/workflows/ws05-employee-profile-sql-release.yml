@@ -181,9 +181,10 @@ jobs:
               AND NOT has_table_privilege('authenticated','public.employee_bank_details','SELECT')
               AND (SELECT count(*) FROM pg_policies WHERE schemaname='storage'
                    AND tablename='objects' AND permissive='RESTRICTIVE'
-                   AND policyname IN ('employee_profile_certificate_insert_namespace_guard',
+                   AND policyname IN ('employee_profile_certificate_select_namespace_guard',
+                     'employee_profile_certificate_insert_namespace_guard',
                      'employee_profile_certificate_update_namespace_guard',
-                     'employee_profile_certificate_delete_namespace_guard')) = 3
+                     'employee_profile_certificate_delete_namespace_guard')) = 4
             THEN 'EMPLOYEE_PROFILE_SQL_PASS' ELSE 'EMPLOYEE_PROFILE_SQL_FAIL' END;")"
           test "$result" = 'EMPLOYEE_PROFILE_SQL_PASS' || {
             echo '::error::Hosted SQL/RLS/Storage acceptance failed'; exit 1;

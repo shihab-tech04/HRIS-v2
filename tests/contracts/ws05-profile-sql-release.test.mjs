@@ -56,8 +56,10 @@ test('SQL release requires independent recovery and verifies preserved data and 
   assert.match(workflow, /employee_bank_details/);
   assert.match(workflow, /relrowsecurity/);
   assert.match(workflow, /permissive='RESTRICTIVE'/);
+  assert.match(workflow, /employee_profile_certificate_select_namespace_guard/);
   assert.match(workflow, /employee_profile_certificate_insert_namespace_guard/);
   assert.match(workflow, /employee_profile_certificate_update_namespace_guard/);
   assert.match(workflow, /employee_profile_certificate_delete_namespace_guard/);
+  assert.match(workflow, /employee_profile_certificate_delete_namespace_guard'\)\) = 4/);
   assert.match(workflow, /EMPLOYEE_PROFILE_SQL_PASS/);
 });
