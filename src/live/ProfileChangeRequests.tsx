@@ -12,12 +12,27 @@ const fields = [
   ['emergency_contact_phone', 'Emergency contact phone', 'tel'],
   ['emergency_contact_relation', 'Emergency contact relation', 'text'],
 ] as const;
+const fieldLabels: Record<string, readonly [string, string]> = {
+  full_name: ['Full name', 'পূর্ণ নাম'], official_email: ['Official email', 'অফিসিয়াল ইমেইল'],
+  phone: ['Phone number', 'ফোন নম্বর'], personal_email: ['Personal email', 'ব্যক্তিগত ইমেইল'],
+  official_phone: ['Official phone', 'অফিসিয়াল ফোন'], address: ['Address', 'বর্তমান ঠিকানা'],
+  mailing_address: ['Mailing address', 'স্থায়ী ঠিকানা'],
+  emergency_contact_name: ['Emergency contact name', 'জরুরি যোগাযোগের নাম'],
+  emergency_contact_phone: ['Emergency contact phone', 'জরুরি যোগাযোগের ফোন'],
+  emergency_contact_relation: ['Emergency contact relation', 'জরুরি যোগাযোগের সম্পর্ক'],
+  father_name: ['Father’s name', 'পিতার নাম'], mother_name: ['Mother’s name', 'মাতার নাম'],
+  date_of_birth: ['Date of birth', 'জন্মতারিখ'], birthplace: ['Birthplace', 'জন্মস্থান'],
+  blood_group: ['Blood group', 'রক্তের গ্রুপ'], gender: ['Gender', 'লিঙ্গ'],
+  religion: ['Religion', 'ধর্ম'], nationality: ['Nationality', 'জাতীয়তা'],
+  marital_status: ['Marital status', 'বৈবাহিক অবস্থা'], nid_number: ['NID number', 'জাতীয় পরিচয়পত্র নম্বর'],
+  passport_number: ['Passport number', 'পাসপোর্ট নম্বর'], etin_number: ['E-TIN', 'ই-টিন'],
+};
 type HistoryRow = { id: string; field_key: string; reason: string; status: 'pending' | 'approved' | 'rejected'; submitted_at: string; review_note: string | null };
 type ReviewRow = { id: string; employee_number: string | null; full_name: string; field_key: string; requested_value: string; reason: string; submitted_at: string };
 const tx = (locale: Locale, value: string) => projectText(locale, value);
 const fieldName = (locale: Locale, key: string) => {
-  const field = fields.find(([id]) => id === key);
-  return field ? tx(locale, field[1]) : key;
+  const field = fieldLabels[key];
+  return field ? locale === 'bn' ? field[1] : tx(locale, field[0]) : key;
 };
 const formatDate = (value: string, locale: Locale) => new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: 'medium' }).format(new Date(value));
 
