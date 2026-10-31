@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
 import { ManpowerRequisitionManager } from './ManpowerRequisitionManager';
+import { appendUniqueJobCirculars, fetchJobCircularPage } from './jobCircularPaging.mjs';
+
+const JOB_PAGE_SIZE = 100;
+const JOB_LIST_FIELDS = 'id,reference_number,title,department_id,team_id,designation_id,location_id,requisition_id,department_name,location_name,workplace_type,employment_type,experience_level,vacancy_count,min_experience_years,education_requirement,skills,responsibilities,requirements,benefits,required_documents,screening_questions,salary_currency,salary_min,salary_max,is_salary_published,application_deadline,instructions,status,is_published,is_active';
 
 type Job = {
   id: string; reference_number: string; title: string;
@@ -105,6 +109,11 @@ function fromJob(job: Job): Draft {
 export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { tenantId: string; refreshKey: number; locale?: Locale }) {
   const t = (english: string) => projectText(locale, english);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [moreJobsAvailable, setMoreJobsAvailable] = useState(false);
+  const [nextJobOffset, setNextJobOffset] = useState(0);
+  const [loadingMoreJobs, setLoadingMoreJobs] = useState(false);
+  const [moreJobsError, setMoreJobsError] = useState('');
+  const jobListGeneration = useRef(0);
   const [departments, setDepartments] = useState<Master[]>([]);
   const [locations, setLocations] = useState<Master[]>([]);
   const [approvedRequisitions, setApprovedRequisitions] = useState<RequisitionOption[]>([]);
@@ -122,8 +131,21 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
   const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
   const [revision, setRevision] = useState(0);
 
+  function readJobRange(from: number, to: number) {
+    return supabase.from('jobs').select(JOB_LIST_FIELDS)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to);
+  }
+
   useEffect(() => {
     let current = true;
+    const requestId = ++jobListGeneration.current;
+    setMoreJobsAvailable(false);
+    setNextJobOffset(0);
+    setLoadingMoreJobs(false);
+    setMoreJobsError('');
     setLoading(true);
     setError('');
     setJobs([]);
@@ -139,12 +161,16 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
       });
       if (!current) return;
       setCanManage(!permission.error && permission.data === true);
-      const records = await supabase.from('jobs')
-        .select('id,reference_number,title,department_id,team_id,designation_id,location_id,requisition_id,department_name,location_name,workplace_type,employment_type,experience_level,vacancy_count,min_experience_years,education_requirement,skills,responsibilities,requirements,benefits,required_documents,screening_questions,salary_currency,salary_min,salary_max,is_salary_published,application_deadline,instructions,status,is_published,is_active')
-        .eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(100);
-      if (!current) return;
-      if (records.error) setError('Unable to load this organization’s job circulars. Check recruitment permissions.');
-      else setJobs((records.data || []) as Job[]);
+      try {
+        const page = await fetchJobCircularPage(readJobRange, 0, JOB_PAGE_SIZE);
+        if (!current || requestId !== jobListGeneration.current) return;
+        setJobs(page.rows as Job[]);
+        setNextJobOffset(page.nextOffset);
+        setMoreJobsAvailable(page.hasMore);
+      } catch {
+        if (!current || requestId !== jobListGeneration.current) return;
+        setError('Unable to load this organization’s job circulars. Check recruitment permissions.');
+      }
       if (!permission.error && permission.data === true) {
         const [dep, loc, requisitions] = await Promise.all([
           supabase.from('departments').select('id,name').eq('tenant_id', tenantId).eq('active', true).order('name'),
@@ -160,8 +186,29 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
       }
     })().catch(() => { if (current) setError('Job circulars could not be loaded. Retry the request.'); })
       .finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
+    return () => { current = false; jobListGeneration.current += 1; };
   }, [tenantId, refreshKey, revision]);
+
+  async function loadMoreJobCirculars() {
+    if (loading || loadingMoreJobs || !moreJobsAvailable || Boolean(error)) return;
+    const requestId = jobListGeneration.current;
+    setLoadingMoreJobs(true);
+    setMoreJobsError('');
+    try {
+      const page = await fetchJobCircularPage(readJobRange, nextJobOffset, JOB_PAGE_SIZE);
+      if (requestId !== jobListGeneration.current) return;
+      setJobs(previous => appendUniqueJobCirculars(previous, page.rows as Job[]));
+      setNextJobOffset(page.nextOffset);
+      setMoreJobsAvailable(page.hasMore);
+    } catch {
+      if (requestId !== jobListGeneration.current) return;
+      setMoreJobsError(locale === 'bn'
+        ? 'আরও চাকরির বিজ্ঞপ্তি লোড করা যায়নি। আবার চেষ্টা করুন।'
+        : 'Unable to load more job circulars. Retry.');
+    } finally {
+      if (requestId === jobListGeneration.current) setLoadingMoreJobs(false);
+    }
+  }
 
   function change<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft(previous => ({ ...previous, [key]: value }));
@@ -450,6 +497,17 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
                 href={'https://shihab-tech04.github.io/HRIS-Candidate-v2/?job=' + encodeURIComponent(job.id)}>View on Candidate Careers</a>}
             </div>
           </li>)}</ul>}
+      {!loading && !error && moreJobsError && <p role="alert" className="p-4 text-sm text-red-700">{moreJobsError}</p>}
+      {!loading && !error && moreJobsAvailable && <div className="flex justify-center border-t border-slate-200 p-4">
+        <button type="button" className={secondaryButton} disabled={loadingMoreJobs}
+          onClick={() => void loadMoreJobCirculars()}>
+          {loadingMoreJobs
+            ? (locale === 'bn' ? 'আরও চাকরির বিজ্ঞপ্তি লোড হচ্ছে…' : 'Loading more job circulars…')
+            : moreJobsError
+              ? t('Retry')
+              : (locale === 'bn' ? 'আরও চাকরির বিজ্ঞপ্তি দেখুন' : 'Load more job circulars')}
+        </button>
+      </div>}
     </section>
     </> : <ManpowerRequisitionManager tenantId={tenantId} refreshKey={refreshKey + revision} locale={locale}/>}
   </section>;
