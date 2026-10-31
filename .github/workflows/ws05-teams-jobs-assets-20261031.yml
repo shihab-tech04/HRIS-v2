@@ -1,0 +1,68 @@
+name: WS05 reconcile HR03 + HR11 Pages assets (branch only)
+on:
+  push:
+    branches: [integration/ws05-teams-jobs-reconcile-20261031]
+    paths-ignore:
+      - 'assets/**'
+      - 'index.html'
+      - '.nojekyll'
+      - 'package-lock.json'
+permissions:
+  contents: write
+concurrency:
+  group: ws05-teams-jobs-assets
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore pinned Candidate release for existing cross-repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d
+          git clone --quiet --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git ../HRIS-Candidate-v2
+          git -C ../HRIS-Candidate-v2 fetch --no-tags --depth 1 origin "$expected_sha"
+          git -C ../HRIS-Candidate-v2 checkout --detach "$expected_sha"
+          test "$(git -C ../HRIS-Candidate-v2 rev-parse HEAD)" = "$expected_sha"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install dependencies from the existing package lock
+        run: |
+          npm install --package-lock-only --include=optional --ignore-scripts --no-audit --no-fund
+          npm ci --include=optional --no-audit --no-fund
+      - name: Verify both independent read-only pagination features and rebuild twice
+        env:
+          GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+        run: |
+          set -euo pipefail
+          npm run lint
+          npm run test:contracts
+          npm run build
+          first="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first" = "$second"
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+          git diff --check
+      - name: Commit only generated assets on the isolated integration branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/integration/ws05-teams-jobs-reconcile-20261031'
+          git add -A -- package-lock.json index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo 'Already generated; no asset changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build(hris): reconcile approved HR03 and HR11 generated Pages assets'
+          git push origin HEAD:refs/heads/integration/ws05-teams-jobs-reconcile-20261031
