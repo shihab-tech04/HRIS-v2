@@ -1,0 +1,50 @@
+# Branch-only source backup. Never deploy, write to Supabase, or alter protected Main.
+name: WS05 Release 2 exact-source backup and isolated restore
+on:
+  push:
+    branches:
+      - backup/ws05-release2-pr159-20261031
+permissions:
+  contents: read
+jobs:
+  recover-source:
+    if: github.repository == 'shihab-tech04/HRIS-v2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate intended source and protected Main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e 88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{commit}
+          git cat-file -e d4fa35a9abe470a75a8484352e66b93c5a23b1f8^{commit}
+          git merge-base --is-ancestor d4fa35a9abe470a75a8484352e66b93c5a23b1f8 88cc0d0ec805292f15dff5b88721d2f12ba1af1d
+      - name: Independently bundle, checksum, and restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p recovery /tmp/HRIS-Release2-restore
+          git bundle create recovery/HRIS-Release2-pr159-full-history.bundle --all
+          git bundle verify recovery/HRIS-Release2-pr159-full-history.bundle
+          git archive --format=tar 88cc0d0ec805292f15dff5b88721d2f12ba1af1d | gzip -n > recovery/HRIS-Release2-pr159-source.tar.gz
+          (cd recovery && sha256sum HRIS-Release2-pr159-full-history.bundle HRIS-Release2-pr159-source.tar.gz > SHA256SUMS && sha256sum -c SHA256SUMS)
+          git clone --mirror recovery/HRIS-Release2-pr159-full-history.bundle /tmp/HRIS-Release2-restore/git
+          git -C /tmp/HRIS-Release2-restore/git fsck --full --strict
+          git -C /tmp/HRIS-Release2-restore/git cat-file -e 88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{commit}
+          git -C /tmp/HRIS-Release2-restore/git cat-file -e d4fa35a9abe470a75a8484352e66b93c5a23b1f8^{commit}
+          test "$(git -C /tmp/HRIS-Release2-restore/git rev-parse '88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{tree}')" = "$(git rev-parse '88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{tree}')"
+          tar -tzf recovery/HRIS-Release2-pr159-source.tar.gz | grep -q '^src/live/EmployeeProfileFigma.tsx$'
+          printf '%s\n' 'protected_main=d4fa35a9abe470a75a8484352e66b93c5a23b1f8' 'release2_source=88cc0d0ec805292f15dff5b88721d2f12ba1af1d' 'isolated_restore=PASS' > recovery/RESTORE-MANIFEST.txt
+          echo 'PASS: exact-source full-history backup and independent git fsck/restore'
+      - name: Publish recovery artifact for independent off-GitHub custody
+        uses: actions/upload-artifact@v4
+        with:
+          name: HRIS-Release2-pr159-offsite-verified-recovery
+          path: recovery/
+          retention-days: 3
+          if-no-files-found: error
