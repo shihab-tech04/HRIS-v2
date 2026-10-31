@@ -38,7 +38,8 @@ jobs:
           git -C /tmp/HRIS-Release2-restore/git cat-file -e 88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{commit}
           git -C /tmp/HRIS-Release2-restore/git cat-file -e d4fa35a9abe470a75a8484352e66b93c5a23b1f8^{commit}
           test "$(git -C /tmp/HRIS-Release2-restore/git rev-parse '88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{tree}')" = "$(git rev-parse '88cc0d0ec805292f15dff5b88721d2f12ba1af1d^{tree}')"
-          tar -tzf recovery/HRIS-Release2-pr159-source.tar.gz | grep -q '^src/live/EmployeeProfileFigma.tsx$'
+          tar -tzf recovery/HRIS-Release2-pr159-source.tar.gz > /tmp/hris-release2-archive-list.txt
+          grep -qx 'src/live/EmployeeProfileFigma.tsx' /tmp/hris-release2-archive-list.txt
           printf '%s\n' 'protected_main=d4fa35a9abe470a75a8484352e66b93c5a23b1f8' 'release2_source=88cc0d0ec805292f15dff5b88721d2f12ba1af1d' 'isolated_restore=PASS' > recovery/RESTORE-MANIFEST.txt
           echo 'PASS: exact-source full-history backup and independent git fsck/restore'
       - name: Publish recovery artifact for independent off-GitHub custody
