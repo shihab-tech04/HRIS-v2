@@ -54,7 +54,7 @@ test('disposable Auth/Postgres acceptance rehearses notices transition and execu
   assert.ok(localParityHarness.includes('hosted-legacy-notices/retire-legacy-security-guard.staging.sql'));
   assert.match(localParityHarness, /CREATE POLICY hris_notices_legacy_security_guard/);
   assert.match(localParityHarness, /ROLLBACK;/);
-  assert.match(localParityHarness, /rows\.length !== 54/);
+  assert.match(localParityHarness, /rows\.length !== 55/);
   assert.match(localParityHarness, /failures\.length/);
   assert.match(localParityHarness, /synesis-local-hris-test/);
   assert.match(localParityHarness, /storage\.buckets/);
