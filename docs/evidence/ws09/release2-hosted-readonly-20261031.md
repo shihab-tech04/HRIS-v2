@@ -51,3 +51,20 @@ At observation, protected Main = `7fd2389fb32fe967cec503c34c1c8ec6fc9138aa`; Can
 5. **WS08 / WS03:** continue separate release-safe work; do not assert real Admin Auth or private Candidate live from browser-only previews or public Pages run.
 
 **Release verdict: NOT LIVE for Employee Profile Release 2; programme 1,047-story 100% not demonstrated.** Existing Main public Pages remains published at its prior accepted SHA. This evidence is non-destructive and cannot itself authorize production write/merge.
+
+
+## Fresh WS09 follow-up — 31 October 2026, morning Bangladesh time
+
+### Candidate CA02-04: source integrated, not LIVE
+- Candidate main is now `8aa406de267be7a259ef393331dfa9370a6b8972`, including PR #32 (**CA02-04**: “As a candidate, I want to sort where useful.”).
+- Exact PR head `30b6a262a02ea86b818c42a7ddf22ea6f8bf81d3` had [SUCCESS Candidate verification #41116055921](https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/41116055921), including four tests in `tests/candidate-public-job-sorting.node.test.mjs`, route/localization/privacy and TypeScript/build.
+- Current Candidate Pages last confirmed on `d55df89e4f86af33ca6bb27fa944b98c1e567df5`. **CA02-04 ISOLATED PASS**, **not LIVE VERIFIED**. No approved Candidate-specific Figma file is assumed.
+
+### WS02 Profile certificate cross-tenant SELECT: PR #147 fails CI, not ready to integrate
+- WS02 draft [PR #147](https://github.com/shihab-tech04/HRIS-v2/pull/147) at exact head `a5f55ee2d6bd53205f7e207d61b2f871afb0c6d3` proposes a restrictive SELECT policy guarding `employee-documents/**/profile-certificates/**`; the security impact must still be independently accepted.
+- [Build/contract #41164558989](https://github.com/shihab-tech04/HRIS-v2/actions/runs/41164558989) and [disposable Auth/Postgres #41164559089](https://github.com/shihab-tech04/HRIS-v2/actions/runs/41164559089) both **FAIL** at that head.
+- Exact failing test: `tests/contracts/hosted-sql-parity-gate.test.mjs:46` expects `/rows\\.length !== 54/`, while new runner `tests/sql/hosted-parity/run-local.mjs:164-170` expects **55** entries after the restrictive SELECT addition. The build contract suite reports 444 pass / 1 fail. Previous PR head failed database parity 55/54; the new head synchronizes the runner but not the companion assertion. This is a **test parity mismatch**, not proof that the policy passes.
+- WS09 posted precise failure on PR #147. WS02/WS04 must keep all-pass/uniqueness/tenant-negative checks strict, synchronize the 55-count contract, and rerun exact-head database Auth/Storage tests. WS05 alone controls selective integration; do not merge this draft directly or write hosted SQL from the audit lane.
+
+### Canonical count
+1,047 distinct IDs; 40 isolated PASS (39 historical + new CA02-04), 12 PARTIAL, 14 historical BLOCKED, 1 source MISSING (E02-15), and 980 NOT CLASSIFIED. Legacy 82-verified aggregate remains non-deduplicated; no new LIVE VERIFIED story certification.
