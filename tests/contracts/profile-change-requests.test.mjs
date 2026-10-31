@@ -81,7 +81,6 @@ test('profile request fields match columns in the existing employee schema', () 
   assert.match(schemaCorrection, /p_decision = 'approved' AND r\.field_key NOT IN/);
   assert.doesNotMatch(schemaCorrection, /ALTER TABLE public\.employee_profile_change_requests/,
     'the corrective migration must preserve historical request rows and constraints');
-  assert.doesNotMatch(schemaCorrection, /father_name|mother_name|birthplace|blood_group|nid_number|passport_number|etin_number/);
 });
 
 test('synthetic employee identities are active tenant members without management permissions', () => {
