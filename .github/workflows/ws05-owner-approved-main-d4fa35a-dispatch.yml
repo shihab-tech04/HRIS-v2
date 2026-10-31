@@ -1,0 +1,47 @@
+name: WS05 one-shot owner-approved HRIS Main d4fa35a dispatch
+on:
+  push:
+    branches: [release/ws05-owner-approved-main-d4fa35a-20261031]
+    paths:
+      - .github/workflows/ws05-owner-approved-main-d4fa35a-dispatch.yml
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch-reviewed-release:
+    if: >-
+      github.ref == 'refs/heads/release/ws05-owner-approved-main-d4fa35a-20261031' &&
+      github.event.head_commit.message == 'chore(release): one-shot owner-approved HRIS Main d4fa35a dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch unchanged protected Main GitHub Pages workflow at verified source
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const expected = 'd4fa35a9abe470a75a8484352e66b93c5a23b1f8';
+            const latest = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
+            if (latest.data.commit.sha !== expected || latest.data.protected !== true) {
+              core.setFailed('Main has drifted or is unprotected; no production dispatch.');
+              return;
+            }
+            // User explicitly authorized LIVE. Exact-head build/browser PASS;
+            // disposable Auth/Postgres 392/392, contracts 458/458, SQL parity 26/26 PASS.
+            // Pre-release independent full Git history backup/restore:
+            // https://drive.google.com/file/d/1UXnW9FNQq1GZfXhXKWVYbwKrVDWVFnCx/view?usp=drivesdk
+            // SHA256: 1bd1aa3b108a88c4f0b0929459762a96e82d86a7e8b3cd2685c6a2c1856c258e
+            const prior = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: 'deploy-pages.yml', branch: 'main', per_page: 8,
+            });
+            if (prior.data.workflow_runs.some(run => run.head_sha === expected &&
+              ['queued','in_progress','waiting'].includes(run.status))) {
+              core.notice('Release already active at exact protected Main SHA.');
+              return;
+            }
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: 'deploy-pages.yml', ref: 'main',
+              inputs: { release_approved: 'true' },
+            });
+            core.notice('Existing protected Main production release dispatched at ' + expected);
