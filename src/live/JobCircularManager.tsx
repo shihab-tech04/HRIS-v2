@@ -131,12 +131,13 @@ export function JobCircularManager({ tenantId, refreshKey, locale = 'en' }: { te
   const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
   const [revision, setRevision] = useState(0);
 
-  function readJobRange(from: number, to: number) {
-    return supabase.from('jobs').select(JOB_LIST_FIELDS)
+  async function readJobRange(from: number, to: number) {
+    const result = await supabase.from('jobs').select(JOB_LIST_FIELDS)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .order('id', { ascending: true })
       .range(from, to);
+    return { data: result.data, error: result.error };
   }
 
   useEffect(() => {
