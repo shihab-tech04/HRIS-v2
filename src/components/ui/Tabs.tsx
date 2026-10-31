@@ -29,7 +29,8 @@ export const Tabs: React.FC<TabsProps> = ({
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 select-none cursor-pointer ${
+            aria-pressed={isActive}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 select-none cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-primary)] ${
               isActive
                 ? 'bg-white text-slate-900 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50/50'
