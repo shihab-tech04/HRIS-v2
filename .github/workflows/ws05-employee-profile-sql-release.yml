@@ -54,6 +54,13 @@ jobs:
           test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
           test -s supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql
           test -s supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql
+          # Pin source SQL bytes to independently verified WS02/WS05 exact integration head 00b2f773.
+          test "$(sha256sum supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql | cut -d ' ' -f1)" = '5ace168753cca54f321e4c3f14a27f766ab477d9597496405fad424f3a0046a3' || {
+            echo '::error::Profile tenant migration bytes differ from signed release plan'; exit 1;
+          }
+          test "$(sha256sum supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql | cut -d ' ' -f1)" = 'a5b3d96bdb628f5843d9f0efb01a452a9324eb2271030fa193f695204f0f60c5' || {
+            echo '::error::Profile certificate policy bytes differ from signed release plan'; exit 1;
+          }
 
           # Require the approved encrypted replacement DB export, isolated restore,
           # exact SQL rehearsal, and latest combined QA's two green workflows.
