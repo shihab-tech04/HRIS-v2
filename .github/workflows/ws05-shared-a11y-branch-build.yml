@@ -23,6 +23,15 @@ jobs:
           node-version: '24.21.0'
       - name: Install current locked source dependencies
         run: npm install --include=optional --no-audit --no-fund
+      - name: Check out pinned deployed Candidate for cross-repository contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d
+          git clone --quiet --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --quiet --no-tags --depth=1 origin "$expected_sha"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --quiet --detach "$expected_sha"
+          test "$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)" = "$expected_sha"
       - name: Static TypeScript and contract gate before committing
         run: npm run lint && npm run test:contracts
       - name: Rebuild only existing GitHub Pages assets (not production deployment)
@@ -35,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           git add -A -- index.html assets .nojekyll
-          git diff --cached --name-only | grep -Eq '^(index.html|assets/|[.]nojekyll)$'
+          git diff --cached --name-only | grep -Eq '^(index[.]html$|assets/|[.]nojekyll$)'
           if git diff --cached --quiet; then
             echo 'No Pages assets changed; source already synchronized'
           else
