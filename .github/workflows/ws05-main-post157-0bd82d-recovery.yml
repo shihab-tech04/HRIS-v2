@@ -1,0 +1,40 @@
+name: WS05 Main post157 0bd82d exact recovery
+on:
+  push:
+    branches: [backup/ws05-main-post157-0bd82d-20261031]
+permissions:
+  contents: read
+jobs:
+  full-history-backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify pinned Main and isolated full-history restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          before='0bd82d4e1445d326ca84778c62ee5fab44c581d9'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          test "$(git rev-parse refs/remotes/origin/main)" = "$before"
+          git cat-file -e "$before^{commit}"
+          git bundle create "$RUNNER_TEMP/hris-main-post157.bundle" --all HEAD
+          git bundle verify "$RUNNER_TEMP/hris-main-post157.bundle"
+          git clone -q "$RUNNER_TEMP/hris-main-post157.bundle" "$RUNNER_TEMP/restored"
+          git -C "$RUNNER_TEMP/restored" cat-file -e "$before^{commit}"
+          git -C "$RUNNER_TEMP/restored" fsck --full --strict
+          printf 'repo=shihab-tech04/HRIS-v2\noriginal_main_sha=%s\nbackup_ref=%s\n' "$before" "$GITHUB_SHA" > "$RUNNER_TEMP/hris-main-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-post157.bundle hris-main-manifest.txt > SHA256SUMS && sha256sum -c SHA256SUMS)
+          echo 'PASS exact Main source backup and isolated restore'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-main-post157-0bd82d-hr03-integrity
+          path: |
+            ${{ runner.temp }}/hris-main-post157.bundle
+            ${{ runner.temp }}/hris-main-manifest.txt
+            ${{ runner.temp }}/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
