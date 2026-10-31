@@ -109,7 +109,7 @@ test('frontend never receives a service-role credential', () => {
 test('Super Admin tenant entry is enabled in the tested Pages build and its disposable handoff fixture matches hosted schema', () => {
   assert.match(checkWorkflow, /VITE_ENABLE_PLATFORM_TENANTS: 'true'/);
   assert.match(deployWorkflow, /VITE_ENABLE_PLATFORM_TENANTS: 'true'/);
-  assert.match(checkWorkflow, /expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d/);
-  assert.match(deployWorkflow, /expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d/);
+  assert.match(checkWorkflow, /expected_sha=db4163885f9609d66e9871a9c0de771fe8151d84/);
+  assert.match(deployWorkflow, /expected_sha=db4163885f9609d66e9871a9c0de771fe8151d84/);
   assert.match(fixture, /CREATE TABLE public\.onboarding_handoffs \([\s\S]*?created_at timestamptz NOT NULL DEFAULT now\(\)/);
 });
