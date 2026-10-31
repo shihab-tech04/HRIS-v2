@@ -1,5 +1,5 @@
 {
-  "schema_version": "WS09-source-to-story-tests-v1.2",
+  "schema_version": "WS09-source-to-story-tests-v1.3",
   "observed_on": "2026-10-31",
   "main_sha": "7fd2389fb32fe967cec503c34c1c8ec6fc9138aa",
   "candidate_main_sha": "5c03fddd2511a49e92687c0fb0e9b4d57f7500a3",
@@ -12,7 +12,7 @@
   "historical_exact_story_isolated_ids": 39,
   "historical_partial_ids": 11,
   "historical_blocked_ids": 14,
-  "unclassified_source_story_ids": 980,
+  "unclassified_source_story_ids": 977,
   "current_source_implemented_rate": "NOT MEASURED",
   "current_hosted_integration_rate": "NOT MEASURED",
   "current_production_story_verification": "NOT MEASURED",
@@ -529,10 +529,10 @@
   ],
   "ledger_evidence_status_counts_after_direct_source_check": {
     "ISOLATED PASS": 40,
-    "PARTIAL": 12,
+    "PARTIAL": 15,
     "BLOCKED APPROVAL": 14,
     "MISSING": 1,
-    "NOT CLASSIFIED": 980,
+    "NOT CLASSIFIED": 977,
     "LIVE VERIFIED": 0
   },
   "current_source_review_records": [
@@ -585,6 +585,60 @@
       "ws04_verdict": "NOT RECORDED",
       "production_proof": "NOT LIVE: Candidate Pages last confirmed d55df89e4f86af33ca6bb27fa944b98c1e567df5 predates merged main SHA",
       "design": "DESIGN UNVERIFIED (Candidate-specific approved frame absent)"
+    },
+    {
+      "story_id": "CA02-05",
+      "status": "PARTIAL",
+      "code_repository": "shihab-tech04/HRIS-Candidate-v2",
+      "merged_main_sha": "db4163885f9609d66e9871a9c0de771fe8151d84",
+      "pr_number": 34,
+      "pr_source_sha": "0e231c5f18029e50dcd2d2d1902cf0550be017fe",
+      "test_id": "tests/candidate-closed-list-actions.node.test.mjs",
+      "test_run": "https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/41164726855",
+      "run_status": "SUCCESS",
+      "evidence_type": "source assertion / UTC helper unit / route-locale regression, NOT browser journey",
+      "observed": "2026-10-31",
+      "hosted_proof": "NO NEW API REQUIRED",
+      "ws04_verdict": "NOT RECORDED",
+      "production_proof": "NOT LIVE: Candidate Pages last d55df89e4f86af33ca6bb27fa944b98c1e567df5",
+      "design": "DESIGN UNVERIFIED (Candidate-specific approved frames unavailable)",
+      "note": "Closed/expired job listing action; source assertions + UTC deadline helper; no browser journey"
+    },
+    {
+      "story_id": "CA03-06",
+      "status": "PARTIAL",
+      "code_repository": "shihab-tech04/HRIS-Candidate-v2",
+      "merged_main_sha": "db4163885f9609d66e9871a9c0de771fe8151d84",
+      "pr_number": 33,
+      "pr_source_sha": "37583284294c3d228f5b091effc038e6af54fa27",
+      "test_id": "tests/candidate-closed-job-details.node.test.mjs",
+      "test_run": "https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/41116873118",
+      "run_status": "SUCCESS",
+      "evidence_type": "source assertion / UTC helper unit / route-locale regression, NOT browser journey",
+      "observed": "2026-10-31",
+      "hosted_proof": "NO NEW API REQUIRED",
+      "ws04_verdict": "NOT RECORDED",
+      "production_proof": "NOT LIVE: Candidate Pages last d55df89e4f86af33ca6bb27fa944b98c1e567df5",
+      "design": "DESIGN UNVERIFIED (Candidate-specific approved frames unavailable)",
+      "note": "Job detail Apply gating while recruitment is open, source assertions only"
+    },
+    {
+      "story_id": "CA03-07",
+      "status": "PARTIAL",
+      "code_repository": "shihab-tech04/HRIS-Candidate-v2",
+      "merged_main_sha": "db4163885f9609d66e9871a9c0de771fe8151d84",
+      "pr_number": 33,
+      "pr_source_sha": "37583284294c3d228f5b091effc038e6af54fa27",
+      "test_id": "tests/candidate-closed-job-details.node.test.mjs",
+      "test_run": "https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/41116873118",
+      "run_status": "SUCCESS",
+      "evidence_type": "source assertion / UTC helper unit / route-locale regression, NOT browser journey",
+      "observed": "2026-10-31",
+      "hosted_proof": "NO NEW API REQUIRED",
+      "ws04_verdict": "NOT RECORDED",
+      "production_proof": "NOT LIVE: Candidate Pages last d55df89e4f86af33ca6bb27fa944b98c1e567df5",
+      "design": "DESIGN UNVERIFIED (Candidate-specific approved frames unavailable)",
+      "note": "Closed job status and localized notice, source assertions only"
     }
   ],
   "fresh_hosted_readonly_20261031": {
@@ -609,6 +663,6 @@
     "proof_path": "docs/evidence/ws09/release2-hosted-readonly-20261031.md",
     "note": "SELECT metadata only; does not establish RLS, payload or signed-in authorization; no production write."
   },
-  "candidate_current_main_sha": "8aa406de267be7a259ef393331dfa9370a6b8972",
-  "current_evidence_summary": "39 historical isolated story IDs + 1 newly observed CA02-04 exact CI source story; historical legacy aggregate 82 remains un-deduplicated and must NOT be added."
+  "candidate_current_main_sha": "db4163885f9609d66e9871a9c0de771fe8151d84",
+  "current_evidence_summary": "39 historical named isolated PASS + CA02-04 new isolated PASS = 40; 12 prior partial + 3 Candidate source-only partial = 15; 14 historical blocked; E02-15 one source-missing; 977 unclassified. Legacy 82-verified aggregate non-deduplicated."
 }
