@@ -23,7 +23,7 @@ test('WS08 account creation is inert by default and does not expose password inp
 test('WS08 tested approved-mode submits only the exact verified Edge Function v3 fields', async ({ page }) => {
   await page.goto('/tests/browser/ws08-real-create-harness.html?enabled=1');
   await fillAuthorized(page);
-  await expect(page.getByText('Legitimate Employee')).toBeVisible();
+  await expect(page.getByText('Legitimate Employee', { exact: true })).toBeVisible();
   await expect(page.getByText('legitimate@example.test')).toBeVisible();
   await page.getByRole('button', { name: /Create real account/ }).click();
   await expect(page.getByText('A real account was created.')).toBeVisible();
