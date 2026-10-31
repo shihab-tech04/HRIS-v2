@@ -1,0 +1,53 @@
+name: WS05 HR03 null-page branch-only deterministic Pages build
+on:
+  push:
+    branches: [fix/ws05-hr03-null-page-20261031]
+    paths:
+      - .github/workflows/ws05-hr03-null-page-rebuild.yml
+permissions:
+  contents: write
+jobs:
+  rebuild:
+    if: github.ref == 'refs/heads/fix/ws05-hr03-null-page-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Restore exact deployed Candidate for Main cross-repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=39d07585c854709f5c16b2712a6634da386c5c4d
+          git clone --quiet --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --quiet --depth 1 origin "$expected"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --quiet --detach "$expected"
+          test "$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)" = "$expected"
+      - name: Install dependencies and run exact source contracts
+        run: |
+          set -euo pipefail
+          npm install --include=optional --no-audit --no-fund
+          npm run lint
+          npm run test:contracts
+      - name: Build and sync Pages root source assets (no production deployment)
+        env:
+          GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+        run: npm run build
+      - name: Commit exact generated parity to this feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo 'PASS: Page assets already synchronized'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'build(ws05): sync exact HR03 null-page Pages assets'
+            git push origin HEAD:refs/heads/fix/ws05-hr03-null-page-20261031
+          fi
