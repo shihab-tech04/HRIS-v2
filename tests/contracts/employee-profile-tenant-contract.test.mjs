@@ -37,7 +37,7 @@ test('scalar profile corrections retain HR approval and use the employee scalar 
   const submit = migration.match(/CREATE OR REPLACE FUNCTION public\.employee_submit_profile_change_request\([\s\S]*?\$function\$;/)?.[0] || '';
   const review = migration.match(/CREATE OR REPLACE FUNCTION public\.admin_review_profile_change_request\([\s\S]*?\$function\$;/)?.[0] || '';
   const projection = migration.match(/CREATE OR REPLACE FUNCTION public\.employee_get_my_profile_v1\([\s\S]*?\$function\$;/)?.[0] || '';
-  assert.match(migration, /current profile address fields map to employees\.address\/mailing_address/);
+  assert.match(migration, /scalar corrections remain in employees\.address\/mailing_address/);
   assert.match(submit, /INSERT INTO public\.employee_profile_change_requests/);
   assert.match(review, /public\.has_tenant_permission\(p_tenant_id,'self_service\.manage'\)/);
   assert.match(review, /r\.requested_by IS NOT DISTINCT FROM auth\.uid\(\)/,
@@ -48,10 +48,33 @@ test('scalar profile corrections retain HR approval and use the employee scalar 
   assert.match(review, /address=CASE WHEN r\.field_key='address' THEN r\.requested_value ELSE e\.address END/);
   assert.match(review, /mailing_address=CASE WHEN r\.field_key='mailing_address' THEN r\.requested_value ELSE e\.mailing_address END/);
   assert.match(projection, /'address',e\.address,'mailing_address',e\.mailing_address/);
-  assert.doesNotMatch(migration, /(?:INSERT INTO|UPDATE)\s+public\.employee_addresses/i);
+  assert.doesNotMatch(submit, /(?:INSERT INTO|UPDATE)\s+public\.employee_addresses/i);
+  assert.doesNotMatch(review, /(?:INSERT INTO|UPDATE)\s+public\.employee_addresses/i);
   assert.doesNotMatch(projection, /employee_compensation|salary|taxable_income|tax_withheld/);
   assert.match(parity, /employee_submit_profile_change_request\(text,text,text\)/);
   assert.match(parity, /employee_get_my_profile\(\)/);
+});
+
+test('E02-05 structured employee addresses remain separate, tenant-scoped and non-destructive', () => {
+  const projection = migration.match(/CREATE OR REPLACE FUNCTION public\.employee_get_my_profile_v1\([\s\S]*?\$function\$;/)?.[0] || '';
+  const save = migration.match(/CREATE OR REPLACE FUNCTION public\.employee_save_my_addresses_v1\([\s\S]*?\$function\$;/)?.[0] || '';
+  assert.match(projection, /'addresses',coalesce/);
+  assert.match(projection, /FROM public\.employee_addresses a WHERE a\.employee_id=e\.id/);
+  assert.match(save, /private\.hris_profile_own_employee\(p_tenant_id\)/);
+  assert.match(save, /e\.id=v_employee AND e\.tenant_id=p_tenant_id FOR UPDATE/);
+  assert.match(save, /'id','address_type','district','thana','post_code','city_village','road_block_house'/);
+  assert.match(save, /WHERE a\.id=v_id AND a\.employee_id=v_employee FOR UPDATE/);
+  assert.match(save, /Existing addresses cannot be removed by saving the list/);
+  assert.match(save, /'employee\.profile\.addresses\.saved_v1'/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.employee_save_my_addresses_v1\(uuid,jsonb\)/);
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.employee_save_my_addresses_v1\(uuid,jsonb\)\s+TO authenticated/);
+  assert.match(parity, /public\.employee_save_my_addresses_v1\(uuid,jsonb\)/);
+  assert.match(fixture, /CREATE TABLE public\.employee_addresses/);
+  assert.match(fixture, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(runner, /structuredAddressCrossTenant\.error\?\.code === '42501'/);
+  assert.match(runner, /structuredAddressForeignRow\.error\?\.code === '42501'/);
+  assert.match(runner, /structuredAddressOmission\.error\?\.code === '22023'/);
+  assert.match(runner, /structuredAddressDirectWrite/);
 });
 
 test('original verification Tax Circle stays a tenant-scoped reviewed field', () => {
@@ -62,7 +85,8 @@ test('original verification Tax Circle stays a tenant-scoped reviewed field', ()
 });
 
 test('record save allowlists and certificate paths remain own-employee and tenant scoped', () => {
-  const saveFunctions = [...migration.matchAll(/(CREATE OR REPLACE FUNCTION public\.employee_save_my_[a-z_]+_v1\([\s\S]*?\$function\$;)/g)];
+  const saveFunctions = [...migration.matchAll(/(CREATE OR REPLACE FUNCTION public\.employee_save_my_[a-z_]+_v1\([\s\S]*?\$function\$;)/g)]
+    .filter(([, body]) => !body.includes('employee_save_my_addresses_v1'));
   assert.equal(saveFunctions.length, 6);
   for (const [, body] of saveFunctions) {
     assert.match(body, /private\.hris_profile_own_employee\(p_tenant_id\)/);

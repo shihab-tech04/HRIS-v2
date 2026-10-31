@@ -905,6 +905,91 @@ record('E02-17 approved profile changes update only the requested field, persist
   JSON.stringify({ approval: profileApproval.data?.status || profileApproval.error?.code, duplicateDecision: profileDuplicateDecision.error?.code, history: profileHistoryAfterReview.data?.find(row => row.id === profileChangeId)?.status, fieldPersisted: profileEmployeeAfterReview.data?.address === profileChangeValue, audit: profileAudit }));
 
 
+// E02-05: the original employee structured-address rows are independent of
+// scalar correction fields and must round-trip under explicit tenant context.
+const structuredAddressCreateA = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA,
+  p_rows: [
+    { address_type: 'Present', district: 'Dhaka', thana: 'Tejgaon',
+      post_code: '1215', city_village: 'Dhaka', road_block_house: 'Road 12' },
+    { address_type: 'Permanent', district: 'Chattogram', thana: 'Pahartali',
+      post_code: '4202', city_village: 'Chattogram', road_block_house: 'House 4' },
+  ],
+});
+const structuredAddressReadA = await employeeA.client.rpc('employee_get_my_profile_v1', {
+  p_tenant_id: ids.tenantA,
+});
+const structuredAddressesA = structuredAddressReadA.data?.addresses || [];
+const structuredPresentA = structuredAddressesA.find(row => row.address_type === 'Present');
+const structuredPermanentA = structuredAddressesA.find(row => row.address_type === 'Permanent');
+const structuredAddressUpdateA = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA,
+  p_rows: [
+    { id: structuredPresentA?.id, district: 'Dhaka North' },
+    { id: structuredPermanentA?.id },
+  ],
+});
+const structuredAddressAfterUpdateA = await employeeA.client.rpc('employee_get_my_profile_v1', {
+  p_tenant_id: ids.tenantA,
+});
+const structuredAddressOmission = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA,
+  p_rows: [{ id: structuredPresentA?.id, district: 'Must roll back' }],
+});
+const structuredAddressAfterOmission = await employeeA.client.rpc('employee_get_my_profile_v1', {
+  p_tenant_id: ids.tenantA,
+});
+const structuredAddressCrossTenant = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantB, p_rows: [],
+});
+const structuredAddressForeignRow = await employeeB.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantB, p_rows: [{ id: structuredPresentA?.id, district: 'Foreign attempt' }],
+});
+const structuredAddressUnknownField = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA, p_rows: [{ bad_key: true }],
+});
+const structuredAddressInvalidType = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA, p_rows: [{ address_type: 'Unknown' }],
+});
+const structuredAddressUnlinked = await employeesViewer.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA, p_rows: [],
+});
+const structuredAddressDirectWrite = await employeeA.client.from('employee_addresses').insert({
+  employee_id: '55555555-5555-4555-8555-555555555555', address_type: 'Other',
+});
+const structuredAddressAnonWrite = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('employee_save_my_addresses_v1', { p_tenant_id: ids.tenantA, p_rows: [] });
+record('E02-05 structured Present/Permanent address saves round-trip and preserve scalar profile corrections',
+  !structuredAddressCreateA.error && structuredAddressCreateA.data === 2
+  && structuredAddressesA.length === 2 && Boolean(structuredPresentA?.id)
+  && Boolean(structuredPermanentA?.id)
+  && !structuredAddressUpdateA.error && structuredAddressUpdateA.data === 2
+  && structuredAddressAfterUpdateA.data?.addresses?.find(row => row.id === structuredPresentA?.id)?.district === 'Dhaka North'
+  && structuredAddressAfterUpdateA.data?.addresses?.find(row => row.id === structuredPermanentA?.id)?.district === 'Chattogram'
+  && structuredAddressAfterUpdateA.data?.employee?.address === profileChangeValue,
+  JSON.stringify({ create: structuredAddressCreateA.error?.code || structuredAddressCreateA.data,
+    read: structuredAddressesA.length, update: structuredAddressUpdateA.error?.code || structuredAddressUpdateA.data,
+    scalarAddress: structuredAddressAfterUpdateA.data?.employee?.address }));
+record('E02-05 structured address rejects omitted-history deletion, extra fields, foreign IDs and tenant substitution',
+  structuredAddressOmission.error?.code === '22023'
+  && structuredAddressAfterOmission.data?.addresses?.find(row => row.id === structuredPresentA?.id)?.district === 'Dhaka North'
+  && structuredAddressCrossTenant.error?.code === '42501'
+  && structuredAddressForeignRow.error?.code === '42501'
+  && structuredAddressUnknownField.error?.code === '22023'
+  && structuredAddressInvalidType.error?.code === '22023',
+  JSON.stringify({ omission: structuredAddressOmission.error?.code,
+    crossTenant: structuredAddressCrossTenant.error?.code,
+    foreignId: structuredAddressForeignRow.error?.code,
+    unexpectedField: structuredAddressUnknownField.error?.code,
+    invalidType: structuredAddressInvalidType.error?.code }));
+record('E02-05 structured addresses deny anonymous, non-employee and direct table writes',
+  structuredAddressUnlinked.error?.code === '42501'
+  && Boolean(structuredAddressDirectWrite.error)
+  && Boolean(structuredAddressAnonWrite.error),
+  JSON.stringify({ unlinked: structuredAddressUnlinked.error?.code,
+    direct: structuredAddressDirectWrite.error?.code,
+    anonymous: structuredAddressAnonWrite.error?.code }));
+
 const profileOwnRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
 const profileCrossTenantRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantB });
 const profileMemberWithoutEmployee = await employeesViewer.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
