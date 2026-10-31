@@ -1,0 +1,46 @@
+name: WS05 shared accessibility branch-only Pages asset parity
+on:
+  push:
+    branches: [integration/ws05-shared-accessibility-140-148-150-20261031]
+    paths:
+      - .github/workflows/ws05-shared-a11y-branch-build.yml
+permissions:
+  contents: write
+concurrency:
+  group: ws05-shared-a11y-branch-only
+  cancel-in-progress: false
+jobs:
+  deterministic-branch-build:
+    if: github.ref == 'refs/heads/integration/ws05-shared-accessibility-140-148-150-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install current locked source dependencies
+        run: npm install --include=optional --no-audit --no-fund
+      - name: Static TypeScript and contract gate before committing
+        run: npm run lint && npm run test:contracts
+      - name: Rebuild only existing GitHub Pages assets (not production deployment)
+        env:
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+          GITHUB_PAGES: 'true'
+        run: npm run build
+      - name: Assert source-only scope and commit exact branch Pages parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- index.html assets .nojekyll
+          git diff --cached --name-only | grep -Eq '^(index.html|assets/|[.]nojekyll)$'
+          if git diff --cached --quiet; then
+            echo 'No Pages assets changed; source already synchronized'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'build(ws05): synchronize shared accessibility branch Pages assets'
+            git push origin HEAD:refs/heads/integration/ws05-shared-accessibility-140-148-150-20261031
+          fi
