@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Download, RefreshCw, Search, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from './csv';
+import { OrganizationStructureEditor } from './OrganizationStructureEditor';
+import type { Locale } from './project-locale';
 import { readAllOrganizationPages } from './organizationTeamsPages.mjs';
 
 type TeamRow = {
@@ -13,7 +15,7 @@ type TeamRow = {
 };
 type DepartmentRow = { id: string; name: string };
 
-export function OrganizationTeams({ tenantId }: { tenantId: string }) {
+export function OrganizationTeams({ tenantId, locale = 'en' }: { tenantId: string; locale?: Locale }) {
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,6 +115,8 @@ export function OrganizationTeams({ tenantId }: { tenantId: string }) {
         </button>
       </div>
     </div>
+
+    <OrganizationStructureEditor tenantId={tenantId} locale={locale} onSaved={() => setRetryKey(value => value + 1)} />
 
     <div className="grid gap-3 sm:grid-cols-3">
       <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

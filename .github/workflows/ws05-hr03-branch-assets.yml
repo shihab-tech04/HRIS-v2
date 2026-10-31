@@ -1,0 +1,71 @@
+# Temporary, strictly branch-scoped source-to-Pages synchronization.
+# No hosted database writes, releases, or production deployment.
+name: WS05 HR03 branch-only reproducible Pages assets
+on:
+  push:
+    branches:
+      - integration/ws05-hr03-current-main-20261031
+    paths-ignore:
+      - 'assets/**'
+      - 'index.html'
+      - '.nojekyll'
+permissions:
+  contents: write
+concurrency:
+  group: ws05-hr03-branch-assets
+  cancel-in-progress: false
+jobs:
+  build-and-sync:
+    if: github.repository == 'shihab-tech04/HRIS-v2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Pin exact LIVE Candidate contract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin db4163885f9609d66e9871a9c0de771fe8151d84
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach db4163885f9609d66e9871a9c0de771fe8151d84
+          test "$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)" = db4163885f9609d66e9871a9c0de771fe8151d84
+      - name: Install and verify exact source
+        run: |
+          npm install --include=optional --no-audit --no-fund
+          npm run lint
+          npm run test:contracts
+      - name: Reproduce Pages bundle twice and validate output
+        env:
+          GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          first="$(find dist -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second="$(find dist -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first" = "$second"
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+          git diff --check
+          echo "PASS: deterministic Pages source build $first"
+      - name: Commit generated assets to this integration branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/integration/ws05-hr03-current-main-20261031'
+          git add -A -- index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo 'No generated Pages changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: synchronize exact HR03 Pages artifacts on current Main'
+          git push origin HEAD:refs/heads/integration/ws05-hr03-current-main-20261031
