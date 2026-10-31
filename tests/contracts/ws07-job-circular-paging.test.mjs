@@ -62,7 +62,7 @@ test('the actual HR11 screen uses a tenant-filtered stable page range with gener
   assert.match(manager, /fetchJobCircularPage\(readJobRange, nextJobOffset, JOB_PAGE_SIZE\)/);
   assert.match(manager, /const requestId = jobListGeneration\.current/);
   assert.match(manager, /if \(requestId !== jobListGeneration\.current\) return/);
-  assert.match(manager, /appendUniqueJobCirculars\(previous, page\.rows\)/);
+  assert.match(manager, /appendUniqueJobCirculars\(previous, page\.rows as Job\[\]\)/);
   assert.doesNotMatch(manager, /\.limit\(100\);\s*if \(!current\) return;\s*if \(records\.error\)/);
   assert.match(manager, /setMoreJobsError\(locale === 'bn'/);
   assert.match(manager, /canManage && <button type="button" onClick=\{openCreate\}/);
