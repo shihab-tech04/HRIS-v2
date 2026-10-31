@@ -20,10 +20,13 @@ export async function readAllOrganizationPages(fetchPage, isCurrent, pageSize = 
     if (!isCurrent()) return [];
     if (error) throw error;
 
-    const page = data ?? [];
-    if (!Array.isArray(page) || page.length > pageSize) {
+    // PostgREST returns [] (not null) when a page is legitimately empty.
+    // Treat null as an incomplete/ambiguous response, never as end-of-list;
+    // otherwise a temporary failed read can silently truncate CSV exports.
+    if (!Array.isArray(data) || data.length > pageSize) {
       throw new Error('Invalid organization page response.');
     }
+    const page = data;
     rows.push(...page);
     if (page.length < pageSize) return rows;
   }
