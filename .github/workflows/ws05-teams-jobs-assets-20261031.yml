@@ -20,6 +20,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Restore pinned Candidate release for existing cross-repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=39d07585c854709f5c16b2712a6634da386c5c4d
+          git clone --quiet --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git ../HRIS-Candidate-v2
+          git -C ../HRIS-Candidate-v2 fetch --no-tags --depth 1 origin "$expected_sha"
+          git -C ../HRIS-Candidate-v2 checkout --detach "$expected_sha"
+          test "$(git -C ../HRIS-Candidate-v2 rev-parse HEAD)" = "$expected_sha"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
