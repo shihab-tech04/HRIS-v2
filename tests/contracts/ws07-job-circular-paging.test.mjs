@@ -57,13 +57,13 @@ test('invalid offsets, missing data and oversized pages fail closed', async () =
 });
 
 test('the actual HR11 screen uses a tenant-filtered stable page range with generation checks and no writes', () => {
-  assert.match(manager, /\\.from\\('jobs'\\)[\\s\\S]*?\\.eq\\('tenant_id', tenantId\\)[\\s\\S]*?\\.order\\('created_at', \\{ ascending: false \\}\\)[\\s\\S]*?\\.order\\('id', \\{ ascending: true \\}\\)[\\s\\S]*?\\.range\\(from, to\\)/);
-  assert.match(manager, /fetchJobCircularPage\\(readJobRange, 0, JOB_PAGE_SIZE\\)/);
-  assert.match(manager, /fetchJobCircularPage\\(readJobRange, nextJobOffset, JOB_PAGE_SIZE\\)/);
-  assert.match(manager, /const requestId = jobListGeneration\\.current/);
-  assert.match(manager, /if \\(requestId !== jobListGeneration\\.current\\) return/);
-  assert.match(manager, /appendUniqueJobCirculars\\(previous, page\\.rows\\)/);
-  assert.doesNotMatch(manager, /\\.limit\\(100\\);\\s*if \\(!current\\) return;\\s*if \\(records\\.error\\)/);
-  assert.match(manager, /setMoreJobsError\\(locale === 'bn'/);
-  assert.match(manager, /canManage && <button type="button" onClick=\\{openCreate\\}/);
+  assert.match(manager, /\.from\('jobs'\)[\s\S]*?\.eq\('tenant_id', tenantId\)[\s\S]*?\.order\('created_at', \{ ascending: false \}\)[\s\S]*?\.order\('id', \{ ascending: true \}\)[\s\S]*?\.range\(from, to\)/);
+  assert.match(manager, /fetchJobCircularPage\(readJobRange, 0, JOB_PAGE_SIZE\)/);
+  assert.match(manager, /fetchJobCircularPage\(readJobRange, nextJobOffset, JOB_PAGE_SIZE\)/);
+  assert.match(manager, /const requestId = jobListGeneration\.current/);
+  assert.match(manager, /if \(requestId !== jobListGeneration\.current\) return/);
+  assert.match(manager, /appendUniqueJobCirculars\(previous, page\.rows\)/);
+  assert.doesNotMatch(manager, /\.limit\(100\);\s*if \(!current\) return;\s*if \(records\.error\)/);
+  assert.match(manager, /setMoreJobsError\(locale === 'bn'/);
+  assert.match(manager, /canManage && <button type="button" onClick=\{openCreate\}/);
 });
