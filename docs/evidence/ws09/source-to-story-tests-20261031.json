@@ -1,5 +1,5 @@
 {
-  "schema_version": "WS09-source-to-story-tests-v1.1",
+  "schema_version": "WS09-source-to-story-tests-v1.2",
   "observed_on": "2026-10-31",
   "main_sha": "7fd2389fb32fe967cec503c34c1c8ec6fc9138aa",
   "candidate_main_sha": "5c03fddd2511a49e92687c0fb0e9b4d57f7500a3",
@@ -12,7 +12,7 @@
   "historical_exact_story_isolated_ids": 39,
   "historical_partial_ids": 11,
   "historical_blocked_ids": 14,
-  "unclassified_source_story_ids": 981,
+  "unclassified_source_story_ids": 980,
   "current_source_implemented_rate": "NOT MEASURED",
   "current_hosted_integration_rate": "NOT MEASURED",
   "current_production_story_verification": "NOT MEASURED",
@@ -528,11 +528,11 @@
     }
   ],
   "ledger_evidence_status_counts_after_direct_source_check": {
-    "ISOLATED PASS": 39,
+    "ISOLATED PASS": 40,
     "PARTIAL": 12,
     "BLOCKED APPROVAL": 14,
     "MISSING": 1,
-    "NOT CLASSIFIED": 981,
+    "NOT CLASSIFIED": 980,
     "LIVE VERIFIED": 0
   },
   "current_source_review_records": [
@@ -563,6 +563,28 @@
       "ws04_verdict": "NOT RECORDED",
       "hosted_proof": "NOT LIVE",
       "note": "No photo upload/replacement handler in profile view or edit modal; only certificate attachment upload exists. WS06-owned change required."
+    },
+    {
+      "story_id": "CA02-04",
+      "status": "ISOLATED PASS",
+      "code_repository": "shihab-tech04/HRIS-Candidate-v2",
+      "merged_main_sha": "8aa406de267be7a259ef393331dfa9370a6b8972",
+      "pr_number": 32,
+      "pr_source_sha": "30b6a262a02ea86b818c42a7ddf22ea6f8bf81d3",
+      "test_id": "tests/candidate-public-job-sorting.node.test.mjs: four CA02-04 tests",
+      "test_run": "https://github.com/shihab-tech04/HRIS-Candidate-v2/actions/runs/41116055921",
+      "run_status": "SUCCESS",
+      "evidence_type": "PR exact-head source/unit/route/locale/privacy/TypeScript/build CI",
+      "source_paths": [
+        "src/pages/PublicJobsPage.tsx",
+        "src/lib/jobSort.mjs",
+        "src/lib/candidateLocale.ts"
+      ],
+      "observed": "2026-10-31",
+      "hosted_proof": "NO NEW BACKEND REQUIRED",
+      "ws04_verdict": "NOT RECORDED",
+      "production_proof": "NOT LIVE: Candidate Pages last confirmed d55df89e4f86af33ca6bb27fa944b98c1e567df5 predates merged main SHA",
+      "design": "DESIGN UNVERIFIED (Candidate-specific approved frame absent)"
     }
   ],
   "fresh_hosted_readonly_20261031": {
@@ -586,5 +608,7 @@
     ],
     "proof_path": "docs/evidence/ws09/release2-hosted-readonly-20261031.md",
     "note": "SELECT metadata only; does not establish RLS, payload or signed-in authorization; no production write."
-  }
+  },
+  "candidate_current_main_sha": "8aa406de267be7a259ef393331dfa9370a6b8972",
+  "current_evidence_summary": "39 historical isolated story IDs + 1 newly observed CA02-04 exact CI source story; historical legacy aggregate 82 remains un-deduplicated and must NOT be added."
 }
