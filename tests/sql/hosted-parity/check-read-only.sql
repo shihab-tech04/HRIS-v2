@@ -66,6 +66,7 @@ required_policies(schemaname, table_name, policy_name, expected_permissive, sour
     ('public', 'employee_profile_change_requests', 'employee_profile_change_read_own_or_authorized_review', 'PERMISSIVE', '20261017130000'),
     ('storage', 'objects', 'employee_profile_certificate_insert', 'PERMISSIVE', '20261027040642'),
     ('storage', 'objects', 'employee_profile_certificate_orphan_delete', 'PERMISSIVE', '20261027040642'),
+    ('storage', 'objects', 'employee_profile_certificate_select_namespace_guard', 'RESTRICTIVE', '20261030114500'),
     ('storage', 'objects', 'employee_profile_certificate_insert_namespace_guard', 'RESTRICTIVE', '20261030114500'),
     ('storage', 'objects', 'employee_profile_certificate_update_namespace_guard', 'RESTRICTIVE', '20261030114500'),
     ('storage', 'objects', 'employee_profile_certificate_delete_namespace_guard', 'RESTRICTIVE', '20261030114500'),
@@ -140,7 +141,17 @@ checks AS (
           WHEN policy_name = 'employee_profile_certificate_orphan_delete'
             THEN p.qual LIKE '%hris_profile_document_is_unlinked%'
               AND p.qual LIKE '%profile-certificates%'
-          WHEN policy_name = 'employee_profile_certificate_insert_namespace_guard'
+          WHEN policy_name = 'employee_profile_certificate_select_namespace_guard'
+             THEN p.cmd='SELECT'
+               AND p.qual LIKE '%profile-certificates%'
+               AND p.qual LIKE '%array_position%'
+               AND p.qual LIKE '%is_live_session%'
+               AND p.qual LIKE '%hris_profile_change_active_member%'
+               AND p.qual LIKE '%hris_own_employee_for_tenant%'
+               AND p.qual LIKE '%has_tenant_permission%'
+               AND p.qual LIKE '%employees.view%'
+               AND p.qual LIKE '%employees.manage%'
+           WHEN policy_name = 'employee_profile_certificate_insert_namespace_guard'
             THEN p.with_check LIKE '%array_position%'
               AND p.with_check LIKE '%profile-certificates%'
               AND p.with_check LIKE '%hris_profile_change_active_member%'

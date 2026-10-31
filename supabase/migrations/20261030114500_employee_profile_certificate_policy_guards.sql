@@ -6,6 +6,40 @@
 -- existing employee-document policies unchanged.
 BEGIN;
 
+-- Read authorization must be scoped to the OBJECT'S tenant as well as the
+-- requester's permissions. The existing permissive employee-documents policy
+-- checks has_permission('employees.view') against the active tenant only;
+-- without this restrictive guard, an HR reader in tenant A could download a
+-- known profile certificate path belonging to tenant B.
+-- Keep the historical non-profile document policies and permitted same-tenant
+-- HR reviewer access unchanged.
+CREATE POLICY employee_profile_certificate_select_namespace_guard
+  ON storage.objects AS RESTRICTIVE
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id IS DISTINCT FROM 'employee-documents'
+    OR array_position(storage.foldername(name),'profile-certificates') IS NULL
+    OR (
+      bucket_id='employee-documents'
+      AND public.is_live_session()
+      AND split_part(name,'/',3)='profile-certificates'
+      AND name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/profile-certificates/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](pdf|png|jpg|jpeg)$'
+      AND CASE
+        WHEN split_part(name,'/',2) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          THEN (
+            (
+              split_part(name,'/',1)=(SELECT auth.uid())::text
+              AND public.hris_profile_change_active_member(split_part(name,'/',2)::uuid)
+              AND public.hris_own_employee_for_tenant(split_part(name,'/',2)::uuid) IS NOT NULL
+            )
+            OR public.has_tenant_permission(split_part(name,'/',2)::uuid,'employees.view')
+            OR public.has_tenant_permission(split_part(name,'/',2)::uuid,'employees.manage')
+          )
+        ELSE FALSE
+      END
+    )
+  );
+
 CREATE POLICY employee_profile_certificate_insert_namespace_guard
   ON storage.objects AS RESTRICTIVE
   FOR INSERT TO authenticated

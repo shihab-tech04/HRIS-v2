@@ -43,7 +43,7 @@ test('all latest migration RPC signatures are covered by the hosted probe', () =
   assert.match(query, /legacy tenant-implicit RPC absent/);
 });
 
-test('disposable Auth/Postgres acceptance rehearses notices transition and executes all 54 Phase 04 parity checks', () => {
+test('disposable Auth/Postgres acceptance rehearses notices transition and executes all 55 Phase 04 parity checks', () => {
   const authJourney = workflow.indexOf('node tests/sql/isolated-auth/run-local.mjs');
   const parityJourney = workflow.indexOf('node tests/sql/hosted-parity/run-local.mjs');
   assert.ok(authJourney >= 0 && parityJourney > authJourney, 'parity runs on the schema built by the Auth-tested source migrations');

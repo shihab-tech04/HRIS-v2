@@ -163,11 +163,12 @@ const output = execFileSync('docker', [
 ], { input: wrappedSql, encoding: 'utf8' }).trim();
 const rows = JSON.parse(output);
 const failures = (rows || []).filter((row) => row.passed !== true);
-if (!Array.isArray(rows) || rows.length !== 54 || failures.length) {
+const duplicateKeys = Array.isArray(rows) ? rows.length - new Set(rows.map((row) => `${row.kind}:${row.object}`)).size : 0;
+if (!Array.isArray(rows) || rows.length !== 55 || failures.length || duplicateKeys > 0) {
   const missing = failures.map((row) => `${row.kind}:${row.object}`).join(', ');
-  throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/54): ${missing || 'unexpected contract count'}`);
+  throw new Error(`Phase 04 SQL/API parity failed (${rows?.length || 0}/55): ${missing || (duplicateKeys ? 'duplicate kind:object keys' : 'unexpected contract count')}`);
 }
-console.log(`Phase 04 SQL/API parity contract: ${rows.length}/54 passed on Auth-tested disposable schema.`);
+console.log(`Phase 04 SQL/API parity contract: ${rows.length}/55 passed on Auth-tested disposable schema.`);
 
 const hostedTransitionSql = readFileSync(
   path.join(root, 'supabase/staging/phase03/20261019_phase03_phase04_hosted_compatibility.staging.sql'),
