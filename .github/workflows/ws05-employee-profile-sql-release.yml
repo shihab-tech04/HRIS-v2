@@ -1,0 +1,199 @@
+# WS05: manual, version-pinned SQL release. No automatic hosted SQL writes.
+# Requires separately approved Employee Profile merge and a verified recovery point.
+name: WS05 Employee Profile scoped SQL production release
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Explicit owner approval for the two Employee Profile SQL migrations only
+        type: boolean
+        required: true
+        default: false
+      session_pooler_host:
+        description: Replacement HRIS Supabase session-pooler HOST only (not a URL)
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hris-profile-sql-production
+  cancel-in-progress: false
+jobs:
+  apply-profile-only:
+    if: "${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PGHOST: ${{ inputs.session_pooler_host }}
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.HRIS_DB_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Verify current recovery proof and apply only two versioned Employee Profile migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+
+          # The existing protected release and independent approval gates must remain intact.
+          test -n "$PGPASSWORD"
+          [[ "$PGHOST" =~ ^aws-[0-9]+-ap-northeast-2\.pooler\.supabase\.com$ ]] || {
+            echo '::error::Invalid replacement HRIS pooler host'; exit 1;
+          }
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
+          test -s supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql
+          test -s supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql
+          # Pin source SQL bytes to independently verified WS02/WS05 exact integration head 00b2f773.
+          test "$(sha256sum supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql | cut -d ' ' -f1)" = '5ace168753cca54f321e4c3f14a27f766ab477d9597496405fad424f3a0046a3' || {
+            echo '::error::Profile tenant migration bytes differ from signed release plan'; exit 1;
+          }
+          test "$(sha256sum supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql | cut -d ' ' -f1)" = 'a5b3d96bdb628f5843d9f0efb01a452a9324eb2271030fa193f695204f0f60c5' || {
+            echo '::error::Profile certificate policy bytes differ from signed release plan'; exit 1;
+          }
+
+          # Require the approved encrypted replacement DB export, isolated restore,
+          # exact SQL rehearsal, and latest combined QA's two green workflows.
+          python3 - <<'PY'
+          import json, os, urllib.request
+          expected = {
+              41089145233: "HRIS Step 1 - Encrypted database export",
+              41090015468: "WS05 isolated restore of current encrypted HRIS backup 41089145233",
+              41090711503: "WS05 exact Employee Profile SQL on restored current HRIS database",
+              41100639303: "Verify HRIS build and browser smoke",
+              41100639286: "Disposable Auth, Postgres and browser acceptance (no deployment)",
+          }
+          for run_id, name in expected.items():
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/shihab-tech04/HRIS-v2/actions/runs/{run_id}",
+                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "HRIS-WS05-version-pinned-release"})
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  data = json.load(response)
+              if data.get("name") != name or data.get("status") != "completed" or data.get("conclusion") != "success":
+                  raise SystemExit("Required recovery or QA run is not successful: " + str(run_id))
+          print("PASS: exact recovery and QA evidence validated; no deployment triggered yet")
+          PY
+
+          db_psql() {
+            docker run --rm --env PGHOST --env PGPORT --env PGDATABASE \
+              --env PGUSER --env PGSSLMODE --env PGPASSWORD \
+              postgres:17-alpine psql -X -A -t -v ON_ERROR_STOP=1 "$@"
+          }
+
+          # The replacement project's installed versions are a DISTINCT lineage
+          # from the original repository's migration files. Do not db-push the
+          # full repository: it includes unrelated HR requisition migrations.
+          scratch="$(mktemp -d "$RUNNER_TEMP/hris-profile-only.XXXXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" \
+            > "$scratch/before.tsv"
+          test "$(wc -l < "$scratch/before.tsv")" -eq 131
+          test "$(tail -1 "$scratch/before.tsv" | cut -d '|' -f1)" = '20261027033218'
+          ! grep -Eq '^(20261027040642|20261030114500)[|]' "$scratch/before.tsv" || {
+            echo '::error::Employee Profile versions already installed; refresh source and state'; exit 1;
+          }
+          before_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenants), (SELECT count(*) FROM public.admin_audit_logs);")"
+
+          supabase init --workdir "$scratch" --force >/dev/null
+          mkdir -p "$scratch/supabase/migrations"
+          while IFS='|' read -r version name; do
+            [[ "$version" =~ ^[0-9]{14}$ && "$name" =~ ^[a-z0-9_]+$ ]] || {
+              echo '::error::Unexpected remote migration inventory'; exit 1;
+            }
+            # These are NEVER run: the matching versions are installed already.
+            : > "$scratch/supabase/migrations/$version"_"$name".sql
+          done < "$scratch/before.tsv"
+          cp supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql \
+             "$scratch/supabase/migrations/"
+          cp supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql \
+             "$scratch/supabase/migrations/"
+          test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq 133
+          test ! -e "$scratch/supabase/migrations/20261027090000_hris_requisition_pending_status_guard.sql"
+          cmp -s supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql \
+              "$scratch/supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql"
+          cmp -s supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql \
+              "$scratch/supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql"
+
+          # Credentials remain in environment/process memory, not in source/artifacts/logs.
+          db_url="$(python3 - <<'PY'
+          import os,urllib.parse
+          user=urllib.parse.quote(os.environ["PGUSER"],safe="")
+          password=urllib.parse.quote(os.environ["PGPASSWORD"],safe="")
+          host=os.environ["PGHOST"]
+          print(f"postgresql://{user}:{password}@{host}:5432/postgres?sslmode=require")
+          PY
+          )"
+
+          (cd "$scratch" && supabase db push --db-url "$db_url" --include-all --dry-run \
+            > "$scratch/dry-run.txt" 2>&1) || {
+            echo '::error::Remote migration dry-run failed; production unchanged'; exit 1;
+          }
+          # A fail-closed dry-run plan MUST list exactly these two source files.
+          grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/dry-run.txt" \
+            | sort -u > "$scratch/planned.txt"
+          printf '%s\n' \
+            20261027040642_employee_profile_tenant_scoped_contract.sql \
+            20261030114500_employee_profile_certificate_policy_guards.sql \
+            > "$scratch/expected.txt"
+          diff -u "$scratch/expected.txt" "$scratch/planned.txt" || {
+            echo '::error::Unexpected migration plan: no SQL written'; exit 1;
+          }
+          # Guard against a concurrent independent DB change between the two gates.
+          db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" \
+            > "$scratch/pre-apply.tsv"
+          cmp -s "$scratch/before.tsv" "$scratch/pre-apply.tsv" || {
+            echo '::error::Remote migration history changed before apply'; exit 1;
+          }
+
+          # Supabase CLI records EXACT source migration versions in hosted history.
+          (cd "$scratch" && supabase --yes db push --db-url "$db_url" --include-all \
+            > "$scratch/apply.txt" 2>&1) || {
+            echo '::error::Employee SQL apply failed: consult restricted CI logs and recovery point'; exit 1;
+          }
+
+          db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" \
+            > "$scratch/after.tsv"
+          test "$(wc -l < "$scratch/after.tsv")" -eq 133
+          grep -Fxq '20261027040642|employee_profile_tenant_scoped_contract' "$scratch/after.tsv"
+          grep -Fxq '20261030114500|employee_profile_certificate_policy_guards' "$scratch/after.tsv"
+          grep -Ev '^(20261027040642|20261030114500)[|]' "$scratch/after.tsv" \
+            > "$scratch/unchanged.tsv"
+          cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv" || {
+            echo '::error::Unrelated migration history changed'; exit 1;
+          }
+
+          after_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenants), (SELECT count(*) FROM public.admin_audit_logs);")"
+          test "$before_rows" = "$after_rows" || {
+            echo '::error::Pre-existing user/employee/tenant/audit row count changed'; exit 1;
+          }
+          result="$(db_psql -c "
+            SELECT CASE WHEN
+              to_regprocedure('public.employee_get_my_profile_v1(uuid)') IS NOT NULL
+              AND to_regprocedure('public.employee_delete_my_profile_record_v1(uuid,text,uuid)') IS NOT NULL
+              AND to_regclass('public.employee_bank_details') IS NOT NULL
+              AND COALESCE((SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.employee_bank_details')),false)
+              AND NOT has_table_privilege('anon','public.employee_bank_details','SELECT')
+              AND NOT has_table_privilege('authenticated','public.employee_bank_details','SELECT')
+              AND (SELECT count(*) FROM pg_policies WHERE schemaname='storage'
+                   AND tablename='objects' AND permissive='RESTRICTIVE'
+                   AND policyname IN ('employee_profile_certificate_select_namespace_guard',
+                     'employee_profile_certificate_insert_namespace_guard',
+                     'employee_profile_certificate_update_namespace_guard',
+                     'employee_profile_certificate_delete_namespace_guard')) = 4
+            THEN 'EMPLOYEE_PROFILE_SQL_PASS' ELSE 'EMPLOYEE_PROFILE_SQL_FAIL' END;")"
+          test "$result" = 'EMPLOYEE_PROFILE_SQL_PASS' || {
+            echo '::error::Hosted SQL/RLS/Storage acceptance failed'; exit 1;
+          }
+          echo 'PASS: only two versioned Employee Profile migrations installed; row counts, tenant RPCs, bank RLS and restrictive storage policies verified'
