@@ -31,3 +31,19 @@ test('staged repair requires verified approval, enforces exactly one auth user, 
   assert.match(repair, /BEGIN;[\s\S]*COMMIT;/);
   assert.doesNotMatch(repair, /\b(?:INSERT\s+INTO|DELETE\s+FROM|TRUNCATE|DROP\s+TABLE|UPDATE\s+auth\.users|UPDATE\s+public\.admin_users)\b/i);
 });
+
+test('tenant and employee invitations fail closed before provisioning additional Auth identities', () => {
+  for (const path of [
+    'supabase/functions/hris-employee-invite/index.ts',
+    'supabase/functions/platform-tenant-invite/index.ts',
+  ]) {
+    const code = readFileSync(new URL(path, root), 'utf8');
+    const policy = code.indexOf('function additionalAuthProvisioningDisabled(): boolean');
+    const guard = code.indexOf('if (additionalAuthProvisioningDisabled())');
+    const authCreate = code.indexOf('inviteUserByEmail(');
+    assert.ok(policy >= 0 && guard > policy && authCreate > guard, path);
+    assert.match(code.slice(policy, guard), /return true;/);
+    assert.match(code.slice(guard, authCreate), /return reply\(403/);
+    assert.match(code.slice(guard, authCreate), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
+  }
+});
