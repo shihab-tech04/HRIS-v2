@@ -707,9 +707,14 @@ try {
   const expectedHistoryDate = new Date(`${process.env.HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE}T12:00:00`)
     .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const visibleHistory = await history.innerText();
-  if (await history.locator('li').count() !== 1 || !visibleHistory.includes(expectedHistoryDate)
-      || !visibleHistory.includes('Present')) {
-    throw new Error(`Daily employee attendance history did not match its persisted prior-month row: ${JSON.stringify({ expectedHistoryDate, visibleHistory })}.`);
+  // Other tenant-owned attendance events may also occur in the selected month.
+  // Require the persisted target day exactly once; do not hide or reject valid
+  // additional rows just because earlier isolated journeys created them.
+  const matchingDayRows = history.locator('li').filter({ hasText: expectedHistoryDate });
+  const matchingCount = await matchingDayRows.count();
+  const matchingDayText = matchingCount === 1 ? await matchingDayRows.first().innerText() : '';
+  if (matchingCount !== 1 || !matchingDayText.includes('Present')) {
+    throw new Error(`Daily employee attendance history did not match its persisted prior-month row: ${JSON.stringify({ expectedHistoryDate, matchingCount, matchingDayText, visibleHistory })}.`);
   }
   console.log('E05-04_DAILY_HISTORY_BROWSER_PASS');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
