@@ -70,7 +70,10 @@ test('staged orphan-link repair is pinned to the exact read-only observed pair',
   assert.match(repair, /md5\(e\.id::text \|\| ':' \|\| e\.user_id::text\)/);
   assert.match(repair, /IF v_orphan_fingerprint IS DISTINCT FROM v_expected_fingerprint THEN/);
   assert.match(repair, /md5\(e\.id::text \|\| ':' \|\| e\.user_id::text\) = v_expected_fingerprint/);
-  assert.match(repair, /Stale employee link differs from the approved inventory/);
+  assert.match(repair, /Stale employee link inventory differs from the approved single target/);
+  assert.match(repair, /SELECT count\(\*\), min\(md5\(e\.id::text/);
+  assert.match(repair, /INTO v_orphan_count, v_orphan_fingerprint/);
+  assert.match(repair, /IF v_orphan_count <> 1\s+OR v_orphan_fingerprint IS DISTINCT FROM v_expected_fingerprint THEN/);
   const update = repair.match(/UPDATE public\.employees e\s+SET user_id = NULL[\s\S]*?GET DIAGNOSTICS v_fixed_count/);
   assert.ok(update, 'staged mutation and row-count guard must exist');
   assert.match(update[0], /md5\(e\.id::text \|\| ':' \|\| e\.user_id::text\) = v_expected_fingerprint/);
