@@ -50,6 +50,15 @@ Deno.serve(async (request: Request) => {
     return new Response("ok", { status: 204, headers: corsHeaders(origin) });
   }
   if (request.method !== "POST") return reply(405, { error: "Method not allowed." }, origin);
+  // The HRIS owner's production identity policy permits only the existing
+  // SQL-backed Super Admin to sign in. Business records may still be created
+  // through separately approved SQL workflows without creating Auth users.
+  // Fail closed BEFORE invitation records or privileged Auth API calls.
+  // SINGLE_SUPER_ADMIN_LOGIN_ONLY
+  return reply(403, {
+    error: "Additional authentication accounts are disabled for this HRIS.",
+  }, origin);
+
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return reply(500, { error: "Invitation service is not configured." }, origin);
   }
