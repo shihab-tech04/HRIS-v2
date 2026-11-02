@@ -83,10 +83,14 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
+  -- The UPDATE itself must target the reviewed pair, not every orphan.
+  -- This is defense in depth against a newly orphaned row between the
+  -- inventory query and the write. Never broaden the mutation predicate.
   UPDATE public.employees e
   SET user_id = NULL,
       updated_at = now()
   WHERE e.user_id IS NOT NULL
+    AND md5(e.id::text || ':' || e.user_id::text) = v_expected_fingerprint
     AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id);
 
   GET DIAGNOSTICS v_fixed_count = ROW_COUNT;
