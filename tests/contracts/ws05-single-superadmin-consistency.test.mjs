@@ -35,6 +35,11 @@ test('staged repair requires verified approval, enforces exactly one auth user, 
   assert.match(repair, /GET DIAGNOSTICS v_fixed_count = ROW_COUNT/);
   assert.match(repair, /IF v_fixed_count <> 1/);
   assert.match(repair, /BEGIN;[\s\S]*COMMIT;/);
+  assert.match(repair, /PERFORM set_config\('lock_timeout', '5s', true\)/);
+  assert.match(repair, /LOCK TABLE public\.employees IN SHARE ROW EXCLUSIVE MODE/);
+  assert.ok(repair.indexOf('LOCK TABLE public.employees IN SHARE ROW EXCLUSIVE MODE') <
+    repair.indexOf('SELECT count(*) INTO v_auth_count'), 'employee write lock must precede the inventory');
+
   assert.doesNotMatch(repair, /\b(?:INSERT\s+INTO|DELETE\s+FROM|TRUNCATE|DROP\s+TABLE|UPDATE\s+auth\.users|UPDATE\s+public\.admin_users)\b/i);
 });
 
