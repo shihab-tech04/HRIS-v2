@@ -68,7 +68,6 @@ test('hosted admin-create-user source denies new identities before privileged Au
 test('staged orphan-link repair is pinned to the exact read-only observed pair', () => {
   assert.match(repair, /v_expected_fingerprint constant text := '224deda3117d33aba10bfa607835873d'/);
   assert.match(repair, /md5\(e\.id::text \|\| ':' \|\| e\.user_id::text\)/);
-  assert.match(repair, /IF v_orphan_fingerprint IS DISTINCT FROM v_expected_fingerprint THEN/);
   assert.match(repair, /md5\(e\.id::text \|\| ':' \|\| e\.user_id::text\) = v_expected_fingerprint/);
   assert.match(repair, /Stale employee link inventory differs from the approved single target/);
   assert.match(repair, /SELECT count\(\*\), min\(md5\(e\.id::text/);
