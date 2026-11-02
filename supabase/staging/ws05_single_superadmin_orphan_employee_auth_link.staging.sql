@@ -22,6 +22,10 @@ DECLARE
   v_active_membership_count integer;
   v_orphan_count integer;
   v_fixed_count integer;
+  v_orphan_fingerprint text;
+  -- Exact observed employee-id/stale-user-id pair, fingerprinted to prevent
+  -- a different orphan row from being changed after inventory drift.
+  v_expected_fingerprint constant text := '224deda3117d33aba10bfa607835873d';
 BEGIN
   IF current_setting('hris.ws05_single_admin_reconcile_approved', true) IS DISTINCT FROM 'yes'
      OR current_setting('hris.ws05_recovery_restored', true) IS DISTINCT FROM 'yes' THEN
@@ -61,10 +65,21 @@ BEGIN
   INTO v_orphan_count
   FROM public.employees e
   WHERE e.user_id IS NOT NULL
+    AND md5(e.id::text || ':' || e.user_id::text) = v_expected_fingerprint
     AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id);
 
   IF v_orphan_count <> 1 THEN
     RAISE EXCEPTION 'Expected precisely one stale employee login link; found %. Refresh inventory.', v_orphan_count
+      USING ERRCODE = '23514';
+  END IF;
+
+  SELECT md5(e.id::text || ':' || e.user_id::text)
+  INTO v_orphan_fingerprint
+  FROM public.employees e
+  WHERE e.user_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id);
+  IF v_orphan_fingerprint IS DISTINCT FROM v_expected_fingerprint THEN
+    RAISE EXCEPTION 'Stale employee link differs from the approved inventory; no changes made.'
       USING ERRCODE = '23514';
   END IF;
 
