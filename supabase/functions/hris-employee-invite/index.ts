@@ -43,6 +43,11 @@ function isText(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
 }
 
+function additionalAuthProvisioningDisabled(): boolean {
+  // Fixed owner policy, not an environment toggle.
+  return true;
+}
+
 Deno.serve(async (request: Request) => {
   const origin = request.headers.get("Origin");
   if (request.method === "OPTIONS") {
@@ -54,9 +59,11 @@ Deno.serve(async (request: Request) => {
   // through separately approved SQL workflows without creating Auth users.
   // Fail closed BEFORE invitation records or privileged Auth API calls.
   // SINGLE_SUPER_ADMIN_LOGIN_ONLY
-  return reply(403, {
-    error: "Additional authentication accounts are disabled for this HRIS.",
-  }, origin);
+  if (additionalAuthProvisioningDisabled()) {
+    return reply(403, {
+      error: "Additional authentication accounts are disabled for this HRIS.",
+    }, origin);
+  }
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return reply(500, { error: "Invitation service is not configured." }, origin);
