@@ -73,13 +73,16 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
-  SELECT md5(e.id::text || ':' || e.user_id::text)
-  INTO v_orphan_fingerprint
+  -- A non-STRICT scalar SELECT INTO silently chooses an arbitrary orphan
+  -- if more than one exists. Aggregate all orphans and fail closed on drift.
+  SELECT count(*), min(md5(e.id::text || ':' || e.user_id::text))
+  INTO v_orphan_count, v_orphan_fingerprint
   FROM public.employees e
   WHERE e.user_id IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id);
-  IF v_orphan_fingerprint IS DISTINCT FROM v_expected_fingerprint THEN
-    RAISE EXCEPTION 'Stale employee link differs from the approved inventory; no changes made.'
+  IF v_orphan_count <> 1
+     OR v_orphan_fingerprint IS DISTINCT FROM v_expected_fingerprint THEN
+    RAISE EXCEPTION 'Stale employee link inventory differs from the approved single target; no changes made.'
       USING ERRCODE = '23514';
   END IF;
 
