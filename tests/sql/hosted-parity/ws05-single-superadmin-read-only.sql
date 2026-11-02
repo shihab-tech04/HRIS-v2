@@ -16,13 +16,22 @@ WITH observed AS (
     (SELECT count(*) FROM public.employees) AS employee_records,
     (SELECT count(*) FROM public.employees e
        WHERE e.user_id IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id)) AS orphan_employee_auth_links
+         AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id)) AS orphan_employee_auth_links,
+    (SELECT count(*) FROM public.employees e
+       WHERE e.user_id IS NOT NULL
+         AND md5(e.id::text || ':' || e.user_id::text) = '224deda3117d33aba10bfa607835873d'
+         AND NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = e.user_id)) AS approved_orphan_matches
 )
 SELECT auth_users, sole_admin, admin_tenant_bindings, employee_records,
-       orphan_employee_auth_links,
+       orphan_employee_auth_links, approved_orphan_matches,
        CASE WHEN auth_users = 1 AND sole_admin = 1 AND admin_tenant_bindings = 1
             THEN 'SINGLE_SUPER_ADMIN_PASS'
             ELSE 'SINGLE_SUPER_ADMIN_FAIL' END AS auth_rule,
+       CASE WHEN orphan_employee_auth_links = 1 AND approved_orphan_matches = 1
+            THEN 'STAGED_REPAIR_TARGET_PASS'
+            WHEN orphan_employee_auth_links = 0
+            THEN 'STAGED_REPAIR_NOT_NEEDED'
+            ELSE 'STAGED_REPAIR_TARGET_FAIL' END AS staged_repair_target,
        CASE WHEN orphan_employee_auth_links = 0
             THEN 'EMPLOYEE_AUTH_LINKS_PASS'
             ELSE 'EMPLOYEE_AUTH_LINKS_FAIL' END AS data_integrity
