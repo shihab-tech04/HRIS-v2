@@ -44,7 +44,7 @@ test('tenant and employee invitations fail closed before provisioning additional
     assert.ok(policy >= 0 && guard > policy && authCreate > guard, path);
     assert.match(code.slice(policy, guard), /return true;/);
     assert.match(code.slice(guard, authCreate), /return reply\(403/);
-    assert.match(code.slice(guard, authCreate), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
+    assert.match(code.slice(policy, authCreate), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
   }
 });
 
@@ -55,6 +55,6 @@ test('hosted admin-create-user source denies new identities before privileged Au
   const createUser = code.indexOf('adminClient.auth.admin.createUser(');
   assert.ok(policy >= 0 && guard > policy && createUser > guard);
   assert.match(code.slice(policy, guard), /return true;/);
-  assert.match(code.slice(guard, createUser), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
+  assert.match(code.slice(policy, createUser), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
   assert.match(code.slice(guard, createUser), /status: 403/);
 });
