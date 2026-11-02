@@ -33,6 +33,12 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  -- Serialize employee writes while inventory and the exact-target update run.
+  -- Without this lock a concurrent employee update could create a second orphan
+  -- after the count but before COMMIT. Bound the wait; fail without mutation.
+  PERFORM set_config('lock_timeout', '5s', true);
+  LOCK TABLE public.employees IN SHARE ROW EXCLUSIVE MODE;
+
   SELECT count(*) INTO v_auth_count FROM auth.users;
   IF v_auth_count <> 1 THEN
     RAISE EXCEPTION 'Expected exactly one Auth user, found %; no changes made.', v_auth_count
