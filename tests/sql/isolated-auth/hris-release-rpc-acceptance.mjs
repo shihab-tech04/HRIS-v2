@@ -1095,7 +1095,10 @@ try {
   const issued = await clients.recruiterA.rpc('hris_issue_candidate_offer', {
     p_tenant_id: tenantA, p_application_id: applicationId, p_salary_amount: 100000,
     p_salary_currency: 'BDT', p_pay_period: 'monthly',
-    p_proposed_joining_date: '2026-11-15', p_response_deadline: '2026-10-31',
+    // Future-relative dates keep this isolated offer acceptance valid after
+    // the original October 2026 fixture deadline, without weakening SQL rules.
+    p_proposed_joining_date: new Date(Date.now() + 45 * 86400000).toISOString().slice(0, 10),
+    p_response_deadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
     p_terms: 'Synthetic isolated acceptance test offer.',
   });
   if (issued.error || !issued.data?.offer_id) throw issued.error || new Error('Recruiter offer was not created.');
