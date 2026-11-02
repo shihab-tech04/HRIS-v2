@@ -14,6 +14,12 @@ test('the SQL identity probe reads only one active Super Admin and never changes
   assert.match(probe, /m\.status = 'active'/);
   assert.match(probe, /SINGLE_SUPER_ADMIN_PASS/);
   assert.match(probe, /EMPLOYEE_AUTH_LINKS_FAIL/);
+  assert.match(probe, /approved_orphan_matches/);
+  assert.match(probe, /224deda3117d33aba10bfa607835873d/);
+  assert.match(probe, /STAGED_REPAIR_TARGET_PASS/);
+  assert.match(probe, /STAGED_REPAIR_NOT_NEEDED/);
+  assert.match(probe, /STAGED_REPAIR_TARGET_FAIL/);
+  assert.match(probe, /orphan_employee_auth_links = 1 AND approved_orphan_matches = 1/);
   assert.doesNotMatch(probe, /(?:^|\n)\s*(?:INSERT|UPDATE|DELETE|CREATE|ALTER|TRUNCATE|DROP|DO|CALL|EXECUTE|GRANT|REVOKE)\b/i);
 });
 
