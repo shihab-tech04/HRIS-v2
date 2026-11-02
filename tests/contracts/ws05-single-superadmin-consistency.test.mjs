@@ -10,7 +10,7 @@ test('the SQL identity probe reads only one active Super Admin and never changes
   assert.match(probe, /FROM auth\.users/);
   assert.match(probe, /JOIN public\.admin_users/);
   assert.match(probe, /a\.is_super_admin IS TRUE/);
-  assert.match(probe, /JOIN public\.tenant_memberships/);
+  assert.match(probe, /FROM public\.tenant_memberships/);
   assert.match(probe, /m\.status = 'active'/);
   assert.match(probe, /SINGLE_SUPER_ADMIN_PASS/);
   assert.match(probe, /EMPLOYEE_AUTH_LINKS_FAIL/);
