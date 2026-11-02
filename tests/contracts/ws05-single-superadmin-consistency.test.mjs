@@ -47,3 +47,14 @@ test('tenant and employee invitations fail closed before provisioning additional
     assert.match(code.slice(guard, authCreate), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
   }
 });
+
+test('hosted admin-create-user source denies new identities before privileged Auth creation', () => {
+  const code = readFileSync(new URL('supabase/functions/admin-create-user/index.ts', root), 'utf8');
+  const policy = code.indexOf('function additionalAuthProvisioningDisabled(): boolean');
+  const guard = code.indexOf('if (additionalAuthProvisioningDisabled())');
+  const createUser = code.indexOf('adminClient.auth.admin.createUser(');
+  assert.ok(policy >= 0 && guard > policy && createUser > guard);
+  assert.match(code.slice(policy, guard), /return true;/);
+  assert.match(code.slice(guard, createUser), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
+  assert.match(code.slice(guard, createUser), /status: 403/);
+});
