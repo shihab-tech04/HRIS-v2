@@ -47,11 +47,11 @@ test('Phase 2B resolves exact confirmed account emails only through Super Admin 
  assert.doesNotMatch(emailSql,/INSERT INTO auth\.users|UPDATE auth\.users|DELETE FROM auth\.users/i);
  assert.match(client,/supabase\.rpc\('platform_hris_provision_tenant_by_email'/);
  assert.match(client,/supabase\.rpc\('platform_hris_set_tenant_admin_by_email'/);
- assert.match(workspace,/type="email" autoComplete="email" label=\{tx\(createForm\.administratorMode === 'invite' \? 'Invitee email' : 'First administrator email'\)\}/);
+ assert.match(workspace,/type="email" autoComplete="email" label=\{tx\('Super Admin email'\)\}/);
  assert.match(workspace,/provisionPlatformTenantByEmail\(/);
  assert.match(workspace,/setPlatformTenantAdministratorByEmail\(/);
- assert.match(workspace,/does not expose an account directory or send invitations/);
- assert.doesNotMatch(workspace,/Auth user ID|user UUID/);
+ assert.match(workspace,/No new authentication account will be created/);
+ assert.doesNotMatch(workspace,/Auth user ID|user UUID|invitePlatformTenantAdministrator|administratorMode/);
 });
 
 test('Adding an admin never silently overwrites a recruiter membership',()=>{
