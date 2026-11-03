@@ -37,6 +37,11 @@ BEGIN
   -- Without this lock a concurrent employee update could create a second orphan
   -- after the count but before COMMIT. Bound the wait; fail without mutation.
   PERFORM set_config('lock_timeout', '5s', true);
+  -- Freeze Auth identity writes too: otherwise an Auth insertion/deletion can
+  -- change orphan classification after the count and before COMMIT. This lock
+  -- is transaction-scoped and subject to the same five-second timeout.
+  -- Acquire the Auth lock before employees consistently to avoid lock inversion.
+  LOCK TABLE auth.users IN SHARE ROW EXCLUSIVE MODE;
   LOCK TABLE public.employees IN SHARE ROW EXCLUSIVE MODE;
 
   SELECT count(*) INTO v_auth_count FROM auth.users;
