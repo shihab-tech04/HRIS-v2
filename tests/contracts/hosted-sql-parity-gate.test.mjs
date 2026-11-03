@@ -19,6 +19,7 @@ const migrationNames = [
   '20261017095321_roster_shift_change_history.sql',
   '20261017100000_employee_profile_change_request_tenant_scope.sql',
   '20261017130000_employee_profile_change_schema_contract.sql',
+  '20261027040642_employee_profile_tenant_scoped_contract.sql',
 ];
 
 test('hosted parity SQL remains a read-only catalog probe', () => {
@@ -42,7 +43,7 @@ test('all latest migration RPC signatures are covered by the hosted probe', () =
   assert.match(query, /legacy tenant-implicit RPC absent/);
 });
 
-test('disposable Auth/Postgres acceptance rehearses notices transition and executes all 26 Phase 04 parity checks', () => {
+test('disposable Auth/Postgres acceptance rehearses notices transition and executes all 56 Phase 04 parity checks', () => {
   const authJourney = workflow.indexOf('node tests/sql/isolated-auth/run-local.mjs');
   const parityJourney = workflow.indexOf('node tests/sql/hosted-parity/run-local.mjs');
   assert.ok(authJourney >= 0 && parityJourney > authJourney, 'parity runs on the schema built by the Auth-tested source migrations');
@@ -53,8 +54,10 @@ test('disposable Auth/Postgres acceptance rehearses notices transition and execu
   assert.ok(localParityHarness.includes('hosted-legacy-notices/retire-legacy-security-guard.staging.sql'));
   assert.match(localParityHarness, /CREATE POLICY hris_notices_legacy_security_guard/);
   assert.match(localParityHarness, /ROLLBACK;/);
-  assert.match(localParityHarness, /rows\.length !== 26/);
+  assert.match(localParityHarness, /rows\.length !== 56/);
   assert.match(localParityHarness, /failures\.length/);
   assert.match(localParityHarness, /synesis-local-hris-test/);
+  assert.match(localParityHarness, /storage\.buckets/);
+  assert.match(localParityHarness, /employee-documents/);
   assert.doesNotMatch(localParityHarness, /synesis-local-hris-parity-test/);
 });

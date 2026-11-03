@@ -45,7 +45,7 @@ test('remote migration catalogue is preserved and exactly two source files can b
 });
 
 test('SQL release requires independent recovery and verifies preserved data and private storage', () => {
-  for (const actionRun of ['41089145233', '41090015468', '41090711503', '41100639303', '41100639286']) {
+  for (const actionRun of ['41648721099', '41649952552', '41655372259', '41566532582', '41566532749']) {
     assert.ok(workflow.includes(actionRun), 'missing approved recovery/QA run ' + actionRun);
   }
   assert.match(workflow, /before_rows=/);
@@ -57,11 +57,36 @@ test('SQL release requires independent recovery and verifies preserved data and 
   assert.match(workflow, /relrowsecurity/);
   assert.match(workflow, /permissive='RESTRICTIVE'/);
   assert.match(workflow, /employee_profile_certificate_select_namespace_guard/);
-  assert.match(workflow, /5ace168753cca54f321e4c3f14a27f766ab477d9597496405fad424f3a0046a3/);
+  assert.match(workflow, /7b156e3f33e4688d3861eb09c3c660243ce2ead667c0c83220330649698c7a39/);
   assert.match(workflow, /a5b3d96bdb628f5843d9f0efb01a452a9324eb2271030fa193f695204f0f60c5/);
   assert.match(workflow, /employee_profile_certificate_insert_namespace_guard/);
   assert.match(workflow, /employee_profile_certificate_update_namespace_guard/);
   assert.match(workflow, /employee_profile_certificate_delete_namespace_guard/);
   assert.match(workflow, /employee_profile_certificate_delete_namespace_guard'\)\) = 4/);
   assert.match(workflow, /EMPLOYEE_PROFILE_SQL_PASS/);
+});
+
+test('Employee Profile SQL release verifies green exact merged PR and protected main commit', () => {
+  assert.match(workflow, /read_github\("pulls\/159"\)/);
+  assert.match(workflow, /profile_pr\.get\("merged_at"\) is None/);
+  assert.match(workflow, /profile_pr\.get\("base", \{\}\)\.get\("ref"\) != "main"/);
+  assert.match(workflow, /reviewed_head = profile_pr\.get\("head", \{\}\)\.get\("sha"\)/);
+  assert.match(workflow, /"commits\/" \+ reviewed_head \+ "\/check-runs\?per_page=100"/);
+  assert.match(workflow, /for check_name in \("check", "isolated-hris"\)/);
+  assert.match(workflow, /check\.get\("status"\) == "completed"/);
+  assert.match(workflow, /check\.get\("conclusion"\) == "success"/);
+  assert.match(workflow, /protected_sha = os\.environ\["GITHUB_SHA"\]/);
+  assert.match(workflow, /"commits\/" \+ protected_sha \+ "\/check-runs\?per_page=100"/);
+  assert.match(workflow, /check\.get\("name"\) == "build"/);
+  assert.match(workflow, /Current protected main has not passed exact-SHA build verification/);
+});
+
+test('Employee Profile production SQL refuses expired recovery archive even after a green backup run', () => {
+  assert.match(workflow, /recovery_artifacts = read_github/);
+  assert.match(workflow, /actions\/runs\/41648721099\/artifacts\?per_page=100/);
+  assert.match(workflow, /"hris-db-encrypted-41648721099"/);
+  assert.match(workflow, /item\.get\("expired"\) is False/);
+  assert.match(workflow, /item\.get\("size_in_bytes", 0\) > 0/);
+  assert.match(workflow, /approved encrypted database backup is expired or missing/);
+  assert.match(workflow, /independent offsite/);
 });

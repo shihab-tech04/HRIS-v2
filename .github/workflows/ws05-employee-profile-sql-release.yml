@@ -54,24 +54,25 @@ jobs:
           test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
           test -s supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql
           test -s supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql
-          # Pin source SQL bytes to independently verified WS02/WS05 exact integration head 00b2f773.
-          test "$(sha256sum supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql | cut -d ' ' -f1)" = '5ace168753cca54f321e4c3f14a27f766ab477d9597496405fad424f3a0046a3' || {
+          # Pin source SQL bytes to the reviewed PR #159 Employee Profile migration.
+          test "$(sha256sum supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql | cut -d ' ' -f1)" = '7b156e3f33e4688d3861eb09c3c660243ce2ead667c0c83220330649698c7a39' || {
             echo '::error::Profile tenant migration bytes differ from signed release plan'; exit 1;
           }
           test "$(sha256sum supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql | cut -d ' ' -f1)" = 'a5b3d96bdb628f5843d9f0efb01a452a9324eb2271030fa193f695204f0f60c5' || {
             echo '::error::Profile certificate policy bytes differ from signed release plan'; exit 1;
           }
 
-          # Require the approved encrypted replacement DB export, isolated restore,
-          # exact SQL rehearsal, and latest combined QA's two green workflows.
+          # Require current replacement DB export, verified isolated recovery,
+          # exact fresh SQL rehearsal and source CI evidence. Exact final PR-head
+          # and protected Main SHA gates are independently checked below.
           python3 - <<'PY'
           import json, os, urllib.request
           expected = {
-              41089145233: "HRIS Step 1 - Encrypted database export",
-              41090015468: "WS05 isolated restore of current encrypted HRIS backup 41089145233",
-              41090711503: "WS05 exact Employee Profile SQL on restored current HRIS database",
-              41100639303: "Verify HRIS build and browser smoke",
-              41100639286: "Disposable Auth, Postgres and browser acceptance (no deployment)",
+              41648721099: "HRIS Step 1 - Encrypted database export",
+              41649952552: "PR162 - Fresh encrypted SQL isolated PG17 restore proof",
+              41655372259: "PR159 - Exact Employee Profile SQL on isolated PG17 restore",
+              41566532582: "Verify HRIS build and browser smoke",
+              41566532749: "Disposable Auth, Postgres and browser acceptance (no deployment)",
           }
           for run_id, name in expected.items():
               req = urllib.request.Request(
@@ -83,6 +84,53 @@ jobs:
                   data = json.load(response)
               if data.get("name") != name or data.get("status") != "completed" or data.get("conclusion") != "success":
                   raise SystemExit("Required recovery or QA run is not successful: " + str(run_id))
+          # Do not accept a historical green workflow as proof for a later PR head
+          # or protected-main merge. These checks are read-only GitHub API calls.
+          def read_github(path):
+              req = urllib.request.Request(
+                  "https://api.github.com/repos/shihab-tech04/HRIS-v2/" + path,
+                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "HRIS-WS05-version-pinned-release"})
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return json.load(response)
+
+          # A green export run alone is not recoverable data. The approved
+          # encrypted archive must still exist and be unexpired at release time.
+          # The artifact's presence does not replace independent offsite
+          # custody, checksum and isolated restore approvals.
+          recovery_artifacts = read_github(
+              "actions/runs/41648721099/artifacts?per_page=100").get("artifacts", [])
+          if not any(item.get("name") == "hris-db-encrypted-41648721099"
+                     and item.get("expired") is False
+                     and item.get("size_in_bytes", 0) > 0
+                     for item in recovery_artifacts):
+              raise SystemExit(
+                  "The approved encrypted database backup is expired or missing; "
+                  "create and verify a NEW current backup before any SQL release")
+
+          profile_pr = read_github("pulls/159")
+          if profile_pr.get("merged_at") is None or profile_pr.get("base", {}).get("ref") != "main":
+              raise SystemExit("Employee Profile PR #159 must be merged into protected main first")
+          reviewed_head = profile_pr.get("head", {}).get("sha")
+          if not reviewed_head or len(reviewed_head) != 40:
+              raise SystemExit("Cannot verify Employee Profile reviewed PR head")
+          reviewed_checks = read_github("commits/" + reviewed_head + "/check-runs?per_page=100")
+          for check_name in ("check", "isolated-hris"):
+              if not any(check.get("name") == check_name
+                         and check.get("status") == "completed"
+                         and check.get("conclusion") == "success"
+                         for check in reviewed_checks.get("check_runs", [])):
+                  raise SystemExit("Reviewed Employee Profile PR head lacks PASS: " + check_name)
+
+          protected_sha = os.environ["GITHUB_SHA"]
+          protected_main_checks = read_github("commits/" + protected_sha + "/check-runs?per_page=100")
+          if not any(check.get("name") == "build"
+                     and check.get("status") == "completed"
+                     and check.get("conclusion") == "success"
+                     for check in protected_main_checks.get("check_runs", [])):
+              raise SystemExit("Current protected main has not passed exact-SHA build verification")
+          print("PASS: merged PR #159 exact-head acceptance and protected-main exact-SHA build")
           print("PASS: exact recovery and QA evidence validated; no deployment triggered yet")
           PY
 

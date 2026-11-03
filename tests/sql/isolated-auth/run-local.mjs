@@ -486,6 +486,8 @@ for (const file of [
   path.join(here, 'overgrant-leave-types-for-hosted-parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261021084635_leave_types_authenticated_read_only_acl.sql'),
   path.join(mainRoot, 'supabase/migrations/20261023130800_hris_private_storage_tenant_read_guard.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -851,6 +853,35 @@ record('E02 profile review is denied to employees and users without permission a
     && !profileManagerAQueue.error
     && profileManagerBQueue.error?.code === '42501'
     && profileCrossTenantSubmit.error?.code === '42501');
+// Regression: a reviewer with valid tenant permission must not decide a request
+// when the request itself identifies that reviewer as its submitter. Mutate only
+// the disposable local fixture, then restore it for the positive manager test.
+psqlSync(`UPDATE public.employee_profile_change_requests SET requested_by=${sqlLiteral(managerA.userId)}::uuid
+  WHERE id=${sqlLiteral(profileChangeId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+let profileSelfApproval;
+let profileSelfRejection;
+let profileSelfReviewState;
+try {
+  profileSelfApproval = await managerA.client.rpc('admin_review_profile_change_request', {
+    p_tenant_id: ids.tenantA, p_id: profileChangeId, p_decision: 'approved', p_note: 'Must deny self-approval.',
+  });
+  profileSelfRejection = await managerA.client.rpc('admin_review_profile_change_request', {
+    p_tenant_id: ids.tenantA, p_id: profileChangeId, p_decision: 'rejected', p_note: 'Must deny self-rejection.',
+  });
+  profileSelfReviewState = queryAdmin(`SELECT jsonb_build_object('status',status,'reviewed_by',reviewed_by)
+    FROM public.employee_profile_change_requests WHERE id=${sqlLiteral(profileChangeId)}::uuid`);
+} finally {
+  psqlSync(`UPDATE public.employee_profile_change_requests SET requested_by=${sqlLiteral(employeeA.userId)}::uuid
+    WHERE id=${sqlLiteral(profileChangeId)}::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+}
+record('E02 self-approval and self-rejection are denied even for a permitted tenant manager',
+  profileSelfApproval.error?.code === '42501'
+    && profileSelfRejection.error?.code === '42501'
+    && profileSelfReviewState.status === 'pending'
+    && profileSelfReviewState.reviewed_by === null,
+  JSON.stringify({ selfApproval: profileSelfApproval.error?.code,
+    selfRejection: profileSelfRejection.error?.code, state: profileSelfReviewState }));
+
 const profileApproval = await managerA.client.rpc('admin_review_profile_change_request', {
   p_tenant_id: ids.tenantA,
   p_id: profileChangeId, p_decision: 'approved', p_note: 'Verified synthetic employee correction.',
@@ -872,6 +903,494 @@ record('E02-17 approved profile changes update only the requested field, persist
     && profileEmployeeAfterReview.data?.full_name === 'Synthetic Employee A'
     && profileAudit.count === 1 && profileAudit.redacted === true,
   JSON.stringify({ approval: profileApproval.data?.status || profileApproval.error?.code, duplicateDecision: profileDuplicateDecision.error?.code, history: profileHistoryAfterReview.data?.find(row => row.id === profileChangeId)?.status, fieldPersisted: profileEmployeeAfterReview.data?.address === profileChangeValue, audit: profileAudit }));
+
+
+// E02-05: the original employee structured-address rows are independent of
+// scalar correction fields and must round-trip under explicit tenant context.
+const structuredAddressCreateA = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA,
+  p_rows: [
+    { address_type: 'Present', district: 'Dhaka', thana: 'Tejgaon',
+      post_code: '1215', city_village: 'Dhaka', road_block_house: 'Road 12' },
+    { address_type: 'Permanent', district: 'Chattogram', thana: 'Pahartali',
+      post_code: '4202', city_village: 'Chattogram', road_block_house: 'House 4' },
+  ],
+});
+const structuredAddressReadA = await employeeA.client.rpc('employee_get_my_profile_v1', {
+  p_tenant_id: ids.tenantA,
+});
+const structuredAddressesA = structuredAddressReadA.data?.addresses || [];
+const structuredPresentA = structuredAddressesA.find(row => row.address_type === 'Present');
+const structuredPermanentA = structuredAddressesA.find(row => row.address_type === 'Permanent');
+const structuredAddressUpdateA = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA,
+  p_rows: [
+    { id: structuredPresentA?.id, district: 'Dhaka North' },
+    { id: structuredPermanentA?.id },
+  ],
+});
+const structuredAddressAfterUpdateA = await employeeA.client.rpc('employee_get_my_profile_v1', {
+  p_tenant_id: ids.tenantA,
+});
+const structuredAddressOmission = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA,
+  p_rows: [{ id: structuredPresentA?.id, district: 'Must roll back' }],
+});
+const structuredAddressAfterOmission = await employeeA.client.rpc('employee_get_my_profile_v1', {
+  p_tenant_id: ids.tenantA,
+});
+const structuredAddressCrossTenant = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantB, p_rows: [],
+});
+const structuredAddressForeignRow = await employeeB.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantB, p_rows: [{ id: structuredPresentA?.id, district: 'Foreign attempt' }],
+});
+const structuredAddressUnknownField = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA, p_rows: [{ bad_key: true }],
+});
+const structuredAddressInvalidType = await employeeA.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA, p_rows: [{ address_type: 'Unknown' }],
+});
+const structuredAddressUnlinked = await employeesViewer.client.rpc('employee_save_my_addresses_v1', {
+  p_tenant_id: ids.tenantA, p_rows: [],
+});
+const structuredAddressDirectWrite = await employeeA.client.from('employee_addresses').insert({
+  employee_id: '55555555-5555-4555-8555-555555555555', address_type: 'Other',
+});
+const structuredAddressAnonWrite = await createClient(services.API_URL, services.ANON_KEY, authOptions)
+  .rpc('employee_save_my_addresses_v1', { p_tenant_id: ids.tenantA, p_rows: [] });
+record('E02-05 structured Present/Permanent address saves round-trip and preserve scalar profile corrections',
+  !structuredAddressCreateA.error && structuredAddressCreateA.data === 2
+  && structuredAddressesA.length === 2 && Boolean(structuredPresentA?.id)
+  && Boolean(structuredPermanentA?.id)
+  && !structuredAddressUpdateA.error && structuredAddressUpdateA.data === 2
+  && structuredAddressAfterUpdateA.data?.addresses?.find(row => row.id === structuredPresentA?.id)?.district === 'Dhaka North'
+  && structuredAddressAfterUpdateA.data?.addresses?.find(row => row.id === structuredPermanentA?.id)?.district === 'Chattogram'
+  && structuredAddressAfterUpdateA.data?.employee?.address === profileChangeValue,
+  JSON.stringify({ create: structuredAddressCreateA.error?.code || structuredAddressCreateA.data,
+    read: structuredAddressesA.length, update: structuredAddressUpdateA.error?.code || structuredAddressUpdateA.data,
+    scalarAddress: structuredAddressAfterUpdateA.data?.employee?.address }));
+record('E02-05 structured address rejects omitted-history deletion, extra fields, foreign IDs and tenant substitution',
+  structuredAddressOmission.error?.code === '22023'
+  && structuredAddressAfterOmission.data?.addresses?.find(row => row.id === structuredPresentA?.id)?.district === 'Dhaka North'
+  && structuredAddressCrossTenant.error?.code === '42501'
+  && structuredAddressForeignRow.error?.code === '42501'
+  && structuredAddressUnknownField.error?.code === '22023'
+  && structuredAddressInvalidType.error?.code === '22023',
+  JSON.stringify({ omission: structuredAddressOmission.error?.code,
+    crossTenant: structuredAddressCrossTenant.error?.code,
+    foreignId: structuredAddressForeignRow.error?.code,
+    unexpectedField: structuredAddressUnknownField.error?.code,
+    invalidType: structuredAddressInvalidType.error?.code }));
+record('E02-05 structured addresses deny anonymous, non-employee and direct table writes',
+  structuredAddressUnlinked.error?.code === '42501'
+  && Boolean(structuredAddressDirectWrite.error)
+  && Boolean(structuredAddressAnonWrite.error),
+  JSON.stringify({ unlinked: structuredAddressUnlinked.error?.code,
+    direct: structuredAddressDirectWrite.error?.code,
+    anonymous: structuredAddressAnonWrite.error?.code }));
+
+const profileOwnRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
+const profileCrossTenantRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantB });
+const profileMemberWithoutEmployee = await employeesViewer.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
+record('E02-01 v1 profile projection returns only the linked tenant employee and handles a member without an employee row',
+  !profileOwnRead.error
+    && profileOwnRead.data?.tenant_id === ids.tenantA
+    && profileOwnRead.data?.employee?.id === '55555555-5555-4555-8555-555555555555'
+    && profileOwnRead.data?.employee?.address === profileChangeValue
+    && profileOwnRead.data?.employee?.mailing_address === 'QA A mailing address'
+    && profileCrossTenantRead.error?.code === '42501'
+    && !profileMemberWithoutEmployee.error
+    && profileMemberWithoutEmployee.data?.employee === null,
+  JSON.stringify({ own: profileOwnRead.error?.code || profileOwnRead.data?.employee?.id,
+    address: profileOwnRead.data?.employee?.address,
+    mailing_address: profileOwnRead.data?.employee?.mailing_address,
+    crossTenant: profileCrossTenantRead.error?.code || 'unexpected success',
+    noEmployeeError: profileMemberWithoutEmployee.error?.code || null,
+    noEmployee: profileMemberWithoutEmployee.data?.employee }));
+
+const educationPayload = {
+  education_level: 'Bachelor', institution: 'Synthetic Profile University',
+  subject_major: 'Product Design', degree_title: 'Bachelor of Design',
+  result_type: 'GPA', result: '3.8', currently_studying: false,
+  starting_year: 2015, passing_year: 2019, duration: '4 years',
+  achievements: 'Synthetic portfolio distinction',
+};
+const profileEducationSave = await employeeA.client.rpc('employee_save_my_education_v1', {
+  p_tenant_id: ids.tenantA, p_payload: educationPayload,
+});
+const profileEducationUpdate = await employeeA.client.rpc('employee_save_my_education_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { ...educationPayload, id: profileEducationSave.data, institution: 'Synthetic Updated University' },
+});
+const profileEducationStored = await adminAuth.from('employee_education')
+  .select('employee_id,institution,subject_major,passing_year,currently_studying')
+  .eq('id', profileEducationSave.data).single();
+const invalidEducation = await employeeA.client.rpc('employee_save_my_education_v1', {
+  p_tenant_id: ids.tenantA, p_payload: { ...educationPayload, starting_year: 1899 },
+});
+
+const experiencePayload = {
+  role_title: 'Synthetic Product Designer', company: 'Synthetic Design Lab', job_type: 'Full time',
+  company_website: 'https://example.invalid', joining_date: '2020-01-01',
+  departure_date: '2022-01-01', total_duration: '2 years', office_address: 'Synthetic Dhaka office',
+  description: 'Synthetic product design responsibilities',
+};
+const profileExperienceSave = await employeeA.client.rpc('employee_save_my_experience_v1', {
+  p_tenant_id: ids.tenantA, p_payload: experiencePayload,
+});
+const profileExperienceUpdate = await employeeA.client.rpc('employee_save_my_experience_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { ...experiencePayload, id: profileExperienceSave.data, company: 'Synthetic Updated Design Lab' },
+});
+const profileExperienceStored = await adminAuth.from('employee_experience')
+  .select('employee_id,company,job_type,company_website,departure_date')
+  .eq('id', profileExperienceSave.data).single();
+const invalidExperience = await employeeA.client.rpc('employee_save_my_experience_v1', {
+  p_tenant_id: ids.tenantA, p_payload: { ...experiencePayload, departure_date: '2019-12-31' },
+});
+
+const familyPayload = {
+  name: 'Synthetic Profile Family Member', phone: '+880 1700 000202',
+  nid_number: 'SYNTHETIC-FAMILY-NID', date_of_birth: '1992-02-03',
+  relationship: 'Sibling', present_address: 'Synthetic present address',
+  permanent_address: 'Synthetic permanent address', is_nominee: true,
+};
+const profileFamilySave = await employeeA.client.rpc('employee_save_my_family_member_v1', {
+  p_tenant_id: ids.tenantA, p_payload: familyPayload,
+});
+const profileFamilyUpdate = await employeeA.client.rpc('employee_save_my_family_member_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { ...familyPayload, id: profileFamilySave.data, relationship: 'Spouse' },
+});
+const profileFamilyStored = await adminAuth.from('employee_family_members')
+  .select('employee_id,name,phone,nid_number,relationship,is_nominee')
+  .eq('id', profileFamilySave.data).single();
+const invalidFamily = await employeeA.client.rpc('employee_save_my_family_member_v1', {
+  p_tenant_id: ids.tenantA, p_payload: { ...familyPayload, phone: 'abc' },
+});
+
+const bankPayload = {
+  bank_name: 'Synthetic Profile Bank', account_name: 'Synthetic Bank Account Holder', account_number: 'SYNTHETIC-ACCOUNT-12345',
+  branch_name: 'Synthetic Branch',
+  routing_number: '123456789',
+};
+const profileBankSave = await employeeA.client.rpc('employee_save_my_bank_v1', {
+  p_tenant_id: ids.tenantA, p_payload: bankPayload,
+});
+const profileBankUpdate = await employeeA.client.rpc('employee_save_my_bank_v1', {
+  p_tenant_id: ids.tenantA, p_payload: { ...bankPayload, branch_name: 'Synthetic Updated Branch' },
+});
+const profileBankStored = queryAdmin(`SELECT to_jsonb(b) FROM public.employee_bank_details b
+  WHERE b.employee_id='55555555-5555-4555-8555-555555555555'::uuid`);
+const invalidBank = await employeeA.client.rpc('employee_save_my_bank_v1', {
+  p_tenant_id: ids.tenantA, p_payload: { ...bankPayload, routing_number: 'ABC' },
+});
+const unauthorizedBankSave = await managerA.client.rpc('employee_save_my_bank_v1', {
+  p_tenant_id: ids.tenantA, p_payload: bankPayload,
+});
+const crossTenantBankSave = await employeeA.client.rpc('employee_save_my_bank_v1', {
+  p_tenant_id: ids.tenantB, p_payload: bankPayload,
+});
+const directBankRead = await employeeA.client.from('employee_bank_details').select('account_number');
+const directEmployeeWrite = await employeeA.client.from('employees')
+  .update({ address: 'Direct bypass attempt' }).eq('id', '55555555-5555-4555-8555-555555555555');
+const profileDirectFamilyWrite = await employeeA.client.from('employee_family_members').insert({
+  employee_id: '55555555-5555-4555-8555-555555555555', name: 'Direct bypass attempt',
+});
+
+record('E02 v1 education, experience, family, and bank RPCs persist their approved payload fields',
+  !profileEducationSave.error && !profileEducationStored.error
+    && profileEducationStored.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && !profileEducationUpdate.error
+    && profileEducationStored.data?.institution === 'Synthetic Updated University'
+    && profileEducationStored.data?.currently_studying === false
+    && !profileExperienceSave.error && !profileExperienceStored.error
+    && !profileExperienceUpdate.error
+    && profileExperienceStored.data?.company === 'Synthetic Updated Design Lab'
+    && profileExperienceStored.data?.job_type === 'Full time'
+    && profileExperienceStored.data?.company_website === 'https://example.invalid'
+    && !profileFamilySave.error && !profileFamilyUpdate.error && !profileFamilyStored.error
+    && profileFamilyStored.data?.name === 'Synthetic Profile Family Member'
+    && profileFamilyStored.data?.relationship === 'Spouse'
+    && profileFamilyStored.data?.is_nominee === true
+    && !profileBankSave.error && !profileBankUpdate.error
+    && profileBankStored?.branch_name === 'Synthetic Updated Branch'
+    && profileBankStored?.account_number === 'SYNTHETIC-ACCOUNT-12345',
+  JSON.stringify({ education: profileEducationSave.error?.code || profileEducationStored.data?.institution,
+    experience: profileExperienceSave.error?.code || profileExperienceStored.data?.company,
+    family: { save: profileFamilySave.error?.code || profileFamilySave.data,
+      update: profileFamilyUpdate.error?.code || 'ok', storedError: profileFamilyStored.error?.code || null,
+      employee: profileFamilyStored.data?.employee_id, name: profileFamilyStored.data?.name,
+      relationship: profileFamilyStored.data?.relationship, is_nominee: profileFamilyStored.data?.is_nominee },
+    bank: { save: profileBankSave.error?.code || profileBankSave.data,
+      update: profileBankUpdate.error?.code || 'ok', stored: profileBankStored } }));
+
+record('E02 v1 profile RPCs reject invalid values, unauthorized roles, cross-tenant calls, and direct table writes',
+  invalidEducation.error?.code === '22023'
+    && invalidExperience.error?.code === '22023'
+    && invalidFamily.error?.code === '22023'
+    && invalidBank.error?.code === '22023'
+    && unauthorizedBankSave.error?.code === '42501'
+    && crossTenantBankSave.error?.code === '42501'
+    && Boolean(directBankRead.error)
+    && Boolean(directEmployeeWrite.error)
+    && Boolean(profileDirectFamilyWrite.error),
+  JSON.stringify({ education: invalidEducation.error?.code, experience: invalidExperience.error?.code,
+    family: invalidFamily.error?.code, bank: invalidBank.error?.code,
+    unauthorized: unauthorizedBankSave.error?.code, crossTenant: crossTenantBankSave.error?.code,
+    directBank: directBankRead.error?.code, directEmployee: directEmployeeWrite.error?.code,
+    directFamily: profileDirectFamilyWrite.error?.code }));
+
+const profileCertificatePath = employeeA.userId + '/' + ids.tenantA + '/profile-certificates/' + randomUUID() + '.pdf';
+const profileCertificateUpload = await employeeA.client.storage.from('employee-documents').upload(
+  profileCertificatePath, new Blob(['%PDF-1.4\nSynthetic profile training certificate\n'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!profileCertificateUpload.error) employeeDocumentStoragePaths.push(profileCertificatePath);
+const malformedProfileCertificatePath = employeeA.userId + '/' + ids.tenantA + '/profile-certificates/not-a-uuid.pdf';
+const malformedProfileCertificateUpload = await employeeA.client.storage.from('employee-documents').upload(
+  malformedProfileCertificatePath, new Blob(['Synthetic malformed profile certificate'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!malformedProfileCertificateUpload.error) employeeDocumentStoragePaths.push(malformedProfileCertificatePath);
+const crossTenantProfileCertificatePath = employeeA.userId + '/' + ids.tenantB + '/profile-certificates/' + randomUUID() + '.pdf';
+const crossTenantProfileCertificateUpload = await employeeA.client.storage.from('employee-documents').upload(
+  crossTenantProfileCertificatePath, new Blob(['Synthetic cross-tenant profile certificate'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!crossTenantProfileCertificateUpload.error) employeeDocumentStoragePaths.push(crossTenantProfileCertificatePath);
+const profileTrainingSave = await employeeA.client.rpc('employee_save_my_training_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    title: 'Synthetic profile training', institute_name: 'Synthetic QA Institute',
+    training_number: 'TRAIN-LOCAL-001', year: '2024', duration: '3 days',
+    certificate_url: profileCertificatePath,
+  },
+});
+const profileCertificateOverwrite = await employeeA.client.storage.from('employee-documents').upload(
+  profileCertificatePath, new Blob(['%PDF-1.4\nSynthetic attempted overwrite\n'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: true },
+);
+const linkedProfileCertificateDelete = await employeeA.client.storage.from('employee-documents').remove([profileCertificatePath]);
+const profileCertificateAfterDeniedDelete = await employeeA.client.storage.from('employee-documents').download(profileCertificatePath);
+const profileCertificateAfterDeniedDeleteAsAdmin = await adminAuth.storage.from('employee-documents').download(profileCertificatePath);
+const orphanProfileCertificatePath = employeeA.userId + '/' + ids.tenantA + '/profile-certificates/' + randomUUID() + '.png';
+const orphanProfileCertificateUpload = await employeeA.client.storage.from('employee-documents').upload(
+  orphanProfileCertificatePath, new Blob([new Uint8Array([137,80,78,71,13,10,26,10])], { type: 'image/png' }),
+  { contentType: 'image/png', upsert: false },
+);
+if (!orphanProfileCertificateUpload.error) employeeDocumentStoragePaths.push(orphanProfileCertificatePath);
+const orphanProfileCertificateDelete = await employeeA.client.storage.from('employee-documents').remove([orphanProfileCertificatePath]);
+const orphanProfileCertificateAfterDelete = await adminAuth.storage.from('employee-documents').download(orphanProfileCertificatePath);
+if (orphanProfileCertificateAfterDelete.error) {
+  const orphanIndex = employeeDocumentStoragePaths.indexOf(orphanProfileCertificatePath);
+  if (orphanIndex >= 0) employeeDocumentStoragePaths.splice(orphanIndex, 1);
+}
+const profileTrainingUpdate = await employeeA.client.rpc('employee_save_my_training_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    id: profileTrainingSave.data, title: 'Synthetic updated profile training',
+    institute_name: 'Synthetic QA Institute', training_number: 'TRAIN-LOCAL-001',
+    year: '2024', duration: '4 days', certificate_url: profileCertificatePath,
+  },
+});
+const profileTrainingStored = await adminAuth.from('employee_training')
+  .select('employee_id,title,training_number,year,duration,certificate_url')
+  .eq('id', profileTrainingSave.data).single();
+const profileCertificateDocument = await adminAuth.from('employee_documents')
+  .select('employee_id,name,document_type,file_url,verification_status')
+  .eq('file_url', profileCertificatePath).single();
+const profileCertificateOwnerDownload = await employeeA.client.storage
+  .from('employee-documents').download(profileCertificatePath);
+const profileCertificateForeignDownload = await employeeB.client.storage
+  .from('employee-documents').download(profileCertificatePath);
+// Profile certificate SELECT must verify the tenant embedded in the storage
+// path, not merely employees.view on the reviewer's currently active tenant.
+// Use a real tenant-B object so the negative test cannot pass from a 404.
+const tenantBCertificatePath = employeeB.userId + '/' + ids.tenantB + '/profile-certificates/' + randomUUID() + '.pdf';
+const tenantBCertificateUpload = await employeeB.client.storage.from('employee-documents').upload(
+  tenantBCertificatePath, new Blob(['%PDF-1.4\nSynthetic tenant-B certificate\n'], { type: 'application/pdf' }),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!tenantBCertificateUpload.error) employeeDocumentStoragePaths.push(tenantBCertificatePath);
+const profileCertificateSameTenantReviewer = await employeesViewer.client.storage
+  .from('employee-documents').download(profileCertificatePath);
+const tenantBCertificateOwnerDownload = await employeeB.client.storage
+  .from('employee-documents').download(tenantBCertificatePath);
+const tenantBCertificateForeignReviewer = await employeesViewer.client.storage
+  .from('employee-documents').download(tenantBCertificatePath);
+const tenantBCertificateForeignSigned = await employeesViewer.client.storage
+  .from('employee-documents').createSignedUrl(tenantBCertificatePath, 60);
+
+const profileCertificationPath = employeeA.userId + '/' + ids.tenantA + '/profile-certificates/' + randomUUID() + '.png';
+const profileCertificationUpload = await employeeA.client.storage.from('employee-documents').upload(
+  profileCertificationPath, new Blob([new Uint8Array([137,80,78,71,13,10,26,10])], { type: 'image/png' }),
+  { contentType: 'image/png', upsert: false },
+);
+if (!profileCertificationUpload.error) employeeDocumentStoragePaths.push(profileCertificationPath);
+const profileCertificationSave = await employeeA.client.rpc('employee_save_my_certification_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    title: 'Synthetic employee certification', institute_name: 'Synthetic QA Board',
+    issued_by: 'Synthetic QA Board', issue_date: '2024-01-01', expiry_date: '2027-01-01',
+    certificate_document_url: profileCertificationPath,
+  },
+});
+const profileCertificationUpdate = await employeeA.client.rpc('employee_save_my_certification_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    id: profileCertificationSave.data, title: 'Synthetic updated employee certification',
+    institute_name: 'Synthetic QA Board', issued_by: 'Synthetic QA Board',
+    issue_date: '2024-01-01', expiry_date: '2028-01-01',
+    certificate_document_url: profileCertificationPath,
+  },
+});
+const profileCertificationStored = await adminAuth.from('employee_certifications')
+  .select('employee_id,title,issue_date,expiry_date,certificate_document_url')
+  .eq('id', profileCertificationSave.data).single();
+const profileCertificationDocument = await adminAuth.from('employee_documents')
+  .select('employee_id,name,document_type,file_url,expires_at,verification_status')
+  .eq('file_url', profileCertificationPath).single();
+const invalidCertification = await employeeA.client.rpc('employee_save_my_certification_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    title: 'Invalid certification', institute_name: 'Synthetic QA Board',
+    issue_date: '2024-02-01', expiry_date: '2024-01-01',
+  },
+});
+const invalidTraining = await employeeA.client.rpc('employee_save_my_training_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: {
+    title: 'Invalid training', institute_name: 'Synthetic QA Institute',
+    training_number: 'TRAIN-INVALID', year: 'not-a-year', duration: '1 day',
+  },
+});
+const profileCrossTenantEducation = await employeeA.client.rpc('employee_save_my_education_v1', {
+  p_tenant_id: ids.tenantB, p_payload: educationPayload,
+});
+const profileOtherEmployeeSeed = await employeeB.client.rpc('employee_save_my_education_v1', {
+  p_tenant_id: ids.tenantB, p_payload: { ...educationPayload, institution: 'Synthetic Tenant B University' },
+});
+const profileOtherEmployeeUpdate = await employeeA.client.rpc('employee_save_my_education_v1', {
+  p_tenant_id: ids.tenantA,
+  p_payload: { ...educationPayload, id: profileOtherEmployeeSeed.data },
+});
+record('E02 v1 training certificate upload is owner and tenant scoped, persists its document row, and malformed input is rejected',
+  !profileCertificateUpload.error
+    && !profileTrainingSave.error && !profileTrainingUpdate.error && !profileTrainingStored.error
+    && profileTrainingStored.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && profileTrainingStored.data?.certificate_url === profileCertificatePath
+    && profileTrainingStored.data?.title === 'Synthetic updated profile training'
+    && profileTrainingStored.data?.duration === '4 days'
+    && !profileCertificateDocument.error
+    && profileCertificateDocument.data?.document_type === 'certificate'
+    && profileCertificateDocument.data?.file_url === profileCertificatePath
+    && !profileCertificateOwnerDownload.error
+    && Boolean(profileCertificateOwnerDownload.data)
+    && Boolean(profileCertificateForeignDownload.error)
+    && invalidTraining.error?.code === '22023'
+    && !profileOtherEmployeeSeed.error
+    && !profileCertificationUpload.error
+    && !profileCertificationSave.error && !profileCertificationUpdate.error
+    && !profileCertificationStored.error
+    && profileCertificationStored.data?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && profileCertificationStored.data?.certificate_document_url === profileCertificationPath
+    && profileCertificationStored.data?.title === 'Synthetic updated employee certification'
+    && profileCertificationStored.data?.expiry_date === '2028-01-01'
+    && !profileCertificationDocument.error
+    && profileCertificationDocument.data?.document_type === 'certificate'
+    && profileCertificationDocument.data?.expires_at === '2028-01-01'
+    && invalidCertification.error?.code === '22023'
+    && profileCrossTenantEducation.error?.code === '42501'
+    && profileOtherEmployeeUpdate.error?.code === '42501',
+  JSON.stringify({ upload: profileCertificateUpload.error?.message || 'ok',
+    save: profileTrainingSave.error?.code || 'ok', registeredType: profileCertificateDocument.data?.document_type,
+    certification: profileCertificationSave.error?.code || profileCertificationDocument.data?.document_type,
+    invalidCertification: invalidCertification.error?.code,
+    ownDownload: profileCertificateOwnerDownload.error?.message || 'ok',
+    foreignDownload: profileCertificateForeignDownload.error?.message || 'denied',
+    invalidYear: invalidTraining.error?.code, crossTenant: profileCrossTenantEducation.error?.code,
+    otherEmployee: profileOtherEmployeeUpdate.error?.code }));
+
+record('Profile certificate SELECT enforces the document tenant for authorized HR reviewers',
+  !tenantBCertificateUpload.error
+    && !profileCertificateSameTenantReviewer.error
+    && !tenantBCertificateOwnerDownload.error
+    && Boolean(tenantBCertificateForeignReviewer.error)
+    && Boolean(tenantBCertificateForeignSigned.error),
+  JSON.stringify({ tenantBUpload: tenantBCertificateUpload.error?.message || 'ok',
+    sameTenantHRRead: profileCertificateSameTenantReviewer.error?.message || 'ok',
+    ownerBRead: tenantBCertificateOwnerDownload.error?.message || 'ok',
+    foreignTenantHRRead: tenantBCertificateForeignReviewer.error?.message || 'denied',
+    foreignTenantHRSignedUrl: tenantBCertificateForeignSigned.error?.message || 'denied' }));
+
+record('Profile certificate paths cannot bypass tenant/format, overwrite, or linked-delete checks while orphan cleanup remains available',
+  Boolean(malformedProfileCertificateUpload.error)
+    && Boolean(crossTenantProfileCertificateUpload.error)
+    && Boolean(profileCertificateOverwrite.error)
+    && !profileCertificateAfterDeniedDelete.error
+    && !profileCertificateAfterDeniedDeleteAsAdmin.error
+    && !orphanProfileCertificateUpload.error
+    && !orphanProfileCertificateDelete.error
+    && Boolean(orphanProfileCertificateAfterDelete.error),
+  JSON.stringify({ malformedUpload: malformedProfileCertificateUpload.error?.statusCode || malformedProfileCertificateUpload.error?.code || null,
+    crossTenantUpload: crossTenantProfileCertificateUpload.error?.statusCode || crossTenantProfileCertificateUpload.error?.code || null,
+    overwrite: profileCertificateOverwrite.error?.statusCode || profileCertificateOverwrite.error?.code || null,
+    linkedDelete: linkedProfileCertificateDelete.error?.statusCode || linkedProfileCertificateDelete.error?.code || null,
+    linkedObjectRemains: !profileCertificateAfterDeniedDelete.error && !profileCertificateAfterDeniedDeleteAsAdmin.error,
+    orphanUpload: orphanProfileCertificateUpload.error?.statusCode || orphanProfileCertificateUpload.error?.code || null,
+    orphanDelete: orphanProfileCertificateDelete.error?.statusCode || orphanProfileCertificateDelete.error?.code || null,
+    orphanObjectRemoved: Boolean(orphanProfileCertificateAfterDelete.error) }));
+
+const profileInvalidEmail = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_tenant_id: ids.tenantA, p_field_key: 'personal_email',
+  p_requested_value: 'not-an-email', p_reason: 'Invalid profile input acceptance.',
+});
+const profileInvalidGender = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_tenant_id: ids.tenantA, p_field_key: 'gender',
+  p_requested_value: 'Unknown', p_reason: 'Invalid profile input acceptance.',
+});
+const profileInvalidDob = await employeeA.client.rpc('employee_submit_profile_change_request', {
+  p_tenant_id: ids.tenantA, p_field_key: 'date_of_birth',
+  p_requested_value: '2999-12-31', p_reason: 'Invalid profile input acceptance.',
+});
+const profilePostWriteRead = await employeeA.client.rpc('employee_get_my_profile_v1', { p_tenant_id: ids.tenantA });
+const profilePostWriteData = profilePostWriteRead.data;
+const retiredProfileRpcExecute = queryAdmin("SELECT jsonb_build_object(" +
+  "'read',CASE WHEN to_regprocedure('public.employee_get_my_profile()') IS NULL THEN true ELSE NOT has_function_privilege('authenticated',to_regprocedure('public.employee_get_my_profile()'),'EXECUTE') END," +
+  "'update',CASE WHEN to_regprocedure('public.employee_update_my_profile(jsonb)') IS NULL THEN true ELSE NOT has_function_privilege('authenticated',to_regprocedure('public.employee_update_my_profile(jsonb)'),'EXECUTE') END," +
+  "'bank_update',CASE WHEN to_regprocedure('public.employee_update_my_bank(jsonb)') IS NULL THEN true ELSE NOT has_function_privilege('authenticated',to_regprocedure('public.employee_update_my_bank(jsonb)'),'EXECUTE') END)");
+record('E02 v1 profile projection returns saved employee-owned records and legacy tenantless writes are retired',
+  !profilePostWriteRead.error
+    && profilePostWriteData?.education?.some(row => row.id === profileEducationSave.data)
+    && profilePostWriteData?.experience?.some(row => row.id === profileExperienceSave.data)
+    && profilePostWriteData?.training?.some(row => row.id === profileTrainingSave.data)
+    && profilePostWriteData?.family_members?.some(row => row.id === profileFamilySave.data)
+    && profilePostWriteData?.bank?.account_number === 'SYNTHETIC-ACCOUNT-12345'
+    && profileInvalidEmail.error?.code === '22023'
+    && profileInvalidGender.error?.code === '22023'
+    && profileInvalidDob.error?.code === '22023'
+    && retiredProfileRpcExecute.read === true
+    && retiredProfileRpcExecute.update === true
+    && retiredProfileRpcExecute.bank_update === true,
+  JSON.stringify({ readError: profilePostWriteRead.error?.code || null,
+    readMessage: profilePostWriteRead.error?.message || null,
+    employeeId: profilePostWriteData?.employee?.id,
+    education: profilePostWriteData?.education?.length,
+    experience: profilePostWriteData?.experience?.length, training: profilePostWriteData?.training?.length,
+    family: { count: profilePostWriteData?.family_members?.length, savedId: profileFamilySave.data,
+      ids: profilePostWriteData?.family_members?.map(row => row.id),
+      savedRecordPresent: profilePostWriteData?.family_members?.some(row => row.id === profileFamilySave.data) },
+    bank: profilePostWriteData?.bank ?? null,
+    invalidEmail: profileInvalidEmail.error?.code, invalidGender: profileInvalidGender.error?.code,
+    invalidDob: profileInvalidDob.error?.code, retired: retiredProfileRpcExecute }));
+const profileRoleWithoutEmployeeWrite = await employeesViewer.client.rpc('employee_save_my_family_member_v1', {
+  p_tenant_id: ids.tenantA, p_payload: familyPayload,
+});
+record('E02 unlinked active tenant members cannot mutate an employee profile',
+  profileRoleWithoutEmployeeWrite.error?.code === '42501',
+  profileRoleWithoutEmployeeWrite.error?.code || 'unexpected success');
 
 const familyPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
@@ -929,13 +1448,17 @@ const directAnonymousFamilyRead = attemptAs(null, 'SELECT id FROM public.employe
 record('Anonymous role has no direct employee-family-table privileges', !directAnonymousFamilyRead.ok);
 record('Family read/manage access returns only rows from each manager active tenant',
   !familyAdminA.error && !familyAdminB.error
-    && familyAdminA.data?.length === 1 && familyAdminA.data[0]?.id === familyRowA
+    && familyAdminA.data?.length === 2 && familyAdminA.data.some(row => row.id === familyRowA)
+    && familyAdminA.data.some(row => row.id === profileFamilySave.data)
     && familyAdminB.data?.length === 1 && familyAdminB.data[0]?.id === familyRowB);
 record('Employee directory viewer reads only family rows in its tenant',
-  !familyViewerA.error && familyViewerA.data?.length === 1 && familyViewerA.data[0]?.id === familyRowA);
+  !familyViewerA.error && familyViewerA.data?.length === 2
+    && familyViewerA.data.some(row => row.id === familyRowA)
+    && familyViewerA.data.some(row => row.id === profileFamilySave.data));
 record('Employees read only their own linked family rows in either tenant',
   !familyEmployeeA.error && !familyEmployeeB.error
-    && familyEmployeeA.data?.length === 1 && familyEmployeeA.data[0]?.id === familyRowA
+    && familyEmployeeA.data?.length === 2 && familyEmployeeA.data.some(row => row.id === familyRowA)
+    && familyEmployeeA.data.some(row => row.id === profileFamilySave.data)
     && familyEmployeeB.data?.length === 1 && familyEmployeeB.data[0]?.id === familyRowB);
 record('Global legacy role without tenant membership cannot read family rows',
   !familyGlobalOnly.error && familyGlobalOnly.data?.length === 0);
@@ -945,6 +1468,47 @@ const directFamilyWrite = await employeeA.client.from('employee_family_members')
   name: 'Synthetic Unauthorized Dependent',
 }).select('id');
 record('Direct family table writes remain denied', !!directFamilyWrite.error);
+
+// Exercise the original HRIS record Delete action after all profile read tests.
+const deleteUnsupported = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'training', p_record_id: profileEducationSave.data,
+});
+const deleteCrossTenant = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantB, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deleteForeignActor = await managerA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deleteEducation = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deleteExperience = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'experience', p_record_id: profileExperienceSave.data,
+});
+const deleteFamily = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'family', p_record_id: profileFamilySave.data,
+});
+const deleteRepeated = await employeeA.client.rpc('employee_delete_my_profile_record_v1', {
+  p_tenant_id: ids.tenantA, p_kind: 'education', p_record_id: profileEducationSave.data,
+});
+const deletedRows = queryAdmin(`SELECT jsonb_build_object(
+  'education',(SELECT count(*) FROM public.employee_education WHERE id='${profileEducationSave.data}'::uuid),
+  'experience',(SELECT count(*) FROM public.employee_experience WHERE id='${profileExperienceSave.data}'::uuid),
+  'family',(SELECT count(*) FROM public.employee_family_members WHERE id='${profileFamilySave.data}'::uuid)
+)`);
+record('E02 original education experience and family delete: allowed own rows, rejected other tenant, blocked foreign role',
+  deleteUnsupported.error?.code === '22023'
+    && deleteCrossTenant.error?.code === '42501'
+    && deleteForeignActor.error?.code === '42501'
+    && !deleteEducation.error && !deleteExperience.error && !deleteFamily.error
+    && deleteRepeated.error?.code === '42501'
+    && Number(deletedRows?.education) === 0
+    && Number(deletedRows?.experience) === 0
+    && Number(deletedRows?.family) === 0,
+  JSON.stringify({ invalid: deleteUnsupported.error?.code, crossTenant: deleteCrossTenant.error?.code,
+    foreign: deleteForeignActor.error?.code, education: deleteEducation.error?.code || 'ok',
+    experience: deleteExperience.error?.code || 'ok', family: deleteFamily.error?.code || 'ok',
+    repeated: deleteRepeated.error?.code, remaining: deletedRows }));
 
 const employeeDocumentPolicyState = queryAdmin(`SELECT jsonb_build_object(
   'rls_enabled', c.relrowsecurity,
@@ -992,17 +1556,47 @@ const documentRowA = 'a3333333-3333-4333-8333-333333333333';
 const documentRowB = 'a4444444-4444-4444-8444-444444444444';
 record('Employee-document managers and directory viewers read only documents in their active tenant',
   !documentManagerA.error && !documentManagerB.error && !documentViewerA.error
-    && documentManagerA.data?.length === 2 && documentManagerA.data.some(row => row.id === documentRowA)
+    && documentManagerA.data?.length >= 2 && documentManagerA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && documentManagerA.data.some(row => row.id === documentRowA)
     && documentManagerB.data?.length === 1 && documentManagerB.data[0]?.id === documentRowB
-    && documentViewerA.data?.length === 2 && documentViewerA.data.some(row => row.id === documentRowA));
+    && documentViewerA.data?.length >= 2 && documentViewerA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && documentViewerA.data.some(row => row.id === documentRowA));
 record('Employees read only their own document metadata and global roles alone grant no document access',
   !documentEmployeeA.error && !documentEmployeeB.error && !documentGlobalOnly.error
-    && documentEmployeeA.data?.length === 2 && documentEmployeeA.data.some(row => row.id === documentRowA)
+    && documentEmployeeA.data?.length >= 2 && documentEmployeeA.data.every(row => row.employee_id === '55555555-5555-4555-8555-555555555555')
+    && documentEmployeeA.data.some(row => row.id === documentRowA)
     && documentEmployeeB.data?.length === 1 && documentEmployeeB.data[0]?.id === documentRowB
     && documentGlobalOnly.data?.length === 0);
 const directAnonymousEmployeeDocuments = attemptAs(null,
   'SELECT id FROM public.employee_documents', 'anon');
 record('Anonymous clients cannot read employee-document metadata', !directAnonymousEmployeeDocuments.ok);
+
+const legacyEmployeeDocumentPath = `${employeeA.userId}/synthetic-legacy-document.pdf`;
+psqlSync(`INSERT INTO public.admin_users(user_id,display_name,active,is_super_admin)
+  VALUES (${sqlLiteral(employeeA.userId)}::uuid,'Synthetic employee document policy fixture',true,false);`);
+const legacyEmployeeDocumentUpload = await employeeA.client.storage.from('employee-documents').upload(
+  legacyEmployeeDocumentPath, new Blob(['synthetic legacy employee document']),
+  { contentType: 'application/pdf', upsert: false },
+);
+if (!legacyEmployeeDocumentUpload.error) employeeDocumentStoragePaths.push(legacyEmployeeDocumentPath);
+const legacyEmployeeDocumentOverwrite = await employeeA.client.storage.from('employee-documents').upload(
+  legacyEmployeeDocumentPath, new Blob(['updated synthetic legacy employee document']),
+  { contentType: 'application/pdf', upsert: true },
+);
+const legacyEmployeeDocumentDelete = await employeeA.client.storage.from('employee-documents').remove([legacyEmployeeDocumentPath]);
+const legacyEmployeeDocumentAfterDelete = await adminAuth.storage.from('employee-documents').download(legacyEmployeeDocumentPath);
+if (legacyEmployeeDocumentAfterDelete.error) {
+  const legacyIndex = employeeDocumentStoragePaths.indexOf(legacyEmployeeDocumentPath);
+  if (legacyIndex >= 0) employeeDocumentStoragePaths.splice(legacyIndex, 1);
+}
+psqlSync(`DELETE FROM public.admin_users WHERE user_id=${sqlLiteral(employeeA.userId)}::uuid;`);
+record('Existing non-profile employee-document owner upload, overwrite, and delete behavior is preserved',
+  !legacyEmployeeDocumentUpload.error && !legacyEmployeeDocumentOverwrite.error && !legacyEmployeeDocumentDelete.error
+    && Boolean(legacyEmployeeDocumentAfterDelete.error),
+  JSON.stringify({ upload: legacyEmployeeDocumentUpload.error?.statusCode || legacyEmployeeDocumentUpload.error?.code || null,
+    overwrite: legacyEmployeeDocumentOverwrite.error?.statusCode || legacyEmployeeDocumentOverwrite.error?.code || null,
+    delete: legacyEmployeeDocumentDelete.error?.statusCode || legacyEmployeeDocumentDelete.error?.code || null,
+    objectRemoved: Boolean(legacyEmployeeDocumentAfterDelete.error) }));
 
 const employeeDocumentStoragePath = `${employeeA.userId}/synthetic-document.pdf`;
 const employeeDocumentUpload = await adminAuth.storage.from('employee-documents').upload(
@@ -1123,8 +1717,9 @@ const rejectedEmployeeDocument = ownDocumentRows?.find(row => row.id === 'a33333
 record('Employee document self-service returns only own metadata and exposes correction reasons only for rejected documents',
   !ownEmployeeDocuments.error && ownEmployeeDocuments.data?.tenant_id === ids.tenantA
     && ownEmployeeDocuments.data?.employee_id === '55555555-5555-4555-8555-555555555555'
-    && ownDocumentRows?.length === 2
+    && ownDocumentRows?.length >= 2
     && ownDocumentRows.some(row => row.id === documentRowA && row.verification_note === null)
+    && !ownDocumentRows.some(row => row.id === documentRowB)
     && rejectedEmployeeDocument?.verification_note === 'Synthetic correction reason for the employee.');
 record('Employee document self-service denies mismatched tenant, cross-tenant identity, manager, and anonymous sessions',
   Boolean(otherTenantEmployeeDocuments.error) && Boolean(crossTenantEmployeeDocuments.error)
@@ -8255,6 +8850,8 @@ if (!hr0106ProfileBaseline.error) {
       const suffix = randomUUID();
       const value = field.endsWith('email')
         ? `hr0106-${suffix}@example.test`
+        : field.endsWith('phone')
+          ? `+880${Date.now().toString().slice(-10)}`
         : `HR01-06 synthetic ${field} ${suffix}`;
       const submitted = await employeeA.client.rpc('employee_submit_profile_change_request', {
         p_tenant_id: ids.tenantA,
