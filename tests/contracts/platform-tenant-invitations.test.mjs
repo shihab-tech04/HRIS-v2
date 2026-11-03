@@ -77,11 +77,10 @@ test('Edge Function verifies the caller and uses server-only Auth Admin invitati
   assert.doesNotMatch(edge, /console\.(?:log|error)\([^)]*inviteEmail/);
 });
 
-test('Super Admin UI offers existing-account and invitation paths; recipient sees pending certification', () => {
-  assert.match(workspace, /administratorMode: 'existing' \| 'invite'/);
-  assert.match(workspace, /invitePlatformTenantAdministrator\(/);
-  assert.match(workspace, /Send invitation/);
-  assert.match(workspace, /same confirmed email/);
+test('Super Admin UI only uses the existing Auth identity; legacy invitation contract remains isolated', () => {
+  assert.match(workspace, /label=\{tx\('Super Admin email'\)\}/);
+  assert.match(workspace, /Additional authentication accounts are disabled/);
+  assert.doesNotMatch(workspace, /administratorMode|invitePlatformTenantAdministrator|Send invitation/);
   assert.match(workspace, /Approved security sign-off reference/);
   assert.match(workspace, /assigned security certifier/);
   assert.match(workspace, /Certify and activate tenant/);
