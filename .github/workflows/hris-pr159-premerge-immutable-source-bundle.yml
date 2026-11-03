@@ -1,0 +1,47 @@
+name: HRIS PR159 immutable premerge source bundle (no deployment)
+on:
+  push:
+    branches:
+      - ops/hris-pr159-premerge-bundle-20261103-e015287e
+permissions:
+  contents: read
+jobs:
+  complete-history-offsite-handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate exact Main and create restorable full Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          expected_main=e015287e75fb059dd8905cbb389fbf75e1468532
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git fetch --no-tags origin main
+          current_main="$(git rev-parse FETCH_HEAD)"
+          test "$current_main" = "$expected_main" || { echo "::error::Main moved; abort backup"; exit 1; }
+          test "$(git merge-base "$expected_main" HEAD)" = "$expected_main"
+          bundle="$RUNNER_TEMP/hris-pr159-premerge-e015287e-full-history.git.bundle"
+          git bundle create "$bundle" --all
+          git bundle verify "$bundle"
+          git clone --mirror "$bundle" "$RUNNER_TEMP/recovery.git"
+          git --git-dir="$RUNNER_TEMP/recovery.git" fsck --full --no-reflogs
+          git --git-dir="$RUNNER_TEMP/recovery.git" cat-file -e "$expected_main^{commit}"
+          test "$(git --git-dir="$RUNNER_TEMP/recovery.git" rev-parse refs/remotes/origin/main)" = "$expected_main"
+          printf 'repo=shihab-tech04/HRIS-v2\nmain_sha=%s\nbackup_branch_sha=%s\nrestored_main_sha=%s\n' \
+            "$expected_main" "$GITHUB_SHA" "$(git --git-dir="$RUNNER_TEMP/recovery.git" rev-parse refs/remotes/origin/main)" \
+            > "$RUNNER_TEMP/hris-pr159-premerge-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-pr159-premerge-e015287e-full-history.git.bundle hris-pr159-premerge-manifest.txt > hris-pr159-premerge.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-pr159-premerge-current-main-full-git-history
+          path: |
+            ${{ runner.temp }}/hris-pr159-premerge-e015287e-full-history.git.bundle
+            ${{ runner.temp }}/hris-pr159-premerge-manifest.txt
+            ${{ runner.temp }}/hris-pr159-premerge.sha256
+          retention-days: 7
+          if-no-files-found: error
