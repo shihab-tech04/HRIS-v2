@@ -62,16 +62,17 @@ jobs:
             echo '::error::Profile certificate policy bytes differ from signed release plan'; exit 1;
           }
 
-          # Require the approved encrypted replacement DB export, isolated restore,
-          # exact SQL rehearsal, and latest combined QA's two green workflows.
+          # Require current replacement DB export, verified isolated recovery,
+          # exact fresh SQL rehearsal and source CI evidence. Exact final PR-head
+          # and protected Main SHA gates are independently checked below.
           python3 - <<'PY'
           import json, os, urllib.request
           expected = {
-              41089145233: "HRIS Step 1 - Encrypted database export",
-              41090015468: "WS05 isolated restore of current encrypted HRIS backup 41089145233",
-              41090711503: "WS05 exact Employee Profile SQL on restored current HRIS database",
-              41100639303: "Verify HRIS build and browser smoke",
-              41100639286: "Disposable Auth, Postgres and browser acceptance (no deployment)",
+              41648721099: "HRIS Step 1 - Encrypted database export",
+              41649952552: "PR162 - Fresh encrypted SQL isolated PG17 restore proof",
+              41655372259: "PR159 - Exact Employee Profile SQL on isolated PG17 restore",
+              41566532582: "Verify HRIS build and browser smoke",
+              41566532749: "Disposable Auth, Postgres and browser acceptance (no deployment)",
           }
           for run_id, name in expected.items():
               req = urllib.request.Request(
@@ -99,8 +100,8 @@ jobs:
           # The artifact's presence does not replace independent offsite
           # custody, checksum and isolated restore approvals.
           recovery_artifacts = read_github(
-              "actions/runs/41089145233/artifacts?per_page=100").get("artifacts", [])
-          if not any(item.get("name") == "hris-db-encrypted-41089145233"
+              "actions/runs/41648721099/artifacts?per_page=100").get("artifacts", [])
+          if not any(item.get("name") == "hris-db-encrypted-41648721099"
                      and item.get("expired") is False
                      and item.get("size_in_bytes", 0) > 0
                      for item in recovery_artifacts):
