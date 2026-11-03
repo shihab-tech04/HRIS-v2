@@ -65,3 +65,18 @@ test('SQL release requires independent recovery and verifies preserved data and 
   assert.match(workflow, /employee_profile_certificate_delete_namespace_guard'\)\) = 4/);
   assert.match(workflow, /EMPLOYEE_PROFILE_SQL_PASS/);
 });
+
+test('Employee Profile SQL release verifies green exact merged PR and protected main commit', () => {
+  assert.match(workflow, /read_github\("pulls\/159"\)/);
+  assert.match(workflow, /profile_pr\.get\("merged_at"\) is None/);
+  assert.match(workflow, /profile_pr\.get\("base", \{\}\)\.get\("ref"\) != "main"/);
+  assert.match(workflow, /reviewed_head = profile_pr\.get\("head", \{\}\)\.get\("sha"\)/);
+  assert.match(workflow, /"commits\/" \+ reviewed_head \+ "\/check-runs\?per_page=100"/);
+  assert.match(workflow, /for check_name in \("check", "isolated-hris"\)/);
+  assert.match(workflow, /check\.get\("status"\) == "completed"/);
+  assert.match(workflow, /check\.get\("conclusion"\) == "success"/);
+  assert.match(workflow, /protected_sha = os\.environ\["GITHUB_SHA"\]/);
+  assert.match(workflow, /"commits\/" \+ protected_sha \+ "\/check-runs\?per_page=100"/);
+  assert.match(workflow, /check\.get\("name"\) == "build"/);
+  assert.match(workflow, /Current protected main has not passed exact-SHA build verification/);
+});
