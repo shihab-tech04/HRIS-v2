@@ -1,0 +1,62 @@
+name: Synchronize PR162 Pages build (temporary release repair)
+on:
+  push:
+    branches:
+      - feat/ws01-single-super-admin-tenant-ux-20261103
+    paths:
+      - .github/workflows/pr162-pages-sync.yml
+permissions:
+  contents: read
+jobs:
+  sync:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/feat/ws01-single-super-admin-tenant-ux-20261103'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact Candidate contract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=db4163885f9609d66e9871a9c0de771fe8151d84
+          git clone --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
+          test "$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)" = "$expected_sha"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install and verify source
+        run: |
+          set -euo pipefail
+          npm install --include=optional --no-audit --no-fund
+          npm run lint
+          npm run test:contracts
+      - name: Build exact Pages bundle and synchronized tracked assets
+        env:
+          GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+        run: npm run build
+      - name: Commit only generated Pages files to this PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = 'feat/ws01-single-super-admin-tenant-ux-20261103'
+          git add -A -- index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo "Pages assets already synchronized"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "build(ws01): synchronize exact tenant UI Pages bundle"
+          basic_auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $basic_auth" push origin HEAD:refs/heads/feat/ws01-single-super-admin-tenant-ux-20261103
+          echo "Source and tracked Pages assets synchronized on PR branch"
