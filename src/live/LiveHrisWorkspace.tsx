@@ -5169,7 +5169,7 @@ export function LiveHrisWorkspace({
             <OrganizationProjects tenantId={tenantId} locale={locale} />
             {isEmployee && <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />}
           </>}
-          {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} />}
+          {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} locale={locale} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} employeesManage={permissions.employeesManage} />}
           {page === 'onboarding' && permissions.employeesManage && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} canActivate={permissions.employeesManage} />}
           {page === 'service-requests' && permissions.employeesManage && <ServiceRequestReview tenantId={tenantId} locale={locale} />}
