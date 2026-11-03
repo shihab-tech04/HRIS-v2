@@ -1,0 +1,48 @@
+name: PR160 one-shot branch Pages bundle synchronization
+on:
+  push:
+    branches:
+      - integration/ws05-hr03-current-main-20261031
+    paths:
+      - .github/workflows/pr160-one-shot-pages-sync.yml
+permissions:
+  contents: write
+jobs:
+  synchronize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout only PR160 branch
+        uses: actions/checkout@v4
+        with:
+          ref: integration/ws05-hr03-current-main-20261031
+          fetch-depth: 0
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Build and verify committed production Pages bundle
+        env:
+          GITHUB_PAGES: 'true'
+        run: |
+          set -euo pipefail
+          npm ci --include=optional --no-audit --no-fund
+          npm run lint
+          npm run test:contracts
+          npm run build
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+          git diff --check
+      - name: Commit generated assets only to PR160 branch
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/ws05-hr03-current-main-20261031"
+          git add -A -- index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo "Bundle is already synchronized."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build(hr03): synchronize PR160 Pages assets with integrated source'
+          git push origin HEAD:refs/heads/integration/ws05-hr03-current-main-20261031
