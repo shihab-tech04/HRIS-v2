@@ -1,0 +1,44 @@
+name: HRIS current protected Main source backup and independent restore
+on:
+  push:
+    branches: [ops/hris-clean-41708292692-isolated-pg17-restore-20261104]
+    paths: ['.github/workflows/hris-current-pre-release-source-backup.yml']
+permissions:
+  contents: read
+jobs:
+  full-history-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify current protected Main complete Git history and restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git fetch --no-tags origin main
+          main_sha="$(git rev-parse FETCH_HEAD)"
+          git cat-file -e "$main_sha^{commit}"
+          bundle="$RUNNER_TEMP/hris-latest-main-full-history.git.bundle"
+          git bundle create "$bundle" --all
+          git bundle verify "$bundle"
+          git clone -q --mirror "$bundle" "$RUNNER_TEMP/restore.git"
+          git --git-dir="$RUNNER_TEMP/restore.git" fsck --full --no-reflogs
+          test "$(git --git-dir="$RUNNER_TEMP/restore.git" rev-parse refs/remotes/origin/main)" = "$main_sha"
+          printf 'repo=shihab-tech04/HRIS-v2\nmain_sha=%s\nrestored_main_sha=%s\n' \
+            "$main_sha" "$(git --git-dir="$RUNNER_TEMP/restore.git" rev-parse refs/remotes/origin/main)" \
+            > "$RUNNER_TEMP/hris-main-recovery-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-latest-main-full-history.git.bundle hris-main-recovery-manifest.txt > hris-main-recovery.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-current-main-full-history-restore-verified
+          path: |
+            ${{ runner.temp }}/hris-latest-main-full-history.git.bundle
+            ${{ runner.temp }}/hris-main-recovery-manifest.txt
+            ${{ runner.temp }}/hris-main-recovery.sha256
+          if-no-files-found: error
+          retention-days: 7
