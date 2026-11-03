@@ -87,3 +87,14 @@ test('staged orphan-link repair is pinned to the exact read-only observed pair',
   assert.match(update[0], /md5\(e\.id::text \|\| ':' \|\| e\.user_id::text\) = v_expected_fingerprint/);
 
 });
+
+test('hosted admin-delete-user source protects the sole Super Admin identity', () => {
+  const code = readFileSync(new URL('supabase/functions/admin-delete-user/index.ts', root), 'utf8');
+  const policy = code.indexOf('function authDeletionDisabled(): boolean');
+  const guard = code.indexOf('if (authDeletionDisabled())');
+  const destructiveCall = code.indexOf('auth.admin.deleteUser(');
+  assert.ok(policy >= 0 && guard > policy && destructiveCall > guard);
+  assert.match(code.slice(policy, guard), /return true;/);
+  assert.match(code.slice(policy, destructiveCall), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
+  assert.match(code.slice(guard, destructiveCall), /status: 403/);
+});
