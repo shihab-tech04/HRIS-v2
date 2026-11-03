@@ -1,0 +1,47 @@
+name: HRIS consolidation immutable current Main backup
+on:
+  push:
+    branches:
+      - ops/hris-consolidation-full-history-20261104-26978d95
+permissions:
+  contents: read
+jobs:
+  full-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate exact Main and create full-recovery Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          expected_main=26978d959f54af66167aee667ae79f7f3affb537
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git fetch --no-tags origin main
+          current_main="$(git rev-parse FETCH_HEAD)"
+          test "$current_main" = "$expected_main" || { echo "::error::Main changed before backup"; exit 1; }
+          test "$(git merge-base "$expected_main" HEAD)" = "$expected_main"
+          bundle="$RUNNER_TEMP/hris-current-main-26978d95-full-history.git.bundle"
+          git bundle create "$bundle" --all
+          git bundle verify "$bundle"
+          git clone --mirror "$bundle" "$RUNNER_TEMP/restore.git"
+          git --git-dir="$RUNNER_TEMP/restore.git" fsck --full --no-reflogs
+          git --git-dir="$RUNNER_TEMP/restore.git" cat-file -e "$expected_main^{commit}"
+          test "$(git --git-dir="$RUNNER_TEMP/restore.git" rev-parse refs/remotes/origin/main)" = "$expected_main"
+          printf 'repo=shihab-tech04/HRIS-v2\nmain_sha=%s\nbackup_commit=%s\nrestored_main_sha=%s\n' \
+            "$expected_main" "$GITHUB_SHA" "$(git --git-dir="$RUNNER_TEMP/restore.git" rev-parse refs/remotes/origin/main)" \
+            > "$RUNNER_TEMP/hris-recovery-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-current-main-26978d95-full-history.git.bundle hris-recovery-manifest.txt > hris-recovery.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-current-main-26978d95-verified-complete-history
+          path: |
+            ${{ runner.temp }}/hris-current-main-26978d95-full-history.git.bundle
+            ${{ runner.temp }}/hris-recovery-manifest.txt
+            ${{ runner.temp }}/hris-recovery.sha256
+          retention-days: 7
+          if-no-files-found: error
