@@ -94,6 +94,20 @@ jobs:
               with urllib.request.urlopen(req, timeout=20) as response:
                   return json.load(response)
 
+          # A green export run alone is not recoverable data. The approved
+          # encrypted archive must still exist and be unexpired at release time.
+          # The artifact's presence does not replace independent offsite
+          # custody, checksum and isolated restore approvals.
+          recovery_artifacts = read_github(
+              "actions/runs/41089145233/artifacts?per_page=100").get("artifacts", [])
+          if not any(item.get("name") == "hris-db-encrypted-41089145233"
+                     and item.get("expired") is False
+                     and item.get("size_in_bytes", 0) > 0
+                     for item in recovery_artifacts):
+              raise SystemExit(
+                  "The approved encrypted database backup is expired or missing; "
+                  "create and verify a NEW current backup before any SQL release")
+
           profile_pr = read_github("pulls/159")
           if profile_pr.get("merged_at") is None or profile_pr.get("base", {}).get("ref") != "main":
               raise SystemExit("Employee Profile PR #159 must be merged into protected main first")
