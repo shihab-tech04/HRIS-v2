@@ -80,3 +80,13 @@ test('Employee Profile SQL release verifies green exact merged PR and protected 
   assert.match(workflow, /check\.get\("name"\) == "build"/);
   assert.match(workflow, /Current protected main has not passed exact-SHA build verification/);
 });
+
+test('Employee Profile production SQL refuses expired recovery archive even after a green backup run', () => {
+  assert.match(workflow, /recovery_artifacts = read_github/);
+  assert.match(workflow, /actions\/runs\/41089145233\/artifacts\?per_page=100/);
+  assert.match(workflow, /"hris-db-encrypted-41089145233"/);
+  assert.match(workflow, /item\.get\("expired"\) is False/);
+  assert.match(workflow, /item\.get\("size_in_bytes", 0\) > 0/);
+  assert.match(workflow, /approved encrypted database backup is expired or missing/);
+  assert.match(workflow, /independent offsite/);
+});
