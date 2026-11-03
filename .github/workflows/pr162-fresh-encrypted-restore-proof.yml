@@ -126,7 +126,7 @@ jobs:
           # The exact original FK definitions (including deletion actions) are preserved.
           pinned_auth_fks="${RUNNER_TEMP}/hris-pinned-auth-fks.tsv"
           cat > "$pinned_auth_fks" <<'PINNED_AUTH_FKS'
-          admin_audit_logs|actor_id|admin_audit_logs_actor_id_fkey|59|58|FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          admin_audit_logs|actor_id|admin_audit_logs_actor_id_fkey|60|58|FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL
           confirmation_reviews|resolved_by|confirmation_reviews_resolved_by_fkey|2|2|FOREIGN KEY (resolved_by) REFERENCES auth.users(id)
           employee_lifecycle_events|performed_by|employee_lifecycle_events_performed_by_fkey|5|5|FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL
           employee_referrals|submitted_by|employee_referrals_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
