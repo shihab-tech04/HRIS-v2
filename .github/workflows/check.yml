@@ -40,7 +40,7 @@ jobs:
         with:
           node-version: '24.21.0'
       - name: Install dependencies
-        run: npm install --include=optional --no-audit --no-fund
+        run: npm ci --include=optional --no-audit --no-fund
       - name: TypeScript check
         run: npm run lint
       - name: Contract source checks (not RLS runtime tests)
