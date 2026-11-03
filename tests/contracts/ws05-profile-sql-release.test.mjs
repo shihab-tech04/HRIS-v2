@@ -45,7 +45,7 @@ test('remote migration catalogue is preserved and exactly two source files can b
 });
 
 test('SQL release requires independent recovery and verifies preserved data and private storage', () => {
-  for (const actionRun of ['41089145233', '41090015468', '41090711503', '41100639303', '41100639286']) {
+  for (const actionRun of ['41648721099', '41649952552', '41655372259', '41566532582', '41566532749']) {
     assert.ok(workflow.includes(actionRun), 'missing approved recovery/QA run ' + actionRun);
   }
   assert.match(workflow, /before_rows=/);
@@ -83,8 +83,8 @@ test('Employee Profile SQL release verifies green exact merged PR and protected 
 
 test('Employee Profile production SQL refuses expired recovery archive even after a green backup run', () => {
   assert.match(workflow, /recovery_artifacts = read_github/);
-  assert.match(workflow, /actions\/runs\/41089145233\/artifacts\?per_page=100/);
-  assert.match(workflow, /"hris-db-encrypted-41089145233"/);
+  assert.match(workflow, /actions\/runs\/41648721099\/artifacts\?per_page=100/);
+  assert.match(workflow, /"hris-db-encrypted-41648721099"/);
   assert.match(workflow, /item\.get\("expired"\) is False/);
   assert.match(workflow, /item\.get\("size_in_bytes", 0\) > 0/);
   assert.match(workflow, /approved encrypted database backup is expired or missing/);
