@@ -706,15 +706,15 @@ try {
   await history.waitFor({ state: 'visible' });
   const expectedHistoryDate = new Date(`${process.env.HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE}T12:00:00`)
     .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const visibleHistory = await history.innerText();
-  // Other tenant-owned attendance events may also occur in the selected month.
-  // Require the persisted target day exactly once; do not hide or reject valid
-  // additional rows just because earlier isolated journeys created them.
-  const matchingDayRows = history.locator('li').filter({ hasText: expectedHistoryDate });
-  const matchingCount = await matchingDayRows.count();
-  const matchingDayText = matchingCount === 1 ? await matchingDayRows.first().innerText() : '';
-  if (matchingCount !== 1 || !matchingDayText.includes('Present')) {
-    throw new Error(`Daily employee attendance history did not match its persisted prior-month row: ${JSON.stringify({ expectedHistoryDate, matchingCount, matchingDayText, visibleHistory })}.`);
+  // Other dates in the selected month may have valid complete or partial
+  // attendance records. Verify the persisted target day uniquely without
+  // rejecting those unrelated days or weakening the status assertion.
+  const persistedDayRows = history.locator('li').filter({ hasText: expectedHistoryDate });
+  const matchingDayCount = await persistedDayRows.count();
+  const persistedDayText = matchingDayCount === 1 ? await persistedDayRows.first().innerText() : '';
+  if (matchingDayCount !== 1 || !persistedDayText.includes('Present')) {
+    const visibleHistory = await history.innerText();
+    throw new Error(`Daily employee attendance history did not match its persisted prior-month row: ${JSON.stringify({ expectedHistoryDate, matchingDayCount, persistedDayText, visibleHistory })}.`);
   }
   console.log('E05-04_DAILY_HISTORY_BROWSER_PASS');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
