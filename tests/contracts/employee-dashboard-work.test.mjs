@@ -72,13 +72,14 @@ test('isolated dashboard fixture uses relative future session dates', () => {
   const session = fixture.split('\n').find(line =>
     line.includes("'91000000-0000-4000-8000-000000000001'"));
   assert.ok(session, 'Expected direct-learning session in isolated SQL fixture');
-  assert.match(session, /CURRENT_TIMESTAMP \+ INTERVAL '2 days'/);
-  assert.match(session, /CURRENT_TIMESTAMP \+ INTERVAL '2 days 4 hours'/);
-  assert.match(session, /CURRENT_TIMESTAMP \+ INTERVAL '1 day'/);
+  assert.match(session, /now\(\) \+ interval '14 days'/);
+  assert.match(session, /now\(\) \+ interval '14 days 4 hours'/);
+  assert.match(session, /now\(\) \+ interval '7 days'/);
 });
 
 test('dashboard attendance history checks the persisted day, not an exact number of month rows', () => {
-  assert.match(browser, /matchingDayRows = history\.locator\('li'\)\.filter/);
-  assert.match(browser, /matchingCount !== 1/);
+  assert.match(browser, /persistedDayRows = history\.locator\('li'\)\.filter/);
+  assert.match(browser, /matchingDayCount !== 1/);
+  assert.match(browser, /!persistedDayText\.includes\('Present'\)/);
   assert.doesNotMatch(browser, /history\.locator\('li'\)\.count\(\) !== 1/);
 });
