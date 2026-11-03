@@ -6,7 +6,7 @@ name: "HRIS clean baseline encrypted PG17 isolated restore proof"
 on:
   push:
     branches: [ops/hris-clean-41708292692-isolated-pg17-restore-20261104]
-    paths: ['.github/workflows/pr162-fresh-encrypted-restore-proof.yml']
+    paths: ['.github/workflows/hris-clean-encrypted-pg17-restore-proof-20261104.yml']
 
 permissions:
   contents: read
