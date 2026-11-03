@@ -31,6 +31,8 @@ test('disposable Auth/Postgres/browser acceptance uses trusted standard runners 
   assert.match(workflow, /supabase stop --workdir .*--no-backup/);
   assert.doesNotMatch(workflow, /pull_request_target|deploy-pages|supabase\.co|secrets\./i);
   assert.doesNotMatch(checks, /resetPasswordForEmail|supabase\.co|production Supabase/i);
-  assert.match(checks, /branches: \[release\/hris-stable-20261017\]/);
+  assert.match(checks, /branches: \[main, release\/hris-stable-20261017\]/);
+  assert.match(checks, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(checks, /if: github\.event_name == 'pull_request' \|\| github\.ref == 'refs\/heads\/main'/);
   assert.match(checks, /runs-on: ubuntu-24\.04/);
 });

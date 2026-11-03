@@ -77,7 +77,7 @@ test('Employee Profile SQL release verifies green exact merged PR and protected 
   assert.match(workflow, /check\.get\("conclusion"\) == "success"/);
   assert.match(workflow, /protected_sha = os\.environ\["GITHUB_SHA"\]/);
   assert.match(workflow, /"commits\/" \+ protected_sha \+ "\/check-runs\?per_page=100"/);
-  assert.match(workflow, /check\.get\("name"\) == "build"/);
+  assert.match(workflow, /check\.get\("name"\) == "check"/);
   assert.match(workflow, /Current protected main has not passed exact-SHA build verification/);
 });
 
