@@ -377,7 +377,8 @@ jobs:
           # Prove the archived baseline is missing the new profile contract.
           missing="SELECT (to_regprocedure('public.employee_get_my_profile_v1(uuid)') IS NULL
              AND to_regclass('public.employee_bank_details') IS NULL)::text;"
-          test "$(pg_local -c "$missing")" = t || {
+          # Explicit ::text returns 'true'/'false', not psql's abbreviated 't'/'f'.
+          test "$(pg_local -c "$missing")" = true || {
             echo "::error::Exact archived source already has profile contracts; abort duplicate migration."
             exit 1
           }
