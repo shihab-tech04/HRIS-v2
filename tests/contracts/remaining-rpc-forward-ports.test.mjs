@@ -133,3 +133,10 @@ test('isolated release acceptance applies the reviewed timesheet port and all ne
   assert.match(acceptance, /anonymous_execute/);
   assert.match(acceptance, /authenticated_missing/);
 });
+
+test('synthetic candidate offer dates stay valid beyond historical fixture deadlines', () => {
+  const runner = readFileSync(new URL('../sql/isolated-auth/hris-release-rpc-acceptance.mjs', import.meta.url), 'utf8');
+  assert.ok(runner.includes("p_proposed_joining_date: new Date(Date.now() + 45 * 86400000)"));
+  assert.ok(runner.includes("p_response_deadline: new Date(Date.now() + 30 * 86400000)"));
+  assert.ok(!runner.includes("p_response_deadline: '2026-10-31'"));
+});
