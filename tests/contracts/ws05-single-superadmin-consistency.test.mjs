@@ -37,7 +37,7 @@ test('staged repair requires verified approval, enforces exactly one auth user, 
   assert.match(repair, /BEGIN;[\s\S]*COMMIT;/);
   assert.ok(repair.includes("PERFORM set_config('lock_timeout', '5s', true);"));
   assert.match(repair, /LOCK TABLE public\.employees IN SHARE ROW EXCLUSIVE MODE/);
-  assert.match(repair, /LOCK TABLE auth\\.users IN SHARE ROW EXCLUSIVE MODE/);
+  assert.match(repair, /LOCK TABLE auth\.users IN SHARE ROW EXCLUSIVE MODE/);
   assert.ok(repair.indexOf('LOCK TABLE auth.users IN SHARE ROW EXCLUSIVE MODE') <
     repair.indexOf('LOCK TABLE public.employees IN SHARE ROW EXCLUSIVE MODE'),
     'Auth inventory must be locked before employee inventory');
