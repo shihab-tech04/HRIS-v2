@@ -34,3 +34,7 @@ jobs:
             -f session_pooler_host=aws-0-ap-northeast-2.pooler.supabase.com
           echo 'Fresh encrypted replacement Supabase export dispatched.'
           echo 'No hosted DDL, deployment, or invitation email was triggered.'
+
+# HRIS clean-baseline recovery request (2026-11-04): refresh the encrypted
+# replacement database backup after employee data cleanup. This dispatcher
+# remains protected-Main-only and read-only; it does not apply SQL or deploy.
