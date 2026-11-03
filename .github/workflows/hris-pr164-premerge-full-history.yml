@@ -1,0 +1,41 @@
+name: HRIS premerge PR164 complete Git recovery
+on:
+  push:
+    branches: [ops/hris-premerge-pr164-backup-20261104-09e67aaa]
+permissions:
+  contents: read
+jobs:
+  portable-full-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact current Main, bundle and restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git fetch --no-tags origin main
+          test "$(git rev-parse FETCH_HEAD)" = 09e67aaae26cdd0f7e2d2fcc05c2abf43e5e8c32
+          out="$RUNNER_TEMP/hris-main-09e67aaa-full-history.git.bundle"
+          git bundle create "$out" --all
+          git bundle verify "$out"
+          git clone -q --mirror "$out" "$RUNNER_TEMP/restored.git"
+          git --git-dir="$RUNNER_TEMP/restored.git" fsck --full --no-reflogs
+          test "$(git --git-dir="$RUNNER_TEMP/restored.git" rev-parse refs/remotes/origin/main)" = 09e67aaae26cdd0f7e2d2fcc05c2abf43e5e8c32
+          printf 'repo=shihab-tech04/HRIS-v2\nmain_sha=%s\nrestored_main_sha=%s\n' \
+            09e67aaae26cdd0f7e2d2fcc05c2abf43e5e8c32 "$(git --git-dir="$RUNNER_TEMP/restored.git" rev-parse refs/remotes/origin/main)" > "$RUNNER_TEMP/hris-source-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-09e67aaa-full-history.git.bundle hris-source-manifest.txt > hris-source.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-main-09e67aaa-verified-history
+          path: |
+            ${{ runner.temp }}/hris-main-09e67aaa-full-history.git.bundle
+            ${{ runner.temp }}/hris-source-manifest.txt
+            ${{ runner.temp }}/hris-source.sha256
+          if-no-files-found: error
+          retention-days: 7
