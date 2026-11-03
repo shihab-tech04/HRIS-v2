@@ -1092,10 +1092,14 @@ try {
       foreignPathDenied: Boolean(foreignPath.error), invalidDenied: Boolean(invalidTitle.error),
       anonymousDenied: Boolean(anonymousDocument.error) }));
 
+  // Keep this disposable offer valid regardless of the CI execution date.
+  // The proposed joining date must remain later than the response deadline.
+  const offerResponseDeadline = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const offerJoiningDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const issued = await clients.recruiterA.rpc('hris_issue_candidate_offer', {
     p_tenant_id: tenantA, p_application_id: applicationId, p_salary_amount: 100000,
     p_salary_currency: 'BDT', p_pay_period: 'monthly',
-    p_proposed_joining_date: '2026-11-15', p_response_deadline: '2026-10-31',
+    p_proposed_joining_date: offerJoiningDate, p_response_deadline: offerResponseDeadline,
     p_terms: 'Synthetic isolated acceptance test offer.',
   });
   if (issued.error || !issued.data?.offer_id) throw issued.error || new Error('Recruiter offer was not created.');
