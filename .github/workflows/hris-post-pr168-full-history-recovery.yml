@@ -1,0 +1,43 @@
+name: HRIS exact protected Main Git history restore verification
+on:
+  push:
+    branches:
+      - ops/hris-post-pr168-full-history-recovery-20261104-456ac582
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Independently verify Main and restore the complete Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          expected='456ac58205659d8421e7f3409ffa6ead1cb313b3'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git fetch --no-tags origin main
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          bundle="$RUNNER_TEMP/hris-main-456ac582-verified.git.bundle"
+          git bundle create "$bundle" --all
+          git bundle verify "$bundle"
+          git clone -q --mirror "$bundle" "$RUNNER_TEMP/restore.git"
+          git --git-dir="$RUNNER_TEMP/restore.git" fsck --full --no-reflogs
+          restored="$(git --git-dir="$RUNNER_TEMP/restore.git" rev-parse refs/remotes/origin/main)"
+          test "$restored" = "$expected"
+          printf 'repo=shihab-tech04/HRIS-v2\nmain=%s\nrestored=%s\n' "$expected" "$restored" > "$RUNNER_TEMP/manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-456ac582-verified.git.bundle manifest.txt > verification.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-456ac582-complete-history-restore-verified
+          path: |
+            ${{ runner.temp }}/hris-main-456ac582-verified.git.bundle
+            ${{ runner.temp }}/manifest.txt
+            ${{ runner.temp }}/verification.sha256
+          if-no-files-found: error
+          retention-days: 7
