@@ -1,0 +1,43 @@
+name: HRIS post-PR171 exact Main full-history recovery proof
+on:
+  push:
+    branches:
+      - ops/hris-post171-exact-main-recovery-20261104
+permissions:
+  contents: read
+jobs:
+  source-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact Main bundle and independent Git restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          expected='939d3e1b2869b3ae0edbbca1ecbbbe1bbcce4067'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git fetch --no-tags origin main
+          test "$(git rev-parse FETCH_HEAD)" = "$expected" || { echo "::error::Main advanced; refuse stale recovery claim"; exit 1; }
+          bundle="$RUNNER_TEMP/hris-main-939d3e1b-full-history.git.bundle"
+          git bundle create "$bundle" --all
+          git bundle verify "$bundle"
+          git clone --mirror --quiet "$bundle" "$RUNNER_TEMP/verify.git"
+          git --git-dir="$RUNNER_TEMP/verify.git" fsck --full --no-reflogs
+          actual="$(git --git-dir="$RUNNER_TEMP/verify.git" rev-parse refs/remotes/origin/main)"
+          test "$actual" = "$expected"
+          printf 'repo=shihab-tech04/HRIS-v2\nmain=%s\nrestored_main=%s\n' "$expected" "$actual" > "$RUNNER_TEMP/restore-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-939d3e1b-full-history.git.bundle restore-manifest.txt > restore.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-main-939d3e1b-exact-full-history
+          path: |
+            ${{ runner.temp }}/hris-main-939d3e1b-full-history.git.bundle
+            ${{ runner.temp }}/restore-manifest.txt
+            ${{ runner.temp }}/restore.sha256
+          if-no-files-found: error
+          retention-days: 7
