@@ -1,0 +1,53 @@
+name: HRIS temporary branch-only employment code bundle build
+on:
+  push:
+    branches:
+      - feature/hris-e02-09-employment-codes-20261104
+permissions:
+  contents: write
+jobs:
+  compile-reviewed-assets:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/feature/hris-e02-09-employment-codes-20261104'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+      - name: Enforce exact reviewed branch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = 'ddc8d609ce52d7b18aa8ec08ed25b44b2c7be4cc'
+          test "$GITHUB_REF" = 'refs/heads/feature/hris-e02-09-employment-codes-20261104'
+          test -s tests/contracts/employee-employment-code-forward-port.test.mjs
+          test -s src/live/EmployeeProfileFigma.tsx
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install locked production dependencies
+        run: npm ci --include=optional --no-audit --no-fund
+      - name: Verify employment code forward-port contract
+        run: node --test tests/contracts/employee-employment-code-forward-port.test.mjs
+      - name: Build exact Pages assets (not a deployment)
+        env:
+          GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+        run: npm run build
+      - name: Commit reviewed source branch assets only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s index.html
+          test -s dist/index.html
+          git add index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo '::error::Missing compiled asset changes despite modified profile source'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: synchronize exact Profile employment codes Pages assets'
+          git push origin HEAD:refs/heads/feature/hris-e02-09-employment-codes-20261104
+          echo 'PASS: compiled review assets committed to source branch only'
