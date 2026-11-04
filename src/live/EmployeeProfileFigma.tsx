@@ -410,8 +410,9 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
             if (details && typeof details === 'object' && !Array.isArray(details)) {
               const record = details as Profile;
               const allowed = [
-                'joining_date', 'employment_type', 'designation_title', 'department_name',
-                'manager_name', 'work_location_name', 'grade_name',
+                'joining_date', 'employment_type', 'designation_title', 'designation_code',
+                'department_name', 'department_code', 'manager_name', 'work_location_name',
+                'grade_name', 'grade_code',
               ];
               workDetails = Object.fromEntries(
                 allowed.filter(key => typeof record[key] === 'string' && Boolean((record[key] as string).trim()))
@@ -441,6 +442,15 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const unavailable = words.unavailable;
   const value = (key: string) => textValue(currentEmployee?.[key] ?? (currentTenant ? employment?.[key] : null), words.unavailable);
   const employmentValue = (key: string) => textValue(currentTenant ? employment?.[key] : null, words.unavailable);
+  // E02-09 compatibility: approved tenant-scoped employment metadata includes
+  // the official code. Preserve the current Figma field and show "Name (Code)"
+  // only when a code was actually returned; never query a private table.
+  const employmentNameWithCode = (nameKey: string, codeKey: string) => {
+    const label = value(nameKey);
+    const code = currentTenant ? employment?.[codeKey] : null;
+    if (typeof code !== 'string' || !code.trim()) return label;
+    return label === words.unavailable ? code.trim() : `${label} (${code.trim()})`;
+  };
   const records = (key: string) => currentTenant && Array.isArray(profile?.[key])
     ? (profile?.[key] as unknown[]).filter((item): item is Profile => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
     : [];
@@ -638,8 +648,8 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
             { id: 'name', label: words.identitySection, value: name, important: true },
             { id: 'id', label: words.employeeId, value: value('employee_number') },
             { id: 'official-email', label: words.officialEmail, value: value('official_email') },
-            { id: 'designation', label: words.designation, value: value('designation_title') },
-            { id: 'department', label: words.department, value: value('department_name') },
+            { id: 'designation', label: words.designation, value: employmentNameWithCode('designation_title', 'designation_code') },
+            { id: 'department', label: words.department, value: employmentNameWithCode('department_name', 'department_code') },
           ].map(field => <div key={field.id} className="grid min-w-0 grid-cols-[minmax(92px,0.42fr)_minmax(0,1fr)] items-center gap-x-4">
             <dt className="min-w-0 break-words text-sm text-[#969696]">{field.label}</dt>
             <dd className={`min-w-0 break-words text-[#3D3D3D] ${field.important ? 'text-lg' : 'text-sm'}`}>{field.value}</dd>
@@ -653,7 +663,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
             { id: 'line-manager', label: words.lineManager, value: employmentValue('manager_name') },
             { id: 'team', label: words.team, value: value('team_name') },
             ...(currentTenant && typeof employment?.grade_name === 'string' && employment.grade_name.trim()
-              ? [{ id: 'grade', label: words.grade, value: employmentValue('grade_name') }]
+              ? [{ id: 'grade', label: words.grade, value: employmentNameWithCode('grade_name', 'grade_code') }]
               : []),
           ].map(field => <div key={field.id} className="grid min-w-0 grid-cols-[minmax(118px,0.52fr)_minmax(0,1fr)] items-center gap-x-3">
             <dt className="min-w-0 break-words text-sm text-[#969696]">{field.label}</dt>
