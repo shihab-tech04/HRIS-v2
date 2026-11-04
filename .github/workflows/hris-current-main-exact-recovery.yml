@@ -2,7 +2,7 @@ name: HRIS current exact Main full Git history recovery
 on:
   push:
     branches:
-      - ops/hris-main-verified-recovery-20261104-456ac582
+      - ops/hris-main-verified-recovery-20261104-273272e9
 permissions:
   contents: read
 jobs:
@@ -19,11 +19,11 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          expected="456ac58205659d8421e7f3409ffa6ead1cb313b3"
+          expected="bbd16b483f771c0859b16cc07b450b7af85a4d28"
           test "$(git rev-parse --is-shallow-repository)" = false
           git fetch --no-tags origin main
           test "$(git rev-parse FETCH_HEAD)" = "$expected" || { echo "::error::Main advanced"; exit 1; }
-          bundle="$RUNNER_TEMP/hris-main-456ac582-full-history.git.bundle"
+          bundle="$RUNNER_TEMP/hris-main-bbd16b48-full-history.git.bundle"
           git bundle create "$bundle" --all
           git bundle verify "$bundle"
           git clone --mirror --quiet "$bundle" "$RUNNER_TEMP/verify.git"
@@ -31,12 +31,12 @@ jobs:
           actual="$(git --git-dir="$RUNNER_TEMP/verify.git" rev-parse refs/remotes/origin/main)"
           test "$actual" = "$expected"
           printf 'repo=shihab-tech04/HRIS-v2\nmain=%s\nrestored_main=%s\n' "$expected" "$actual" > "$RUNNER_TEMP/restore-manifest.txt"
-          (cd "$RUNNER_TEMP" && sha256sum hris-main-456ac582-full-history.git.bundle restore-manifest.txt > restore.sha256)
+          (cd "$RUNNER_TEMP" && sha256sum hris-main-bbd16b48-full-history.git.bundle restore-manifest.txt > restore.sha256)
       - uses: actions/upload-artifact@v4
         with:
-          name: hris-main-456ac582-exact-full-history
+          name: hris-main-bbd16b48-exact-full-history
           path: |
-            ${{ runner.temp }}/hris-main-456ac582-full-history.git.bundle
+            ${{ runner.temp }}/hris-main-bbd16b48-full-history.git.bundle
             ${{ runner.temp }}/restore-manifest.txt
             ${{ runner.temp }}/restore.sha256
           if-no-files-found: error
