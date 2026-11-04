@@ -34,12 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${PGPASSWORD:-}" || { echo '::error::HRIS_DB_PASSWORD missing; Pages not deployed'; exit 1; }
-          [[ "$PGHOST" =~ ^aws-[0-9]+-ap-northeast-2\\.pooler\\.supabase\\.com$ ]] || {
+          [[ "$PGHOST" =~ ^aws-[0-9]+-ap-northeast-2\.pooler\.supabase\.com$ ]] || {
             echo '::error::Invalid HRIS session pooler host; Pages not deployed'; exit 1;
           }
           db_psql() {
-            docker run --rm --env PGHOST --env PGPORT --env PGDATABASE \\
-              --env PGUSER --env PGSSLMODE --env PGPASSWORD \\
+            docker run --rm --env PGHOST --env PGPORT --env PGDATABASE \
+              --env PGUSER --env PGSSLMODE --env PGPASSWORD \
               postgres:17-alpine psql -X -A -t -v ON_ERROR_STOP=1 "$@"
           }
           result="$(db_psql -c "
