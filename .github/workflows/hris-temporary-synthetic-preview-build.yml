@@ -19,10 +19,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 'eccca019e724ff47dd85bcb53f7f996dd075517e'
+          test "$(git rev-parse HEAD^)" = 'b1d57de826796ce2e753576445b1135452f4e56c'
           ! grep -q "page === 'user-management-preview'" src/live/LiveHrisWorkspace.tsx
           ! grep -q "SyntheticUserManagement" src/live/LiveHrisWorkspace.tsx
           test -s tests/browser/synthetic-user-management.spec.ts
+      - name: Checkout exact deployed Candidate contract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=db4163885f9609d66e9871a9c0de771fe8151d84
+          git clone --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
+          test "$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)" = "$expected_sha"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
