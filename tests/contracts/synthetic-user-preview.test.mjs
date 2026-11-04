@@ -44,6 +44,6 @@ test('the synthetic workspace covers role previews, browser persistence, edits, 
   assert.match(workspace, /previewLeaveDraft/);
   assert.match(workspace, /Save preview draft/);
   assert.match(workspace, /Back to User Management/);
-  assert.match(shell, /isSuperAdmin \|\| permissions\.employeesManage/);
-  assert.match(shell, /page === 'user-management-preview' && \(isSuperAdmin \|\| permissions\.employeesManage\)/);
+  assert.doesNotMatch(shell, /SyntheticUserManagement|user-management-preview|User management preview/,
+    'synthetic users must remain historical/test-only rather than accessible in the sole Super Admin workspace');
 });
