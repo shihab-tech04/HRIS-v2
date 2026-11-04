@@ -34,6 +34,26 @@ The app build, Figma UI, Candidate source SHA, branch-served asset parity, brows
 5. **Run Pages production workflow** `deploy-pages.yml` on protected Main with `release_approved=true` and the same `session_pooler_host`. The new fail-closed SQL step must PASS; branch asset parity, browsers and deployment environment must PASS; live JS/CSS must be byte-identical to the exact Main artifacts.
 6. **Verify actual published site** https://shihab-tech04.github.io/HRIS-v2/ and role/tenant journeys. Record deployed SHA, artifact hashes, SQL migration inventory, browser results and rollback checkpoint. Do not claim all 1,047 canonical HRIS stories complete without feature-by-feature acceptance evidence.
 
+## Protected operator execution (added after Main b7cfcd38)
+
+An authorized GitHub operator can run the new **dry-run by default** helper from an exact checked-out Main, with GitHub CLI `gh` authenticated:
+
+```bash
+bash scripts/release/hris-approved-release.sh --host aws-0-ap-northeast-2.pooler.supabase.com
+bash scripts/release/hris-approved-release.sh --host aws-0-ap-northeast-2.pooler.supabase.com --execute
+```
+
+The host shown matches the previously successful encrypted HRIS backup workflow; **check Supabase Connect for the current host before executing**. The runner does not take a password or bypass a release gate. It checks exact Main CI and open PRs, invokes the two existing **manually approved** GitHub Actions workflows in SQL-then-Pages order, waits for each PASS and checks both runs used the same protected Main SHA. A failed or unavailable backup, missing secret, failed hosted SQL, unsuccessful browser smoke, or absent Pages environment approval causes the existing protected workflows to stop. It never writes hosted SQL itself.
+
+The ChatGPT GitHub connector cannot use `workflow_dispatch`; the helper must be invoked through an approved operator terminal or supported browser/Work environment. Do not mistake a successful dry-run for a release.
+
+## Focused Supabase advisor triage (read-only, 2026-11-04)
+
+- All **33** tables with RLS enabled but no table policy had **no direct SELECT grant** to either `anon` or `authenticated` roles. They are presently deny-by-default; do not add broad grants to remove a dashboard info notice.
+- The only anonymously executable `SECURITY DEFINER` RPC was `public.candidate_public_jobs_source()`: observed function body restricts to `synesis-it` published, active jobs, enforces application deadlines and redacts undisclosed salary. This is public Candidate portal functionality; changing its EXECUTE grant requires a Candidate regression test and specific approval.
+- Of **313** authenticated-callable security-definer functions, a heuristic source review found **296** containing direct identity/session/permission-helper references and **17** wrappers or indirect checks. The reviewed sensitive examples delegate to `public.platform_hris_is_super_admin()`, `public.hris_can_manage_project_tasks(...)`, `public.hris_can_read_learning_catalog(...)` and/or `public.hris_own_employee_for_tenant(...)`, with live-session or tenant-specific checks. This is triage, **not** an exhaustive privilege audit and not an excuse to waive hosted testing.
+- Password leak protection remains a project/Auth setting warning; do not change authentication configuration through an unrelated SQL migration.
+
 ## Rollback and no-bypass policy
 
 Never apply production DDL directly merely to work around GitHub workflow dispatch. Preserve sole Super Admin and approved UI. Source rollback uses the verified off-GitHub Git archive; database recovery requires the encrypted archive **and** separately protected passphrase, then a reviewed restore plan. No SQL was changed by this preflight PR. No Pages release was started by this PR.
