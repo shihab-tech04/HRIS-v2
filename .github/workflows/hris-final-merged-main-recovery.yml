@@ -1,7 +1,7 @@
 name: HRIS final merged Main portable source recovery
 on:
   push:
-    branches: [ops/hris-final-merged-main-recovery-20261104-3a080305]
+    branches: [ops/hris-final-merged-main-recovery-20261104-273272e9]
 permissions:
   contents: read
 jobs:
@@ -20,21 +20,21 @@ jobs:
           umask 077
           test "$(git rev-parse --is-shallow-repository)" = false
           git fetch --no-tags origin main
-          test "$(git rev-parse FETCH_HEAD)" = 3a0803058ddecb900ade3f6bab83d17583c6dbc2
-          bundle="$RUNNER_TEMP/hris-merged-main-3a080305.git.bundle"
+          test "$(git rev-parse FETCH_HEAD)" = 273272e94f55bb120ac0ab046b52f3917ff9fe6c
+          bundle="$RUNNER_TEMP/hris-merged-main-273272e9.git.bundle"
           git bundle create "$bundle" --all
           git bundle verify "$bundle"
           git clone -q --mirror "$bundle" "$RUNNER_TEMP/restore.git"
           git --git-dir="$RUNNER_TEMP/restore.git" fsck --full --no-reflogs
           actual="$(git --git-dir="$RUNNER_TEMP/restore.git" rev-parse refs/remotes/origin/main)"
-          test "$actual" = 3a0803058ddecb900ade3f6bab83d17583c6dbc2
-          printf 'repo=shihab-tech04/HRIS-v2\nmain_sha=%s\nrestored_main_sha=%s\n' "3a0803058ddecb900ade3f6bab83d17583c6dbc2" "$actual" > "$RUNNER_TEMP/hris-final-manifest.txt"
-          (cd "$RUNNER_TEMP" && sha256sum hris-merged-main-3a080305.git.bundle hris-final-manifest.txt > hris-final.sha256)
+          test "$actual" = 273272e94f55bb120ac0ab046b52f3917ff9fe6c
+          printf 'repo=shihab-tech04/HRIS-v2\nmain_sha=%s\nrestored_main_sha=%s\n' "273272e94f55bb120ac0ab046b52f3917ff9fe6c" "$actual" > "$RUNNER_TEMP/hris-final-manifest.txt"
+          (cd "$RUNNER_TEMP" && sha256sum hris-merged-main-273272e9.git.bundle hris-final-manifest.txt > hris-final.sha256)
       - uses: actions/upload-artifact@v4
         with:
-          name: hris-final-main-3a080305-full-git-history
+          name: hris-final-main-273272e9-full-git-history
           path: |
-            ${{ runner.temp }}/hris-merged-main-3a080305.git.bundle
+            ${{ runner.temp }}/hris-merged-main-273272e9.git.bundle
             ${{ runner.temp }}/hris-final-manifest.txt
             ${{ runner.temp }}/hris-final.sha256
           if-no-files-found: error
