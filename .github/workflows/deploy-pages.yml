@@ -85,8 +85,43 @@ jobs:
           test -s /tmp/hris-live.js
           test -s /tmp/hris-live.css
           grep -Fq 'Forgot password?' /tmp/hris-live.js
-          echo "PASS: live HRIS serves compiled JS/CSS and the password-reset entry"
+          echo "Preliminary PASS: live HRIS JS/CSS load; exact Main asset comparison follows"
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify published HRIS compiled assets match exact protected Main
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://shihab-tech04.github.io"
+          # Build job verifies index.html/assets against the current Git commit.
+          # Do not confuse an older but functional Pages bundle with this release.
+          expected_js="$(grep -oE 'src="/HRIS-v2/assets/[^" ]+\.js"' index.html | head -1 | cut -d '"' -f2)"
+          expected_css="$(grep -oE 'href="/HRIS-v2/assets/[^" ]+\.css"' index.html | head -1 | cut -d '"' -f2)"
+          test -n "$expected_js" && test -n "$expected_css"
+          expected_js_file="${expected_js#/HRIS-v2/}"
+          expected_css_file="${expected_css#/HRIS-v2/}"
+          test -s "$expected_js_file" && test -s "$expected_css_file"
+          published=false
+          for attempt in $(seq 1 20); do
+            if curl -fsSL -H 'Cache-Control: no-cache' "$base/HRIS-v2/?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/hris-live.html \
+              && grep -Fq "src=\"$expected_js\"" /tmp/hris-live.html \
+              && grep -Fq "href=\"$expected_css\"" /tmp/hris-live.html \
+              && curl -fsSL -H 'Cache-Control: no-cache' "$base$expected_js?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/hris-live.js \
+              && curl -fsSL -H 'Cache-Control: no-cache' "$base$expected_css?release=$GITHUB_SHA&attempt=$attempt" -o /tmp/hris-live.css \
+              && cmp -s "$expected_js_file" /tmp/hris-live.js \
+              && cmp -s "$expected_css_file" /tmp/hris-live.css; then
+              published=true
+              break
+            fi
+            sleep 3
+          done
+          if [ "$published" != true ]; then
+            echo '::error::Published Pages bundle does not match the exact protected Main assets'
+            exit 1
+          fi
+          sha256sum "$expected_js_file" "$expected_css_file"
+          echo "PASS: deployed JS/CSS byte-identical to exact Main $GITHUB_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
