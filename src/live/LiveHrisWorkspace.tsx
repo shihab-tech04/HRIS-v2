@@ -83,7 +83,7 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
   selfServiceManage: boolean;
-  userManagement: boolean;
+  userManagement?: boolean;
 };
 type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'job-circulars' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-profile' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests' | 'user-management';
 type DashboardPoint = { date: string; records: number };
