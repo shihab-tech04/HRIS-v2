@@ -28,6 +28,7 @@ type WorkspacePermissions = {
   expenses: boolean; expensesView: boolean; expensesManage: boolean;
   payroll: boolean; payrollManage: boolean;
   selfServiceManage: boolean;
+  userManagement: boolean;
 };
 const noWorkspacePermissions: WorkspacePermissions = {
   dashboard: false, attendance: false, attendanceView: false, attendanceManage: false,
@@ -38,7 +39,7 @@ const noWorkspacePermissions: WorkspacePermissions = {
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
-  payroll: false, payrollManage: false, selfServiceManage: false,
+  payroll: false, payrollManage: false, selfServiceManage: false, userManagement: false,
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
@@ -341,7 +342,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
     || workspacePermissions.organization || workspacePermissions.employees || workspacePermissions.performance || workspacePermissions.recruitment
     || workspacePermissions.learningManage
     || workspacePermissions.travel
-    || workspacePermissions.payroll
+    || workspacePermissions.payroll || workspacePermissions.userManagement
   );
   const canReadAdminDirectories = tenants.some(t => t.id === tenantId) && (
     isSuperAdmin || workspacePermissions.dashboard || workspacePermissions.organization
@@ -500,7 +501,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
           'learning.manage',
           'travel.view', 'travel.manage',
           'expenses.view', 'expenses.manage',
-          'payroll.view', 'payroll.manage', 'self_service.manage',
+          'payroll.view', 'payroll.manage', 'self_service.manage', 'admin_users.manage',
         ];
         const tenantPermissionEntries = await Promise.all(mine.map(async membership => {
           const checks = await Promise.all(permissionIds.map(p_permission_id => supabase.rpc('has_tenant_permission', {
@@ -539,6 +540,7 @@ export function LiveApp({ preview }: { preview: ReactNode }) {
             payroll: grants.get('payroll.view') === true || grants.get('payroll.manage') === true,
             payrollManage: grants.get('payroll.manage') === true,
             selfServiceManage: grants.get('self_service.manage') === true,
+            userManagement: grants.get('admin_users.manage') === true,
           } satisfies WorkspacePermissions] as const;
         }));
         const tenantPermissions = Object.fromEntries(tenantPermissionEntries);
