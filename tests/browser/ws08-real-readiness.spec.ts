@@ -11,7 +11,7 @@ test('WS08 real user management requires selected-tenant permissions and does no
   await expect(page.getByRole('heading', { name: 'User management' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Employees eligible for account linking' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
-  await expect(page.getByRole('listitem', { name: 'HR Administrator' })).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: 'HR Administrator' })).toBeVisible();
   await expect(page.getByText(/Create an email-and-password account for an existing employee/)).toBeVisible();
   await expect(page.getByText(/Changes are saved to Supabase after/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create user' })).toBeDisabled();
