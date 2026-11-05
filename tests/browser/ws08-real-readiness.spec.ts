@@ -73,7 +73,7 @@ test('WS08 creates a real account only after employee, role and password are pro
   await page.getByLabel('Initial password (12 characters minimum)').fill('test-created-password-123');
   await expect(create).toBeEnabled();
   await create.click();
-  await expect(page.getByRole('status')).toContainText('User account created.');
+  await expect(page.getByText('User account created. The employee and assigned role have been saved.')).toBeVisible();
   await expect(page.getByText('No unlinked eligible employees are available.')).toBeVisible();
   const actual = await calls(page);
   expect(actual.filter(call => call.name === 'edge:admin-create-user')).toHaveLength(1);
