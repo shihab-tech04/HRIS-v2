@@ -23,7 +23,7 @@ const messages = {
     formTitle: 'Create employee account',
     chooseEmployee: 'Select employee',
     chooseRole: 'Assign role',
-    email: 'Login email',
+    loginEmail: 'Login email',
     password: 'Initial password (12 characters minimum)',
     submit: 'Create user',
     submitting: 'Creating account…',
@@ -50,7 +50,7 @@ const messages = {
     formTitle: 'কর্মীর অ্যাকাউন্ট তৈরি',
     chooseEmployee: 'কর্মী নির্বাচন করুন',
     chooseRole: 'ভূমিকা নির্ধারণ করুন',
-    email: 'লগইন ইমেইল',
+    loginEmail: 'লগইন ইমেইল',
     password: 'প্রাথমিক পাসওয়ার্ড (কমপক্ষে ১২ অক্ষর)',
     submit: 'ব্যবহারকারী তৈরি করুন',
     submitting: 'অ্যাকাউন্ট তৈরি হচ্ছে…',
@@ -209,7 +209,7 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
               </select>
             </div>
             <div>
-              <label htmlFor="hris-new-user-email" className="block text-sm font-medium">{copy.email}</label>
+              <label htmlFor="hris-new-user-email" className="block text-sm font-medium">{copy.loginEmail}</label>
               <input id="hris-new-user-email" type="email" autoComplete="off" required disabled={submitting}
                 value={email} onChange={event => setEmail(event.target.value)}
                 className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
