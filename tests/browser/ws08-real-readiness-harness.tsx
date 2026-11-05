@@ -10,6 +10,7 @@ const locale = options.get('locale') === 'bn' ? 'bn' : 'en';
 const calls: Array<{ name: string; args: unknown }> = [];
 (window as Window & { __ws08Calls?: typeof calls }).__ws08Calls = calls;
 let attempts = 0;
+let accountCreated = false;
 
 Object.defineProperty(supabase, 'rpc', {
   configurable: true,
@@ -31,7 +32,7 @@ Object.defineProperty(supabase, 'rpc', {
           assignable_roles: mode === 'empty' ? [] : [{
             id: 'hr_admin', name: 'HR Administrator', description: 'Tenant role',
           }],
-          available_employees: mode === 'empty' ? [] : [{
+          available_employees: mode === 'empty' || accountCreated ? [] : [{
             id: 'fccccccc-cccc-4ccc-8ccc-cccccccccccc',
             employee_number: 'EMP-009',
             full_name: 'Authorized Employee',
@@ -47,7 +48,21 @@ Object.defineProperty(supabase, 'rpc', {
 
 Object.defineProperty(supabase, 'functions', {
   configurable: true,
-  value: { invoke: async () => { throw new Error('Read-only WS08 panel must never invoke Edge Functions'); } },
+  value: {
+    invoke: async (name: string, args?: { body?: Record<string, string> }) => {
+      calls.push({ name: 'edge:' + name, args: { ...args?.body, password: '[hidden]' } });
+      if (name !== 'admin-create-user') throw new Error('Unexpected Edge Function ' + name);
+      if (mode === 'sql-error') return {
+        data: null,
+        error: { context: { json: async () => ({ error: 'SQL finalization rejected; account not created.' }) } },
+      };
+      accountCreated = true;
+      return {
+        data: { success: true, user: { id: 'fddddddd-dddd-4ddd-8ddd-dddddddddddd', email: args?.body?.email } },
+        error: null,
+      };
+    },
+  },
 });
 
 createRoot(document.getElementById('root')!).render(
