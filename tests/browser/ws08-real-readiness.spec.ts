@@ -10,8 +10,8 @@ test('WS08 real user management requires selected-tenant permissions and does no
   await page.goto('/tests/browser/ws08-real-readiness-harness.html');
   await expect(page.getByRole('heading', { name: 'User management' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Employees eligible for account linking' })).toBeVisible();
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
-  await expect(page.getByText('HR Administrator')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
+  await expect(page.getByRole('listitem', { name: 'HR Administrator' })).toBeVisible();
   await expect(page.getByText(/Create an email-and-password account for an existing employee/)).toBeVisible();
   await expect(page.getByText(/Changes are saved to Supabase after/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create user' })).toBeDisabled();
@@ -30,14 +30,14 @@ test('WS08 real user management requires selected-tenant permissions and does no
 test('WS08 denies unauthorized access before querying identity scope or employee records', async ({ page }) => {
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=denied');
   await expect(page.getByRole('alert')).toContainText('not authorized');
-  await expect(page.getByText('Authorized Employee')).toHaveCount(0);
+  await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toHaveCount(0);
   expect((await calls(page)).map(call => call.name)).toEqual(['has_tenant_permission']);
 });
 
 test('WS08 rejects an implicit tenant mismatch before loading any provisionable identities', async ({ page }) => {
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=scope-mismatch');
   await expect(page.getByRole('alert')).toContainText('Selected organization cannot be matched');
-  await expect(page.getByText('Authorized Employee')).toHaveCount(0);
+  await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toHaveCount(0);
   expect((await calls(page)).map(call => call.name)).toEqual(['has_tenant_permission', 'synesis_tenant_id']);
 });
 
@@ -45,7 +45,7 @@ test('WS08 retries failed permission reads and handles empty context', async ({ 
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=retry');
   await expect(page.getByRole('alert')).toContainText('access could not be verified');
   await page.getByRole('button', { name: 'Retry authorized read' }).click();
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
   expect((await calls(page)).filter(call => call.name === 'has_tenant_permission')).toHaveLength(2);
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=empty');
   await expect(page.getByText('No unlinked eligible employees are available.')).toBeVisible();
@@ -57,7 +57,7 @@ test('WS08 Bengali user creation screen remains usable at mobile width without p
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?locale=bn');
   await expect(page.getByRole('heading', { name: 'ব্যবহারকারী ব্যবস্থাপনা' })).toBeVisible();
   await expect(page.getByLabel('যোগ্য কর্মী খুঁজুন')).toBeVisible();
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ব্যবহারকারী তৈরি করুন' })).toBeDisabled();
   const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
   expect(viewportWidth).toBe(375);
@@ -95,7 +95,7 @@ test('WS08 displays failed SQL finalization and does not claim an account was cr
   await page.getByLabel('Initial password (12 characters minimum)').fill('test-created-password-123');
   await page.getByRole('button', { name: 'Create user' }).click();
   await expect(page.getByRole('alert')).toContainText('SQL finalization rejected');
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
   await expect(page.getByText('User account created.')).toHaveCount(0);
   expect((await calls(page)).filter(call => call.name === 'edge:admin-create-user')).toHaveLength(1);
 });
