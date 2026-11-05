@@ -1,9 +1,3 @@
-// Single-auth owner policy: existing SQL-backed Super Admin is the only
-// identity permitted. This fail-closed policy is not a runtime toggle.
-function additionalAuthProvisioningDisabled(): boolean {
-  return true;
-}
-
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
@@ -60,17 +54,6 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // SINGLE_SUPER_ADMIN_LOGIN_ONLY: do not create an Auth identity, nor
-  // call a provisioning RPC that could create one indirectly.
-  if (additionalAuthProvisioningDisabled()) {
-    return new Response(JSON.stringify({
-      error: "Additional authentication accounts are disabled for this HRIS.",
-    }), {
-      status: 403,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -90,23 +73,46 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const { data: provisioning, error: provisioningError } =
-    await userClient.rpc("admin_get_my_provisioning_context");
-
-  if (provisioningError || !provisioning?.can_manage) {
-    return new Response(
-      JSON.stringify({
-        error: "Administrator management permission required.",
-        code: "ADMIN_MANAGE_REQUIRED",
-      }),
-      {
-        status: 403,
-        headers: { ...headers, "Content-Type": "application/json" },
-      }
-    );
+  const body = await req.json().catch(() => ({}));
+  const tenantId = String(body.tenantId || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) {
+    return new Response(JSON.stringify({ error: "Select a valid organization." }), {
+      status: 400,
+      headers: { ...headers, "Content-Type": "application/json" },
+    });
   }
 
-  const body = await req.json().catch(() => ({}));
+  // The current provisioning RPC is tied to Synesis. Do not authorize the
+  // chosen organization from browser state or a global role alone.
+  const { data: tenantAllowed, error: tenantAccessError } = await userClient.rpc(
+    "has_tenant_permission",
+    { p_tenant_id: tenantId, p_permission_id: "admin_users.manage" },
+  );
+  if (tenantAccessError || tenantAllowed !== true) {
+    return new Response(JSON.stringify({ error: "User management permission required for this organization." }), {
+      status: 403,
+      headers: { ...headers, "Content-Type": "application/json" },
+    });
+  }
+  const { data: canonicalTenantId, error: tenantScopeError } = await userClient.rpc("synesis_tenant_id");
+  if (tenantScopeError || canonicalTenantId !== tenantId) {
+    return new Response(JSON.stringify({ error: "This organization is not supported by the current provisioning contract." }), {
+      status: 403,
+      headers: { ...headers, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: provisioning, error: provisioningError } =
+    await userClient.rpc("admin_get_my_provisioning_context");
+  if (provisioningError || provisioning?.can_manage !== true) {
+    return new Response(JSON.stringify({
+      error: "Administrator management permission required.",
+      code: "ADMIN_MANAGE_REQUIRED",
+    }), {
+      status: 403,
+      headers: { ...headers, "Content-Type": "application/json" },
+    });
+  }
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const roleId = String(body.roleId || "").trim();
