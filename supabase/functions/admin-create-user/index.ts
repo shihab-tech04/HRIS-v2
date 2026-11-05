@@ -220,7 +220,13 @@ Deno.serve(async (req: Request) => {
     }
   );
 
-  if (finalizeError || finalized?.success !== true) {
+  if (
+    finalizeError ||
+    finalized?.success !== true ||
+    finalized?.tenant_id !== tenantId ||
+    finalized?.employee_id !== employeeId ||
+    finalized?.role_id !== roleId
+  ) {
     const { error: rollbackError } = await adminClient.auth.admin.deleteUser(created.user.id);
     if (rollbackError) {
       console.error("HRIS user provisioning cleanup failed", { userId: created.user.id, code: rollbackError.code });
