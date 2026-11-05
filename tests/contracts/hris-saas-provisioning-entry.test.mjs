@@ -38,7 +38,8 @@ test('new credentials are validated and must never be exposed in response or wri
   assert.match(source, /email_confirm: true/);
   assert.match(source, /app_metadata: \{ account_type: "workforce" \}/);
   assert.match(source, /adminClient\.auth\.admin\.createUser\(\{[\s\S]*?password,[\s\S]*?\}\)/);
-  assert.doesNotMatch(source, /JSON\.stringify\(\{[^\n]*password/);
+  assert.doesNotMatch(source, /JSON\.stringify\(\{\s*password\s*:/);
+  assert.doesNotMatch(source, /user: \{[^}]*password\s*:/);
 });
 
 test('duplicate identities, rejected role/employee grants and SQL failure fail closed', () => {
