@@ -63,15 +63,26 @@ test('tenant and employee invitations fail closed before provisioning additional
   }
 });
 
-test('hosted admin-create-user source denies new identities before privileged Auth creation', () => {
+test('admin-created users require a valid session and selected-tenant authorization before any Auth write', () => {
   const code = readFileSync(new URL('supabase/functions/admin-create-user/index.ts', root), 'utf8');
-  const policy = code.indexOf('function additionalAuthProvisioningDisabled(): boolean');
-  const guard = code.indexOf('if (additionalAuthProvisioningDisabled())');
+  const session = code.indexOf('userClient.auth.getUser(token)');
+  const selectedTenant = code.indexOf('const tenantId = String(body.tenantId');
+  const permission = code.indexOf('"has_tenant_permission"');
+  const scope = code.indexOf('"synesis_tenant_id"');
+  const provisioning = code.indexOf('"admin_get_my_provisioning_context"');
+  const employee = code.indexOf('provisioning.available_employees');
+  const role = code.indexOf('provisioning.assignable_roles');
   const createUser = code.indexOf('adminClient.auth.admin.createUser(');
-  assert.ok(policy >= 0 && guard > policy && createUser > guard);
-  assert.match(code.slice(policy, guard), /return true;/);
-  assert.match(code.slice(policy, createUser), /SINGLE_SUPER_ADMIN_LOGIN_ONLY/);
-  assert.match(code.slice(guard, createUser), /status: 403/);
+  const finalize = code.indexOf('"admin_finalize_system_user"');
+  const rollback = code.indexOf('adminClient.auth.admin.deleteUser(created.user.id)');
+  assert.ok(session >= 0 && session < selectedTenant && selectedTenant < permission &&
+    permission < scope && scope < provisioning && provisioning < createUser);
+  assert.ok(role > provisioning && role < createUser && employee > provisioning && employee < createUser);
+  assert.ok(finalize > createUser && rollback > finalize);
+  assert.match(code.slice(permission, scope), /tenantAllowed !== true/);
+  assert.match(code.slice(scope, provisioning), /canonicalTenantId !== tenantId/);
+  assert.match(code.slice(provisioning, createUser), /provisioning\?\.can_manage !== true/);
+  assert.doesNotMatch(code, /SINGLE_SUPER_ADMIN_LOGIN_ONLY|additionalAuthProvisioningDisabled/);
 });
 
 test('staged orphan-link repair is pinned to the exact read-only observed pair', () => {
