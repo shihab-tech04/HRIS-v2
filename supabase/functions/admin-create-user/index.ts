@@ -220,9 +220,19 @@ Deno.serve(async (req: Request) => {
     }
   );
 
-  if (finalizeError) {
-    await adminClient.auth.admin.deleteUser(created.user.id);
-    return new Response(JSON.stringify({ error: finalizeError.message || "User provisioning could not be finalized." }), {
+  if (finalizeError || finalized?.success !== true) {
+    const { error: rollbackError } = await adminClient.auth.admin.deleteUser(created.user.id);
+    if (rollbackError) {
+      console.error("HRIS user provisioning cleanup failed", { userId: created.user.id, code: rollbackError.code });
+      return new Response(JSON.stringify({
+        error: "User creation did not finish and automatic cleanup failed. Contact the administrator before retrying.",
+        code: "USER_PROVISIONING_ROLLBACK_FAILED",
+      }), {
+        status: 500,
+        headers: { ...headers, "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ error: finalizeError?.message || "User provisioning could not be finalized." }), {
       status: 400,
       headers: { ...headers, "Content-Type": "application/json" },
     });
