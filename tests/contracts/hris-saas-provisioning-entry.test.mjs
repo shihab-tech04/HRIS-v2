@@ -47,8 +47,11 @@ test('duplicate identities, rejected role/employee grants and SQL failure fail c
   assert.match(source, /Selected employee is unavailable or already has a user account/);
   assert.match(source, /An account with this email already exists/);
   assert.match(source, /status: duplicate \? 409 : 400/);
-  assert.match(source, /if \(finalizeError \|\| finalized\?\.success !== true\)/);
-  const failedFinalize = source.indexOf('if (finalizeError || finalized?.success !== true)');
+  assert.match(source, /finalized\?\.success !== true/);
+  assert.match(source, /finalized\?\.tenant_id !== tenantId/);
+  assert.match(source, /finalized\?\.employee_id !== employeeId/);
+  assert.match(source, /finalized\?\.role_id !== roleId/);
+  const failedFinalize = source.indexOf('finalized?.success !== true');
   const rollback = source.indexOf('adminClient.auth.admin.deleteUser(created.user.id)');
   const success = source.indexOf('success: true, user:');
   assert.match(source, /USER_PROVISIONING_ROLLBACK_FAILED/);

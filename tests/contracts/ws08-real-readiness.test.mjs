@@ -15,17 +15,22 @@ test('WS08 REAL_AUTH_SQL prerequisites fail closed on explicit tenant and manage
   assert.match(adapter, /admin_get_my_provisioning_context/);
   assert.ok(adapter.indexOf('has_tenant_permission') < adapter.indexOf('synesis_tenant_id'));
   assert.ok(adapter.indexOf('synesis_tenant_id') < adapter.indexOf('admin_get_my_provisioning_context'));
-  assert.doesNotMatch(adapter + panel, /supabase\.functions\.invoke|supabase\.auth\.admin|\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
+  assert.match(adapter, /supabase\.functions\.invoke\('admin-create-user'/);
+  assert.doesNotMatch(adapter + panel, /supabase\.auth\.admin|\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
 });
 
-test('WS08 standalone panel is read-only, localizable and isolated from synthetic preview', () => {
-  assert.match(panel, /read-only readiness/);
-  assert.match(panel, /read-only WS08 panel|read-only|does not create accounts/);
+test('WS08 account creation panel is tenant-scoped, localizable and isolated from synthetic preview', () => {
+  assert.match(panel, /User management/);
+  assert.match(panel, /Create employee account/);
+  assert.match(panel, /hris-new-user-password/);
+  assert.match(panel, /disabled=\{submitting \|\| !employeeId \|\| !roleId/);
   assert.match(panel, /availableEmployees/);
   assert.match(panel, /retry/);
   assert.match(panel, /locale === 'bn'/);
   assert.match(panel, /currentValue = value\?\.tenantId === tenantId/);
   assert.doesNotMatch(panel, /syntheticUserPreview/);
+  assert.match(adapter, /await loadRealProvisioningReadiness\(input.tenantId\)/);
+  assert.match(adapter, /result.success !== true/);
   assert.match(preview, /syntheticUserPreview/);
   assert.match(preview, /No email is sent and no production account is created/);
 });

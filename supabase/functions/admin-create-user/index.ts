@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const body = await req.json().catch(() => ({}));
-  const tenantId = String(body.tenantId || "").trim();
+  const tenantId = String(body.tenantId || "").trim().toLowerCase();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) {
     return new Response(JSON.stringify({ error: "Select a valid organization." }), {
       status: 400,
@@ -116,7 +116,7 @@ Deno.serve(async (req: Request) => {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const roleId = String(body.roleId || "").trim();
-  const employeeId = String(body.employeeId || "").trim();
+  const employeeId = String(body.employeeId || "").trim().toLowerCase();
 
   if (!email || !password || !roleId || !employeeId) {
     return new Response(JSON.stringify({ error: "Employee, email, password, and role are required." }), {
@@ -220,7 +220,13 @@ Deno.serve(async (req: Request) => {
     }
   );
 
-  if (finalizeError || finalized?.success !== true) {
+  if (
+    finalizeError ||
+    finalized?.success !== true ||
+    finalized?.tenant_id !== tenantId ||
+    finalized?.employee_id !== employeeId ||
+    finalized?.role_id !== roleId
+  ) {
     const { error: rollbackError } = await adminClient.auth.admin.deleteUser(created.user.id);
     if (rollbackError) {
       console.error("HRIS user provisioning cleanup failed", { userId: created.user.id, code: rollbackError.code });

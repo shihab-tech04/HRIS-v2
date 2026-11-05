@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase';
 
-// WS08 REAL_AUTH_SQL read-only adapter. Do not import syntheticUserPreview here.
-// The existing password-based admin-create-user is NOT an invitation API.
+// Authorized SQL-backed user management. Never use synthetic preview data for writes.
+// This creates a password-based account linked to an eligible existing employee.
 export type ProvisionableRole = { id: string; name: string; description: string };
 export type UnlinkedEmployee = {
   id: string; employee_number: string; full_name: string; official_email: string;
@@ -82,4 +82,59 @@ export async function loadRealProvisioningReadiness(tenantId: string): Promise<R
     assignableRoles: parseRoles(context.assignable_roles),
     availableEmployees: parseEmployees(context.available_employees),
   };
+}
+
+export type CreatedUser = { id: string; email: string };
+
+export async function createRealUserAccount(input: {
+  tenantId: string; employeeId: string; roleId: string; email: string; password: string;
+}): Promise<CreatedUser> {
+  const email = input.email.trim().toLowerCase();
+  if (!uuidPattern.test(input.tenantId) || !uuidPattern.test(input.employeeId)) {
+    throw new Error('Select a valid organization and employee.');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Enter a valid email address.');
+  }
+  if (input.password.length < 12) {
+    throw new Error('Initial password must contain at least 12 characters.');
+  }
+
+  // Revalidate the selected tenant and the permitted employee/role immediately
+  // before submission. The Edge Function independently repeats these checks.
+  const context = await loadRealProvisioningReadiness(input.tenantId);
+  if (!context.assignableRoles.some(role => role.id === input.roleId)) {
+    throw new Error('The selected role is no longer assignable.');
+  }
+  if (!context.availableEmployees.some(employee => employee.id === input.employeeId)) {
+    throw new Error('The selected employee is no longer eligible for an account.');
+  }
+
+  const { data, error } = await supabase.functions.invoke('admin-create-user', {
+    body: {
+      tenantId: input.tenantId,
+      employeeId: input.employeeId,
+      roleId: input.roleId,
+      email,
+      password: input.password,
+    },
+  });
+  if (error) {
+    let message = 'Account creation could not be confirmed. Refresh the employee list before retrying.';
+    const response = (error as { context?: { json?: () => Promise<unknown> } }).context;
+    if (response && typeof response.json === 'function') {
+      const details = await response.json().catch(() => null);
+      if (details && typeof details === 'object' && !Array.isArray(details)) {
+        const serverMessage = (details as Record<string, unknown>).error;
+        if (typeof serverMessage === 'string' && serverMessage.trim()) message = serverMessage;
+      }
+    }
+    throw new Error(message);
+  }
+  const result = record(data);
+  if (result.success !== true) {
+    throw new Error('Server did not confirm account creation. Refresh before retrying.');
+  }
+  const user = record(result.user);
+  return { id: requiredString(user.id), email: requiredString(user.email) };
 }
