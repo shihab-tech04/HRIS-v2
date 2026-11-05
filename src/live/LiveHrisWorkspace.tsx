@@ -7,6 +7,7 @@ import attendanceTeamSortIcon from '../assets/attendance-team-sort.svg';
 import synesisItLogo from '../assets/synesis-it-logo.png';
 import './attendance-report.css';
 import { OrganizationTeams } from './OrganizationTeams';
+import { RealUserProvisioningReadiness } from './RealUserProvisioningReadiness';
 import { OrganizationProjects } from './OrganizationProjects';
 import { MyProjects } from './MyProjects';
 import { ProjectNotifications } from './ProjectNotifications';
@@ -82,8 +83,9 @@ type PermissionSet = {
   payroll: boolean;
   payrollManage: boolean;
   selfServiceManage: boolean;
+  userManagement: boolean;
 };
-type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'job-circulars' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-profile' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests';
+type PageId = 'dashboard' | 'attendance' | 'shift-roster' | 'leave' | 'projects' | 'platform-tenants' | 'teams' | 'employees' | 'onboarding' | 'performance' | 'recruitment' | 'job-circulars' | 'referrals' | 'holidays' | 'learning-requests' | 'learning-completions' | 'learning-programs' | 'travel' | 'expenses' | 'payroll-register' | 'service-requests' | 'profile-change-review' | 'my-profile-changes' | 'my-profile' | 'my-dashboard' | 'my-projects' | 'my-roster' | 'my-notifications' | 'my-announcements' | 'my-performance' | 'my-learning' | 'my-payslips' | 'my-documents' | 'my-leave' | 'my-timesheets' | 'my-travel' | 'my-expenses' | 'my-service-requests' | 'user-management';
 type DashboardPoint = { date: string; records: number };
 type DashboardTeamReportRow = {
   team_id?: string | null;
@@ -148,7 +150,7 @@ const emptyPermissions: PermissionSet = {
   learningManage: false,
   travel: false, travelView: false, travelManage: false,
   expenses: false, expensesView: false, expensesManage: false,
-  payroll: false, payrollManage: false, selfServiceManage: false,
+  payroll: false, payrollManage: false, selfServiceManage: false, userManagement: false,
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -4886,6 +4888,7 @@ export function LiveHrisWorkspace({
     else if (isEmployee) items.push({ id: 'projects', label: 'Project Workspace', icon: <BriefcaseBusiness className="h-5 w-5" />, group: 'Personal' });
     if (isSuperAdmin && platformTenantFeatureAvailable) items.push({ id: 'platform-tenants', label: 'Platform tenants', icon: <Building2 className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.employees) items.push({ id: 'employees', label: 'Employees', icon: <Users className="h-5 w-5" />, group: 'HRIS' });
+    if ((isSuperAdmin || permissions.userManagement) && tenantId) items.push({ id: 'user-management', label: locale === 'bn' ? 'ব্যবহারকারী ব্যবস্থাপনা' : 'User Management', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.employeesManage) items.push({ id: 'onboarding', label: 'Onboarding', icon: <UserRoundPlus className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.employeesManage) items.push({ id: 'service-requests', label: 'Service Requests', icon: <ClipboardList className="h-5 w-5" />, group: 'HRIS' });
     if (permissions.selfServiceManage) items.push({ id: 'profile-change-review', label: 'Profile corrections', icon: <FileText className="h-5 w-5" />, group: 'HRIS' });
@@ -4920,7 +4923,7 @@ export function LiveHrisWorkspace({
     if (isEmployee) items.push({ id: 'my-service-requests', label: 'My Requests', icon: <ClipboardList className="h-5 w-5" />, group: 'Personal' });
     if (isEmployee && !permissions.referrals) items.push({ id: 'referrals', label: 'My Referrals', icon: <UserRoundPlus className="h-5 w-5" />, group: 'Personal' });
     return items;
-  }, [permissions, isEmployee, isSuperAdmin]);
+  }, [permissions, isEmployee, isSuperAdmin, tenantId, locale]);
 
   const useHrOperationsView = /(?:^|[_\s-])hr[_\s-]operations(?:[_\s-]|$)/i.test(tenantRole);
   const hasAttendanceAndLeave = nav.some(item => item.id === 'attendance') && nav.some(item => item.id === 'leave');
@@ -5169,6 +5172,7 @@ export function LiveHrisWorkspace({
           </>}
           {page === 'teams' && permissions.organization && <OrganizationTeams tenantId={tenantId} locale={locale} />}
           {page === 'employees' && permissions.employees && <OrganizationEmployeeDirectory tenantId={tenantId} locale={locale} employeesManage={permissions.employeesManage} />}
+          {page === 'user-management' && (isSuperAdmin || permissions.userManagement) && tenantId && <RealUserProvisioningReadiness tenantId={tenantId} tenantName={tenantName} locale={locale} />}
           {page === 'onboarding' && permissions.employeesManage && <CandidatePreboardingQueue tenantId={tenantId} locale={locale} canActivate={permissions.employeesManage} />}
           {page === 'service-requests' && permissions.employeesManage && <ServiceRequestReview tenantId={tenantId} locale={locale} />}
           {page === 'profile-change-review' && permissions.selfServiceManage && <ProfileChangeReview tenantId={tenantId} locale={locale} />}
