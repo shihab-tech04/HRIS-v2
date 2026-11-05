@@ -93,7 +93,7 @@ export async function createRealUserAccount(input: {
   if (!uuidPattern.test(input.tenantId) || !uuidPattern.test(input.employeeId)) {
     throw new Error('Select a valid organization and employee.');
   }
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error('Enter a valid email address.');
   }
   if (input.password.length < 12) {
