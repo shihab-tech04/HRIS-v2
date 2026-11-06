@@ -67,7 +67,7 @@ test('WS08 creates a real account only after employee, role and password are pro
   await page.goto('/tests/browser/ws08-real-readiness-harness.html');
   const create = page.getByRole('button', { name: 'Create user' });
   await expect(create).toBeDisabled();
-  await page.getByLabel('Employee account').selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
+  await page.getByLabel('Employee account', { exact: true }).selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
   await page.getByLabel('Assign role').selectOption('hr_admin');
   await page.getByLabel('Login email').fill('test-created@example.test');
   await page.getByLabel('Initial password (12 characters minimum)').fill('test-created-password-123');
@@ -89,7 +89,7 @@ test('WS08 creates a real account only after employee, role and password are pro
 
 test('WS08 displays failed SQL finalization and does not claim an account was created', async ({ page }) => {
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=sql-error');
-  await page.getByLabel('Employee account').selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
+  await page.getByLabel('Employee account', { exact: true }).selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
   await page.getByLabel('Assign role').selectOption('hr_admin');
   await page.getByLabel('Login email').fill('failed@example.test');
   await page.getByLabel('Initial password (12 characters minimum)').fill('test-created-password-123');
@@ -104,7 +104,7 @@ test('WS08 creates the first employee in an empty organization with only assigne
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=no-employees');
   await expect(page.getByText('No unlinked eligible employees are available.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Create employee account' })).toBeVisible();
-  await expect(page.getByLabel('Employee account')).toHaveValue('new');
+  await expect(page.getByLabel('Employee account', { exact: true })).toHaveValue('new');
   await page.getByLabel('Full name').fill('First Employee');
   await page.getByLabel('Assign role').selectOption('hr_admin');
   await page.getByLabel('Login email').fill('first.employee@example.test');
