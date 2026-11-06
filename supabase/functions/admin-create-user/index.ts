@@ -18,32 +18,6 @@ function corsHeaders(req: Request) {
   };
 }
 
-async function sha1Hex(value: string) {
-  const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
-    .toUpperCase();
-}
-
-async function isCompromisedPassword(password: string) {
-  const hash = await sha1Hex(password);
-  const prefix = hash.slice(0, 5);
-  const suffix = hash.slice(5);
-  const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
-    method: "GET",
-    headers: {
-      "Accept": "text/plain",
-      "Add-Padding": "true",
-      "User-Agent": "Synesis-HRIS-Admin-Password-Safety/1.0",
-    },
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!response.ok) throw new Error("PASSWORD_REPUTATION_UNAVAILABLE");
-  const body = await response.text();
-  return body.split(/\r?\n/).some((line) => line.split(":")[0]?.trim().toUpperCase() === suffix);
-}
-
 Deno.serve(async (req: Request) => {
   const headers = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers });
@@ -137,23 +111,6 @@ Deno.serve(async (req: Request) => {
   if (password.length < 12) {
     return new Response(JSON.stringify({ error: "Initial password must be at least 12 characters." }), {
       status: 400,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
-
-  try {
-    if (await isCompromisedPassword(password)) {
-      return new Response(JSON.stringify({ error: "This password has appeared in a known data breach. Choose a different password." }), {
-        status: 400,
-        headers: { ...headers, "Content-Type": "application/json" },
-      });
-    }
-  } catch (error) {
-    return new Response(JSON.stringify({
-      error: "Password safety verification is temporarily unavailable. Please try again.",
-      code: error instanceof Error ? error.message : "PASSWORD_REPUTATION_UNAVAILABLE",
-    }), {
-      status: 503,
       headers: { ...headers, "Content-Type": "application/json" },
     });
   }
