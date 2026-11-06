@@ -7,7 +7,7 @@ import type { Locale } from './project-locale';
 const messages = {
   en: {
     title: 'User management',
-    explanation: 'Create a new employee login, or link a login to an existing employee, and assign an authorized role.'
+    explanation: 'Create a new employee login, or link a login to an existing employee, and assign an authorized role.',
     separation: 'Changes are saved to Supabase after the administrator, employee, and role are verified.',
     loading: 'Checking selected-organization permissions…',
     retry: 'Retry authorized read',
@@ -36,7 +36,7 @@ const messages = {
   },
   bn: {
     title: 'ব্যবহারকারী ব্যবস্থাপনা',
-    explanation: 'নতুন কর্মীর অ্যাকাউন্ট তৈরি করুন অথবা বিদ্যমান কর্মীর সঙ্গে লগইন যুক্ত করুন এবং অনুমোদিত ভূমিকা নির্ধারণ করুন।'
+    explanation: 'নতুন কর্মীর অ্যাকাউন্ট তৈরি করুন অথবা বিদ্যমান কর্মীর সঙ্গে লগইন যুক্ত করুন এবং অনুমোদিত ভূমিকা নির্ধারণ করুন।',
     separation: 'প্রশাসক, কর্মী ও ভূমিকা যাচাইয়ের পর তথ্য Supabase-এ সংরক্ষিত হয়।',
     loading: 'নির্বাচিত প্রতিষ্ঠানের অনুমতি যাচাই হচ্ছে…',
     retry: 'অনুমোদিত তথ্য আবার লোড করুন',
@@ -59,7 +59,7 @@ const messages = {
     submit: 'ব্যবহারকারী তৈরি করুন',
     submitting: 'অ্যাকাউন্ট তৈরি হচ্ছে…',
     success: 'ব্যবহারকারীর অ্যাকাউন্ট, কর্মীর সংযোগ ও ভূমিকা সংরক্ষিত হয়েছে।',
-    unavailable: 'অ্যাকাউন্ট তৈরির জন্য অনুমোদিত ভূমিকা প্রয়োজন।'
+    unavailable: 'অ্যাকাউন্ট তৈরির জন্য অনুমোদিত ভূমিকা প্রয়োজন।',
     count: 'যোগ্য কর্মী',
     organization: 'নির্বাচিত প্রতিষ্ঠান',
   },
