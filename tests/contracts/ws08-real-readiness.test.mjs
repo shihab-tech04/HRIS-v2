@@ -23,7 +23,9 @@ test('WS08 account creation panel is tenant-scoped, localizable and isolated fro
   assert.match(panel, /User management/);
   assert.match(panel, /Create employee account/);
   assert.match(panel, /hris-new-user-password/);
-  assert.match(panel, /disabled=\{submitting \|\| !employeeId \|\| !roleId/);
+  assert.match(panel, /hris-new-user-name/);
+  assert.match(panel, /newEmployee: 'Create new employee'/);
+  assert.match(panel, /employeeId === 'new' && displayName\.trim\(\)\.length < 2/);
   assert.match(panel, /availableEmployees/);
   assert.match(panel, /retry/);
   assert.match(panel, /locale === 'bn'/);

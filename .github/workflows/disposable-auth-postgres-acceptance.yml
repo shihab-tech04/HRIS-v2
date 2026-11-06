@@ -89,6 +89,8 @@ jobs:
         run: node tests/sql/isolated-auth/run-local.mjs
       - name: Run complete missing-RPC and Super Admin invitation acceptance
         run: node tests/sql/isolated-auth/hris-release-rpc-acceptance.mjs
+      - name: Compile first-user SQL migrations in rollback-only disposable PG17
+        run: node tests/sql/isolated-auth/hris-first-user-migration-check.mjs
       - name: Run Phase 04 parity checks on the Auth-tested source migrations
         run: node tests/sql/hosted-parity/run-local.mjs
       - name: Inspect security advisories on the disposable local database

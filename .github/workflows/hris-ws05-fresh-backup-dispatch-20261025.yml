@@ -38,3 +38,7 @@ jobs:
 # HRIS clean-baseline recovery request (2026-11-04): refresh the encrypted
 # replacement database backup after employee data cleanup. This dispatcher
 # remains protected-Main-only and read-only; it does not apply SQL or deploy.
+
+# HRIS 2026-11-06 pre-release recovery: on protected Main merge, dispatch an
+# existing encrypted, read-only PostgreSQL export. This does NOT approve or
+# dispatch the subsequent SQL or Pages production release.

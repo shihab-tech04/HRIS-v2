@@ -12,7 +12,7 @@ test('WS08 real user management requires selected-tenant permissions and does no
   await expect(page.getByRole('heading', { name: 'Employees eligible for account linking' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
   await expect(page.getByRole('listitem').filter({ hasText: 'HR Administrator' })).toBeVisible();
-  await expect(page.getByText(/Create an email-and-password account for an existing employee/)).toBeVisible();
+  await expect(page.getByText(/Create a new employee login, or link a login/)).toBeVisible();
   await expect(page.getByText(/Changes are saved to Supabase after/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create user' })).toBeDisabled();
   await page.getByLabel('Search eligible employees').fill('not-present');
@@ -67,7 +67,7 @@ test('WS08 creates a real account only after employee, role and password are pro
   await page.goto('/tests/browser/ws08-real-readiness-harness.html');
   const create = page.getByRole('button', { name: 'Create user' });
   await expect(create).toBeDisabled();
-  await page.getByLabel('Select employee').selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
+  await page.getByLabel('Employee account', { exact: true }).selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
   await page.getByLabel('Assign role').selectOption('hr_admin');
   await page.getByLabel('Login email').fill('test-created@example.test');
   await page.getByLabel('Initial password (12 characters minimum)').fill('test-created-password-123');
@@ -89,13 +89,48 @@ test('WS08 creates a real account only after employee, role and password are pro
 
 test('WS08 displays failed SQL finalization and does not claim an account was created', async ({ page }) => {
   await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=sql-error');
-  await page.getByLabel('Select employee').selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
+  await page.getByLabel('Employee account', { exact: true }).selectOption('fccccccc-cccc-4ccc-8ccc-cccccccccccc');
   await page.getByLabel('Assign role').selectOption('hr_admin');
   await page.getByLabel('Login email').fill('failed@example.test');
   await page.getByLabel('Initial password (12 characters minimum)').fill('test-created-password-123');
   await page.getByRole('button', { name: 'Create user' }).click();
   await expect(page.getByRole('alert')).toContainText('SQL finalization rejected');
   await expect(page.getByRole('cell', { name: 'Authorized Employee' })).toBeVisible();
+  await expect(page.getByText('User account created.')).toHaveCount(0);
+  expect((await calls(page)).filter(call => call.name === 'edge:admin-create-user')).toHaveLength(1);
+});
+
+test('WS08 creates the first employee in an empty organization with only assigned role and simple credentials', async ({ page }) => {
+  await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=no-employees');
+  await expect(page.getByText('No unlinked eligible employees are available.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Create employee account' })).toBeVisible();
+  await expect(page.getByLabel('Employee account', { exact: true })).toHaveValue('new');
+  await page.getByLabel('Full name').fill('First Employee');
+  await page.getByLabel('Assign role').selectOption('hr_admin');
+  await page.getByLabel('Login email').fill('first.employee@example.test');
+  await page.getByLabel('Initial password (12 characters minimum)').fill('first-password-123');
+  await page.getByRole('button', { name: 'Create user' }).click();
+  await expect(page.getByText('User account created. The employee and assigned role have been saved.')).toBeVisible();
+  const edgeCalls = (await calls(page)).filter(call => call.name === 'edge:admin-create-user');
+  expect(edgeCalls).toHaveLength(1);
+  expect(edgeCalls[0].args).toMatchObject({
+    createNewEmployee: true,
+    displayName: 'First Employee',
+    tenantId: 'faaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    roleId: 'hr_admin',
+    email: 'first.employee@example.test',
+  });
+  expect((edgeCalls[0].args as Record<string, unknown>).password).toBe('[hidden]');
+});
+
+test('WS08 new-employee SQL failure leaves no falsely confirmed user and permits recovery', async ({ page }) => {
+  await page.goto('/tests/browser/ws08-real-readiness-harness.html?mode=sql-error');
+  await page.getByLabel('Full name').fill('Rejected Employee');
+  await page.getByLabel('Assign role').selectOption('hr_admin');
+  await page.getByLabel('Login email').fill('rejected.employee@example.test');
+  await page.getByLabel('Initial password (12 characters minimum)').fill('rejected-password-123');
+  await page.getByRole('button', { name: 'Create user' }).click();
+  await expect(page.getByRole('alert')).toContainText('SQL finalization rejected');
   await expect(page.getByText('User account created.')).toHaveCount(0);
   expect((await calls(page)).filter(call => call.name === 'edge:admin-create-user')).toHaveLength(1);
 });

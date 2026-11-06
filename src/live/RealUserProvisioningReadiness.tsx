@@ -7,7 +7,7 @@ import type { Locale } from './project-locale';
 const messages = {
   en: {
     title: 'User management',
-    explanation: 'Create an email-and-password account for an existing employee in this organization and assign an authorized role.',
+    explanation: 'Create a new employee login, or link a login to an existing employee, and assign an authorized role.',
     separation: 'Changes are saved to Supabase after the administrator, employee, and role are verified.',
     loading: 'Checking selected-organization permissions…',
     retry: 'Retry authorized read',
@@ -21,20 +21,22 @@ const messages = {
     email: 'Official email',
     none: 'No eligible employees match this search.',
     formTitle: 'Create employee account',
-    chooseEmployee: 'Select employee',
+    chooseEmployee: 'Employee account',
+    newEmployee: 'Create new employee',
+    fullName: 'Full name',
     chooseRole: 'Assign role',
     loginEmail: 'Login email',
     password: 'Initial password (12 characters minimum)',
     submit: 'Create user',
     submitting: 'Creating account…',
     success: 'User account created. The employee and assigned role have been saved.',
-    unavailable: 'An eligible employee and assignable role are required before creating a user.',
+    unavailable: 'An assignable role is required before creating a user.',
     count: 'eligible employees',
     organization: 'Selected organization',
   },
   bn: {
     title: 'ব্যবহারকারী ব্যবস্থাপনা',
-    explanation: 'এই প্রতিষ্ঠানের বিদ্যমান কর্মীর জন্য ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি করে অনুমোদিত ভূমিকা দিন।',
+    explanation: 'নতুন কর্মীর অ্যাকাউন্ট তৈরি করুন অথবা বিদ্যমান কর্মীর সঙ্গে লগইন যুক্ত করুন এবং অনুমোদিত ভূমিকা নির্ধারণ করুন।',
     separation: 'প্রশাসক, কর্মী ও ভূমিকা যাচাইয়ের পর তথ্য Supabase-এ সংরক্ষিত হয়।',
     loading: 'নির্বাচিত প্রতিষ্ঠানের অনুমতি যাচাই হচ্ছে…',
     retry: 'অনুমোদিত তথ্য আবার লোড করুন',
@@ -48,14 +50,16 @@ const messages = {
     email: 'অফিসিয়াল ইমেইল',
     none: 'এই অনুসন্ধানে কোনো কর্মী মেলেনি।',
     formTitle: 'কর্মীর অ্যাকাউন্ট তৈরি',
-    chooseEmployee: 'কর্মী নির্বাচন করুন',
+    chooseEmployee: 'কর্মীর অ্যাকাউন্ট',
+    newEmployee: 'নতুন কর্মী তৈরি',
+    fullName: 'সম্পূর্ণ নাম',
     chooseRole: 'ভূমিকা নির্ধারণ করুন',
     loginEmail: 'লগইন ইমেইল',
     password: 'প্রাথমিক পাসওয়ার্ড (কমপক্ষে ১২ অক্ষর)',
     submit: 'ব্যবহারকারী তৈরি করুন',
     submitting: 'অ্যাকাউন্ট তৈরি হচ্ছে…',
     success: 'ব্যবহারকারীর অ্যাকাউন্ট, কর্মীর সংযোগ ও ভূমিকা সংরক্ষিত হয়েছে।',
-    unavailable: 'অ্যাকাউন্ট তৈরির জন্য উপযুক্ত কর্মী ও অনুমোদিত ভূমিকা প্রয়োজন।',
+    unavailable: 'অ্যাকাউন্ট তৈরির জন্য অনুমোদিত ভূমিকা প্রয়োজন।',
     count: 'যোগ্য কর্মী',
     organization: 'নির্বাচিত প্রতিষ্ঠান',
   },
@@ -71,7 +75,8 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
+  const [employeeId, setEmployeeId] = useState('new');
+  const [displayName, setDisplayName] = useState('');
   const [roleId, setRoleId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -88,7 +93,8 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
     setError('');
     setValue(null);
     setSearch('');
-    setEmployeeId('');
+    setEmployeeId('new');
+    setDisplayName('');
     setRoleId('');
     setEmail('');
     setPassword('');
@@ -117,7 +123,7 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
     setSubmitError('');
     setSuccess('');
     try {
-      await createRealUserAccount({ tenantId, employeeId, roleId, email, password });
+      await createRealUserAccount({ tenantId, employeeId, displayName, roleId, email, password });
       if (selectedTenantRef.current !== tenantId) return;
       setPassword('');
       setSuccess(copy.success);
@@ -181,7 +187,7 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
         <h3 id="ws08-create-user-heading" className="font-semibold">{copy.formTitle}</h3>
         {success && <p role="status" className="mt-3 text-sm text-[var(--color-figma-primary-600)]">{success}</p>}
         {submitError && <p role="alert" className="mt-3 text-sm text-rose-700">{submitError}</p>}
-        {currentValue.availableEmployees.length && currentValue.assignableRoles.length ? (
+        {currentValue.assignableRoles.length ? (
           <form className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2" onSubmit={event => { void submit(event); }}>
             <div>
               <label htmlFor="hris-new-user-employee" className="block text-sm font-medium">{copy.chooseEmployee}</label>
@@ -189,15 +195,22 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
                 onChange={event => {
                   const id = event.target.value;
                   setEmployeeId(id);
+                  setDisplayName('');
                   setEmail(currentValue.availableEmployees.find(employee => employee.id === id)?.official_email || '');
                   setSuccess('');
                 }}
                 className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                <option value="">{copy.chooseEmployee}</option>
+                <option value="new">{copy.newEmployee}</option>
                 {currentValue.availableEmployees.map(employee =>
                   <option key={employee.id} value={employee.id}>{employee.full_name} ({employee.employee_number})</option>)}
               </select>
             </div>
+            {employeeId === 'new' && <div>
+              <label htmlFor="hris-new-user-name" className="block text-sm font-medium">{copy.fullName}</label>
+              <input id="hris-new-user-name" type="text" required maxLength={200} minLength={2} disabled={submitting}
+                value={displayName} onChange={event => setDisplayName(event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+            </div>}
             <div>
               <label htmlFor="hris-new-user-role" className="block text-sm font-medium">{copy.chooseRole}</label>
               <select id="hris-new-user-role" required value={roleId} disabled={submitting}
@@ -221,7 +234,7 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
                 className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
             </div>
             <div className="sm:col-span-2">
-              <button type="submit" disabled={submitting || !employeeId || !roleId || !email || password.length < 12}
+              <button type="submit" disabled={submitting || !employeeId || (employeeId === 'new' && displayName.trim().length < 2) || !roleId || !email || password.length < 12}
                 className="min-h-11 rounded-lg bg-[var(--color-figma-primary-600)] px-5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
                 {submitting ? copy.submitting : copy.submit}
               </button>

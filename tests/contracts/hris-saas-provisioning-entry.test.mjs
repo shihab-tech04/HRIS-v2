@@ -34,7 +34,7 @@ test('account creation requires selected tenant and a server-verified administra
 test('new credentials are validated and must never be exposed in response or written to business SQL', () => {
   assert.match(source, /const password = String\(body.password/);
   assert.match(source, /password.length < 12/);
-  assert.match(source, /isCompromisedPassword\(password\)/);
+  assert.doesNotMatch(source, /isCompromisedPassword|pwnedpasswords\.com/);
   assert.match(source, /email_confirm: true/);
   assert.match(source, /app_metadata: \{ account_type: "workforce" \}/);
   assert.match(source, /adminClient\.auth\.admin\.createUser\(\{[\s\S]*?password,[\s\S]*?\}\)/);

@@ -87,11 +87,16 @@ export async function loadRealProvisioningReadiness(tenantId: string): Promise<R
 export type CreatedUser = { id: string; email: string };
 
 export async function createRealUserAccount(input: {
-  tenantId: string; employeeId: string; roleId: string; email: string; password: string;
+  tenantId: string; employeeId: string; displayName?: string; roleId: string; email: string; password: string;
 }): Promise<CreatedUser> {
   const email = input.email.trim().toLowerCase();
-  if (!uuidPattern.test(input.tenantId) || !uuidPattern.test(input.employeeId)) {
+  const createNewEmployee = input.employeeId === 'new';
+  const displayName = input.displayName?.trim() || '';
+  if (!uuidPattern.test(input.tenantId) || (!createNewEmployee && !uuidPattern.test(input.employeeId))) {
     throw new Error('Select a valid organization and employee.');
+  }
+  if (createNewEmployee && (displayName.length < 2 || displayName.length > 200)) {
+    throw new Error('Enter the new employee full name.');
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error('Enter a valid email address.');
@@ -106,14 +111,16 @@ export async function createRealUserAccount(input: {
   if (!context.assignableRoles.some(role => role.id === input.roleId)) {
     throw new Error('The selected role is no longer assignable.');
   }
-  if (!context.availableEmployees.some(employee => employee.id === input.employeeId)) {
+  if (!createNewEmployee && !context.availableEmployees.some(employee => employee.id === input.employeeId)) {
     throw new Error('The selected employee is no longer eligible for an account.');
   }
 
   const { data, error } = await supabase.functions.invoke('admin-create-user', {
     body: {
       tenantId: input.tenantId,
-      employeeId: input.employeeId,
+      employeeId: createNewEmployee ? undefined : input.employeeId,
+      createNewEmployee,
+      displayName: createNewEmployee ? displayName : undefined,
       roleId: input.roleId,
       email,
       password: input.password,
