@@ -116,9 +116,11 @@ Deno.serve(async (req: Request) => {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const roleId = String(body.roleId || "").trim();
+  const createNewEmployee = body.createNewEmployee === true;
   const employeeId = String(body.employeeId || "").trim().toLowerCase();
+  const enteredName = String(body.displayName || "").trim();
 
-  if (!email || !password || !roleId || !employeeId) {
+  if (!email || !password || !roleId || (!createNewEmployee && !employeeId)) {
     return new Response(JSON.stringify({ error: "Employee, email, password, and role are required." }), {
       status: 400,
       headers: { ...headers, "Content-Type": "application/json" },
@@ -167,19 +169,19 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const employee = Array.isArray(provisioning.available_employees)
+  const employee = !createNewEmployee && Array.isArray(provisioning.available_employees)
     ? provisioning.available_employees.find((item: { id?: string }) => item.id === employeeId)
     : null;
 
-  if (!employee) {
+  if (!createNewEmployee && !employee) {
     return new Response(JSON.stringify({ error: "Selected employee is unavailable or already has a user account." }), {
       status: 409,
       headers: { ...headers, "Content-Type": "application/json" },
     });
   }
 
-  const displayName = String(employee.full_name || "").trim();
-  if (!displayName) {
+  const displayName = createNewEmployee ? enteredName : String(employee?.full_name || "").trim();
+  if (displayName.length < 2 || displayName.length > 200) {
     return new Response(JSON.stringify({ error: "Selected employee does not have a valid name." }), {
       status: 400,
       headers: { ...headers, "Content-Type": "application/json" },
@@ -210,21 +212,31 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: finalized, error: finalizeError } = await adminClient.rpc(
-    "admin_finalize_system_user",
-    {
-      p_actor_id: userData.user.id,
-      p_user_id: created.user.id,
-      p_email: email,
-      p_employee_id: employeeId,
-      p_role_id: roleId,
-    }
+    createNewEmployee ? "admin_finalize_new_workforce_user" : "admin_finalize_system_user",
+    createNewEmployee
+      ? {
+          p_actor_id: userData.user.id,
+          p_user_id: created.user.id,
+          p_tenant_id: tenantId,
+          p_email: email,
+          p_display_name: displayName,
+          p_role_id: roleId,
+        }
+      : {
+          p_actor_id: userData.user.id,
+          p_user_id: created.user.id,
+          p_email: email,
+          p_employee_id: employeeId,
+          p_role_id: roleId,
+        }
   );
 
   if (
     finalizeError ||
     finalized?.success !== true ||
     finalized?.tenant_id !== tenantId ||
-    finalized?.employee_id !== employeeId ||
+    (!createNewEmployee && finalized?.employee_id !== employeeId) ||
+    (createNewEmployee && !finalized?.employee_id) ||
     finalized?.role_id !== roleId
   ) {
     const { error: rollbackError } = await adminClient.auth.admin.deleteUser(created.user.id);
