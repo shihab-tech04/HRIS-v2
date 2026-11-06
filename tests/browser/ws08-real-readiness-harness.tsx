@@ -32,7 +32,7 @@ Object.defineProperty(supabase, 'rpc', {
           assignable_roles: mode === 'empty' ? [] : [{
             id: 'hr_admin', name: 'HR Administrator', description: 'Tenant role',
           }],
-          available_employees: mode === 'empty' || accountCreated ? [] : [{
+          available_employees: mode === 'empty' || mode === 'no-employees' || accountCreated ? [] : [{
             id: 'fccccccc-cccc-4ccc-8ccc-cccccccccccc',
             employee_number: 'EMP-009',
             full_name: 'Authorized Employee',
