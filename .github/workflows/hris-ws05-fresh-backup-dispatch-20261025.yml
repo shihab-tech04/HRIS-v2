@@ -9,6 +9,7 @@ on:
       - .github/workflows/hris-step1-encrypted-db-export.yml
       - .github/workflows/hris-step1-offline-restore-proof.yml
       - .github/scripts/hris-legacy-auth-fk-counts.sql
+      - .github/workflows/ws05-employee-profile-sql-release.yml
 
 permissions:
   contents: read
