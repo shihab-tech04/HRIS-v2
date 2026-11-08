@@ -15,7 +15,7 @@ jobs:
   dispatch:
     if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - name: Verify exact protected Main and dispatch read-only encrypted export
         shell: bash
@@ -34,6 +34,51 @@ jobs:
             -f session_pooler_host=aws-0-ap-northeast-2.pooler.supabase.com
           echo 'Fresh encrypted replacement Supabase export dispatched.'
           echo 'No hosted DDL, deployment, or invitation email was triggered.'
+
+      - name: Dispatch isolated restore only after exact protected-Main export succeeds
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          # Explicit workflow_dispatch is permitted with the repository GITHUB_TOKEN;
+          # do not rely on an indirect workflow_run chain for the recovery proof.
+          run_id=''
+          status=''
+          conclusion=''
+          for attempt in $(seq 1 90); do
+            payload="$(gh api 'repos/shihab-tech04/HRIS-v2/actions/runs?branch=main&per_page=25')"
+            run_id="$(jq -r --arg sha "$GITHUB_SHA" '
+              [.workflow_runs[] | select(.name == "HRIS Step 1 - Encrypted database export"
+                and .event == "workflow_dispatch" and .head_branch == "main"
+                and .head_sha == $sha)] | sort_by(.id) | last | .id // empty
+            ' <<<"$payload")"
+            if [[ -n "$run_id" ]]; then
+              status="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<<"$payload")"
+              conclusion="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .conclusion // empty' <<<"$payload")"
+              if [[ "$status" == completed ]]; then
+                [[ "$conclusion" == success ]] || {
+                  echo '::error::Exact-Main encrypted export failed. No restore dispatched.'; exit 1;
+                }
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ -n "$run_id" && "$status" == completed && "$conclusion" == success ]] || {
+            echo '::error::Exact-Main export completion not confirmed. No restore dispatched.'; exit 1;
+          }
+          gh api "repos/shihab-tech04/HRIS-v2/actions/runs/${run_id}/artifacts?per_page=100" \
+            | jq -e --arg name "hris-db-encrypted-${run_id}" \
+                '[.artifacts[] | select(.name == $name and .expired == false and .size_in_bytes > 0)] | length == 1' \
+            >/dev/null || { echo '::error::Encrypted artifact absent; restore not dispatched.'; exit 1; }
+          gh workflow run hris-step1-offline-restore-proof.yml \
+            --repo shihab-tech04/HRIS-v2 --ref main \
+            -f backup_run_id="$run_id"
+          echo "Exact protected-Main export verified; isolated restore dispatched for run $run_id."
+          echo 'No production SQL, Auth, Edge Function, Pages or data mutations performed.'
 
 # HRIS clean-baseline recovery request (2026-11-04): refresh the encrypted
 # replacement database backup after employee data cleanup. This dispatcher

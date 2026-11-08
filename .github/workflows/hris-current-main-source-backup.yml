@@ -1,0 +1,47 @@
+# One-time exact protected-Main source/history recovery alongside HRIS DB recovery.
+# No SQL writes, production deploys, Auth changes, or cross-account credentials.
+name: HRIS exact protected Main source history backup
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml
+permissions:
+  contents: read
+jobs:
+  archive-exact-main:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive full Git graph and prove exact Main restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          dest="$RUNNER_TEMP/hris-main-exact-recovery"
+          mkdir -p "$dest"
+          archive="$dest/hris-main-${GITHUB_SHA}.git.bundle"
+          git bundle create "$archive" --all HEAD
+          git init --bare -q "$RUNNER_TEMP/hris-bundle-verify.git"
+          git -C "$RUNNER_TEMP/hris-bundle-verify.git" bundle verify "$archive" > "$dest/bundle-verify.txt"
+          git clone -q "$archive" "$RUNNER_TEMP/hris-bundle-restore"
+          git -C "$RUNNER_TEMP/hris-bundle-restore" cat-file -e "${GITHUB_SHA}^{commit}"
+          test "$(git -C "$RUNNER_TEMP/hris-bundle-restore" rev-parse HEAD)" = "$GITHUB_SHA"
+          printf 'repo=%s\nmain=%s\nrestored_main=%s\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" > "$dest/restore-manifest.txt"
+          (cd "$dest" && sha256sum "$(basename "$archive")" restore-manifest.txt > restore.sha256)
+          echo 'PASS: exact Main full-history Git bundle created, checksummed, and cloned.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-exact-main-source-${{ github.sha }}
+          path: ${{ runner.temp }}/hris-main-exact-recovery/
+          if-no-files-found: error
+          retention-days: 7
