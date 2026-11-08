@@ -20,6 +20,15 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout exact existing Candidate contract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=db4163885f9609d66e9871a9c0de771fe8151d84
+          git clone --depth 1 --branch main https://github.com/shihab-tech04/HRIS-Candidate-v2.git "$GITHUB_WORKSPACE/../HRIS-Candidate-v2"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" fetch --no-tags --depth=1 origin "$expected_sha"
+          git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" checkout --detach "$expected_sha"
+          test "$(git -C "$GITHUB_WORKSPACE/../HRIS-Candidate-v2" rev-parse HEAD)" = "$expected_sha"
       - uses: actions/setup-node@v4
         with:
           node-version: '24.21.0'
