@@ -1,14 +1,27 @@
-# WS05: manual, version-pinned SQL release. No automatic hosted SQL writes.
+# WS05: owner-approved, exact four-migration release. No automatic hosted SQL writes.
 # Requires separately approved Employee Profile merge and a verified recovery point.
-name: WS05 Employee Profile scoped SQL production release
+name: WS05 Employee Profile and workforce SQL production release
 on:
   workflow_dispatch:
     inputs:
       release_approved:
-        description: Explicit owner approval for the two Employee Profile SQL migrations only
+        description: Owner approves four exact Employee Profile and workforce-account migrations
         type: boolean
         required: true
         default: false
+      offsite_recovery_verified:
+        description: Owner independently verified current encrypted DB/source Drive copies and isolated restore
+        type: boolean
+        required: true
+        default: false
+      backup_run_id:
+        description: Exact-Main successful encrypted database export run ID (unexpired)
+        type: string
+        required: true
+      restore_run_id:
+        description: Exact-Main successful isolated PG17 restore run ID
+        type: string
+        required: true
       session_pooler_host:
         description: Replacement HRIS Supabase session-pooler HOST only (not a URL)
         type: string
@@ -20,8 +33,8 @@ concurrency:
   group: hris-profile-sql-production
   cancel-in-progress: false
 jobs:
-  apply-profile-only:
-    if: "${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true }}"
+  apply-four-reviewed:
+    if: "${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -32,6 +45,8 @@ jobs:
       PGSSLMODE: require
       PGPASSWORD: ${{ secrets.HRIS_DB_PASSWORD }}
       GH_TOKEN: ${{ github.token }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+      RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +54,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.120.0
-      - name: Verify current recovery proof and apply only two versioned Employee Profile migrations
+      - name: Verify exact recovered Main and apply four pinned migrations only
         shell: bash
         run: |
           set -euo pipefail
@@ -54,7 +69,9 @@ jobs:
           test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
           test -s supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql
           test -s supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql
-          # Pin source SQL bytes to the reviewed PR #159 Employee Profile migration.
+          test -s supabase/migrations/20261105093000_hris_scoped_user_finalization.sql
+          test -s supabase/migrations/20261106090000_hris_new_workforce_account.sql
+          # Pin all four SQL file bytes to the exact reviewed PR #159 and #177 sources.
           test "$(sha256sum supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql | cut -d ' ' -f1)" = '7b156e3f33e4688d3861eb09c3c660243ce2ead667c0c83220330649698c7a39' || {
             echo '::error::Profile tenant migration bytes differ from signed release plan'; exit 1;
           }
@@ -62,52 +79,65 @@ jobs:
             echo '::error::Profile certificate policy bytes differ from signed release plan'; exit 1;
           }
 
+          test "$(sha256sum supabase/migrations/20261105093000_hris_scoped_user_finalization.sql | cut -d ' ' -f1)" = '2d1d82fb29dc06fd6d58099d6d2a8a6af6ddd8a4b71b830c435cc5adc76a0e31' || {
+            echo '::error::Account finalization migration differs from reviewed source'; exit 1;
+          }
+          test "$(sha256sum supabase/migrations/20261106090000_hris_new_workforce_account.sql | cut -d ' ' -f1)" = 'a439bc131d733784ac9a86cf04eaf7d6d6ed6e13222ee6403fdabf73fb5a9d20' || {
+            echo '::error::New workforce migration differs from reviewed source'; exit 1;
+          }
+
           # Require current replacement DB export, verified isolated recovery,
           # exact fresh SQL rehearsal and source CI evidence. Exact final PR-head
           # and protected Main SHA gates are independently checked below.
           python3 - <<'PY'
           import json, os, urllib.request
-          expected = {
-              41708292692: "HRIS Step 1 - Encrypted database export",
-              41709822374: "HRIS clean baseline encrypted PG17 isolated restore proof",
-              41710218974: "HRIS clean baseline exact Employee Profile SQL isolated PG17 rehearsal",
-              41665519568: "Verify HRIS build and browser smoke",
-              41665519199: "Disposable Auth, Postgres and browser acceptance (no deployment)",
-          }
-          for run_id, name in expected.items():
-              req = urllib.request.Request(
-                  f"https://api.github.com/repos/shihab-tech04/HRIS-v2/actions/runs/{run_id}",
-                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                           "Accept": "application/vnd.github+json",
-                           "User-Agent": "HRIS-WS05-version-pinned-release"})
-              with urllib.request.urlopen(req, timeout=20) as response:
-                  data = json.load(response)
-              if data.get("name") != name or data.get("status") != "completed" or data.get("conclusion") != "success":
-                  raise SystemExit("Required recovery or QA run is not successful: " + str(run_id))
-          # Do not accept a historical green workflow as proof for a later PR head
-          # or protected-main merge. These checks are read-only GitHub API calls.
+          from datetime import datetime, timezone, timedelta
           def read_github(path):
               req = urllib.request.Request(
-                  "https://api.github.com/repos/shihab-tech04/HRIS-v2/" + path,
-                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                           "Accept": "application/vnd.github+json",
-                           "User-Agent": "HRIS-WS05-version-pinned-release"})
+                  'https://api.github.com/repos/shihab-tech04/HRIS-v2/' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'User-Agent': 'HRIS-WS05-exact-recovery'})
               with urllib.request.urlopen(req, timeout=20) as response:
                   return json.load(response)
 
-          # A green export run alone is not recoverable data. The approved
-          # encrypted archive must still exist and be unexpired at release time.
-          # The artifact's presence does not replace independent offsite
-          # custody, checksum and isolated restore approvals.
-          recovery_artifacts = read_github(
-              "actions/runs/41708292692/artifacts?per_page=100").get("artifacts", [])
-          if not any(item.get("name") == "hris-db-encrypted-41708292692"
-                     and item.get("expired") is False
-                     and item.get("size_in_bytes", 0) > 0
+          protected_sha = os.environ['GITHUB_SHA']
+          backup_id, restore_id = os.environ['BACKUP_RUN_ID'], os.environ['RESTORE_RUN_ID']
+          if not backup_id.isdecimal() or not restore_id.isdecimal():
+              raise SystemExit('Exact numeric backup and restore run IDs are required')
+          backup, restored = read_github('actions/runs/' + backup_id), read_github('actions/runs/' + restore_id)
+          for run, title in ((backup, 'HRIS Step 1 - Encrypted database export'),
+                             (restored, 'HRIS Step 1 - Isolated PostgreSQL restore proof')):
+              if (run.get('name') != title or run.get('status') != 'completed'
+                  or run.get('conclusion') != 'success'
+                  or run.get('event') != 'workflow_dispatch'
+                  or run.get('head_branch') != 'main'
+                  or run.get('head_sha') != protected_sha):
+                  raise SystemExit('Exact protected-Main recovery run mismatch: ' + title)
+          backup_time = datetime.fromisoformat(backup['created_at'].replace('Z','+00:00'))
+          restored_time = datetime.fromisoformat(restored['created_at'].replace('Z','+00:00'))
+          if (backup_time > restored_time or datetime.now(timezone.utc)-backup_time > timedelta(hours=23)):
+              raise SystemExit('Recovery evidence is stale or out of sequence; refresh the backup/restore first')
+          recovery_artifacts = read_github('actions/runs/' + backup_id + '/artifacts?per_page=100').get('artifacts', [])
+          if not any(item.get('name') == 'hris-db-encrypted-' + backup_id
+                     and item.get('expired') is False and item.get('size_in_bytes',0)>0
+                     and str(item.get('digest','')).startswith('sha256:')
                      for item in recovery_artifacts):
-              raise SystemExit(
-                  "The approved encrypted database backup is expired or missing; "
-                  "create and verify a NEW current backup before any SQL release")
+              raise SystemExit('Exact encrypted backup artifact missing, expired, or lacks digest')
+          # Same-SHA source recovery must exist. Offsite custody and matching
+          # SHA-256 for both source and DB are a separately verified owner gate.
+          source_runs = read_github('actions/runs?branch=main&per_page=100').get('workflow_runs', [])
+          source = [x for x in source_runs if x.get('name')=='HRIS exact protected Main source history backup'
+                    and x.get('head_sha')==protected_sha and x.get('status')=='completed'
+                    and x.get('conclusion')=='success']
+          if not source:
+              raise SystemExit('Exact protected-Main source recovery proof missing')
+          source_artifacts = read_github('actions/runs/' + str(source[0]['id']) + '/artifacts?per_page=100').get('artifacts',[])
+          if not any(x.get('expired') is False and x.get('size_in_bytes',0)>0
+                     and x.get('name')=='hris-exact-main-source-'+protected_sha
+                     for x in source_artifacts):
+              raise SystemExit('Exact source history backup artifact missing or expired')
+          print('PASS: current SHA-matched DB export, isolated restore and source archive')
 
           profile_pr = read_github("pulls/159")
           if profile_pr.get("merged_at") is None or profile_pr.get("base", {}).get("ref") != "main":
@@ -122,6 +152,16 @@ jobs:
                          and check.get("conclusion") == "success"
                          for check in reviewed_checks.get("check_runs", [])):
                   raise SystemExit("Reviewed Employee Profile PR head lacks PASS: " + check_name)
+
+          workforce_pr = read_github("pulls/177")
+          if workforce_pr.get("merged_at") is None or workforce_pr.get("base", {}).get("ref") != "main":
+              raise SystemExit("Workforce account PR #177 must be merged first")
+          workforce_head = workforce_pr.get("head", {}).get("sha")
+          workforce_checks = read_github("commits/" + workforce_head + "/check-runs?per_page=100")
+          for name in ("check", "isolated-hris"):
+              if not any(c.get("name")==name and c.get("status")=="completed"
+                         and c.get("conclusion")=="success" for c in workforce_checks.get("check_runs",[])):
+                  raise SystemExit("Workforce PR #177 lacks exact-head PASS: " + name)
 
           protected_sha = os.environ["GITHUB_SHA"]
           protected_main_checks = read_github("commits/" + protected_sha + "/check-runs?per_page=100")
@@ -149,8 +189,8 @@ jobs:
             > "$scratch/before.tsv"
           test "$(wc -l < "$scratch/before.tsv")" -eq 131
           test "$(tail -1 "$scratch/before.tsv" | cut -d '|' -f1)" = '20261027033218'
-          ! grep -Eq '^(20261027040642|20261030114500)[|]' "$scratch/before.tsv" || {
-            echo '::error::Employee Profile versions already installed; refresh source and state'; exit 1;
+          ! grep -Eq '^(20261027040642|20261030114500|20261105093000|20261106090000)[|]' "$scratch/before.tsv" || {
+            echo '::error::One or more scoped versions already installed; refresh source and state'; exit 1;
           }
           before_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenants), (SELECT count(*) FROM public.admin_audit_logs);")"
 
@@ -167,12 +207,20 @@ jobs:
              "$scratch/supabase/migrations/"
           cp supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql \
              "$scratch/supabase/migrations/"
-          test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq 133
+          cp supabase/migrations/20261105093000_hris_scoped_user_finalization.sql \
+             "$scratch/supabase/migrations/"
+          cp supabase/migrations/20261106090000_hris_new_workforce_account.sql \
+             "$scratch/supabase/migrations/"
+          test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq 135
           test ! -e "$scratch/supabase/migrations/20261027090000_hris_requisition_pending_status_guard.sql"
           cmp -s supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql \
               "$scratch/supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql"
           cmp -s supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql \
               "$scratch/supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql"
+          cmp -s supabase/migrations/20261105093000_hris_scoped_user_finalization.sql \
+              "$scratch/supabase/migrations/20261105093000_hris_scoped_user_finalization.sql"
+          cmp -s supabase/migrations/20261106090000_hris_new_workforce_account.sql \
+              "$scratch/supabase/migrations/20261106090000_hris_new_workforce_account.sql"
 
           # Credentials remain in environment/process memory, not in source/artifacts/logs.
           db_url="$(python3 - <<'PY'
@@ -188,12 +236,14 @@ jobs:
             > "$scratch/dry-run.txt" 2>&1) || {
             echo '::error::Remote migration dry-run failed; production unchanged'; exit 1;
           }
-          # A fail-closed dry-run plan MUST list exactly these two source files.
+          # Fail closed unless the dry-run plans exactly the FOUR reviewed files.
           grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/dry-run.txt" \
             | sort -u > "$scratch/planned.txt"
           printf '%s\n' \
             20261027040642_employee_profile_tenant_scoped_contract.sql \
             20261030114500_employee_profile_certificate_policy_guards.sql \
+            20261105093000_hris_scoped_user_finalization.sql \
+            20261106090000_hris_new_workforce_account.sql \
             > "$scratch/expected.txt"
           diff -u "$scratch/expected.txt" "$scratch/planned.txt" || {
             echo '::error::Unexpected migration plan: no SQL written'; exit 1;
@@ -208,15 +258,17 @@ jobs:
           # Supabase CLI records EXACT source migration versions in hosted history.
           (cd "$scratch" && supabase --yes db push --db-url "$db_url" --include-all \
             > "$scratch/apply.txt" 2>&1) || {
-            echo '::error::Employee SQL apply failed: consult restricted CI logs and recovery point'; exit 1;
+            echo '::error::Four-migration SQL apply failed; inspect restricted logs and migration history before retrying'; exit 1;
           }
 
           db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" \
             > "$scratch/after.tsv"
-          test "$(wc -l < "$scratch/after.tsv")" -eq 133
+          test "$(wc -l < "$scratch/after.tsv")" -eq 135
           grep -Fxq '20261027040642|employee_profile_tenant_scoped_contract' "$scratch/after.tsv"
           grep -Fxq '20261030114500|employee_profile_certificate_policy_guards' "$scratch/after.tsv"
-          grep -Ev '^(20261027040642|20261030114500)[|]' "$scratch/after.tsv" \
+          grep -Fxq '20261105093000|hris_scoped_user_finalization' "$scratch/after.tsv"
+          grep -Fxq '20261106090000|hris_new_workforce_account' "$scratch/after.tsv"
+          grep -Ev '^(20261027040642|20261030114500|20261105093000|20261106090000)[|]' "$scratch/after.tsv" \
             > "$scratch/unchanged.tsv"
           cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv" || {
             echo '::error::Unrelated migration history changed'; exit 1;
@@ -228,7 +280,12 @@ jobs:
           }
           result="$(db_psql -c "
             SELECT CASE WHEN
-              to_regprocedure('public.employee_get_my_profile_v1(uuid)') IS NOT NULL
+              to_regprocedure('public.admin_finalize_new_workforce_user(uuid,uuid,uuid,text,text,text)') IS NOT NULL
+              AND to_regprocedure('public.admin_finalize_system_user(uuid,uuid,text,uuid,text)') IS NOT NULL
+              AND to_regprocedure('public.admin_get_my_provisioning_context()') IS NOT NULL
+              AND NOT has_function_privilege('anon','public.admin_finalize_new_workforce_user(uuid,uuid,uuid,text,text,text)','EXECUTE')
+              AND NOT has_function_privilege('authenticated','public.admin_finalize_new_workforce_user(uuid,uuid,uuid,text,text,text)','EXECUTE')
+              AND to_regprocedure('public.employee_get_my_profile_v1(uuid)') IS NOT NULL
               AND to_regprocedure('public.employee_delete_my_profile_record_v1(uuid,text,uuid)') IS NOT NULL
               AND to_regclass('public.employee_bank_details') IS NOT NULL
               AND COALESCE((SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.employee_bank_details')),false)
@@ -240,8 +297,8 @@ jobs:
                      'employee_profile_certificate_insert_namespace_guard',
                      'employee_profile_certificate_update_namespace_guard',
                      'employee_profile_certificate_delete_namespace_guard')) = 4
-            THEN 'EMPLOYEE_PROFILE_SQL_PASS' ELSE 'EMPLOYEE_PROFILE_SQL_FAIL' END;")"
-          test "$result" = 'EMPLOYEE_PROFILE_SQL_PASS' || {
+            THEN 'HRIS_FOUR_SQL_PASS' ELSE 'HRIS_FOUR_SQL_FAIL' END;")"
+          test "$result" = 'HRIS_FOUR_SQL_PASS' || {
             echo '::error::Hosted SQL/RLS/Storage acceptance failed'; exit 1;
           }
-          echo 'PASS: only two versioned Employee Profile migrations installed; row counts, tenant RPCs, bank RLS and restrictive storage policies verified'
+          echo 'PASS: exactly four versioned migrations installed; users, tenants, employee counts, RLS, RPCs and Storage guards verified'
