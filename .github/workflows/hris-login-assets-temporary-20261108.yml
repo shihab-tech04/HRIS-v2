@@ -1,0 +1,59 @@
+# Temporary feature-branch-only reproducible asset preparation.
+# Never runs on protected Main and never deploys production.
+name: HRIS Login asset sync (temporary feature branch only)
+on:
+  push:
+    branches: [fix/hris-login-redesign-remember-me-20261108]
+    paths-ignore:
+      - 'assets/**'
+      - 'index.html'
+      - '.nojekyll'
+permissions:
+  contents: write
+concurrency:
+  group: hris-login-assets-20261108
+  cancel-in-progress: false
+jobs:
+  build-synchronize:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/fix/hris-login-redesign-remember-me-20261108'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install pinned dependencies
+        run: npm ci --include=optional --no-audit --no-fund
+      - name: Verify TypeScript and contracts before assets
+        run: npm run lint && npm run test:contracts
+      - name: Build reproducible GitHub Pages assets twice
+        env:
+          GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          first="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          npm run build
+          second="$(find index.html assets -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"
+          test "$first" = "$second" || { echo "::error::Pages build is not reproducible"; exit 1; }
+          cmp dist/index.html index.html
+          diff -qr dist/assets assets
+      - name: Run targeted live-login browser tests (mocked Auth only)
+        shell: bash
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test --project=chromium tests/browser/hris-login-redesign.spec.ts tests/browser/recovery-link-fallback.spec.ts
+      - name: Commit generated files to feature branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/fix/hris-login-redesign-remember-me-20261108'
+          git add -A -- index.html assets .nojekyll
+          git diff --cached --quiet && exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build(login): sync reproducible exact-branch Pages assets'
+          git push origin "HEAD:$GITHUB_REF"
