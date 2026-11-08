@@ -94,6 +94,7 @@ jobs:
           test "${#HRIS_BACKUP_PASSPHRASE}" -ge 32 || { echo "::error::Backup passphrase unavailable"; exit 1; }
           src="${RUNNER_TEMP}/hris-restore-source"
           test -s "$src/hris-replacement-${HRIS_BACKUP_RUN_ID}.pgcustom.gpg"
+          test -s "$src/fk-source-counts.tsv"
           (cd "$src" && sha256sum --check --status encrypted.sha256)
           grep -Fxq "source_project=xfuxnljfrgvusbrpvxpa" "$src/backup-manifest.txt"
           grep -Fxq "github_run_id=${HRIS_BACKUP_RUN_ID}" "$src/backup-manifest.txt"
@@ -153,34 +154,78 @@ jobs:
             exit 1
           fi
 
-          # Pin the WHOLE existing referential drift, rather than patching one
-          # Auth foreign key per failed restore. These 17 definitions and counts
-          # were read from replacement DB catalog/data, SELECT-only. Never touch hosted.
-          # The exact original FK definitions (including deletion actions) are preserved.
+          # Preserve the EXACT 17 reviewed legacy FK definitions. The expected
+          # nonnull/orphan counts come from THIS encrypted backup's checksummed
+          # source inventory, never from an outdated hard-coded historical count.
+          pinned_definitions="${RUNNER_TEMP}/hris-pinned-auth-fk-definitions.tsv"
           pinned_auth_fks="${RUNNER_TEMP}/hris-pinned-auth-fks.tsv"
-          cat > "$pinned_auth_fks" <<'PINNED_AUTH_FKS'
-          admin_audit_logs|actor_id|admin_audit_logs_actor_id_fkey|59|58|FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL
-          confirmation_reviews|resolved_by|confirmation_reviews_resolved_by_fkey|2|2|FOREIGN KEY (resolved_by) REFERENCES auth.users(id)
-          employee_lifecycle_events|performed_by|employee_lifecycle_events_performed_by_fkey|5|5|FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          employee_referrals|submitted_by|employee_referrals_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          employees|user_id|employees_user_id_fkey|1|1|FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL
-          hr_policies|created_by|hr_policies_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          leave_requests|submitted_by|leave_requests_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          manpower_requisitions|requested_by|manpower_requisitions_requested_by_fkey|1|1|FOREIGN KEY (requested_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          manpower_requisitions|resolved_by|manpower_requisitions_resolved_by_fkey|1|1|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          notices|created_by|notices_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          pay_periods|created_by|pay_periods_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
-          pay_periods|released_by|pay_periods_released_by_fkey|1|1|FOREIGN KEY (released_by) REFERENCES auth.users(id)
-          performance_cycles|created_by|performance_cycles_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
-          performance_goals|created_by|performance_goals_created_by_fkey|1|1|FOREIGN KEY (created_by) REFERENCES auth.users(id)
-          project_performance_reviews|evaluated_by|project_performance_reviews_evaluated_by_fkey|1|1|FOREIGN KEY (evaluated_by) REFERENCES auth.users(id)
-          service_requests|resolved_by|service_requests_resolved_by_fkey|1|1|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
-          service_requests|submitted_by|service_requests_submitted_by_fkey|1|1|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          cat > "$pinned_definitions" <<'PINNED_AUTH_FKS'
+          admin_audit_logs|actor_id|admin_audit_logs_actor_id_fkey|FOREIGN KEY (actor_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          confirmation_reviews|resolved_by|confirmation_reviews_resolved_by_fkey|FOREIGN KEY (resolved_by) REFERENCES auth.users(id)
+          employee_lifecycle_events|performed_by|employee_lifecycle_events_performed_by_fkey|FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          employee_referrals|submitted_by|employee_referrals_submitted_by_fkey|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          employees|user_id|employees_user_id_fkey|FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL
+          hr_policies|created_by|hr_policies_created_by_fkey|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          leave_requests|submitted_by|leave_requests_submitted_by_fkey|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          manpower_requisitions|requested_by|manpower_requisitions_requested_by_fkey|FOREIGN KEY (requested_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          manpower_requisitions|resolved_by|manpower_requisitions_resolved_by_fkey|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          notices|created_by|notices_created_by_fkey|FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          pay_periods|created_by|pay_periods_created_by_fkey|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          pay_periods|released_by|pay_periods_released_by_fkey|FOREIGN KEY (released_by) REFERENCES auth.users(id)
+          performance_cycles|created_by|performance_cycles_created_by_fkey|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          performance_goals|created_by|performance_goals_created_by_fkey|FOREIGN KEY (created_by) REFERENCES auth.users(id)
+          project_performance_reviews|evaluated_by|project_performance_reviews_evaluated_by_fkey|FOREIGN KEY (evaluated_by) REFERENCES auth.users(id)
+          service_requests|resolved_by|service_requests_resolved_by_fkey|FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL
+          service_requests|submitted_by|service_requests_submitted_by_fkey|FOREIGN KEY (submitted_by) REFERENCES auth.users(id) ON DELETE SET NULL
           PINNED_AUTH_FKS
+          snapshot_counts="${RUNNER_TEMP}/hris-restore-source/fk-source-counts.tsv"
+          test -s "$snapshot_counts"
+          python3 - "$pinned_definitions" "$snapshot_counts" "$pinned_auth_fks" <<'PYMATCH'
+          import pathlib, re, sys
+          definitions = pathlib.Path(sys.argv[1]).read_text().splitlines()
+          counts = pathlib.Path(sys.argv[2]).read_text().splitlines()
+          if len(definitions) != 17 or len(counts) != 17:
+              raise SystemExit('17 exact Auth FK definitions and source counts are required')
+          pinned = {}
+          for line in definitions:
+              parts = line.split('|')
+              if len(parts) != 4 or any(not re.fullmatch('[a-z_]+', p) for p in parts[:3]):
+                  raise SystemExit('Invalid reviewed Auth FK definition')
+              key = (parts[0], parts[1])
+              if key in pinned or 'FOREIGN KEY (' + parts[1] + ') REFERENCES auth.users(id)' not in parts[3]:
+                  raise SystemExit('Duplicate or unreviewed Auth FK definition')
+              pinned[key] = parts
+          recorded = {}
+          for line in counts:
+              parts = line.split('|')
+              if len(parts) != 4 or any(not re.fullmatch('[a-z_]+', p) for p in parts[:2]):
+                  raise SystemExit('Invalid source reference inventory')
+              key = (parts[0], parts[1])
+              if key in recorded or key not in pinned or any(not re.fullmatch(r'[0-9]+', n) for n in parts[2:]):
+                  raise SystemExit('Unknown, duplicate or malformed source reference count')
+              nonnull, orphan = map(int, parts[2:])
+              if orphan > nonnull:
+                  raise SystemExit('Source orphan count exceeds nonnull count')
+              recorded[key] = (nonnull, orphan)
+          if set(recorded) != set(pinned):
+              raise SystemExit('Source count and reviewed 17-FK inventory mismatch')
+          out = []
+          for key in sorted(pinned):
+              definition = pinned[key]
+              nonnull, orphan = recorded[key]
+              out.append('|'.join(definition[:3] + [str(nonnull), str(orphan), definition[3]]))
+          pathlib.Path(sys.argv[3]).write_text('\n'.join(out) + '\n')
+          print('PASS: exact 17 verified source reference counts matched to pinned FK definitions')
+          PYMATCH
           if [[ "$(wc -l < "$pinned_auth_fks")" -ne 17 ]]; then
-            echo "::error::Pinned historical Auth FK inventory must contain exactly 17 entries."
+            echo "::error::Reviewed Auth FK inventory must contain exactly 17 entries."
             exit 1
           fi
+          admin_orphan_count="$(awk -F '|' '$1=="admin_audit_logs" && $2=="actor_id" {print $5}' "$pinned_auth_fks")"
+          orphan_total="$(awk -F '|' '{sum+=$5} END {printf "%.0f",sum}' "$pinned_auth_fks")"
+          [[ "$admin_orphan_count" =~ ^[0-9]+$ && "$orphan_total" =~ ^[0-9]+$ ]] || {
+            echo '::error::Snapshot provenance counts failed validation'; exit 1;
+          }
           archive_toc="${RUNNER_TEMP}/hris-restore-inventory.txt"
           excluded_fk="${RUNNER_TEMP}/hris-legacy-audit-fk-postdata.toc"
           cp "$archive_toc" "$excluded_fk"
@@ -264,7 +309,7 @@ jobs:
               --dbname hris_recovered_isolated -X -q -v ON_ERROR_STOP=1 \
               -c "ALTER TABLE public.${table} ADD CONSTRAINT ${fk} ${definition} NOT VALID;"
           done < "$pinned_auth_fks"
-          echo "RECOVERY_EXCEPTION: 79 pinned historical orphan references preserved in 17 Auth FKs (NOT VALID on isolated restore only)."
+          echo "RECOVERY_EXCEPTION: ${orphan_total} source-snapshot-verified orphan references preserved in 17 Auth FKs (NOT VALID on isolated restore only)."
 
           probe="SELECT CASE WHEN to_regclass('public.tenants') IS NOT NULL
              AND to_regclass('public.admin_users') IS NOT NULL
@@ -275,7 +320,7 @@ jobs:
              AND (SELECT COUNT(*) FROM auth.users) = 1
              AND (SELECT COUNT(*) FROM public.admin_audit_logs a
                   LEFT JOIN auth.users u ON u.id=a.actor_id
-                  WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=58
+                  WHERE a.actor_id IS NOT NULL AND u.id IS NULL)=${admin_orphan_count}
              AND to_regclass('supabase_migrations.schema_migrations') IS NOT NULL
              AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations) >= 110
              AND (SELECT COUNT(*) FROM pg_constraint con
