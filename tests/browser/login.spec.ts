@@ -7,7 +7,7 @@ for (const width of widths) {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
     await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     await expect(page.getByText('Design preview (sample)')).toHaveCount(0);
     const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -17,7 +17,7 @@ for (const width of widths) {
 test('sign-in form has labels, password masking and usable keyboard focus', async ({ page }) => {
   await page.goto('/');
   const email = page.getByLabel('Email');
-  const password = page.getByLabel('Password');
+  const password = page.getByLabel('Password', { exact: true });
   await email.focus();
   await expect(email).toBeFocused();
   await email.fill('test.invalid@example.com');
@@ -38,7 +38,7 @@ test('Supabase sign-in errors are displayed and the form stays usable', async ({
   });
   await page.goto('/');
   await page.getByLabel('Email').fill('example.invalid@example.org');
-  await page.getByLabel('Password').fill('not-a-real-password');
+  await page.getByLabel('Password', { exact: true }).fill('not-a-real-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('alert')).toContainText('Invalid login credentials');
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled();
