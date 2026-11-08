@@ -55,7 +55,7 @@ test('unchecked remember me stores a synthetic session only in sessionStorage', 
   await mockLocalSignIn(page);
   await page.goto('/');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill('synthetic-test-only');
+  await page.locator('#hris-password').fill('synthetic-test-only');
   await expect(page.getByRole('checkbox', { name: 'Remember me' })).not.toBeChecked();
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect.poll(() => page.evaluate(() => ({
@@ -69,7 +69,7 @@ test('checked remember me stores only a synthetic persistent session, never a pa
   await mockLocalSignIn(page);
   await page.goto('/');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill('synthetic-test-only');
+  await page.locator('#hris-password').fill('synthetic-test-only');
   await page.getByRole('checkbox', { name: 'Remember me' }).check();
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect.poll(() => page.evaluate(() => ({
