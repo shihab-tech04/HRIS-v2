@@ -26,3 +26,25 @@ test('restores only into isolated PostgreSQL and verifies the encrypted archive'
   assert.match(workflow, /HRIS_RESTORE_WORKDIR: \/tmp\/synesis-local-hris-restore/);
   assert.match(workflow, /ISOLATED_RESTORE_WITH_DOCUMENTED_LEGACY_FK_EXCEPTION/);
 });
+
+
+const dispatcher = readFileSync(new URL('../../.github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml', import.meta.url), 'utf8');
+
+test('trusted dispatcher explicitly dispatches restore only after successful matching backup', () => {
+  assert.match(dispatcher, /actions: write/);
+  assert.match(dispatcher, /gh workflow run hris-step1-encrypted-db-export\.yml/);
+  assert.match(dispatcher, /status.*completed/);
+  assert.match(dispatcher, /conclusion.*success/);
+  assert.match(dispatcher, /hris-db-encrypted-/);
+  assert.match(dispatcher, /gh workflow run hris-step1-offline-restore-proof\.yml/);
+});
+
+const exactSourceBackup = readFileSync(new URL('../../.github/workflows/hris-current-main-source-backup.yml', import.meta.url), 'utf8');
+test('exact Main backup includes full Git history and local restoration proof', () => {
+  assert.match(exactSourceBackup, /branches: \[main\]/);
+  assert.match(exactSourceBackup, /git bundle create/);
+  assert.match(exactSourceBackup, /git clone -q/);
+  assert.match(exactSourceBackup, /cat-file -e/);
+  assert.match(exactSourceBackup, /restore\.sha256/);
+  assert.match(exactSourceBackup, /persist-credentials: false/);
+});
