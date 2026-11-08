@@ -19,6 +19,10 @@ test('approved HRIS runner is syntax-valid, safe by default and refuses invalid 
   assert.match(script, /SQL_WF='ws05-employee-profile-sql-release\.yml'/);
   assert.match(script, /PAGES_WF='deploy-pages\.yml'/);
   assert.match(script, /--field release_approved=true/);
+  assert.match(script, /--field offsite_recovery_verified=true/);
+  assert.match(script, /--field backup_run_id=/);
+  assert.match(script, /--field restore_run_id=/);
+  assert.equal(invoke('--host', host, '--execute').status, 4);
   assert.match(script, /--field session_pooler_host=/);
   assert.match(script, /run_protected "\$SQL_WF" "\$SHA"\s+run_protected "\$PAGES_WF" "\$SHA"/);
   assert.match(script, /gh run watch "\$id" --repo "\$REPO" --exit-status/);
@@ -40,7 +44,7 @@ test('approved operator run refuses open PRs before dispatching either productio
     ];
     writeFileSync(fake, lines.join('\n') + '\n');
     chmodSync(fake, 0o755);
-    const result = spawnSync('bash', [file, '--host', host, '--execute'], {
+    const result = spawnSync('bash', [file, '--host', host, '--backup-run', '42493910026', '--restore-run', '42494096474', '--offsite-verified', '--execute'], {
       encoding: 'utf8',
       env: { ...process.env, PATH: dir + ':' + process.env.PATH },
     });
