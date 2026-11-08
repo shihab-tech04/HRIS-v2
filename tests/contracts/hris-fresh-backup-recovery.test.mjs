@@ -35,6 +35,7 @@ test('trusted dispatcher explicitly dispatches restore only after successful mat
   assert.match(dispatcher, /- \.github\/workflows\/hris-step1-encrypted-db-export\.yml/);
   assert.match(dispatcher, /- \.github\/workflows\/hris-step1-offline-restore-proof\.yml/);
   assert.match(dispatcher, /- \.github\/scripts\/hris-legacy-auth-fk-counts\.sql/);
+  assert.match(dispatcher, /- \.github\/workflows\/ws05-employee-profile-sql-release\.yml/);
   assert.match(dispatcher, /gh workflow run hris-step1-encrypted-db-export\.yml/);
   assert.match(dispatcher, /status.*completed/);
   assert.match(dispatcher, /conclusion.*success/);
