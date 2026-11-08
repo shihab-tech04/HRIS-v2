@@ -1,24 +1,20 @@
 # Independent restore of an existing encrypted HRIS backup. Never connects to a hosted DB.
 # The locally bootstrapped supabase_admin superuser, not production credentials,
 # performs the isolated restore of source objects with privileged GUC settings.
-# Runs once on the trusted main merge of THIS workflow file; manual dispatch for retry.
+# Automatically verifies fresh protected-Main exports; manual dispatch can retry
+# only a successful matching protected-Main run with a live encrypted artifact.
 name: "HRIS Step 1 - Isolated PostgreSQL restore proof"
 on:
-  push:
+  workflow_run:
+    workflows: ["HRIS Step 1 - Encrypted database export"]
+    types: [completed]
     branches: [main]
-    paths: ['.github/workflows/hris-step1-offline-restore-proof.yml']
   workflow_dispatch:
     inputs:
       backup_run_id:
-        description: Encrypted Step 1 export run to restore
+        description: Completed protected-Main encrypted export run ID
         required: true
-        type: choice
-        options:
-          - '40113845357'
-          - '40105833572'
-          - '40205314215'
-          - '40290572482'
-        default: '40290572482'
+        type: string
 
 permissions:
   contents: read
@@ -30,25 +26,50 @@ concurrency:
 
 jobs:
   restore-proof:
-    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
       SUPABASE_TELEMETRY_DISABLED: '1'
       SUPABASE_HOME: /tmp/hris-supabase-home
       HRIS_RESTORE_WORKDIR: /tmp/synesis-local-hris-restore
-      HRIS_BACKUP_RUN_ID: ${{ inputs.backup_run_id || '40290572482' }}
+      HRIS_BACKUP_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.backup_run_id }}
     steps:
-      - name: Validate selected completed export run
+      - name: Verify exact protected-Main backup identity and unexpired artifact
         shell: bash
         env:
-          HRIS_BACKUP_RUN_ID: ${{ env.HRIS_BACKUP_RUN_ID }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${HRIS_BACKUP_RUN_ID:-}" in
-            40113845357|40105833572|40205314215|40290572482) ;;
-            *) echo "::error::Backup run ID is not in the approved export allowlist."; exit 1 ;;
-          esac
+          python3 - <<'PYVALIDATE'
+          import json, os, re, urllib.request
+          run_id = os.environ.get('HRIS_BACKUP_RUN_ID', '')
+          if not re.fullmatch(r'[1-9][0-9]{7,11}', run_id):
+              raise SystemExit('Invalid encrypted export run ID')
+          repo = 'shihab-tech04/HRIS-v2'
+          def get(path):
+              req = urllib.request.Request(
+                  'https://api.github.com/repos/' + repo + '/' + path,
+                  headers={'Authorization':'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept':'application/vnd.github+json',
+                           'User-Agent':'HRIS-protected-main-restore'})
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          run = get('actions/runs/' + run_id)
+          if (run.get('name') != 'HRIS Step 1 - Encrypted database export'
+              or run.get('status') != 'completed' or run.get('conclusion') != 'success'
+              or run.get('head_branch') != 'main'
+              or run.get('head_sha') != os.environ['GITHUB_SHA']
+              or run.get('repository', {}).get('full_name') != repo):
+              raise SystemExit('Export is not the successful exact protected-Main backup')
+          artifacts = get('actions/runs/' + run_id + '/artifacts?per_page=100').get('artifacts', [])
+          if not any(a.get('name') == 'hris-db-encrypted-' + run_id
+                     and a.get('expired') is False
+                     and a.get('size_in_bytes', 0) > 0
+                     for a in artifacts):
+              raise SystemExit('Exact encrypted export artifact is missing, empty or expired')
+          print('PASS: matching protected-Main backup run and encrypted artifact')
+          PYVALIDATE
 
       - name: Checkout trusted protected Main source for offline SQL rehearsal
         uses: actions/checkout@v4
