@@ -54,7 +54,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
           test -s supabase/migrations/20261105093000_hris_scoped_user_finalization.sql
           test -s supabase/migrations/20261106090000_hris_new_workforce_account.sql
-          # Pin source SQL bytes to the reviewed PR #177 Employee Profile migration.
+          # Pin the two account-finalization SQL files to reviewed PR #177 source.
           test "$(sha256sum supabase/migrations/20261105093000_hris_scoped_user_finalization.sql | cut -d ' ' -f1)" = '2d1d82fb29dc06fd6d58099d6d2a8a6af6ddd8a4b71b830c435cc5adc76a0e31' || {
             echo '::error::Profile tenant migration bytes differ from signed release plan'; exit 1;
           }
@@ -116,17 +116,17 @@ jobs:
 
           profile_pr = read_github("pulls/177")
           if profile_pr.get("merged_at") is None or profile_pr.get("base", {}).get("ref") != "main":
-              raise SystemExit("Employee Profile PR #177 must be merged into protected main first")
+              raise SystemExit("First-user PR #177 must be merged into protected main first")
           reviewed_head = profile_pr.get("head", {}).get("sha")
           if not reviewed_head or len(reviewed_head) != 40:
-              raise SystemExit("Cannot verify Employee Profile reviewed PR head")
+              raise SystemExit("Cannot verify first-user reviewed PR head")
           reviewed_checks = read_github("commits/" + reviewed_head + "/check-runs?per_page=100")
           for check_name in ("check", "isolated-hris"):
               if not any(check.get("name") == check_name
                          and check.get("status") == "completed"
                          and check.get("conclusion") == "success"
                          for check in reviewed_checks.get("check_runs", [])):
-                  raise SystemExit("Reviewed Employee Profile PR head lacks PASS: " + check_name)
+                  raise SystemExit("Reviewed first-user PR head lacks PASS: " + check_name)
 
           protected_sha = os.environ["GITHUB_SHA"]
           protected_main_checks = read_github("commits/" + protected_sha + "/check-runs?per_page=100")
@@ -154,7 +154,7 @@ jobs:
             > "$scratch/before.tsv"
           test "$(wc -l < "$scratch/before.tsv")" -eq 133
           test "$(tail -1 "$scratch/before.tsv" | cut -d '|' -f1)" = '20261030114500'
-          ! grep -Eq '^(20261027040642|20261030114500)[|]' "$scratch/before.tsv" || {
+          ! grep -Eq '^(20261105093000|20261106090000)[|]' "$scratch/before.tsv" || {
             echo '::error::Account finalization versions already installed; refresh source and state'; exit 1;
           }
           before_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenant_memberships), (SELECT count(*) FROM public.admin_audit_logs);")"
@@ -221,7 +221,7 @@ jobs:
           test "$(wc -l < "$scratch/after.tsv")" -eq 135
           grep -Fxq '20261105093000|hris_scoped_user_finalization' "$scratch/after.tsv"
           grep -Fxq '20261106090000|hris_new_workforce_account' "$scratch/after.tsv"
-          grep -Ev '^(20261027040642|20261030114500)[|]' "$scratch/after.tsv" \
+          grep -Ev '^(20261105093000|20261106090000)[|]' "$scratch/after.tsv" \
             > "$scratch/unchanged.tsv"
           cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv" || {
             echo '::error::Unrelated migration history changed'; exit 1;
