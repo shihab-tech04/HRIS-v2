@@ -8,20 +8,26 @@ SQL_WF='ws05-employee-profile-sql-release.yml'
 PAGES_WF='deploy-pages.yml'
 HOST="$(printenv HRIS_POOLER_HOST || true)"
 EXECUTE=false
+BACKUP_RUN_ID=''
+RESTORE_RUN_ID=''
+OFFSITE_VERIFIED=false
 usage() {
   cat <<'USAGE'
-Usage: hris-approved-release.sh --host aws-0-ap-northeast-2.pooler.supabase.com [--execute]
+Usage: hris-approved-release.sh --host aws-0-ap-northeast-2.pooler.supabase.com [--backup-run ID --restore-run ID --offsite-verified --execute]
 Without --execute this is a no-write dry-run.
 With --execute, the authenticated gh operator dispatches the EXISTING owner-approved SQL
 workflow, verifies exact-Main success, then dispatches and verifies the existing Pages
 workflow. Requires gh CLI, Python 3, repository workflow permission, configured GitHub
-secret HRIS_DB_PASSWORD and a current approved encrypted backup.
+secret HRIS_DB_PASSWORD, and a current checked/restored encrypted backup off GitHub.
 Never give passwords, tokens or encryption passphrases as arguments.
 USAGE
 }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) [[ $# -ge 2 ]] || { usage; exit 2; }; HOST="$2"; shift 2 ;;
+    --backup-run) [[ $# -ge 2 ]] || { usage; exit 2; }; BACKUP_RUN_ID="$2"; shift 2 ;;
+    --restore-run) [[ $# -ge 2 ]] || { usage; exit 2; }; RESTORE_RUN_ID="$2"; shift 2 ;;
+    --offsite-verified) OFFSITE_VERIFIED=true; shift ;;
     --execute) EXECUTE=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
@@ -36,6 +42,10 @@ if [[ "$EXECUTE" != true ]]; then
   echo "Sequence: SQL workflow -> check success/exact Main -> Pages workflow -> check success/exact Main."
   exit 0
 fi
+[[ "$BACKUP_RUN_ID" =~ ^[0-9]+$ && "$RESTORE_RUN_ID" =~ ^[0-9]+$ && "$OFFSITE_VERIFIED" == true ]] || {
+  echo "FAIL: exact backup/restore run IDs and independently verified offsite recovery are required" >&2
+  exit 4
+}
 command -v gh >/dev/null || { echo "FAIL: gh CLI missing" >&2; exit 3; }
 command -v python3 >/dev/null || { echo "FAIL: Python 3 missing" >&2; exit 3; }
 gh auth status >/dev/null || { echo "FAIL: gh is not authenticated" >&2; exit 3; }
@@ -73,8 +83,15 @@ run_protected() {
     exit 4
   }
   started="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  gh workflow run "$wf" --repo "$REPO" --ref main \
-    --field release_approved=true --field session_pooler_host="$HOST"
+  if [[ "$wf" == "$SQL_WF" ]]; then
+    gh workflow run "$wf" --repo "$REPO" --ref main \
+      --field release_approved=true --field offsite_recovery_verified=true \
+      --field backup_run_id="$BACKUP_RUN_ID" --field restore_run_id="$RESTORE_RUN_ID" \
+      --field session_pooler_host="$HOST"
+  else
+    gh workflow run "$wf" --repo "$REPO" --ref main \
+      --field release_approved=true --field session_pooler_host="$HOST"
+  fi
   id="$(find_run "$wf" "$started" "$sha")"
   echo "Watching protected workflow $wf run $id"
   gh run watch "$id" --repo "$REPO" --exit-status
