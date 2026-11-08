@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Database, LockKeyhole, LogOut, RefreshCw, ShieldAlert } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { BarChart3, CalendarDays, Database, Eye, EyeOff, LockKeyhole, LogOut, RefreshCw, ShieldAlert, UsersRound } from 'lucide-react';
+import { getRememberMePreference, setRememberMePreference, supabase } from '../lib/supabase';
 import { RecoveryLinkFallback, redeemRecoveryToken } from './RecoveryLinkFallback';
 import { LiveHrisWorkspace } from './LiveHrisWorkspace';
 import { acceptEmployeeInvitation } from './employeeInvitationApi';
@@ -43,6 +43,62 @@ const noWorkspacePermissions: WorkspacePermissions = {
 };
 const empty = (): Records => ({ employees: [], departments: [], leaves: [], leaveTypes: [] });
 
+function LoginIllustration() {
+  return <div aria-hidden="true" className="relative mx-auto mt-6 w-full max-w-[470px] rotate-[-2deg] rounded-xl border-[5px] border-slate-800 bg-slate-900 p-1 shadow-[0_22px_34px_rgba(0,16,36,.35)]">
+    <div className="overflow-hidden rounded-md bg-[#edf4fb] text-[#0b3151]">
+      <div className="flex h-6 items-center gap-2 bg-[#06456f] px-3 text-[9px] font-semibold text-white"><span className="inline-block h-3 w-3 rounded bg-white/20" /> Synesis HRIS 360°</div>
+      <div className="flex h-[150px] sm:h-[166px]">
+        <div className="flex w-[29%] flex-col gap-3 bg-[#075587] px-3 pt-4 text-[9px] text-blue-50">
+          <span className="rounded bg-white/20 px-1.5 py-1 font-semibold">Dashboard</span>
+          <span>Employees</span><span>Attendance</span><span>Leave</span><span>Reports</span>
+        </div>
+        <div className="min-w-0 flex-1 space-y-3 p-4">
+          <p className="text-xs font-semibold">Welcome back!</p>
+          <div className="grid grid-cols-3 gap-2">{[1,2,3].map(n=><div key={n} className="rounded-md bg-white p-2 shadow-sm"><span className="block h-2 w-5 rounded bg-sky-200" /><span className="mt-2 block h-2 w-full rounded bg-slate-100" /></div>)}</div>
+          <div className="flex h-[55px] items-end justify-between gap-1 rounded-md bg-white px-3 py-2 shadow-sm">{[34,51,44,65,57,76,63,87,72].map((n,i)=><div key={i} className="w-full rounded-t-sm bg-[#75b4df]" style={{height:n+'%'}} />)}</div>
+        </div>
+      </div>
+    </div>
+    <div className="absolute -bottom-3 left-[-5%] h-3 w-[110%] rounded-b-[90%] bg-slate-300 shadow-xl" />
+  </div>;
+}
+
+function LoginFrame({ children }: { children: ReactNode }) {
+  return <main className="relative isolate min-h-screen overflow-hidden bg-[#f5f9fc] text-[#0b1832]">
+    <div aria-hidden="true" className="pointer-events-none absolute -right-40 -top-44 h-[540px] w-[540px] rounded-full border-[100px] border-[#e1eef9]" />
+    <div aria-hidden="true" className="pointer-events-none absolute -bottom-72 -left-40 h-[520px] w-[520px] rounded-full border-[95px] border-[#e1eef9]" />
+    <div className="relative mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-4 py-6 sm:px-8 sm:py-9 lg:px-12">
+      <header className="mb-6 flex items-center gap-3 sm:mb-9">
+        <div aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-[#085587] text-2xl font-black italic text-white shadow-sm">S</div>
+        <span className="text-xl font-bold tracking-tight text-[#102243] sm:text-2xl">Synesis</span>
+        <span className="mx-1 h-7 w-px bg-slate-300" />
+        <span className="text-base font-semibold text-[#14243a] sm:text-lg">HRIS 360°</span>
+      </header>
+      <div className="grid w-full flex-1 items-stretch overflow-hidden rounded-[25px] border border-[#d8e3ef] bg-white shadow-[0_14px_45px_rgba(12,66,106,.10)] lg:min-h-[690px] lg:grid-cols-[.98fr_1.05fr]">
+        <aside className="relative hidden flex-col overflow-hidden bg-[#075587] px-10 py-11 text-white lg:flex xl:px-16 xl:py-14">
+          <div aria-hidden="true" className="absolute -right-44 -top-36 h-[400px] w-[400px] rounded-full border-[80px] border-white/[.07]" />
+          <div aria-hidden="true" className="absolute -bottom-60 -left-56 h-[460px] w-[460px] rounded-full border-[95px] border-[#3f9bd2]/20" />
+          <div className="relative z-10">
+            <p className="text-base font-semibold text-white/90">Synesis HRIS 360°</p>
+            <span className="mt-4 block h-[3px] w-14 rounded bg-[#a7d8f7]" />
+            <h2 className="mt-6 max-w-[500px] text-[30px] font-bold leading-[1.18] tracking-[-.03em] xl:text-[38px]">A Complete HR<br />Management Solution</h2>
+            <p className="mt-4 max-w-[510px] text-sm leading-7 text-[#dfeff9] xl:text-base">Streamline your people, processes, and workforce operations in one integrated platform.</p>
+            <div className="mt-7 space-y-5 xl:mt-9 xl:space-y-6">
+              <div className="flex items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15"><UsersRound aria-hidden="true" size={25}/></span><div><p className="font-semibold">Manage Your People</p><p className="text-xs leading-5 text-[#dcecf7] xl:text-sm">Employee information, lifecycle, and organization.</p></div></div>
+              <div className="flex items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15"><CalendarDays aria-hidden="true" size={25}/></span><div><p className="font-semibold">Automate HR Processes</p><p className="text-xs leading-5 text-[#dcecf7] xl:text-sm">Leave, attendance, and employee requests.</p></div></div>
+              <div className="flex items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/15"><BarChart3 aria-hidden="true" size={25}/></span><div><p className="font-semibold">Gain Workforce Insights</p><p className="text-xs leading-5 text-[#dcecf7] xl:text-sm">Reports and analytics for better decisions.</p></div></div>
+            </div>
+          </div>
+          <div className="relative z-10 mt-auto pt-7"><LoginIllustration /></div>
+        </aside>
+        <section className="flex min-w-0 items-center justify-center bg-white px-5 py-12 sm:px-10 sm:py-16 lg:px-12 xl:px-16">
+          <div className="w-full max-w-[545px]">{children}</div>
+        </section>
+      </div>
+    </div>
+  </main>;
+}
+
 function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError, contextMessage }: {
   onSuccess: (value: User) => void;
   onRecoveryVerified: (value: User) => void;
@@ -51,16 +107,22 @@ function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError, contextMessa
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(getRememberMePreference);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [forgotPassword, setForgotPassword] = useState(Boolean(recoveryLinkError));
   useEffect(() => { if (recoveryLinkError) setForgotPassword(true); }, [recoveryLinkError]);
   const [resetRequested, setResetRequested] = useState(false);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError('');
     try {
+      // Store only the session-persistence choice, never a password.
+      // The Supabase storage adapter respects this choice on sign-in.
+      setRememberMePreference(rememberMe);
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(), password,
       });
@@ -74,12 +136,17 @@ function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError, contextMessa
       setBusy(false);
     }
   }
+
   async function requestRecovery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError('');
     try {
-      const callback = new URL(import.meta.env.BASE_URL || '/', window.location.origin).toString();
+      // Keep the production callback on the actual GitHub Pages app, not localhost.
+      // Supabase Auth URL Configuration must also allow this exact redirect.
+      const callback = import.meta.env.PROD
+        ? 'https://shihab-tech04.github.io/HRIS-v2/'
+        : new URL(import.meta.env.BASE_URL || '/', window.location.origin).toString();
       const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: callback });
       if (result.error) {
         if (/rate limit|only request this after|too many/i.test(result.error.message)) {
@@ -95,33 +162,47 @@ function SignIn({ onSuccess, onRecoveryVerified, recoveryLinkError, contextMessa
       setBusy(false);
     }
   }
-  if (forgotPassword) return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4"><section className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-md">
-    <h1 className="text-2xl font-bold">Reset your password</h1>
-    <p className="text-sm text-slate-600 mt-2">Request a recovery email for the specific account you need to recover. Admin and Super Admin may use different email addresses.</p>
-    {recoveryLinkError && <p role="alert" className="mt-3 text-red-700 text-sm">{recoveryLinkError}</p>}
-    {resetRequested ? <p role="status" className="mt-4 rounded-md bg-blue-50 p-3 text-sm">If an account exists for this email, a reset link has been requested.</p> : <form className="mt-5 space-y-4" onSubmit={requestRecovery}>
-      <div><label htmlFor="recovery-email" className="block text-sm font-medium">Account email</label><input id="recovery-email" type="email" required autoComplete="email" className="border rounded-md px-3 min-h-11 w-full" value={email} onChange={e => setEmail(e.target.value)}/></div>
-      {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
-      <button disabled={busy} type="submit" className="min-h-11 rounded-md bg-[#085587] text-white w-full disabled:opacity-50">{busy ? 'Requesting…' : 'Send reset link'}</button>
+
+  if (forgotPassword) return <LoginFrame>
+    <p className="inline-flex rounded-full bg-[#edf5fd] px-4 py-2 text-sm font-semibold text-[#084a7d]">Synesis HRIS 360°</p>
+    <h1 className="mt-7 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">Reset your password</h1>
+    <p className="mt-4 text-sm leading-6 text-slate-600">Request a recovery email for the account you need to recover. Admin and Super Admin may use different email addresses.</p>
+    {recoveryLinkError && <p role="alert" className="mt-5 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{recoveryLinkError}</p>}
+    {resetRequested ? <p role="status" className="mt-7 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">If an account exists for this email, a reset link has been requested.</p> : <form className="mt-8 space-y-5" onSubmit={requestRecovery}>
+      <div><label htmlFor="recovery-email" className="mb-2 block text-sm font-semibold">Account email</label><input id="recovery-email" type="email" required autoComplete="email" className="min-h-12 w-full rounded-xl border border-[#c7d5e5] px-4 outline-none focus-visible:border-[#085587] focus-visible:ring-2 focus-visible:ring-[#085587]/25" value={email} onChange={e => setEmail(e.target.value)}/></div>
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      <button disabled={busy} type="submit" className="min-h-12 w-full rounded-xl bg-[#085587] px-5 font-semibold text-white hover:bg-[#074770] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] disabled:opacity-50">{busy ? 'Requesting…' : 'Send reset link'}</button>
     </form>}
     <RecoveryLinkFallback onVerified={onRecoveryVerified} />
-    <button type="button" className="min-h-11 mt-3 underline text-sm text-blue-800" onClick={() => { setForgotPassword(false); setResetRequested(false); setError(''); }}>Back to sign in</button>
-  </section></main>;
-  return <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 w-full max-w-md">
-      <p className="text-xs font-semibold text-blue-900">Synesis HRIS 360°</p>
-      <h1 className="text-2xl font-bold mt-2">Sign in to your workspace</h1>
-      <p className="text-sm text-slate-600 mt-2">Use an existing authorized Supabase account. Live records are restricted by the database permissions.</p>
-      {contextMessage && <p role="status" className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">{contextMessage}</p>}
-      <form onSubmit={submit} className="space-y-4 mt-6">
-        <div><label className="block text-sm font-medium mb-1" htmlFor="hris-email">Email</label><input required id="hris-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} className="w-full min-h-11 px-3 rounded-md border border-slate-300 focus:outline-2 focus:outline-blue-700" /></div>
-        <div><label className="block text-sm font-medium mb-1" htmlFor="hris-password">Password</label><input required id="hris-password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="w-full min-h-11 px-3 rounded-md border border-slate-300 focus:outline-2 focus:outline-blue-700" /></div>
-        {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
-        <button type="submit" disabled={busy} className="min-h-11 w-full rounded-md bg-[#085587] hover:bg-[#074770] text-white font-semibold disabled:opacity-50">{busy ? 'Signing in…' : 'Sign in'}</button>
-      </form>
-      <button type="button" className="min-h-11 text-blue-800 underline text-sm mt-3" onClick={() => { setForgotPassword(true); setError(''); }}>Forgot password?</button>
-    </div>
-  </main>;
+    <button type="button" className="mt-5 min-h-11 text-sm font-semibold text-[#085587] underline underline-offset-4" onClick={() => { setForgotPassword(false); setResetRequested(false); setError(''); }}>Back to sign in</button>
+  </LoginFrame>;
+
+  return <LoginFrame>
+    <p className="inline-flex rounded-full bg-[#edf5fd] px-4 py-2 text-sm font-semibold text-[#084a7d]">Synesis HRIS 360°</p>
+    <h1 className="mt-8 text-[29px] font-bold leading-[1.18] tracking-tight sm:text-[36px]">Sign in to your workspace</h1>
+    <p className="mt-4 max-w-[530px] text-sm leading-7 text-[#53627b] sm:text-base">Use your existing authorized Synesis account to access your workspace. Records are protected by your assigned permissions.</p>
+    {contextMessage && <p role="status" className="mt-6 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">{contextMessage}</p>}
+    <form onSubmit={submit} className="mt-9 space-y-6">
+      <div>
+        <label className="mb-2 block text-sm font-semibold" htmlFor="hris-email">Email</label>
+        <input required id="hris-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} className="min-h-[54px] w-full rounded-xl border border-[#c7d5e5] bg-white px-4 text-base outline-none transition focus-visible:border-[#085587] focus-visible:ring-2 focus-visible:ring-[#085587]/25" />
+      </div>
+      <div>
+        <label className="mb-2 block text-sm font-semibold" htmlFor="hris-password">Password</label>
+        <div className="relative">
+          <input required id="hris-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="min-h-[54px] w-full rounded-xl border border-[#c7d5e5] bg-white px-4 pr-14 text-base outline-none transition focus-visible:border-[#085587] focus-visible:ring-2 focus-visible:ring-[#085587]/25" />
+          <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-controls="hris-password" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-1 grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-500 hover:text-[#085587] focus-visible:outline-2 focus-visible:outline-[#085587]">{showPassword ? <EyeOff aria-hidden="true" size={21} /> : <Eye aria-hidden="true" size={21} />}</button>
+        </div>
+      </div>
+      <label className="inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-[#364760]">
+        <input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} className="h-5 w-5 cursor-pointer accent-[#085587]" />
+        Remember me
+      </label>
+      {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <button type="submit" disabled={busy} className="min-h-[56px] w-full rounded-xl bg-[#085587] px-5 text-base font-semibold text-white shadow-[0_9px_20px_rgba(8,85,135,.16)] transition hover:bg-[#074770] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#085587] disabled:cursor-wait disabled:opacity-60">{busy ? 'Signing in…' : 'Sign in'}</button>
+    </form>
+    <button type="button" className="mt-5 min-h-11 text-sm font-medium text-[#085587] underline underline-offset-4 hover:text-[#063f65] focus-visible:outline-2 focus-visible:outline-[#085587]" onClick={() => { setForgotPassword(true); setError(''); }}>Forgot password?</button>
+  </LoginFrame>;
 }
 
 function PasswordUpdate({ onComplete }: { onComplete: () => void }) {
