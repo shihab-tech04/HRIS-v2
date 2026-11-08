@@ -68,12 +68,13 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.request
           expected = {
-              41708292692: "HRIS Step 1 - Encrypted database export",
-              41709822374: "HRIS clean baseline encrypted PG17 isolated restore proof",
+              42493910026: "HRIS Step 1 - Encrypted database export",
+              42494096474: "HRIS Step 1 - Isolated PostgreSQL restore proof",
               41710218974: "HRIS clean baseline exact Employee Profile SQL isolated PG17 rehearsal",
               41665519568: "Verify HRIS build and browser smoke",
               41665519199: "Disposable Auth, Postgres and browser acceptance (no deployment)",
           }
+          recovery_sha = "671b7221ab4d1dd618bb122c4fc707c26ad4aa6a"
           for run_id, name in expected.items():
               req = urllib.request.Request(
                   f"https://api.github.com/repos/shihab-tech04/HRIS-v2/actions/runs/{run_id}",
@@ -84,6 +85,10 @@ jobs:
                   data = json.load(response)
               if data.get("name") != name or data.get("status") != "completed" or data.get("conclusion") != "success":
                   raise SystemExit("Required recovery or QA run is not successful: " + str(run_id))
+              if run_id in (42493910026, 42494096474) and (
+                  data.get("head_sha") != recovery_sha or data.get("head_branch") != "main"
+              ):
+                  raise SystemExit("Backup/restore proof is not from the approved exact Main SHA")
           # Do not accept a historical green workflow as proof for a later PR head
           # or protected-main merge. These checks are read-only GitHub API calls.
           def read_github(path):
@@ -100,8 +105,8 @@ jobs:
           # The artifact's presence does not replace independent offsite
           # custody, checksum and isolated restore approvals.
           recovery_artifacts = read_github(
-              "actions/runs/41708292692/artifacts?per_page=100").get("artifacts", [])
-          if not any(item.get("name") == "hris-db-encrypted-41708292692"
+              "actions/runs/42493910026/artifacts?per_page=100").get("artifacts", [])
+          if not any(item.get("name") == "hris-db-encrypted-42493910026"
                      and item.get("expired") is False
                      and item.get("size_in_bytes", 0) > 0
                      for item in recovery_artifacts):
