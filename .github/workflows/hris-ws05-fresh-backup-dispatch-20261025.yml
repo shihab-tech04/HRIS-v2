@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - .github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml
+      - .github/workflows/hris-step1-encrypted-db-export.yml
+      - .github/workflows/hris-step1-offline-restore-proof.yml
+      - .github/scripts/hris-legacy-auth-fk-counts.sql
 
 permissions:
   contents: read
