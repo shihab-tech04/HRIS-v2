@@ -23,6 +23,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Checkout reviewed protected Main for snapshot inventory
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Export read-only and encrypt immediately
         shell: bash
         env:
@@ -56,8 +61,24 @@ jobs:
           mkdir -m 700 -p "$deliver"
           trap 'rm -rf "$scratch"' EXIT
 
-          # Actual pg_dump only; no checkout of PR code, SQL writes or server-side commands.
-          # The secret passes as an environment variable, never a command-line argument.
+          # Do not carry historical hard-coded record counts between backups.
+          # Probe the 17 reviewed Auth FK references with SELECT only. Reject a
+          # concurrently changing source rather than accepting inconsistent proof.
+          counts_sql="${GITHUB_WORKSPACE}/.github/scripts/hris-legacy-auth-fk-counts.sql"
+          test -s "$counts_sql"
+          snapshot_counts() {
+            docker run --rm \
+              --env PGHOST --env PGPORT --env PGDATABASE --env PGUSER \
+              --env PGSSLMODE --env PGOPTIONS --env PGPASSWORD \
+              --mount "type=bind,src=${counts_sql},dst=/counts.sql,readonly" \
+              postgres:17-alpine \
+              psql -X -q -A -t -F '|' -v ON_ERROR_STOP=1 -f /counts.sql
+          }
+          snapshot_counts > "$scratch/fk-counts-before.tsv"
+          test "$(wc -l < "$scratch/fk-counts-before.tsv")" -eq 17
+
+          # Actual pg_dump only; never modify hosted SQL, Auth or Storage.
+          # The password is passed in environment memory, never command args.
           docker run --rm \
             --env PGHOST --env PGPORT --env PGDATABASE --env PGUSER \
             --env PGSSLMODE --env PGOPTIONS --env PGPASSWORD \
@@ -65,6 +86,12 @@ jobs:
             postgres:17-alpine \
             pg_dump --no-owner --format=custom --file=/backup/hris.pgcustom
           test -s "$scratch/hris.pgcustom"
+          snapshot_counts > "$scratch/fk-counts-after.tsv"
+          cmp -s "$scratch/fk-counts-before.tsv" "$scratch/fk-counts-after.tsv" || {
+            echo '::error::Auth-reference source changed during export; no recovery artifact published.'
+            exit 1
+          }
+          cp "$scratch/fk-counts-after.tsv" "$deliver/fk-source-counts.tsv"
 
           # GnuPG symmetric AES-256, with built-in integrity protection.
           # The passphrase enters GPG via fd 3, never in the process arguments/logs.
@@ -77,7 +104,9 @@ jobs:
             --output "$scratch/verified.pgcustom" --decrypt "$out" \
             3<<<"$HRIS_BACKUP_PASSPHRASE"
           cmp -s "$scratch/hris.pgcustom" "$scratch/verified.pgcustom"
-          ( cd "$deliver" && sha256sum "$(basename "$out")" > encrypted.sha256 )
+          # The counts and the encrypted archive travel together; both hashes
+          # are authenticated before the isolated restoration reads either.
+          ( cd "$deliver" && sha256sum "$(basename "$out")" fk-source-counts.tsv > encrypted.sha256 )
           {
             printf 'source_project=xfuxnljfrgvusbrpvxpa\n'
             printf 'source_database=postgres\n'
