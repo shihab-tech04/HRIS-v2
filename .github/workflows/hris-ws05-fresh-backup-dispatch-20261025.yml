@@ -42,3 +42,6 @@ jobs:
 # HRIS 2026-11-06 pre-release recovery: on protected Main merge, dispatch an
 # existing encrypted, read-only PostgreSQL export. This does NOT approve or
 # dispatch the subsequent SQL or Pages production release.
+
+# HRIS 2026-11-08: one-time protected-Main encrypted backup refresh after
+# the exact-run offline restore proof gate is upgraded. Still read-only.
