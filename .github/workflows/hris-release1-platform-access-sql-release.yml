@@ -1,0 +1,319 @@
+# Manual, single-migration HRIS Release 1 SQL release. Requires current exact-Main
+# source and database recovery, offsite checksum verification, explicit approval,
+# and a separate protected Main dispatch. It never deploys Pages or Edge Functions.
+name: HRIS Release 1 Platform Access SQL production release
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Explicit owner approval for this one role/access migration
+        type: boolean
+        required: true
+        default: false
+      offsite_recovery_verified:
+        description: Confirm source and database archives were uploaded, checksummed, and restored/verified
+        type: boolean
+        required: true
+        default: false
+      source_backup_run_id:
+        description: Successful exact-Main source history backup run ID
+        type: string
+        required: true
+      database_backup_run_id:
+        description: Successful exact-Main encrypted database backup run ID
+        type: string
+        required: true
+      restore_run_id:
+        description: Successful isolated restore run ID linked to the database backup
+        type: string
+        required: true
+      offsite_source_archive_sha256:
+        description: SHA-256 read back from the verified offsite exact-Main Git bundle
+        type: string
+        required: true
+      offsite_database_archive_sha256:
+        description: SHA-256 read back from the verified offsite database archive
+        type: string
+        required: true
+      session_pooler_host:
+        description: Replacement HRIS Supabase session-pooler HOST only (not a URL)
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hris-profile-sql-production
+  cancel-in-progress: false
+jobs:
+  apply-role-access:
+    if: "${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PGHOST: ${{ inputs.session_pooler_host }}
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.HRIS_DB_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_BACKUP_RUN_ID: ${{ inputs.source_backup_run_id }}
+      DATABASE_BACKUP_RUN_ID: ${{ inputs.database_backup_run_id }}
+      RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
+      OFFSITE_SOURCE_ARCHIVE_SHA256: ${{ inputs.offsite_source_archive_sha256 }}
+      OFFSITE_DATABASE_ARCHIVE_SHA256: ${{ inputs.offsite_database_archive_sha256 }}
+      SUPABASE_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Verify exact protected-Main recovery, offsite checksums, and release approvals
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$PGPASSWORD" || { echo '::error::HRIS_DB_PASSWORD is unavailable'; exit 1; }
+          [[ "$PGHOST" =~ ^aws-[0-9]+-ap-northeast-2\.pooler\.supabase\.com$ ]] || {
+            echo '::error::Invalid replacement HRIS session-pooler host'; exit 1;
+          }
+          test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test -s supabase/migrations/20261109035656_hris_admin_role_access_management.sql
+          test "$(sha256sum supabase/migrations/20261109035656_hris_admin_role_access_management.sql | cut -d ' ' -f1)" = 'c95db1790a3ca5afd164a85f2162a12ff723949823b4d8fda22ae2422d734098' || {
+            echo '::error::Role/access migration bytes differ from reviewed source'; exit 1;
+          }
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+
+          repo = 'shihab-tech04/HRIS-v2'
+          sha = os.environ['GITHUB_SHA']
+          ids = {
+              'source': os.environ['SOURCE_BACKUP_RUN_ID'],
+              'database': os.environ['DATABASE_BACKUP_RUN_ID'],
+              'restore': os.environ['RESTORE_RUN_ID'],
+          }
+          if any(not re.fullmatch(r'[1-9][0-9]{7,11}', value) for value in ids.values()):
+              raise SystemExit('Invalid recovery workflow run ID')
+          for key in ('OFFSITE_SOURCE_ARCHIVE_SHA256', 'OFFSITE_DATABASE_ARCHIVE_SHA256'):
+              if not re.fullmatch(r'[a-fA-F0-9]{64}', os.environ[key]):
+                  raise SystemExit('Offsite archive SHA-256 must contain exactly 64 hexadecimal characters')
+
+          def get(path):
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/' + repo + '/' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'User-Agent': 'HRIS-Release1-Protected-SQL'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+
+          ref = get('git/ref/heads/main')
+          if ref.get('object', {}).get('sha') != sha:
+              raise SystemExit('Protected Main moved; no SQL applied')
+          main_checks = get('commits/' + sha + '/check-runs?per_page=100').get('check_runs', [])
+          if not any(c.get('name') == 'check' and c.get('status') == 'completed'
+                     and c.get('conclusion') == 'success' for c in main_checks):
+              raise SystemExit('Exact protected Main has not passed the required check workflow')
+
+          expected = {
+              'source': ('HRIS exact protected Main source history backup', 'push',
+                         'hris-exact-main-source-' + sha),
+              'database': ('HRIS Step 1 - Encrypted database export', 'workflow_dispatch',
+                           'hris-db-encrypted-' + ids['database']),
+              'restore': ('HRIS Step 1 - Isolated PostgreSQL restore proof', None,
+                          'hris-restore-proof-' + ids['restore']),
+          }
+          for key, (name, event, artifact_name) in expected.items():
+              run = get('actions/runs/' + ids[key])
+              if (run.get('name') != name or run.get('status') != 'completed'
+                  or run.get('conclusion') != 'success' or run.get('head_branch') != 'main'
+                  or run.get('head_sha') != sha
+                  or run.get('repository', {}).get('full_name') != repo
+                  or (event and run.get('event') != event)):
+                  raise SystemExit(key + ' recovery run is not successful on this exact protected Main SHA')
+              artifacts = get('actions/runs/' + ids[key] + '/artifacts?per_page=100').get('artifacts', [])
+              if not any(a.get('name') == artifact_name and a.get('expired') is False
+                         and a.get('size_in_bytes', 0) > 0 for a in artifacts):
+                  raise SystemExit(key + ' recovery proof artifact is missing, empty, or expired')
+
+          print('PASS: exact protected Main check, source backup, encrypted DB backup, and linked isolated restore')
+          print('PASS: offsite source and database SHA-256 values supplied with explicit recovery approval')
+          PY
+      - name: Download the restore proof for the selected exact backup
+        uses: actions/download-artifact@v4
+        with:
+          name: hris-restore-proof-${{ inputs.restore_run_id }}
+          run-id: ${{ inputs.restore_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/hris-restore-proof
+      - name: Download the exact source and encrypted database backups
+        uses: actions/download-artifact@v4
+        with:
+          name: hris-exact-main-source-${{ github.sha }}
+          run-id: ${{ inputs.source_backup_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/hris-source-backup
+      - uses: actions/download-artifact@v4
+        with:
+          name: hris-db-encrypted-${{ inputs.database_backup_run_id }}
+          run-id: ${{ inputs.database_backup_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/hris-database-backup
+      - name: Verify offsite readback hashes against the exact backup artifacts
+        shell: bash
+        env:
+          EXPECTED_BACKUP_RUN_ID: ${{ inputs.database_backup_run_id }}
+        run: |
+          set -euo pipefail
+          source_dir="${RUNNER_TEMP}/hris-source-backup"
+          source_bundle="$source_dir/hris-main-${GITHUB_SHA}.git.bundle"
+          test -s "$source_bundle"
+          (cd "$source_dir" && sha256sum --check --status restore.sha256)
+          grep -Fxq "repo=$GITHUB_REPOSITORY" "$source_dir/restore-manifest.txt"
+          grep -Fxq "main=$GITHUB_SHA" "$source_dir/restore-manifest.txt"
+          grep -Fxq "restored_main=$GITHUB_SHA" "$source_dir/restore-manifest.txt"
+          source_sha="$(sha256sum "$source_bundle" | cut -d ' ' -f1)"
+          test "${OFFSITE_SOURCE_ARCHIVE_SHA256,,}" = "$source_sha" || {
+            echo '::error::Offsite source checksum does not match the exact protected-Main Git bundle'; exit 1;
+          }
+
+          backup_dir="${RUNNER_TEMP}/hris-database-backup"
+          encrypted="$backup_dir/hris-replacement-${EXPECTED_BACKUP_RUN_ID}.pgcustom.gpg"
+          test -s "$encrypted"
+          (cd "$backup_dir" && sha256sum --check --status encrypted.sha256)
+          grep -Fxq "source_project=xfuxnljfrgvusbrpvxpa" "$backup_dir/backup-manifest.txt"
+          grep -Fxq "github_run_id=$EXPECTED_BACKUP_RUN_ID" "$backup_dir/backup-manifest.txt"
+          database_sha="$(sha256sum "$encrypted" | cut -d ' ' -f1)"
+          test "${OFFSITE_DATABASE_ARCHIVE_SHA256,,}" = "$database_sha" || {
+            echo '::error::Offsite database checksum does not match the selected encrypted HRIS backup'; exit 1;
+          }
+
+          manifest="${RUNNER_TEMP}/hris-restore-proof/manifest.txt"
+          test -s "$manifest"
+          grep -Fxq "repository=$GITHUB_REPOSITORY" "$manifest"
+          grep -Fxq "source_main_sha=$GITHUB_SHA" "$manifest"
+          grep -Fxq "backup_run_id=$EXPECTED_BACKUP_RUN_ID" "$manifest"
+          grep -Fxq "restore_run_id=$RESTORE_RUN_ID" "$manifest"
+          grep -Fxq 'restore_workflow=HRIS Step 1 - Isolated PostgreSQL restore proof' "$manifest"
+          grep -Fxq 'restore_result=success' "$manifest"
+          echo 'PASS: offsite source and encrypted database checksums match the selected exact-Main backup artifacts.'
+          echo 'PASS: isolated restore manifest links the exact database backup and protected Main SHA.'
+      - name: Verify one-migration dry run and apply the pinned HRIS access migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          db_psql() {
+            docker run --rm --env PGHOST --env PGPORT --env PGDATABASE \
+              --env PGUSER --env PGSSLMODE --env PGPASSWORD \
+              postgres:17-alpine psql -X -A -t -v ON_ERROR_STOP=1 "$@"
+          }
+          scratch="$(mktemp -d "$RUNNER_TEMP/hris-release1-access.XXXXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+
+          db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" > "$scratch/before.tsv"
+          test "$(wc -l < "$scratch/before.tsv")" -eq 135 || {
+            echo '::error::Hosted migration history is not the approved 135-version baseline'; exit 1;
+          }
+          grep -Fxq '20261106090000|hris_new_workforce_account' "$scratch/before.tsv" || {
+            echo '::error::Hosted migration head differs from the reviewed baseline'; exit 1;
+          }
+          ! grep -q '^20261109035656|' "$scratch/before.tsv" || {
+            echo '::error::Role/access migration is already installed; stop and reconcile source'; exit 1;
+          }
+          before_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenant_memberships), (SELECT count(*) FROM public.roles), (SELECT count(*) FROM public.role_permissions), (SELECT count(*) FROM public.admin_audit_logs);")"
+
+          supabase init --workdir "$scratch" --force >/dev/null
+          mkdir -p "$scratch/supabase/migrations"
+          while IFS='|' read -r version name; do
+            [[ "$version" =~ ^[0-9]{14}$ && "$name" =~ ^[a-z0-9_]+$ ]] || {
+              echo '::error::Unexpected remote migration inventory'; exit 1;
+            }
+            : > "$scratch/supabase/migrations/${version}_${name}.sql"
+          done < "$scratch/before.tsv"
+          cp supabase/migrations/20261109035656_hris_admin_role_access_management.sql "$scratch/supabase/migrations/"
+          test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq 136
+
+          db_url="$(python3 - <<'PY'
+          import os, urllib.parse
+          user = urllib.parse.quote(os.environ['PGUSER'], safe='')
+          password = urllib.parse.quote(os.environ['PGPASSWORD'], safe='')
+          print(f"postgresql://{user}:{password}@{os.environ['PGHOST']}:5432/postgres?sslmode=require")
+          PY
+          )"
+          (cd "$scratch" && supabase db push --db-url "$db_url" --include-all --dry-run > "$scratch/dry-run.txt" 2>&1) || {
+            echo '::error::One-migration SQL dry run failed; production database unchanged'; exit 1;
+          }
+          grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/dry-run.txt" | sort -u > "$scratch/planned.txt"
+          printf '%s\n' '20261109035656_hris_admin_role_access_management.sql' > "$scratch/expected.txt"
+          diff -u "$scratch/expected.txt" "$scratch/planned.txt" || {
+            echo '::error::Dry run did not select exactly the approved role/access migration'; exit 1;
+          }
+
+          latest="$(python3 - <<'PY'
+          import json, os, urllib.request
+          req = urllib.request.Request(
+              'https://api.github.com/repos/shihab-tech04/HRIS-v2/git/ref/heads/main',
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                       'Accept': 'application/vnd.github+json',
+                       'User-Agent': 'HRIS-Release1-Protected-SQL'})
+          with urllib.request.urlopen(req, timeout=30) as response:
+              print(json.load(response).get('object', {}).get('sha', ''))
+          PY
+          )"
+          test "$latest" = "$GITHUB_SHA" || { echo '::error::Protected Main moved before SQL apply'; exit 1; }
+          db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" > "$scratch/pre-apply.tsv"
+          cmp -s "$scratch/before.tsv" "$scratch/pre-apply.tsv" || {
+            echo '::error::Hosted migration history changed before apply'; exit 1;
+          }
+
+          (cd "$scratch" && supabase --yes db push --db-url "$db_url" --include-all > "$scratch/apply.txt" 2>&1) || {
+            echo '::error::Approved SQL apply failed; inspect restricted CI logs and use the verified recovery point'; exit 1;
+          }
+
+          db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" > "$scratch/after.tsv"
+          test "$(wc -l < "$scratch/after.tsv")" -eq 136
+          grep -Fxq '20261109035656|hris_admin_role_access_management' "$scratch/after.tsv"
+          grep -Ev '^20261109035656[|]' "$scratch/after.tsv" > "$scratch/unchanged.tsv"
+          cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv" || {
+            echo '::error::An unrelated migration history row changed'; exit 1;
+          }
+          after_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenant_memberships), (SELECT count(*) FROM public.roles), (SELECT count(*) FROM public.role_permissions), (SELECT count(*) FROM public.admin_audit_logs);")"
+          test "$before_rows" = "$after_rows" || { echo '::error::Existing HRIS identity, membership, role, grant, or audit rows changed'; exit 1; }
+
+          result="$(db_psql -c "
+            SELECT CASE WHEN
+              to_regprocedure('public.admin_save_role(text,jsonb)') IS NOT NULL
+              AND to_regprocedure('public.admin_update_user_access(uuid,text,boolean)') IS NOT NULL
+              AND NOT has_function_privilege('anon','public.admin_save_role(text,jsonb)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.admin_update_user_access(uuid,text,boolean)','EXECUTE')
+              AND has_function_privilege('authenticated','public.admin_save_role(text,jsonb)','EXECUTE')
+              AND has_function_privilege('authenticated','public.admin_update_user_access(uuid,text,boolean)','EXECUTE')
+              AND has_function_privilege('service_role','public.admin_save_role(text,jsonb)','EXECUTE')
+              AND has_function_privilege('service_role','public.admin_update_user_access(uuid,text,boolean)','EXECUTE')
+              AND EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='tenant_memberships'
+                AND policyname='tenant_memberships_admin_directory_read' AND cmd='SELECT'
+                AND qual LIKE '%admin_users.view%' AND qual LIKE '%employees.view%')
+            THEN 'HRIS_RELEASE1_PLATFORM_ACCESS_PASS' ELSE 'HRIS_RELEASE1_PLATFORM_ACCESS_FAIL' END;")"
+          test "$result" = 'HRIS_RELEASE1_PLATFORM_ACCESS_PASS' || {
+            echo '::error::Post-release SQL signature, grant, or tenant RLS verification failed'; exit 1;
+          }
+          printf 'repository=%s\nmain_sha=%s\nsource_backup_run_id=%s\ndatabase_backup_run_id=%s\nrestore_run_id=%s\noffsite_source_archive_sha256=%s\noffsite_database_archive_sha256=%s\nmigration_sha256=%s\nresult=%s\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$SOURCE_BACKUP_RUN_ID" "$DATABASE_BACKUP_RUN_ID" \
+            "$RESTORE_RUN_ID" "$OFFSITE_SOURCE_ARCHIVE_SHA256" "$OFFSITE_DATABASE_ARCHIVE_SHA256" \
+            'c95db1790a3ca5afd164a85f2162a12ff723949823b4d8fda22ae2422d734098' "$result" \
+            > "$RUNNER_TEMP/hris-release1-access-evidence.txt"
+          echo "$result"
+          echo 'PASS: exactly one version-pinned migration applied; existing identity and access rows were preserved.'
+      - name: Preserve non-secret release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hris-release1-platform-access-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/hris-release1-access-evidence.txt
+          if-no-files-found: ignore
+          retention-days: 7

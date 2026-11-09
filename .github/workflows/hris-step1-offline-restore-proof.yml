@@ -435,3 +435,25 @@ jobs:
         run: |
           supabase stop --workdir "$HRIS_RESTORE_WORKDIR" --no-backup >/dev/null 2>&1 || true
           rm -f "${RUNNER_TEMP}/hris-recovered.pgcustom" || true
+
+      - name: Record exact backup-to-restore linkage
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 -p "${RUNNER_TEMP}/hris-restore-proof"
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'source_main_sha=%s\n' "$GITHUB_SHA"
+            printf 'backup_run_id=%s\n' "$HRIS_BACKUP_RUN_ID"
+            printf 'restore_run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'restore_workflow=HRIS Step 1 - Isolated PostgreSQL restore proof\n'
+            printf 'restore_result=success\n'
+          } > "${RUNNER_TEMP}/hris-restore-proof/manifest.txt"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: hris-restore-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/hris-restore-proof/manifest.txt
+          if-no-files-found: error
+          retention-days: 1

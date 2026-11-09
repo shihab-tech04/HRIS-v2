@@ -66,8 +66,8 @@ const messages = {
 } as const;
 
 // Scoped, live Supabase user management. Existing shell layouts and employee directories are preserved.
-export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: {
-  tenantId: string; tenantName: string; locale: Locale;
+export function RealUserProvisioningReadiness({ tenantId, tenantName, locale, onCreated }: {
+  tenantId: string; tenantName: string; locale: Locale; onCreated?: () => void;
 }) {
   const copy = messages[locale === 'bn' ? 'bn' : 'en'];
   const [value, setValue] = useState<RealProvisioningReadiness | null>(null);
@@ -128,6 +128,7 @@ export function RealUserProvisioningReadiness({ tenantId, tenantName, locale }: 
       setPassword('');
       setSuccess(copy.success);
       setRetry(count => count + 1);
+      onCreated?.();
     } catch (cause) {
       if (selectedTenantRef.current === tenantId) {
         setSubmitError(cause instanceof Error ? cause.message : 'Unable to create the user.');
