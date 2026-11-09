@@ -11,6 +11,8 @@ const UUID_IMAGE_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 const words = {
   en: {
     change: 'Change photo',
+    choose: 'Choose photo file',
+    unverified: 'Photo update was accepted but could not be verified. Refresh the profile before trying again.',
     loading: 'Loading photo…',
     saving: 'Saving photo…',
     unavailable: 'Photo editing is not available for this employee yet.',
@@ -20,6 +22,8 @@ const words = {
   },
   bn: {
     change: 'ছবি পরিবর্তন',
+    choose: 'ছবির ফাইল নির্বাচন করুন',
+    unverified: 'ছবির পরিবর্তন গ্রহণ করা হয়েছে, কিন্তু যাচাই করা যায়নি। আবার চেষ্টা করার আগে প্রোফাইল রিফ্রেশ করুন।',
     loading: 'ছবি লোড হচ্ছে…',
     saving: 'ছবি সংরক্ষণ হচ্ছে…',
     unavailable: 'এই কর্মীর ছবি পরিবর্তন করার সুবিধা এখনো চালু নেই।',
@@ -135,7 +139,7 @@ export function EmployeeAvatarPhoto({
       if (!committed && newPath) {
         await supabase.storage.from(PHOTO_BUCKET).remove([newPath]);
       }
-      setError(t.failure);
+      setError(committed ? t.unverified : t.failure);
     } finally {
       setBusy(false);
     }
@@ -148,7 +152,7 @@ export function EmployeeAvatarPhoto({
         : <span className="grid h-full w-full place-items-center rounded bg-[#EFF7F8] text-4xl font-medium text-[#085587]" aria-hidden="true">{initials}</span>}
     </div>
     <input ref={fileRef} type="file" accept="image/png,image/jpeg" className="sr-only"
-      tabIndex={-1} aria-label={t.change} onChange={event => { void changePhoto(event); }} />
+      tabIndex={-1} aria-label={t.choose} onChange={event => { void changePhoto(event); }} />
     <button type="button" onClick={() => fileRef.current?.click()}
       disabled={!enabled || loading || busy}
       aria-label={loading ? t.loading : busy ? t.saving : t.change}
