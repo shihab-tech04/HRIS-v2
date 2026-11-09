@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync(new URL('../../.github/workflows/hris-release1-platform-access-sql-release.yml', import.meta.url), 'utf8');
+const sourceBackup = readFileSync(new URL('../../.github/workflows/hris-current-main-source-backup.yml', import.meta.url), 'utf8');
 const dispatcher = readFileSync(new URL('../../.github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml', import.meta.url), 'utf8');
 const restore = readFileSync(new URL('../../.github/workflows/hris-step1-offline-restore-proof.yml', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../supabase/migrations/20261109035656_hris_admin_role_access_management.sql', import.meta.url), 'utf8');
@@ -30,9 +31,15 @@ test('Release 1 SQL deployment validates exact-run recovery, applies one migrati
     'source_main_sha=',
     'head_sha',
     'head_branch',
-    '135',
-    '20261106090000|hris_new_workforce_account',
     '136',
+    '20261109174000|hris_service_request_legacy_contract_forward_port',
+    '137',
+    'SERVICE_RECOVERY_READY',
+    'public.hris_get_my_service_requests(uuid)',
+    'public.hris_submit_my_service_request(uuid,text,text)',
+    'public.hris_get_tenant_service_requests(uuid)',
+    'public.hris_resolve_tenant_service_request(uuid,uuid,text,text,text)',
+    'public.service_request_status_history',
     '20261109035656_hris_admin_role_access_management.sql',
     'public.admin_save_role(text,jsonb)',
     'public.admin_update_user_access(uuid,text,boolean)',
@@ -52,6 +59,12 @@ test('Release 1 SQL deployment validates exact-run recovery, applies one migrati
   assert.match(workflow, /Offsite source checksum does not match/);
   assert.match(workflow, /Offsite database checksum does not match/);
   assert.match(dispatcher, /hris-release1-platform-access-sql-release\.yml/);
+  assert.match(sourceBackup, /on:\s+workflow_dispatch:\s+push:/);
+  assert.match(sourceBackup, /git bundle create/);
+  assert.match(sourceBackup, /bundle verify/);
+  assert.match(sourceBackup, /git clone -q/);
+  assert.match(workflow, /push,workflow_dispatch/);
+  assert.match(workflow, /run\.get\('event'\) not in event\.split\(','\)/);
   assert.match(migration, /has_tenant_permission\(v_tenant_id,'admin_users\.manage'\)/);
   assert.match(migration, /v_id !~ '\^\[a-z0-9\]\[a-z0-9_\]\{1,63\}\$'/);
   assert.match(migration, /cardinality\(v_permission_ids\)>500/);
