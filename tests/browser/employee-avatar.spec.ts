@@ -12,7 +12,7 @@ test('existing HRIS Change Photo uploads to private bucket, confirms SQL readbac
   await page.goto('/tests/browser/employee-profile-harness.html?state=avatar&locale=en');
   const change = page.getByRole('button', { name: 'Change photo' });
   await expect(change).toBeEnabled();
-  await page.locator('input[type=file][aria-label="Change photo"]').setInputFiles(imgFile);
+  await page.locator('input[type=file][aria-label="Choose photo file"]').setInputFiles(imgFile);
   await expect(profileImg(page).locator('img')).toBeVisible();
 
   const evidence = await page.evaluate(() => ({
