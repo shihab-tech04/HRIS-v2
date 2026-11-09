@@ -1,0 +1,72 @@
+name: HRIS Phase 1 protected service-request SQL release
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Owner-approved production SQL release (existing Employee Self-Service only)
+        type: boolean
+        required: true
+        default: false
+      offsite_recovery_verified:
+        description: Exact source and encrypted database copied outside GitHub, SHA256 verified, restore proved
+        type: boolean
+        required: true
+        default: false
+      session_pooler_host:
+        description: Current HRIS Supabase session-pooler hostname
+        type: string
+        required: true
+      source_backup_run_id:
+        description: Verified pre-release Main full Git archive workflow run
+        type: string
+        required: true
+      database_backup_run_id:
+        description: Verified encrypted HRIS PostgreSQL archive workflow run
+        type: string
+        required: true
+      restore_run_id:
+        description: Isolated restore run tied to selected DB backup
+        type: string
+        required: true
+      offsite_source_sha256:
+        description: Verified off-GitHub source artifact ZIP SHA256
+        type: string
+        required: true
+      offsite_database_sha256:
+        description: Verified off-GitHub encrypted DB artifact ZIP SHA256
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hris-profile-sql-production
+  cancel-in-progress: false
+jobs:
+  release-existing-service-requests:
+    if: "${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PGHOST: "${{ inputs.session_pooler_host }}"
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+      PGSSLMODE: require
+      PGPASSWORD: "${{ secrets.HRIS_DB_PASSWORD }}"
+      GH_TOKEN: "${{ github.token }}"
+      SOURCE_BACKUP_RUN_ID: "${{ inputs.source_backup_run_id }}"
+      DATABASE_BACKUP_RUN_ID: "${{ inputs.database_backup_run_id }}"
+      RESTORE_RUN_ID: "${{ inputs.restore_run_id }}"
+      OFFSITE_SOURCE_SHA256: "${{ inputs.offsite_source_sha256 }}"
+      OFFSITE_DATABASE_SHA256: "${{ inputs.offsite_database_sha256 }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Verify backup, protected Main, dry-run, apply ONLY service-request recovery, and inspect hosted result
+        shell: bash
+        run: bash scripts/release/hris-service-requests-gated-sql.sh
