@@ -24,10 +24,12 @@ if (!pgVersion || !pgVersion[1].startsWith('17')) {
 }
 const base=readFileSync(new URL('../../../supabase/migrations/20261105093000_hris_scoped_user_finalization.sql',import.meta.url),'utf8');
 const newUser=readFileSync(new URL('../../../supabase/migrations/20261106090000_hris_new_workforce_account.sql',import.meta.url),'utf8');
+const access=readFileSync(new URL('../../../supabase/migrations/20261109035656_hris_admin_role_access_management.sql',import.meta.url),'utf8');
 const sql = [
   'BEGIN;',
   base,
   newUser,
+  access,
   `DO $verify$
   BEGIN
     IF to_regprocedure('public.admin_finalize_new_workforce_user(uuid,uuid,uuid,text,text,text)') IS NULL THEN
@@ -44,9 +46,27 @@ const sql = [
     IF to_regprocedure('public.admin_finalize_system_user(uuid,uuid,text,uuid,text)') IS NULL THEN
       RAISE EXCEPTION 'Existing employee-linking RPC lost';
     END IF;
+    IF to_regprocedure('public.admin_save_role(text,jsonb)') IS NULL
+      OR to_regprocedure('public.admin_update_user_access(uuid,text,boolean)') IS NULL THEN
+      RAISE EXCEPTION 'Release 1 role or user-access RPC is missing';
+    END IF;
+    IF has_function_privilege('anon','public.admin_save_role(text,jsonb)','EXECUTE')
+      OR has_function_privilege('anon','public.admin_update_user_access(uuid,text,boolean)','EXECUTE')
+      OR NOT has_function_privilege('authenticated','public.admin_save_role(text,jsonb)','EXECUTE')
+      OR NOT has_function_privilege('authenticated','public.admin_update_user_access(uuid,text,boolean)','EXECUTE')
+      OR NOT has_function_privilege('service_role','public.admin_save_role(text,jsonb)','EXECUTE')
+      OR NOT has_function_privilege('service_role','public.admin_update_user_access(uuid,text,boolean)','EXECUTE') THEN
+      RAISE EXCEPTION 'Release 1 role or user-access RPC execution grants are unsafe';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies WHERE schemaname='public'
+        AND tablename='tenant_memberships' AND policyname='tenant_memberships_admin_directory_read'
+    ) THEN
+      RAISE EXCEPTION 'Tenant-scoped real-user directory policy is missing';
+    END IF;
   END;
   $verify$;`,
   'ROLLBACK;'
 ].join('\n');
 psql(sql);
-console.log('PASS: both user-provisioning SQL migrations compile on disposable PG17, grants correct, transaction rolled back.');
+console.log('PASS: user-provisioning and access-management SQL migrations compile on disposable PG17; grants are correct and transaction rolled back.');
