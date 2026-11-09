@@ -78,13 +78,14 @@ export function RealLinkedUserDirectory({ tenantId, tenantName, locale, canManag
   const selectedTenantRef = useRef(tenantId);
   selectedTenantRef.current = tenantId;
 
+  useEffect(() => { setSuccess(''); }, [tenantId, revision]);
+
   useEffect(() => {
     let current = true;
     setLoading(true);
     setError('');
     setRoleError('');
     setMutationError('');
-    setSuccess('');
     setResponse(null);
     setEditingUserId(null);
     setInspectingUserId(null); setEffectivePermissions([]); setPermissionsError('');
@@ -111,11 +112,13 @@ export function RealLinkedUserDirectory({ tenantId, tenantName, locale, canManag
   const visible = response?.tenantId === tenantId ? response : null;
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccess('');
     setPage(0);
     setNameSearch(nameInput);
     setLocalRevision(value => value + 1);
   }
   function clearSearch() {
+    setSuccess('');
     setNameInput(''); setNameSearch(''); setPage(0); setLocalRevision(value => value + 1);
   }
   function beginEdit(user: RealLinkedUser) {
@@ -296,9 +299,9 @@ export function RealLinkedUserDirectory({ tenantId, tenantName, locale, canManag
         </div>
       </> : <p className="mt-3 text-sm text-slate-600">{copy.empty}</p>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" disabled={page === 0} onClick={() => setPage(value => Math.max(0,value-1))} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-40">{copy.prev}</button>
+        <button type="button" disabled={page === 0} onClick={() => { setSuccess(''); setPage(value => Math.max(0,value-1)); }} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-40">{copy.prev}</button>
         <p className="text-sm tabular-nums">{copy.page} {page + 1}</p>
-        <button type="button" disabled={!visible.hasNext} onClick={() => setPage(value => value+1)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-40">{copy.next}</button>
+        <button type="button" disabled={!visible.hasNext} onClick={() => { setSuccess(''); setPage(value => value+1); }} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm disabled:opacity-40">{copy.next}</button>
       </div>
     </section>}
   </section>;
