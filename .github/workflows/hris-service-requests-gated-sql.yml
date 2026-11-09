@@ -1,0 +1,48 @@
+name: HRIS existing service requests SQL recovery
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Approve exactly one existing service request SQL migration
+        type: boolean
+        required: true
+        default: false
+      offsite_recovery_verified:
+        description: Confirm independent source and database backups and restore
+        type: boolean
+        required: true
+        default: false
+      session_pooler_host:
+        description: HRIS Supabase session pooler hostname
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  release:
+    if: "${{ github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PGHOST: "${{ inputs.session_pooler_host }}"
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+      PGSSLMODE: require
+      PGPASSWORD: "${{ secrets.HRIS_DB_PASSWORD }}"
+      GH_TOKEN: "${{ github.token }}"
+      SOURCE_BACKUP_RUN_ID: '42566563506'
+      DATABASE_BACKUP_RUN_ID: '42566573242'
+      RESTORE_RUN_ID: '42566847474'
+      OFFSITE_SOURCE_SHA256: 'cccda6aa429f9ff74aecd0688a99ff128e838a7506209d43a45fab499e5b6f2a'
+      OFFSITE_DATABASE_SHA256: '2b7e26a9ccf372880093ea94b6a94cd8f54acfab0d4c3f2ddf8181d615afdffb'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Validate backups and apply exactly one reviewed service request migration
+        run: bash scripts/release/hris-service-requests-gated-sql.sh
