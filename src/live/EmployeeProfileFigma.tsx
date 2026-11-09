@@ -12,6 +12,7 @@ import {
 import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
 import { EmployeeProfileEditModal, type ProfileEditKind } from './EmployeeProfileEditModal';
+import { EmployeeAvatarPhoto } from './EmployeeAvatarPhoto';
 import addressBookIcon from '../assets/employee-figma/address-book.svg';
 import documentCheckIcon from '../assets/employee-figma/document-check.svg';
 import editPenIcon from '../assets/employee-figma/edit-pen.svg';
@@ -640,9 +641,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
 
     {currentStatus === 'ready' && currentEmployee && <>
       <div data-figma-node="66:72046" className="grid min-w-0 gap-4 lg:grid-cols-[203px_minmax(0,1fr)] xl:grid-cols-[203px_minmax(0,1fr)_minmax(0,1fr)] xl:gap-6">
-        <div role="img" aria-label={`${words.employeeName}: ${name}`} className="grid h-[203px] w-[203px] max-w-full place-items-center rounded-lg bg-[#6FB1E1] p-2">
-          <span className="grid h-full w-full place-items-center rounded bg-[#EFF7F8] text-4xl font-medium text-[#085587]" aria-hidden="true">{initials}</span>
-        </div>
+        <EmployeeAvatarPhoto tenantId={tenantId} locale={locale} label={`${words.employeeName}: ${name}`} initials={initials} />
         <dl data-figma-node="66:72049" className="grid min-w-0 content-start gap-3 rounded-lg bg-white p-4">
           {[
             { id: 'name', label: words.identitySection, value: name, important: true },
