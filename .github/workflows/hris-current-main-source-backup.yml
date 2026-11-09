@@ -2,6 +2,7 @@
 # No SQL writes, production deploys, Auth changes, or cross-account credentials.
 name: HRIS exact protected Main source history backup
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:

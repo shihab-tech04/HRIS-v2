@@ -120,7 +120,7 @@ jobs:
               raise SystemExit('Exact protected Main has not passed the required check workflow')
 
           expected = {
-              'source': ('HRIS exact protected Main source history backup', 'push',
+              'source': ('HRIS exact protected Main source history backup', 'push,workflow_dispatch',
                          'hris-exact-main-source-' + sha),
               'database': ('HRIS Step 1 - Encrypted database export', 'workflow_dispatch',
                            'hris-db-encrypted-' + ids['database']),
@@ -133,7 +133,7 @@ jobs:
                   or run.get('conclusion') != 'success' or run.get('head_branch') != 'main'
                   or run.get('head_sha') != sha
                   or run.get('repository', {}).get('full_name') != repo
-                  or (event and run.get('event') != event)):
+                  or (event and run.get('event') not in event.split(','))):
                   raise SystemExit(key + ' recovery run is not successful on this exact protected Main SHA')
               artifacts = get('actions/runs/' + ids[key] + '/artifacts?per_page=100').get('artifacts', [])
               if not any(a.get('name') == artifact_name and a.get('expired') is False
@@ -216,14 +216,26 @@ jobs:
           trap 'rm -rf "$scratch"' EXIT
 
           db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" > "$scratch/before.tsv"
-          test "$(wc -l < "$scratch/before.tsv")" -eq 135 || {
-            echo '::error::Hosted migration history is not the approved 135-version baseline'; exit 1;
+          test "$(wc -l < "$scratch/before.tsv")" -eq 136 || {
+            echo '::error::Hosted history is not the reviewed 136-version post-service-request baseline'; exit 1;
           }
-          grep -Fxq '20261106090000|hris_new_workforce_account' "$scratch/before.tsv" || {
-            echo '::error::Hosted migration head differs from the reviewed baseline'; exit 1;
+          grep -Fxq '20261109174000|hris_service_request_legacy_contract_forward_port' "$scratch/before.tsv" || {
+            echo '::error::Reviewed service-request recovery migration is not installed'; exit 1;
           }
           ! grep -q '^20261109035656|' "$scratch/before.tsv" || {
             echo '::error::Role/access migration is already installed; stop and reconcile source'; exit 1;
+          }
+          # Release 1 follows the independently backed-up existing-service-request recovery.
+          # A migration-history row alone is insufficient; all original RPC contracts must exist.
+          service_ready="$(db_psql -c "SELECT CASE WHEN
+            to_regprocedure('public.hris_get_my_service_requests(uuid)') IS NOT NULL
+            AND to_regprocedure('public.hris_submit_my_service_request(uuid,text,text)') IS NOT NULL
+            AND to_regprocedure('public.hris_get_tenant_service_requests(uuid)') IS NOT NULL
+            AND to_regprocedure('public.hris_resolve_tenant_service_request(uuid,uuid,text,text,text)') IS NOT NULL
+            AND to_regclass('public.service_request_status_history') IS NOT NULL
+            THEN 'SERVICE_RECOVERY_READY' ELSE 'SERVICE_RECOVERY_MISSING' END;")"
+          test "$service_ready" = 'SERVICE_RECOVERY_READY' || {
+            echo '::error::Existing service-request contracts are absent; no role/access SQL applied'; exit 1;
           }
           before_rows="$(db_psql -F ':' -c "SELECT (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees), (SELECT count(*) FROM public.tenant_memberships), (SELECT count(*) FROM public.roles), (SELECT count(*) FROM public.role_permissions), (SELECT count(*) FROM public.admin_audit_logs);")"
 
@@ -236,7 +248,7 @@ jobs:
             : > "$scratch/supabase/migrations/${version}_${name}.sql"
           done < "$scratch/before.tsv"
           cp supabase/migrations/20261109035656_hris_admin_role_access_management.sql "$scratch/supabase/migrations/"
-          test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq 136
+          test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq 137
 
           db_url="$(python3 - <<'PY'
           import os, urllib.parse
@@ -276,7 +288,7 @@ jobs:
           }
 
           db_psql -F '|' -c "SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version" > "$scratch/after.tsv"
-          test "$(wc -l < "$scratch/after.tsv")" -eq 136
+          test "$(wc -l < "$scratch/after.tsv")" -eq 137
           grep -Fxq '20261109035656|hris_admin_role_access_management' "$scratch/after.tsv"
           grep -Ev '^20261109035656[|]' "$scratch/after.tsv" > "$scratch/unchanged.tsv"
           cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv" || {
