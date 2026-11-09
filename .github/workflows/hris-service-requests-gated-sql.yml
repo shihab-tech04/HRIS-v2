@@ -19,6 +19,9 @@ on:
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: hris-profile-sql-production
+  cancel-in-progress: false
 jobs:
   release:
     if: "${{ github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}"
