@@ -9,14 +9,15 @@ async function calls(page: import('@playwright/test').Page): Promise<Call[]> {
 test('WS08 linked-user directory shows tenant membership and sign-in status from authorized SQL', async ({ page }) => {
   await page.goto('/tests/browser/ws08-linked-users-harness.html');
   await expect(page.getByRole('heading', { name: 'Linked employee accounts' })).toBeVisible();
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
-  await expect(page.getByText('EMP-009')).toBeVisible();
-  await expect(page.getByText('authorized@example.test')).toBeVisible();
-  await expect(page.getByText('People Operations')).toBeVisible();
-  await expect(page.getByText('HR Specialist')).toBeVisible();
-  await expect(page.getByText('hr_admin')).toBeVisible();
-  await expect(page.getByText('Organization access')).toBeVisible();
-  await expect(page.getByText('Sign-in account')).toBeVisible();
+  const table = page.getByRole('table');
+  await expect(table.getByText('Authorized Employee')).toBeVisible();
+  await expect(table.getByText('EMP-009')).toBeVisible();
+  await expect(table.getByText('authorized@example.test')).toBeVisible();
+  await expect(table.getByText('People Operations')).toBeVisible();
+  await expect(table.getByText('HR Specialist')).toBeVisible();
+  await expect(table.getByText('hr_admin')).toBeVisible();
+  await expect(table.getByText('Organization access')).toBeVisible();
+  await expect(table.getByText('Sign-in account')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit access' })).toHaveCount(0);
   let seen = await calls(page);
   expect(seen.filter(item => item.name === 'has_tenant_permission').length).toBeGreaterThanOrEqual(2);
@@ -26,7 +27,7 @@ test('WS08 linked-user directory shows tenant membership and sign-in status from
   expect(seen.find(item => item.table === 'departments')).toBeDefined();
   await page.getByLabel('Search linked employee names').fill('Authorized');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
+  await expect(table.getByText('Authorized Employee')).toBeVisible();
   seen = await calls(page);
   expect(seen.some(item => item.table === 'employees' && item.method === 'ilike')).toBe(true);
 });
@@ -34,20 +35,21 @@ test('WS08 linked-user directory shows tenant membership and sign-in status from
 test('WS08 Super Admin inspects tenant-effective permissions and confirms role/sign-in changes with readback', async ({ page }) => {
   await page.goto('/tests/browser/ws08-linked-users-harness.html?mode=manage');
   await expect(page.getByRole('heading', { name: 'Linked employee accounts' })).toBeVisible();
+  const table = page.getByRole('table');
 
-  await page.getByRole('button', { name: 'Effective permissions' }).click();
-  await expect(page.getByText('employees · view_compensation')).toBeVisible();
+  await table.getByRole('button', { name: 'Effective permissions' }).click();
+  await expect(table.getByText('employees · view_compensation')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Edit access' }).click();
-  await page.getByLabel('Assign role').selectOption('employee');
-  await page.getByLabel('Allow sign-in').uncheck();
-  await expect(page.getByRole('button', { name: 'Save access' })).toBeDisabled();
-  await page.getByLabel('I understand this account will be unable to sign in until it is reactivated.').check();
-  await page.getByRole('button', { name: 'Save access' }).click();
+  await table.getByRole('button', { name: 'Edit access' }).click();
+  await table.getByLabel('Assign role').selectOption('employee');
+  await table.getByLabel('Allow sign-in').uncheck();
+  await expect(table.getByRole('button', { name: 'Save access' })).toBeDisabled();
+  await table.getByLabel('I understand this account will be unable to sign in until it is reactivated.').check();
+  await table.getByRole('button', { name: 'Save access' }).click();
 
-  await expect(page.getByRole('status')).toContainText('saved and read back');
-  await expect(page.getByText('employee', { exact: true })).toBeVisible();
-  await expect(page.getByText('Inactive', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('Account role and status saved and read back.', { exact: true })).toBeVisible();
+  await expect(table.getByText('employee', { exact: true })).toBeVisible();
+  await expect(table.getByText('Inactive', { exact: true })).toHaveCount(2);
   const seen = await calls(page);
   const update = seen.find(item => item.name === 'admin_update_user_access');
   expect(update).toBeDefined();
@@ -84,12 +86,12 @@ test('WS08 linked-user list does not display stale records after permissions are
 test('WS08 Bengali linked directory renders at 375px and handles empty results without privilege escalation', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/tests/browser/ws08-linked-users-harness.html?mode=empty&locale=bn');
-  await expect(page.getByRole('heading', { name: 'সংযুক্ত প্রকৃত ব্যবহারকারী তালিকা' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'সংযুক্ত কর্মী অ্যাকাউন্ট' })).toBeVisible();
   await expect(page.getByText('এই প্রতিষ্ঠান ও অনুসন্ধানে কোনো সংযুক্ত ব্যবহারকারী পাওয়া যায়নি।')).toBeVisible();
   await expect(page.getByRole('button', { name: 'পরের পৃষ্ঠা' })).toBeDisabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.goto('/tests/browser/ws08-linked-users-harness.html?mode=no-org&locale=bn');
-  await expect(page.getByText('Authorized Employee')).toBeVisible();
+  await expect(page.getByRole('article').getByRole('heading', { name: 'Authorized Employee' })).toBeVisible();
   await expect(page.getByText('—').first()).toBeVisible();
   expect((await calls(page)).some(item => item.table === 'departments' || item.table === 'designations')).toBe(false);
 });
