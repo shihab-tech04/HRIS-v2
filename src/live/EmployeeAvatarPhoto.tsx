@@ -65,7 +65,9 @@ export function EmployeeAvatarPhoto({
         const { data: path, error: getError } = await supabase.rpc('employee_get_my_avatar_v1', {
           p_tenant_id: tenantId,
         });
-        if (getError) throw getError;
+        // Fail closed until the matching SQL migration is installed. Do not
+        // surface an unrelated profile-wide error or disturb existing actions.
+        if (getError) return;
         if (!active) return;
         setEnabled(true);
 
