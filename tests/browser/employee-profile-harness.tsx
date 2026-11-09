@@ -10,6 +10,7 @@ declare global {
   interface Window {
     __profileFixtureCalls: Array<{ name: string; args: unknown }>;
     __profileCertificateDownloads: Array<{ bucket: string; path: string }>;
+    __profileAvatarActions: Array<{ action: string; bucket: string; path: string }>;
   }
 }
 
@@ -19,7 +20,7 @@ const state = query.get('state') || 'sparse';
 const tenantId = query.get('tenant') || 'local-visual-tenant';
 document.documentElement.lang = locale;
 
-const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' || state === 'save-error' ? {
+const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' || state === 'save-error' || state === 'avatar' || state === 'avatar-error' ? {
   full_name: 'Synthetic QA Employee',
   employee_number: 'QA-EMP-001',
   official_email: 'qa.employee@example.invalid',
@@ -51,6 +52,9 @@ const employee = state === 'synthetic' || state === 'tenant-switch' || state ===
 // Synthetic Auth/Storage fixtures only. The production download still uses private Storage.
 const fixtureUserId = '00000000-0000-4000-8000-000000000001';
 let certificateFailureBudget = query.get('certificate') === 'error-once' ? 1 : 0;
+let avatarPath: string | null = window.sessionStorage.getItem('hris-visual-avatar-' + tenantId);
+const avatarActions: Window['__profileAvatarActions'] = [];
+window.__profileAvatarActions = avatarActions;
 const certDownloads: Window['__profileCertificateDownloads'] = [];
 window.__profileCertificateDownloads = certDownloads;
 Object.defineProperty(supabase.auth, 'getUser', {
@@ -61,12 +65,26 @@ Object.defineProperty(supabase.storage, 'from', {
   configurable: true,
   value: (bucket: string) => ({
     download: async (path: string) => {
+      if (bucket === 'employee-avatars') {
+        avatarActions.push({ action: 'download', bucket, path });
+        return path === avatarPath
+          ? { data: new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg=='), c => c.charCodeAt(0))], { type: 'image/png' }), error: null }
+          : { data: null, error: new Error('Private avatar not found') };
+      }
       certDownloads.push({ bucket, path });
       if (query.get('certificate') === 'error' || certificateFailureBudget > 0) {
         if (certificateFailureBudget > 0) certificateFailureBudget -= 1;
         return { data: null, error: new Error('Synthetic private file unavailable') };
       }
       return { data: new Blob(['Synthetic private certificate'], { type: 'application/pdf' }), error: null };
+    },
+    upload: async (path: string, _file: File, _options: { upsert: boolean }) => {
+      avatarActions.push({ action: 'upload', bucket, path });
+      return { data: { path }, error: null };
+    },
+    remove: async (paths: string[]) => {
+      paths.forEach(path => avatarActions.push({ action: 'remove', bucket, path }));
+      return { data: paths, error: null };
     },
   }),
 });
@@ -83,6 +101,24 @@ Object.defineProperty(client, 'rpc', {
   configurable: true,
   value: async (name: string, args: unknown): Promise<FixtureResult> => {
     calls.push({ name, args });
+    if (name === 'employee_get_my_avatar_v1') {
+      if (state !== 'avatar' && state !== 'avatar-error') {
+        return { data: null, error: new Error('Photo RPC intentionally unavailable for this other fixture state') };
+      }
+      const requestedTenant = (args as { p_tenant_id?: string }).p_tenant_id;
+      return { data: avatarPath && avatarPath.split('/')[1] === requestedTenant ? avatarPath : null, error: null };
+    }
+    if (name === 'employee_set_my_avatar_v1') {
+      const request = args as { p_tenant_id: string; p_storage_path: string; p_expected_path: string | null };
+      if (state === 'avatar-error') return { data: null, error: new Error('Synthetic photo save denied') };
+      if (request.p_tenant_id !== tenantId || request.p_expected_path !== avatarPath
+        || !request.p_storage_path.startsWith(fixtureUserId + '/' + tenantId + '/')) {
+        return { data: null, error: new Error('Wrong tenant, expected photo or owner') };
+      }
+      avatarPath = request.p_storage_path;
+      window.sessionStorage.setItem('hris-visual-avatar-' + tenantId, avatarPath);
+      return { data: avatarPath, error: null };
+    }
     if (name === 'employee_get_my_employment_info_v1') {
       if (state !== 'employment-details') return { data: null, error: new Error('E02-09 optional RPC not installed in this fixture') };
       return { data: [{
