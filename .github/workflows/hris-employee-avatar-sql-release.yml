@@ -1,0 +1,262 @@
+# Exact-Main, manual-only release of the already-reviewed legacy Employee Change Photo SQL.
+# Never run from a PR. No frontend deploy, no Auth modifications, no data reset.
+name: HRIS employee avatar SQL production release
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        type: boolean
+        required: true
+        default: false
+      offsite_recovery_verified:
+        type: boolean
+        required: true
+        default: false
+      source_backup_run_id:
+        type: string
+        required: true
+      database_backup_run_id:
+        type: string
+        required: true
+      restore_run_id:
+        type: string
+        required: true
+      offsite_source_archive_sha256:
+        type: string
+        required: true
+      offsite_database_archive_sha256:
+        type: string
+        required: true
+      session_pooler_host:
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hris-profile-sql-production
+  cancel-in-progress: false
+jobs:
+  release:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PGHOST: ${{ inputs.session_pooler_host }}
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.HRIS_DB_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: ${{ inputs.source_backup_run_id }}
+      DATABASE_RUN: ${{ inputs.database_backup_run_id }}
+      RESTORE_RUN: ${{ inputs.restore_run_id }}
+      SOURCE_HASH: ${{ inputs.offsite_source_archive_sha256 }}
+      DATABASE_HASH: ${{ inputs.offsite_database_archive_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Verify exact Main, pinned migration, green CI and successful recovery runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$PGPASSWORD" || { echo "::error::Missing protected HRIS database secret"; exit 1; }
+          [[ "$PGHOST" =~ ^aws-[0-9]+-ap-northeast-2[.]pooler[.]supabase[.]com$ ]] || {
+            echo "::error::Invalid HRIS session-pooler hostname"; exit 1;
+          }
+          migration=supabase/migrations/20261109130637_hris_employee_avatar_existing_system_parity.sql
+          test -s "$migration"
+          test "$(sha256sum "$migration" | cut -d ' ' -f1)" = "3396d5a8e32fab169e452ed2037e4b9b880dfb913fc1fe2a0da3e2beef416638" || {
+            echo "::error::Reviewed avatar SQL changed"; exit 1;
+          }
+          python3 - <<'PY'
+          import json,os,re,urllib.request
+          sha=os.environ['GITHUB_SHA']
+          ids={'source':os.environ['SOURCE_RUN'],'database':os.environ['DATABASE_RUN'],'restore':os.environ['RESTORE_RUN']}
+          if any(not re.fullmatch('[1-9][0-9]{7,11}',v) for v in ids.values()):
+              raise SystemExit('Invalid recovery run ID')
+          if any(not re.fullmatch('[0-9a-f]{64}',os.environ[x]) for x in ('SOURCE_HASH','DATABASE_HASH')):
+              raise SystemExit('Invalid offsite checksum')
+          def get(path):
+              request=urllib.request.Request('https://api.github.com/repos/shihab-tech04/HRIS-v2/'+path,
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json',
+                           'User-Agent':'HRIS-Avatar-Protected-Release'})
+              with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
+          if get('git/ref/heads/main').get('object',{}).get('sha')!=sha:
+              raise SystemExit('Protected Main moved')
+          checks=get('commits/'+sha+'/check-runs?per_page=100').get('check_runs',[])
+          if not any(c.get('name')=='check' and c.get('conclusion')=='success' and c.get('status')=='completed' for c in checks):
+              raise SystemExit('Exact Main build not green')
+          targets={
+            'source':('HRIS exact protected Main source history backup','hris-exact-main-source-'+sha),
+            'database':('HRIS Step 1 - Encrypted database export','hris-db-encrypted-'+ids['database']),
+            'restore':('HRIS Step 1 - Isolated PostgreSQL restore proof','hris-restore-proof-'+ids['restore']),
+          }
+          for k,(expected_name,artifact) in targets.items():
+              run=get('actions/runs/'+ids[k])
+              if run.get('name')!=expected_name or run.get('head_sha')!=sha or run.get('head_branch')!='main' or run.get('status')!='completed' or run.get('conclusion')!='success':
+                  raise SystemExit(k+' recovery proof is not from this successful Main SHA')
+              if k=='database' and run.get('event')!='workflow_dispatch':
+                  raise SystemExit('Database backup must be a manually dispatched protected export')
+              artifacts=get('actions/runs/'+ids[k]+'/artifacts?per_page=100').get('artifacts',[])
+              if not any(a.get('name')==artifact and a.get('expired') is False and a.get('size_in_bytes',0)>0 for a in artifacts):
+                  raise SystemExit(k+' backup artifact missing or expired')
+          print('PASS: green exact Main, reviewed SQL and three linked recovery runs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: hris-exact-main-source-${{ github.sha }}
+          run-id: ${{ inputs.source_backup_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/avatar-source-recovery
+      - uses: actions/download-artifact@v4
+        with:
+          name: hris-db-encrypted-${{ inputs.database_backup_run_id }}
+          run-id: ${{ inputs.database_backup_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/avatar-db-recovery
+      - uses: actions/download-artifact@v4
+        with:
+          name: hris-restore-proof-${{ inputs.restore_run_id }}
+          run-id: ${{ inputs.restore_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/avatar-restore-proof
+      - name: Verify offsite archive hashes, manifests, and successful isolated restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/avatar-source-recovery"
+          db="$RUNNER_TEMP/avatar-db-recovery"
+          proof="$RUNNER_TEMP/avatar-restore-proof/manifest.txt"
+          test -s "$src/hris-main-$GITHUB_SHA.git.bundle"
+          test -s "$db/hris-replacement-$DATABASE_RUN.pgcustom.gpg"
+          test -s "$proof"
+          (cd "$src" && sha256sum --check --status restore.sha256)
+          (cd "$db" && sha256sum --check --status encrypted.sha256)
+          test "$(sha256sum "$src/hris-main-$GITHUB_SHA.git.bundle" | cut -d ' ' -f1)" = "$SOURCE_HASH"
+          test "$(sha256sum "$db/hris-replacement-$DATABASE_RUN.pgcustom.gpg" | cut -d ' ' -f1)" = "$DATABASE_HASH"
+          grep -Fxq "repo=$GITHUB_REPOSITORY" "$src/restore-manifest.txt"
+          grep -Fxq "main=$GITHUB_SHA" "$src/restore-manifest.txt"
+          grep -Fxq "restored_main=$GITHUB_SHA" "$src/restore-manifest.txt"
+          grep -Fxq "github_run_id=$DATABASE_RUN" "$db/backup-manifest.txt"
+          grep -Fxq 'source_project=xfuxnljfrgvusbrpvxpa' "$db/backup-manifest.txt"
+          grep -Fxq "repository=$GITHUB_REPOSITORY" "$proof"
+          grep -Fxq "source_main_sha=$GITHUB_SHA" "$proof"
+          grep -Fxq "backup_run_id=$DATABASE_RUN" "$proof"
+          grep -Fxq "restore_run_id=$RESTORE_RUN" "$proof"
+          grep -Fxq 'restore_result=success' "$proof"
+          echo 'PASS: offsite checksums and isolated database restore proof match exact Main.'
+      - name: Apply exactly one pinned avatar migration after strict hosted preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          db_psql() {
+            docker run --rm --env PGHOST --env PGPORT --env PGDATABASE --env PGUSER \
+              --env PGSSLMODE --env PGPASSWORD postgres:17-alpine \
+              psql -X -A -t -v ON_ERROR_STOP=1 "$@"
+          }
+          scratch="$(mktemp -d "$RUNNER_TEMP/hris-avatar-release.XXXXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/before.tsv"
+          test "$(wc -l < "$scratch/before.tsv")" -eq 137 || {
+            echo '::error::Hosted migration count changed; no avatar SQL applied'; exit 1;
+          }
+          grep -Fxq '20261109174000|hris_service_request_legacy_contract_forward_port' "$scratch/before.tsv"
+          grep -Fxq '20261109035656|hris_admin_role_access_management' "$scratch/before.tsv"
+          ! grep -q '^20261109130637|' "$scratch/before.tsv"
+          baseline="$(db_psql -c "SELECT CASE WHEN
+            to_regprocedure('private.hris_profile_own_employee(uuid)') IS NOT NULL
+            AND to_regprocedure('public.employee_get_my_avatar_v1(uuid)') IS NULL
+            AND to_regprocedure('public.employee_set_my_avatar_v1(uuid,text,text)') IS NULL
+            AND to_regprocedure('public.hris_get_my_service_requests(uuid)') IS NOT NULL
+            AND EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public'
+              AND tablename='tenant_memberships' AND policyname='tenant_memberships_admin_directory_read')
+            AND EXISTS(SELECT 1 FROM storage.buckets WHERE id='employee-avatars' AND public=false
+              AND allowed_mime_types @> ARRAY['image/jpeg','image/png']::text[])
+            AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+              AND table_name='employees' AND column_name='avatar_url')
+            AND (SELECT count(*) FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+              AND policyname IN ('employee_avatars_own_select','employee_avatars_own_insert',
+                'employee_avatars_own_delete')) = 3
+            THEN 'AVATAR_BASELINE_PASS' ELSE 'AVATAR_BASELINE_FAIL' END;")"
+          test "$baseline" = 'AVATAR_BASELINE_PASS' || {
+            echo '::error::Hosted avatar prerequisites failed; no SQL applied'; exit 1;
+          }
+          before_rows="$(db_psql -c "SELECT
+            (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees),
+            (SELECT count(*) FROM public.tenants), (SELECT count(*) FROM public.tenant_memberships),
+            (SELECT count(*) FROM public.admin_audit_logs), (SELECT count(*) FROM storage.objects);")"
+          db_psql -F '|' -c "SELECT policyname,cmd,qual,with_check FROM pg_policies WHERE schemaname='storage' AND tablename='objects' ORDER BY policyname" > "$scratch/policies-before.tsv"
+          supabase init --workdir "$scratch" --force >/dev/null
+          mkdir -p "$scratch/supabase/migrations"
+          while IFS='|' read -r version name; do
+            [[ "$version" =~ ^[0-9]{14}$ && "$name" =~ ^[a-z0-9_]+$ ]] || exit 1
+            : > "$scratch/supabase/migrations/${version}_${name}.sql"
+          done < "$scratch/before.tsv"
+          migration=20261109130637_hris_employee_avatar_existing_system_parity.sql
+          cp "supabase/migrations/$migration" "$scratch/supabase/migrations/"
+          test "$(find "$scratch/supabase/migrations" -name '*.sql' -type f | wc -l)" -eq 138
+          db_url="$(python3 - <<'PY'
+          import os,urllib.parse
+          user=urllib.parse.quote(os.environ['PGUSER'],safe='')
+          secret=urllib.parse.quote(os.environ['PGPASSWORD'],safe='')
+          print('postgresql://'+user+':'+secret+'@'+os.environ['PGHOST']+':5432/postgres?sslmode=require')
+          PY
+          )"
+          (cd "$scratch" && supabase db push --db-url "$db_url" --include-all --dry-run > "$scratch/dry-run.txt" 2>&1) || {
+            echo '::error::Avatar migration dry run failed'; exit 1;
+          }
+          grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/dry-run.txt" | sort -u > "$scratch/planned.txt"
+          printf '%s\n' "$migration" > "$scratch/expected.txt"
+          diff -u "$scratch/expected.txt" "$scratch/planned.txt" || {
+            echo '::error::Dry run selected unreviewed SQL'; exit 1;
+          }
+          actual_main="$(gh api repos/shihab-tech04/HRIS-v2/branches/main --jq '.commit.sha')"
+          test "$actual_main" = "$GITHUB_SHA" || {
+            echo '::error::Main moved; no SQL applied'; exit 1;
+          }
+          db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/pre-apply.tsv"
+          cmp -s "$scratch/before.tsv" "$scratch/pre-apply.tsv" || exit 1
+          (cd "$scratch" && supabase --yes db push --db-url "$db_url" --include-all > "$scratch/apply.txt" 2>&1) || {
+            echo '::error::Avatar SQL apply failed; use verified recovery point'; exit 1;
+          }
+          db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/after.tsv"
+          test "$(wc -l < "$scratch/after.tsv")" -eq 138
+          grep -Fxq '20261109130637|hris_employee_avatar_existing_system_parity' "$scratch/after.tsv"
+          grep -Ev '^20261109130637[|]' "$scratch/after.tsv" > "$scratch/unchanged.tsv"
+          cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv"
+          after_rows="$(db_psql -c "SELECT
+            (SELECT count(*) FROM auth.users), (SELECT count(*) FROM public.employees),
+            (SELECT count(*) FROM public.tenants), (SELECT count(*) FROM public.tenant_memberships),
+            (SELECT count(*) FROM public.admin_audit_logs), (SELECT count(*) FROM storage.objects);")"
+          test "$before_rows" = "$after_rows" || { echo '::error::Existing HRIS data row counts changed'; exit 1; }
+          db_psql -F '|' -c "SELECT policyname,cmd,qual,with_check FROM pg_policies WHERE schemaname='storage' AND tablename='objects' ORDER BY policyname" > "$scratch/policies-after.tsv"
+          cmp -s "$scratch/policies-before.tsv" "$scratch/policies-after.tsv"
+          verdict="$(db_psql -c "SELECT CASE WHEN
+            to_regprocedure('public.employee_get_my_avatar_v1(uuid)') IS NOT NULL
+            AND to_regprocedure('public.employee_set_my_avatar_v1(uuid,text,text)') IS NOT NULL
+            AND NOT has_function_privilege('anon','public.employee_get_my_avatar_v1(uuid)','EXECUTE')
+            AND NOT has_function_privilege('anon','public.employee_set_my_avatar_v1(uuid,text,text)','EXECUTE')
+            AND has_function_privilege('authenticated','public.employee_get_my_avatar_v1(uuid)','EXECUTE')
+            AND has_function_privilege('authenticated','public.employee_set_my_avatar_v1(uuid,text,text)','EXECUTE')
+            AND EXISTS(SELECT 1 FROM storage.buckets WHERE id='employee-avatars' AND public=false)
+            THEN 'HRIS_AVATAR_SQL_PASS' ELSE 'HRIS_AVATAR_SQL_FAIL' END;")"
+          test "$verdict" = 'HRIS_AVATAR_SQL_PASS' || exit 1
+          printf 'main_sha=%s\nmigration=%s\nmigration_sha256=%s\nsource_backup_run_id=%s\ndatabase_backup_run_id=%s\nrestore_run_id=%s\nresult=%s\n' \
+            "$GITHUB_SHA" "$migration" 3396d5a8e32fab169e452ed2037e4b9b880dfb913fc1fe2a0da3e2beef416638 \
+            "$SOURCE_RUN" "$DATABASE_RUN" "$RESTORE_RUN" "$verdict" > "$RUNNER_TEMP/hris-avatar-release-evidence.txt"
+          echo 'PASS: single pinned avatar migration installed; existing rows and storage policies preserved.'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hris-avatar-sql-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/hris-avatar-release-evidence.txt
+          if-no-files-found: ignore
+          retention-days: 7
