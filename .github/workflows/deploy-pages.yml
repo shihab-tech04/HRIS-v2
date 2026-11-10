@@ -47,6 +47,16 @@ jobs:
               (SELECT COUNT(*) FROM supabase_migrations.schema_migrations
                WHERE version IN ('20261027040642','20261030114500')) = 2
               AND to_regprocedure('public.employee_get_my_profile_v1(uuid)') IS NOT NULL
+              AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations
+                   WHERE version='20261109130637') = 1
+              AND to_regprocedure('public.employee_get_my_avatar_v1(uuid)') IS NOT NULL
+              AND to_regprocedure('public.employee_set_my_avatar_v1(uuid,text,text)') IS NOT NULL
+              AND NOT has_function_privilege('anon','public.employee_get_my_avatar_v1(uuid)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.employee_set_my_avatar_v1(uuid,text,text)','EXECUTE')
+              AND has_function_privilege('authenticated','public.employee_get_my_avatar_v1(uuid)','EXECUTE')
+              AND has_function_privilege('authenticated','public.employee_set_my_avatar_v1(uuid,text,text)','EXECUTE')
+              AND EXISTS (SELECT 1 FROM storage.buckets
+                          WHERE id='employee-avatars' AND public=false)
               AND to_regprocedure('public.employee_delete_my_profile_record_v1(uuid,text,uuid)') IS NOT NULL
               AND to_regclass('public.employee_bank_details') IS NOT NULL
               AND COALESCE((SELECT relrowsecurity FROM pg_class

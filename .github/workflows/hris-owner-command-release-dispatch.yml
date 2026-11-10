@@ -45,6 +45,7 @@ jobs:
           patterns={
             'service':rf'/hris-prod service ({sha})',
             'access':rf'/hris-prod access ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
+            'avatar':rf'/hris-prod avatar ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
             'pages':rf'/hris-prod pages ({sha})',
           }
           matched=[(stage,re.fullmatch(regex,command)) for stage,regex in patterns.items()]
@@ -54,7 +55,7 @@ jobs:
           if m.group(1)!=os.environ['GITHUB_SHA']: raise SystemExit('Command is not for exact current protected Main')
           with open(os.environ['GITHUB_OUTPUT'],'a') as f:
               print('stage='+stage,file=f)
-              if stage=='access':
+              if stage in ('access','avatar'):
                   for name,value in zip(('source_run','database_run','restore_run','source_sha','database_sha'),m.groups()[1:]):
                       print(name+'='+value,file=f)
           print('PASS: repository OWNER command, issue 191, exact Main, and strict input validation')
@@ -74,9 +75,14 @@ jobs:
           case "$STAGE" in
             service) echo 'PASS: service recovery requires its independent SQL and backup gates' ;;
             access) success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; } ;;
+            avatar) echo 'PASS: avatar SQL release performs strict production-baseline and offsite recovery checks' ;;
             pages)
-              success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; }
-              success_on_main hris-release1-platform-access-sql-release.yml || { echo '::error::Access SQL release not confirmed'; exit 1; } ;;
+              if success_on_main hris-employee-avatar-sql-release.yml; then
+                echo 'PASS: avatar SQL release verified on this exact Main revision'
+              else
+                success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; }
+                success_on_main hris-release1-platform-access-sql-release.yml || { echo '::error::Access SQL release not confirmed'; exit 1; }
+              fi ;;
             *) exit 1 ;;
           esac
           echo 'PASS: exact Main check and prerequisite release-run gates'
@@ -99,6 +105,13 @@ jobs:
                 -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
             access)
               gh workflow run hris-release1-platform-access-sql-release.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f release_approved=true -f offsite_recovery_verified=true \
+                -f source_backup_run_id="$SOURCE_RUN" -f database_backup_run_id="$DATABASE_RUN" \
+                -f restore_run_id="$RESTORE_RUN" \
+                -f offsite_source_archive_sha256="$SOURCE_SHA" -f offsite_database_archive_sha256="$DATABASE_SHA" \
+                -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
+            avatar)
+              gh workflow run hris-employee-avatar-sql-release.yml --repo shihab-tech04/HRIS-v2 --ref main \
                 -f release_approved=true -f offsite_recovery_verified=true \
                 -f source_backup_run_id="$SOURCE_RUN" -f database_backup_run_id="$DATABASE_RUN" \
                 -f restore_run_id="$RESTORE_RUN" \
