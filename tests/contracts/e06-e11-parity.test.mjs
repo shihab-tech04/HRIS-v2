@@ -28,6 +28,12 @@ test('E06 correction contract enforces tenant ownership, categories, time integr
   assert.match(migration, /correction_categories text\[\] NOT NULL DEFAULT/);
   assert.match(migration, /'check_in_time','check_out_time','work_location'/);
   assert.match(migration, /Check-out must be after check-in\./);
+  const submitCorrection = migration.slice(
+    migration.indexOf('CREATE OR REPLACE FUNCTION public.hris_employee_submit_attendance_correction'),
+    migration.indexOf('CREATE OR REPLACE FUNCTION public.hris_employee_update_attendance_correction'),
+  );
+  assert.match(submitCorrection, /INSERT INTO public\.attendance_corrections\(\s*id,tenant_id/);
+  assert.match(submitCorrection, /pg_catalog\.gen_random_uuid\(\)/);
   assert.match(migration, /v_effective_check_out<=v_effective_check_in/);
   assert.match(workspace, /effectiveCheckOut <= effectiveCheckIn/);
   assert.match(migration, /storage\.objects/);
@@ -126,7 +132,7 @@ test('E06 and E11 SQL validation messages are translated in their employee flows
 test('E06/E11 production release is pinned, protected, recovery-gated, and required before Pages', () => {
   execFileSync('bash', ['-n', fileURLToPath(releaseScriptPath)], { encoding: 'utf8' });
   assert.match(releaseScript, /20261110193754_hris_attendance_correction_movement_parity\.sql/);
-  assert.match(releaseScript, /f855936617a94f5e373af3fe4b337590401707fc5d7afe728dd9089a95760929/);
+  assert.match(releaseScript, /bfa5f1de96193f484493644030f382e211194d8c34d253ba36a267fd99836f2d/);
   assert.match(releaseScript, /pulls\/196/);
   assert.match(releaseScript, /supabase db push --db-url .*--dry-run/);
   assert.match(releaseScript, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);

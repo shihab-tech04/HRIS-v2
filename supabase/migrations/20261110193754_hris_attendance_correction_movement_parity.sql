@@ -261,12 +261,12 @@ BEGIN
   END IF;
   v_values := private.hris_attendance_correction_values(p_tenant_id,v_employee,p_payload,NULL);
   INSERT INTO public.attendance_corrections(
-    tenant_id,employee_id,attendance_date,correction_categories,
+    id,tenant_id,employee_id,attendance_date,correction_categories,
     original_check_in,original_check_out,original_work_mode,original_client_name,
     requested_check_in,requested_check_out,requested_work_mode,client_name,
     reason,status,requested_by,evidence_path
   ) VALUES (
-    p_tenant_id,v_employee,(v_values->>'attendance_date')::date,
+    pg_catalog.gen_random_uuid(),p_tenant_id,v_employee,(v_values->>'attendance_date')::date,
     ARRAY(SELECT jsonb_array_elements_text(v_values->'correction_categories')),
     nullif(v_values->>'original_check_in','')::timestamptz,
     nullif(v_values->>'original_check_out','')::timestamptz,
