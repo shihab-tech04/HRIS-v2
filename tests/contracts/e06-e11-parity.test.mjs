@@ -90,6 +90,8 @@ test('E11 movement submission preserves the existing WFH RPC and stores structur
   assert.match(migration, /public\.service_request_status_history/);
   assert.match(migration, /UPDATE public\.attendance_records a SET work_mode='client_meeting'/);
   assert.match(migration, /AND a\.attendance_date BETWEEN/);
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.hris_get_my_attendance_period\([\s\S]*?a\.work_mode,\s*a\.client_name,a\.status/);
+  assert.match(workspace, /Boolean\(row\.client_name\) && <span className="mt-1 block text-xs text-slate-500">\{tx\('Client name'\)\}/);
 });
 
 test('E11 manager decisions use the tenant-scoped approval path and keep unrelated requests on the old workflow', () => {
@@ -133,17 +135,18 @@ test('E06 and E11 SQL validation messages are translated in their employee flows
   );
   const e11Sql = migration.slice(
     migration.indexOf('CREATE OR REPLACE FUNCTION public.hris_submit_my_movement_request'),
-    migration.indexOf('REVOKE ALL ON FUNCTION public.hris_get_my_attendance_correction_context'),
+    migration.indexOf('CREATE OR REPLACE FUNCTION public.hris_get_my_attendance_period'),
   );
   const raisedMessages = source => [...new Set([...source.matchAll(/RAISE EXCEPTION '([^']+)'/g)].map(match => match[1]))];
   for (const message of raisedMessages(e06Sql)) assert.ok(projectKeys.has(message), `Missing Bengali E06 translation: ${message}`);
   for (const message of raisedMessages(e11Sql)) assert.ok(serviceKeys.has(message), `Missing Bengali E11 translation: ${message}`);
+  assert.ok(projectKeys.has('Choose a calendar month up to the current organization month.'));
 });
 
 test('E06/E11 production release is pinned, protected, recovery-gated, and required before Pages', () => {
   execFileSync('bash', ['-n', fileURLToPath(releaseScriptPath)], { encoding: 'utf8' });
   assert.match(releaseScript, /20261110193754_hris_attendance_correction_movement_parity\.sql/);
-  assert.match(releaseScript, /6f9a6e6e3afbcac3493b878911b58215495fb045bda889a833791ebd34f74351/);
+  assert.match(releaseScript, /8e2b1009d083b02e011c0bd0ce23c58b9a31ceaf08cdffbca236d07d9be225c4/);
   assert.match(releaseScript, /pulls\/196/);
   assert.match(releaseScript, /supabase db push --db-url .*--dry-run/);
   assert.match(releaseScript, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);
