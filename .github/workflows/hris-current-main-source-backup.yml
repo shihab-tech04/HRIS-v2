@@ -10,6 +10,7 @@ on:
     paths:
       - .github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml
       - .github/workflows/hris-current-main-source-backup.yml
+      - .github/workflows/hris-employee-avatar-sql-release.yml
 permissions:
   contents: read
 jobs:
