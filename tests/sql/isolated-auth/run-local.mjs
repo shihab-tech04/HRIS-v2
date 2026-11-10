@@ -442,6 +442,7 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016061104_hris_employee_service_request_review.sql'),
+  path.join(mainRoot, 'supabase/migrations/20261110120000_hris_work_from_home_request_parity.sql'),
   // The staged tenant-guard contract below replaces the same leave resolver.
   // Apply the newer submission-allocation contract after it so local acceptance
   // verifies the shipped resolver rather than the older staged replacement.
@@ -4445,6 +4446,10 @@ FROM (VALUES
   ('public.hris_get_tenant_expense_claims(uuid)'),
   ('public.hris_get_my_service_requests(uuid)'),
   ('public.hris_submit_my_service_request(uuid,text,text)'),
+  ('public.hris_submit_my_work_from_home_request(uuid,date,date,time,time,jsonb,text,text)'),
+  ('public.hris_update_my_work_from_home_request(uuid,uuid,date,date,time,time,jsonb,text,text)'),
+  ('public.hris_cancel_my_work_from_home_request(uuid,uuid)'),
+  ('public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)'),
   ('public.hris_get_tenant_project_workspace(uuid)'),
   ('public.hris_get_my_projects(uuid)'),
   ('public.hris_get_my_notifications(uuid,integer,timestamptz,text,uuid)'),
@@ -6224,6 +6229,184 @@ record('Tenant B service requests can be decided only in tenant B and retain the
     && serviceRequestTenantBDecision.data?.tenant_id === ids.tenantB,
   JSON.stringify({ draft: serviceRequestTenantBDraft.error?.code, decision: serviceRequestTenantBDecision.error?.code,
     tenant: serviceRequestTenantBDecision.data?.tenant_id }));
+
+const nextTenantDate = addCalendarDays(localCurrentDate, 1);
+const previousTenantDate = addCalendarDays(localCurrentDate, -1);
+const wfhDate = nextTenantDate.slice(0, 7) === localCurrentDate.slice(0, 7) ? nextTenantDate : previousTenantDate;
+const wfhBrowserDate = psqlSync(`SELECT COALESCE((
+  SELECT g.day::date::text FROM generate_series(
+    '${currentAttendanceMonth}'::date,'${nextAttendanceMonthStart}'::date - 1,interval '1 day'
+  ) g(day)
+  WHERE g.day::date<>'${wfhDate}'::date
+    AND NOT EXISTS (SELECT 1 FROM public.attendance_records a
+      WHERE a.tenant_id='11111111-1111-4111-8111-111111111111'::uuid
+        AND a.employee_id='55555555-5555-4555-8555-555555555555'::uuid
+        AND a.attendance_date=g.day::date)
+  ORDER BY (g.day::date<'${localCurrentDate}'::date),g.day::date
+  LIMIT 1
+),'');`).trim();
+if (!wfhBrowserDate) throw new Error('No separate Work From Home browser date is available in the current attendance month.');
+const wfhBrowserCancelDate = [2,3,4].map(offset => addCalendarDays(wfhBrowserDate, offset))
+  .find(date => date !== wfhDate);
+if (!wfhBrowserCancelDate) throw new Error('No separate Work From Home cancellation date is available.');
+const wfhRaceDate = addCalendarDays(wfhDate, 4);
+const wfhDraft = {
+  p_tenant_id: ids.tenantA,
+  p_from_date: wfhDate,
+  p_to_date: wfhDate,
+  p_start_time: '09:00:00',
+  p_end_time: '17:00:00',
+  p_tasks: ['Review assigned files', 'Prepare the weekly report'],
+  p_location: 'Dhaka home office',
+  p_reason: 'Synthetic WFH acceptance request.',
+};
+const wfhSubmit = await employeeA.client.rpc('hris_submit_my_work_from_home_request', wfhDraft);
+const wfhRequestId = wfhSubmit.data?.id;
+const wfhWrongTenant = await employeeA.client.rpc('hris_submit_my_work_from_home_request', {
+  ...wfhDraft, p_tenant_id: ids.tenantB,
+});
+const wfhInvalidTime = await employeeA.client.rpc('hris_submit_my_work_from_home_request', {
+  ...wfhDraft, p_end_time: '09:00:00',
+});
+const wfhNoTasks = await employeeA.client.rpc('hris_submit_my_work_from_home_request', {
+  ...wfhDraft, p_tasks: [],
+});
+const wfhLegacySubmit = await employeeA.client.rpc('employee_submit_remote_work_request', {
+  p_from: wfhDate,p_to: wfhDate,p_reason: 'Must use structured WFH submission.',p_location: null,
+});
+const concurrentWfhSubmissions = await Promise.all([0, 1].map(index => employeeA.client.rpc(
+  'hris_submit_my_work_from_home_request', {
+    ...wfhDraft,p_from_date:wfhRaceDate,p_to_date:wfhRaceDate,
+    p_tasks:[`Concurrent Work From Home task ${index + 1}`],
+    p_reason:'Synthetic concurrent Work From Home request.',
+  },
+)));
+const concurrentWfhWinners = concurrentWfhSubmissions.filter(result => !result.error && result.data?.id);
+const concurrentWfhCleanup = await Promise.all(concurrentWfhWinners.map(result => employeeA.client.rpc(
+  'hris_cancel_my_work_from_home_request', { p_tenant_id:ids.tenantA,p_request_id:result.data.id },
+)));
+const wfhReasonOnlyBypass = await employeeA.client.rpc('hris_submit_my_service_request', {
+  p_tenant_id: ids.tenantA, p_request_type: 'work_from_home', p_reason: 'Must use structured WFH submission.',
+});
+const wfhOverlap = await employeeA.client.rpc('hris_submit_my_work_from_home_request', wfhDraft);
+const wfhEdit = await employeeA.client.rpc('hris_update_my_work_from_home_request', {
+  p_tenant_id: ids.tenantA, p_request_id: wfhRequestId,
+  ...wfhDraft, p_start_time: '10:00:00', p_end_time: '18:00:00',
+  p_tasks: ['Review assigned files', 'Prepare the weekly report', 'Join team planning'],
+  p_location: 'Updated Dhaka home office', p_reason: 'Updated synthetic WFH reason.',
+});
+const wfhLegacyUpdate = await employeeA.client.rpc('employee_update_pending_remote_work_request', {
+  p_id: wfhRequestId,p_from: wfhDate,p_to: wfhDate,
+  p_reason: 'Must retain structured WFH data.',p_location: 'Legacy update attempt',
+});
+const wfhManagerQueue = await managerA.client.rpc('hris_get_tenant_service_requests', { p_tenant_id: ids.tenantA });
+const wfhManagerRow = (Array.isArray(wfhManagerQueue.data) ? wfhManagerQueue.data : []).find(row => row.id === wfhRequestId);
+const wfhWrongTenantDecision = await managerB.client.rpc('hris_resolve_tenant_work_from_home_request', {
+  p_tenant_id: ids.tenantA, p_request_id: wfhRequestId,
+  p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+});
+const wfhEmployeeDecision = await employeeA.client.rpc('hris_resolve_tenant_work_from_home_request', {
+  p_tenant_id: ids.tenantA, p_request_id: wfhRequestId,
+  p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+});
+const wfhGenericReviewBypass = await managerA.client.rpc('hris_resolve_tenant_service_request', {
+  p_tenant_id: ids.tenantA, p_request_id: wfhRequestId,
+  p_expected_status: 'pending', p_next_status: 'in_progress', p_note: null,
+});
+const wfhRejectWithoutReason = await managerA.client.rpc('hris_resolve_tenant_work_from_home_request', {
+  p_tenant_id: ids.tenantA, p_request_id: wfhRequestId,
+  p_expected_status: 'pending', p_next_status: 'rejected', p_note: '   ',
+});
+const concurrentWfhApprovals = await Promise.all([0, 1].map(() => managerA.client.rpc(
+  'hris_resolve_tenant_work_from_home_request', {
+    p_tenant_id: ids.tenantA, p_request_id: wfhRequestId,
+    p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+  },
+)));
+const wfhApproved = concurrentWfhApprovals.find(result => !result.error);
+const duplicateWfhApproval = concurrentWfhApprovals.find(result => result.error);
+const wfhEmployeeHistory = await employeeA.client.rpc('hris_get_my_service_requests', { p_tenant_id: ids.tenantA });
+const wfhHistoryRow = wfhEmployeeHistory.data?.requests?.find(row => row.id === wfhRequestId);
+const wfhMonth = await employeeA.client.rpc('hris_get_my_attendance_period', {
+  p_tenant_id: ids.tenantA, p_month_start: `${wfhDate.slice(0, 7)}-01`,
+});
+const wfhEmployeeAttendanceRow = wfhMonth.data?.records?.find(row => row.work_from_home_request_id === wfhRequestId);
+const wfhManagerAttendance = await managerA.client.rpc('hris_get_tenant_attendance_data', {
+  p_tenant_id: ids.tenantA, p_start: wfhDate, p_end: wfhDate,
+  p_search: null, p_status: 'scheduled', p_report: false,
+});
+const wfhManagerAttendanceRow = wfhManagerAttendance.data?.records?.find(row => row.work_from_home_request_id === wfhRequestId);
+const wfhCancelDate = addCalendarDays(wfhDate, 2);
+const wfhPendingForCancel = await employeeA.client.rpc('hris_submit_my_work_from_home_request', {
+  ...wfhDraft, p_from_date: wfhCancelDate, p_to_date: wfhCancelDate,
+  p_tasks: ['Update project notes'], p_reason: 'Synthetic request for cancellation acceptance.',
+});
+const wfhCancelId = wfhPendingForCancel.data?.id;
+const wfhCancelWrongOwner = await employeeB.client.rpc('hris_cancel_my_work_from_home_request', {
+  p_tenant_id: ids.tenantA, p_request_id: wfhCancelId,
+});
+const wfhCancelled = await employeeA.client.rpc('employee_cancel_pending_remote_work_request', {
+  p_id: wfhCancelId,
+});
+const wfhAfterCancel = await employeeA.client.rpc('hris_get_my_service_requests', { p_tenant_id: ids.tenantA });
+const wfhCancelledRow = wfhAfterCancel.data?.requests?.find(row => row.id === wfhCancelId);
+const wfhAudit = queryAdmin(`SELECT jsonb_build_object(
+  'history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history WHERE service_request_id='${wfhRequestId}'::uuid),
+  'cancel_history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history WHERE service_request_id='${wfhCancelId}'::uuid),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
+    WHERE target_type='service_request' AND target_id IN ('${wfhRequestId}','${wfhCancelId}')))`);
+record('E10 Work From Home persists structured dates, times, tasks, reason and optional location; enforces ownership and decisions; and appears as scheduled attendance without fabricated punches',
+  !wfhSubmit.error && Boolean(wfhRequestId)
+    && wfhSubmit.data?.request_data?.from_date === wfhDate
+    && wfhSubmit.data?.request_data?.duration_minutes === 480
+    && Boolean(wfhWrongTenant.error?.code === '42501')
+    && Boolean(wfhInvalidTime.error?.code === '22023')
+    && Boolean(wfhNoTasks.error?.code === '22023')
+    && Boolean(wfhLegacySubmit.error?.code === '22023')
+    && concurrentWfhWinners.length === 1
+    && concurrentWfhSubmissions.filter(result => result.error?.code === '23505').length === 1
+    && concurrentWfhCleanup.length === 1 && !concurrentWfhCleanup[0].error
+    && Boolean(wfhReasonOnlyBypass.error?.code === '22023')
+    && Boolean(wfhOverlap.error?.code === '23505')
+    && !wfhEdit.error && wfhEdit.data?.request_data?.start_time === '10:00:00'
+    && wfhEdit.data?.request_data?.tasks?.length === 3
+    && Boolean(wfhLegacyUpdate.error?.code === '22023')
+    && wfhManagerRow?.request_data?.location === 'Updated Dhaka home office'
+    && Boolean(wfhWrongTenantDecision.error?.code === '42501')
+    && Boolean(wfhEmployeeDecision.error?.code === '42501')
+    && Boolean(wfhGenericReviewBypass.error?.code === '22023')
+    && Boolean(wfhRejectWithoutReason.error?.code === '22023')
+    && !wfhApproved.error && wfhApproved.data?.status === 'approved'
+    && Boolean(duplicateWfhApproval?.error?.code === '40001')
+    && wfhHistoryRow?.status === 'approved'
+    && wfhHistoryRow?.history?.map(event => event.new_status).join(',') === 'pending,approved'
+    && wfhEmployeeAttendanceRow?.attendance_date === wfhDate
+    && wfhEmployeeAttendanceRow?.status === 'scheduled'
+    && wfhEmployeeAttendanceRow?.work_mode === 'home'
+    && wfhEmployeeAttendanceRow?.check_in === null && wfhEmployeeAttendanceRow?.check_out === null
+    && wfhManagerAttendanceRow?.status === 'scheduled'
+    && wfhManagerAttendanceRow?.work_mode === 'home'
+    && Boolean(wfhCancelWrongOwner.error?.code === '42501')
+    && !wfhCancelled.error && wfhCancelled.data === wfhCancelId
+    && wfhCancelledRow?.status === 'cancelled'
+    && JSON.stringify(wfhAudit.history) === JSON.stringify(['pending','approved'])
+    && JSON.stringify(wfhAudit.cancel_history) === JSON.stringify(['pending','cancelled'])
+    && wfhAudit.audit_count === 5,
+  JSON.stringify({ submit: wfhSubmit.error?.code, wrongTenant: wfhWrongTenant.error?.code,
+    invalidTime: wfhInvalidTime.error?.code, emptyTasks: wfhNoTasks.error?.code,
+    legacySubmit: wfhLegacySubmit.error?.code, legacyUpdate: wfhLegacyUpdate.error?.code,
+    concurrentSubmissions: concurrentWfhSubmissions.map(result => result.error?.code || result.data?.status),
+    concurrentApproval: concurrentWfhApprovals.map(result => result.error?.code || result.data?.status),
+    reasonOnlyBypass: wfhReasonOnlyBypass.error?.code, overlap: wfhOverlap.error?.code,
+    edit: wfhEdit.error?.code, managerRow: wfhManagerRow?.request_data,
+    wrongManager: wfhWrongTenantDecision.error?.code, employeeDecision: wfhEmployeeDecision.error?.code,
+    genericReview: wfhGenericReviewBypass.error?.code, rejectWithoutReason: wfhRejectWithoutReason.error?.code,
+    approval: wfhApproved.error?.code || wfhApproved.data?.status,
+    employeeAttendance: wfhEmployeeAttendanceRow, managerAttendance: wfhManagerAttendanceRow,
+    cancelled: wfhCancelled.error?.code || wfhCancelled.data,
+    history: wfhAudit.history, cancelHistory: wfhAudit.cancel_history, auditCount: wfhAudit.audit_count }));
 const pendingReject = await managerA.client.rpc('hris_resolve_tenant_service_request', {
   p_tenant_id: ids.tenantA, p_request_id: serviceRequestRejectId,
   p_expected_status: 'pending', p_next_status: 'rejected', p_note: 'The requested shift is not available for the selected schedule.',
@@ -6245,7 +6428,7 @@ record('Employees receive a recorded rejection reason and rejected requests cann
     duplicate: duplicatePendingReject.error?.code, invalid: wrongTransition.error?.code }));
 
 const concurrentServiceDraft = await employeeA.client.rpc('hris_submit_my_service_request', {
-  p_tenant_id: ids.tenantA, p_request_type: 'work_from_home', p_reason: 'Synthetic concurrency review request.',
+  p_tenant_id: ids.tenantA, p_request_type: 'shift_change', p_reason: 'Synthetic concurrency review request.',
 });
 const concurrentServiceId = concurrentServiceDraft.data?.id;
 const concurrentServiceDecisions = await Promise.all([1, 2].map(() => managerA.client.rpc('hris_resolve_tenant_service_request', {
@@ -6359,6 +6542,63 @@ record('Real Auth/Postgres employee-to-HR service-request review, outcomes, hist
     && JSON.stringify(browserServiceRejected?.history) === JSON.stringify(['pending','rejected'])
     && browserServiceRejected?.audit_count === 2,
   serviceBrowserError || JSON.stringify({ completed: browserServicePersistence, rejected: browserServiceRejected }));
+
+let workFromHomeBrowserOutput = '';
+let workFromHomeBrowserError = '';
+try {
+  workFromHomeBrowserOutput = execFileSync('node', [path.join(here, 'run-work-from-home-browser.mjs')], {
+    cwd: mainRoot,
+    env: {
+      ...process.env,
+      HRIS_LOCAL_SUPABASE_URL: services.API_URL,
+      HRIS_LOCAL_SUPABASE_ANON_KEY: services.ANON_KEY,
+      HRIS_LOCAL_TEST_PASSWORD: password,
+      HRIS_LOCAL_SERVICE_EMPLOYEE_EMAIL: emails[5],
+      HRIS_LOCAL_SERVICE_MANAGER_EMAIL: emails[0],
+      HRIS_LOCAL_WFH_DATE: wfhBrowserDate,
+      HRIS_LOCAL_WFH_CANCEL_DATE: wfhBrowserCancelDate,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+} catch (error) {
+  workFromHomeBrowserError = String(error.stderr || error.message || 'local Work From Home browser run failed').slice(-1800);
+}
+const workFromHomeBrowserId = workFromHomeBrowserOutput.match(/WORK_FROM_HOME_ACCEPTANCE_ID=([0-9a-f-]{36})/i)?.[1];
+const workFromHomeBrowserCancelledId = workFromHomeBrowserOutput.match(/WORK_FROM_HOME_CANCELLED_ID=([0-9a-f-]{36})/i)?.[1];
+const browserWorkFromHome = workFromHomeBrowserId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id,'employee_id',employee_id,'request_type',request_type,'status',status,
+  'request_data',request_data,
+  'history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history h WHERE h.service_request_id=service_requests.id),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs a
+    WHERE a.target_type='service_request' AND a.target_id=service_requests.id::text))
+  FROM public.service_requests WHERE id=${sqlLiteral(workFromHomeBrowserId)}::uuid`) : null;
+const browserWorkFromHomeCancelled = workFromHomeBrowserCancelledId ? queryAdmin(`SELECT jsonb_build_object(
+  'tenant_id',tenant_id,'employee_id',employee_id,'status',status,
+  'history',(SELECT coalesce(jsonb_agg(new_status ORDER BY created_at,id),'[]'::jsonb)
+    FROM public.service_request_status_history h WHERE h.service_request_id=service_requests.id),
+  'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs a
+    WHERE a.target_type='service_request' AND a.target_id=service_requests.id::text))
+  FROM public.service_requests WHERE id=${sqlLiteral(workFromHomeBrowserCancelledId)}::uuid`) : null;
+record('Real Auth/Postgres Work From Home employee and manager flows persist structured requests, approval, cancellation, history, and attendance recovery in EN/BN on mobile and desktop',
+  workFromHomeBrowserOutput.includes('Local employee submission, structured edit, pending cancellation, manager approval, EN/BN layouts, history refresh, and scheduled attendance persisted.')
+    && browserWorkFromHome?.tenant_id === ids.tenantA
+    && browserWorkFromHome?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserWorkFromHome?.request_type === 'work_from_home'
+    && browserWorkFromHome?.status === 'approved'
+    && browserWorkFromHome?.request_data?.from_date === wfhBrowserDate
+    && browserWorkFromHome?.request_data?.start_time === '10:00:00'
+    && browserWorkFromHome?.request_data?.tasks?.length === 3
+    && browserWorkFromHome?.request_data?.location === 'Updated Dhaka home office'
+    && JSON.stringify(browserWorkFromHome?.history) === JSON.stringify(['pending','approved'])
+    && browserWorkFromHome?.audit_count === 3
+    && browserWorkFromHomeCancelled?.tenant_id === ids.tenantA
+    && browserWorkFromHomeCancelled?.employee_id === '55555555-5555-4555-8555-555555555555'
+    && browserWorkFromHomeCancelled?.status === 'cancelled'
+    && JSON.stringify(browserWorkFromHomeCancelled?.history) === JSON.stringify(['pending','cancelled'])
+    && browserWorkFromHomeCancelled?.audit_count === 2,
+  workFromHomeBrowserError || JSON.stringify({ approved: browserWorkFromHome, cancelled: browserWorkFromHomeCancelled }));
 
 psqlSync(`UPDATE public.employees SET employment_status='terminated'
   WHERE id='55555555-5555-4555-8555-555555555555';`);

@@ -39,7 +39,7 @@ test('employee service-request UI submits through scoped RPCs and recovers histo
   assert.match(locale, /'No service requests yet': 'এখনও কোনো পরিষেবা অনুরোধ নেই'/);
   assert.match(locale, /'Unable to complete this service request\. Try again\.': 'পরিষেবা অনুরোধটি সম্পন্ন করা যায়নি। আবার চেষ্টা করুন।'/);
   assert.match(component, /role="alert"/);
-  assert.match(component, /disabled=\{submitting \|\| !reason\.trim\(\)\}/);
+  assert.match(component, /disabled=\{submitting \|\| !reason\.trim\(\) \|\| \(requestType === 'work_from_home'/);
   assert.match(workspace, /page === 'my-service-requests' && isEmployee/);
   assert.match(workspace, /id: 'my-service-requests', label: 'My Requests'/);
   assert.match(workspace, /MyServiceRequests tenantId=\{tenantId\} locale=\{locale\}/);
