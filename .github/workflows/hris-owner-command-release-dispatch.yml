@@ -1,0 +1,113 @@
+# Auditable alternative manual trigger for this repository's EXISTING gated workflows.
+# Only an OWNER-authored command on issue #191 can dispatch one stage.
+# Does not run SQL, bypass branch protection, or weaken target workflows.
+name: HRIS protected owner-command release dispatch
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: hris-owner-command-production-dispatch
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    if: >-
+      github.repository == 'shihab-tech04/HRIS-v2' &&
+      github.event.issue.number == 191 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'shihab-tech04' &&
+      github.event.comment.author_association == 'OWNER' &&
+      startsWith(github.event.comment.body, '/hris-prod ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OWNER_COMMAND: ${{ github.event.comment.body }}
+      APPROVED_SESSION_POOLER_HOST: aws-0-ap-northeast-2.pooler.supabase.com
+    steps:
+      - name: Validate exact owner command and protected Main
+        id: command
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'shihab-tech04/HRIS-v2'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          current="$(gh api repos/shihab-tech04/HRIS-v2/branches/main --jq '.commit.sha')"
+          test "$current" = "$GITHUB_SHA" || { echo '::error::Protected Main moved'; exit 1; }
+          python3 - <<'PY'
+          import os,re
+          command=os.environ['OWNER_COMMAND']
+          sha=r'[0-9a-f]{40}'
+          run=r'[1-9][0-9]{7,11}'
+          hash_=r'[0-9a-f]{64}'
+          patterns={
+            'service':rf'/hris-prod service ({sha})',
+            'access':rf'/hris-prod access ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
+            'pages':rf'/hris-prod pages ({sha})',
+          }
+          matched=[(stage,re.fullmatch(regex,command)) for stage,regex in patterns.items()]
+          matches=[(stage,m) for stage,m in matched if m]
+          if len(matches)!=1: raise SystemExit('Only an exact one-line release command is accepted')
+          stage,m=matches[0]
+          if m.group(1)!=os.environ['GITHUB_SHA']: raise SystemExit('Command is not for exact current protected Main')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              print('stage='+stage,file=f)
+              if stage=='access':
+                  for name,value in zip(('source_run','database_run','restore_run','source_sha','database_sha'),m.groups()[1:]):
+                      print(name+'='+value,file=f)
+          print('PASS: repository OWNER command, issue 191, exact Main, and strict input validation')
+          PY
+      - name: Require green protected Main and previously completed release stages
+        shell: bash
+        env:
+          STAGE: ${{ steps.command.outputs.stage }}
+        run: |
+          set -euo pipefail
+          main_checks="$(gh api "repos/shihab-tech04/HRIS-v2/commits/$GITHUB_SHA/check-runs?per_page=100")"
+          jq -e '[.check_runs[] | select(.name == "check" and .status == "completed" and .conclusion == "success")] | length > 0' <<< "$main_checks" >/dev/null
+          success_on_main() {
+            gh api "repos/shihab-tech04/HRIS-v2/actions/workflows/$1/runs?event=workflow_dispatch&per_page=40" \
+              | jq -e --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .status == "completed" and .conclusion == "success")] | length > 0' >/dev/null
+          }
+          case "$STAGE" in
+            service) echo 'PASS: service recovery requires its independent SQL and backup gates' ;;
+            access) success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; } ;;
+            pages)
+              success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; }
+              success_on_main hris-release1-platform-access-sql-release.yml || { echo '::error::Access SQL release not confirmed'; exit 1; } ;;
+            *) exit 1 ;;
+          esac
+          echo 'PASS: exact Main check and prerequisite release-run gates'
+      - name: Dispatch exactly one existing approved workflow
+        shell: bash
+        env:
+          STAGE: ${{ steps.command.outputs.stage }}
+          SOURCE_RUN: ${{ steps.command.outputs.source_run }}
+          DATABASE_RUN: ${{ steps.command.outputs.database_run }}
+          RESTORE_RUN: ${{ steps.command.outputs.restore_run }}
+          SOURCE_SHA: ${{ steps.command.outputs.source_sha }}
+          DATABASE_SHA: ${{ steps.command.outputs.database_sha }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/shihab-tech04/HRIS-v2/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
+          case "$STAGE" in
+            service)
+              gh workflow run hris-service-requests-gated-sql.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f release_approved=true -f offsite_recovery_verified=true \
+                -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
+            access)
+              gh workflow run hris-release1-platform-access-sql-release.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f release_approved=true -f offsite_recovery_verified=true \
+                -f source_backup_run_id="$SOURCE_RUN" -f database_backup_run_id="$DATABASE_RUN" \
+                -f restore_run_id="$RESTORE_RUN" \
+                -f offsite_source_archive_sha256="$SOURCE_SHA" -f offsite_database_archive_sha256="$DATABASE_SHA" \
+                -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
+            pages)
+              gh workflow run deploy-pages.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f release_approved=true -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
+            *) exit 1 ;;
+          esac
+          echo "PASS: owner-authorized $STAGE release was submitted to existing protected workflow."
+          echo 'Submission is NOT deployment; target workflow and hosted readback must pass independently.'
