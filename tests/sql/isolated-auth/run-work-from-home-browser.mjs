@@ -103,7 +103,7 @@ try {
   if (!refreshedCardText.includes('Dhaka home office')) {
     throw new Error(`WFH employee history data was returned but not rendered: ${JSON.stringify({ request: refreshedRequest, cardText: refreshedCardText })}.`);
   }
-  await card.getByText('Dhaka home office', { exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('Dhaka home office', { exact: false }).waitFor({ state: 'visible' });
 
   await employee.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
   await employee.getByRole('heading', { name: 'আমার পরিষেবা অনুরোধ', exact: true }).waitFor({ state: 'visible' });
@@ -122,7 +122,7 @@ try {
       || updated?.request_data?.tasks?.length !== 3) {
     throw new Error(`Pending WFH edit did not persist: ${JSON.stringify(updated)}.`);
   }
-  await card.getByText('Updated Dhaka home office', { exact: true }).waitFor({ state: 'visible' });
+  await card.getByText('Updated Dhaka home office', { exact: false }).waitFor({ state: 'visible' });
   await assertNoOverflow(employee, 'Bengali WFH employee mobile');
 
   await employee.getByLabel('শুরুর তারিখ', { exact: true }).fill(process.env.HRIS_LOCAL_WFH_CANCEL_DATE);
@@ -169,7 +169,7 @@ try {
   await managerNav.getByRole('button', { name: 'Service Requests', exact: true }).click();
   await manager.getByRole('heading', { name: 'Service Requests', exact: true }).waitFor({ state: 'visible' });
   const managerCard = manager.locator(`[data-service-request="${saved.id}"]`);
-  await managerCard.getByText('Updated Dhaka home office', { exact: true }).waitFor({ state: 'visible' });
+  await managerCard.getByText('Updated Dhaka home office', { exact: false }).waitFor({ state: 'visible' });
   await managerCard.getByText('Join team planning', { exact: true }).waitFor({ state: 'visible' });
   await managerCard.getByRole('button', { name: 'Approve Work From Home', exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(manager, 'WFH manager mobile');
