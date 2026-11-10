@@ -1300,7 +1300,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
                 ].filter(Boolean).join(' · ') || '—'}</td>
                 <td className="px-3 py-3">
                   <span>{display(item.reason)}</span>
-                  {(item.original_check_in || item.original_check_out || item.original_work_mode) && <span className="mt-1 block text-xs text-slate-500">
+                  {Boolean(item.original_check_in || item.original_check_out || item.original_work_mode || item.original_client_name) && <span className="mt-1 block text-xs text-slate-500">
                     {projectText(locale, 'Original values')}: {[item.original_check_in ? `In ${displayTime(item.original_check_in)}` : '', item.original_check_out ? `Out ${displayTime(item.original_check_out)}` : '', item.original_work_mode ? displayWorkMode(item.original_work_mode) : '', item.original_client_name ? `${projectText(locale, 'Client name')}: ${display(item.original_client_name)}` : ''].filter(Boolean).join(' · ')}
                   </span>}
                   {Array.isArray(item.correction_categories) && <span className="mt-1 block text-xs text-slate-500">
@@ -1798,7 +1798,7 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
                     {item.correction_categories.map(value => tx(value === 'check_in_time' ? 'Check-in time' : value === 'check_out_time' ? 'Check-out time' : 'Work location')).join(' · ')}
                   </span>}
                   {Boolean(item.client_name) && <span className="mt-1 block text-xs text-slate-500">{tx('Client name')}: {display(item.client_name)}</span>}
-                  {(item.original_check_in || item.original_check_out || item.original_work_mode || item.original_client_name) && <span className="mt-1 block text-xs text-slate-500">
+                  {Boolean(item.original_check_in || item.original_check_out || item.original_work_mode || item.original_client_name) && <span className="mt-1 block text-xs text-slate-500">
                     {tx('Original values')}: {[item.original_check_in ? `In ${displayTime(item.original_check_in)}` : '', item.original_check_out ? `Out ${displayTime(item.original_check_out)}` : '', item.original_work_mode ? displayWorkMode(item.original_work_mode) : '', item.original_client_name ? `${tx('Client name')}: ${display(item.original_client_name)}` : ''].filter(Boolean).join(' · ')}
                   </span>}
                   {Boolean(item.evidence_path) && <button type="button" onClick={() => void openAttendanceEvidenceFile(String(item.evidence_path), tx, setCorrectionEvidenceError)}
