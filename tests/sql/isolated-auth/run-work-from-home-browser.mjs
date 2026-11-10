@@ -110,9 +110,9 @@ try {
   await card.getByRole('button', { name: 'অনুরোধ সম্পাদনা করুন', exact: true }).click();
   await card.getByLabel('শুরুর সময়', { exact: true }).fill('10:00');
   await card.getByLabel('শেষ সময়', { exact: true }).fill('18:00');
-  await card.getByLabel('কাজের তালিকা', { exact: true }).fill('Review local acceptance files\nPrepare the weekly report\nJoin team planning');
+  await card.locator('textarea[id^="edit-wfh-"][id$="-tasks"]').fill('Review local acceptance files\nPrepare the weekly report\nJoin team planning');
   await card.getByLabel('কাজের স্থান (ঐচ্ছিক)', { exact: true }).fill('Updated Dhaka home office');
-  await card.getByLabel('কারণ', { exact: true }).fill('Updated synthetic WFH browser acceptance request.');
+  await card.locator('form textarea').last().fill('Updated synthetic WFH browser acceptance request.');
   const editResponsePromise = employee.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_update_my_work_from_home_request')
     && response.request().method() === 'POST');
   await card.getByRole('button', { name: 'পরিবর্তন সংরক্ষণ করুন', exact: true }).click();
