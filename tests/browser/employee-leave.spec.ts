@@ -109,6 +109,21 @@ test('linked employee can complete the private evidence leave request on mobile'
         holidays: [{ id: 'f7777777-7777-4777-8777-777777777777', name: 'Synthetic Staff Day', start_date: '2026-10-13', end_date: '2026-10-13' }],
         weekly_off_days: [0, 6], balance_year: new Date().getFullYear(),
       }) });
+    } else if (endpoint === 'hris_get_my_attendance_correction_context') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        tenant_id: tenantId,
+        tenant_timezone: 'Asia/Dhaka',
+        policy: { employee_can_edit_pending: false, employee_can_cancel_pending: false, evidence_required: false },
+        requests: correctionSubmitted ? [{
+          id: 'f8888888-8888-4888-8888-888888888888',
+          tenant_id: tenantId,
+          attendance_date: '2026-10-12',
+          correction_categories: ['check_in_time'],
+          requested_check_in: '2026-10-12T03:15:00.000Z',
+          reason: 'Synthetic missed punch correction',
+          status: 'pending',
+        }] : [],
+      }) });
     } else if (endpoint === 'hris_employee_submit_leave_request') {
       submitted = true;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify('f5555555-5555-4555-8555-555555555555') });
@@ -251,7 +266,9 @@ test('linked employee can complete the private evidence leave request on mobile'
   await correctionDialog.getByLabel('Check-in time').check();
   await page.getByLabel('Requested check-in').fill('09:15');
   await correctionDialog.getByLabel(/Reason/).fill('Synthetic missed punch correction');
-  await correctionDialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  const sendCorrection = correctionDialog.getByRole('button', { name: 'Send request', exact: true });
+  await expect(sendCorrection).toBeEnabled();
+  await sendCorrection.click();
   await expect(page.getByText('Attendance correction submitted for review.', { exact: true })).toBeVisible();
   await expect(page.getByRole('row', { name: /Synthetic missed punch correction/ })).toBeVisible();
   const correctionHistoryRegion = page.getByRole('region', { name: 'Attendance correction history table', exact: true });
