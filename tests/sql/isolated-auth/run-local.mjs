@@ -239,7 +239,8 @@ function resubmitRejectedProjectTimesheet(session, tenantId, timesheetId, projec
 }
 
 function tableRow(table, id) {
-  const allowed = new Set(['leave_requests', 'attendance_records', 'attendance_corrections', 'employee_shift_assignments']);
+  const allowed = new Set(['leave_requests', 'attendance_records', 'attendance_corrections',
+    'employee_shift_assignments', 'service_requests']);
   if (!allowed.has(table)) throw new Error(`Unexpected local fixture table: ${table}`);
   return queryAdmin(`SELECT to_jsonb(t) FROM public.${table} t WHERE id=${sqlLiteral(id)}::uuid`);
 }
@@ -491,6 +492,8 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261023130800_hris_private_storage_tenant_read_guard.sql'),
   path.join(mainRoot, 'supabase/migrations/20261027040642_employee_profile_tenant_scoped_contract.sql'),
   path.join(mainRoot, 'supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql'),
+  // Apply the newly tracked E06/E11 contract after all historical schema and RPC fixtures.
+  path.join(mainRoot, 'supabase/migrations/20261110193754_hris_attendance_correction_movement_parity.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',
@@ -5537,7 +5540,8 @@ record('Global role without an active linked employee cannot use employee web cl
 const attendanceCorrectionSubmission = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
   p_tenant_id: ids.tenantA,
   p_payload: {
-    attendance_date: localCurrentDate, check_in_time: '09:15', check_out_time: null,
+    attendance_date: localCurrentDate, correction_categories: ['check_in_time'],
+    check_in_time: '09:15', check_out_time: null,
     work_mode: null, reason: 'Synthetic employee attendance correction',
   },
 });
@@ -5563,17 +5567,19 @@ record('Personal dashboard lists only the linked employee’s attendance correct
 
 const emptyAttendanceCorrection = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
   p_tenant_id: ids.tenantA,
-  p_payload: { attendance_date: localCurrentDate, check_in_time: null, check_out_time: null,
+  p_payload: { attendance_date: localCurrentDate, correction_categories: [], check_in_time: null, check_out_time: null,
     work_mode: null, reason: 'Missing correction values' },
 });
 const crossTenantAttendanceCorrection = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
   p_tenant_id: ids.tenantB,
-  p_payload: { attendance_date: localCurrentDate, check_in_time: '09:15', reason: 'Cross tenant attempt' },
+  p_payload: { attendance_date: localCurrentDate, correction_categories: ['check_in_time'],
+    check_in_time: '09:15', reason: 'Cross tenant attempt' },
 });
 const missingAttendanceCorrectionReason = `Synthetic missing attendance row ${randomUUID()}`;
 const missingAttendanceCorrection = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
   p_tenant_id: ids.tenantA,
-  p_payload: { attendance_date: '2000-01-01', check_in_time: '09:15', reason: missingAttendanceCorrectionReason },
+  p_payload: { attendance_date: '2000-01-01', correction_categories: ['check_in_time'],
+    check_in_time: '09:15', reason: missingAttendanceCorrectionReason },
 });
 const missingAttendanceCorrectionPersistence = queryAdmin(`SELECT jsonb_build_object(
   'request_count',(SELECT count(*)::integer FROM public.attendance_corrections
@@ -7038,6 +7044,162 @@ record('Concurrent attendance decisions resolve and create one record and audit 
   && concurrentAttendanceRecord.tenant_id === ids.tenantA
   && auditCount(ids.attendanceConcurrent, 'attendance.correction.approved') === 1,
   concurrentAttendance.map(result => result.status === 'fulfilled' ? 'resolved' : 'denied').join('/'));
+
+// E11: exercise the versioned movement contract with real synthetic Auth
+// sessions. Verify tenant-scoped decisions, return marking and the attendance
+// projection, then restore only the synthetic attendance row and audit data.
+const e11PurposeOfficial = `Synthetic E11 official movement ${randomUUID()}`;
+const e11PurposePersonal = `Synthetic E11 personal movement ${randomUUID()}`;
+const e11PurposeMeeting = `Synthetic E11 client meeting ${randomUUID()}`;
+const e11RejectionNote = `Synthetic E11 rejection ${randomUUID()}`;
+const e11RequestIds = [];
+const e11AttendanceBefore = queryAdmin(`SELECT to_jsonb(a) FROM public.attendance_records a
+  WHERE a.id='${ids.attendanceRecord}'::uuid AND a.tenant_id='${ids.tenantA}'::uuid`);
+try {
+  const officialMovement = await employeeA.client.rpc('hris_submit_my_movement_request', {
+    p_tenant_id: ids.tenantA,
+    p_payload: { movement_type: 'official', date: localCurrentDate,
+      departure_time: '09:00', expected_return_time: '10:00',
+      destination: 'Synthetic field site', purpose: e11PurposeOfficial },
+  });
+  if (officialMovement.error || typeof officialMovement.data?.id !== 'string') {
+    throw officialMovement.error || new Error('E11 official movement did not return its saved request.');
+  }
+  const officialMovementId = officialMovement.data.id;
+  e11RequestIds.push(officialMovementId);
+  const officialMovementRow = queryAdmin(`SELECT to_jsonb(r) FROM public.service_requests r
+    WHERE r.id=${sqlLiteral(officialMovementId)}::uuid AND r.tenant_id='${ids.tenantA}'::uuid`);
+  record('E11 official movement persists its typed destination, date, departure, return time and purpose',
+    officialMovementRow.request_type === 'movement' && officialMovementRow.status === 'pending'
+    && officialMovementRow.employee_id === '55555555-5555-4555-8555-555555555555'
+    && officialMovementRow.request_data?.form_version === 'e11_v1'
+    && officialMovementRow.request_data?.movement_type === 'official'
+    && officialMovementRow.request_data?.destination === 'Synthetic field site'
+    && officialMovementRow.request_data?.departure_time === '09:00:00'
+    && officialMovementRow.request_data?.expected_return_time === '10:00:00'
+    && officialMovementRow.request_data?.purpose === e11PurposeOfficial
+    && officialMovement.data.tenant_id === ids.tenantA);
+
+  const foreignDecision = await managerB.client.rpc('hris_resolve_tenant_movement_request', {
+    p_tenant_id: ids.tenantB, p_request_id: officialMovementId,
+    p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+  });
+  const noPermissionDecision = await noPermission.client.rpc('hris_resolve_tenant_movement_request', {
+    p_tenant_id: ids.tenantA, p_request_id: officialMovementId,
+    p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+  });
+  const officialBeforeApproval = tableRow('service_requests', officialMovementId);
+  record('E11 movement decisions deny a foreign-tenant manager and a user without employee-management permission',
+    Boolean(foreignDecision.error) && Boolean(noPermissionDecision.error)
+      && officialBeforeApproval.status === 'pending');
+
+  const approvedOfficialMovement = await managerA.client.rpc('hris_resolve_tenant_movement_request', {
+    p_tenant_id: ids.tenantA, p_request_id: officialMovementId,
+    p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+  });
+  if (approvedOfficialMovement.error) throw approvedOfficialMovement.error;
+  const wrongEmployeeReturn = await employeeB.client.rpc('hris_mark_my_movement_returned', {
+    p_tenant_id: ids.tenantA, p_request_id: officialMovementId,
+  });
+  const returnedOfficialMovement = await employeeA.client.rpc('hris_mark_my_movement_returned', {
+    p_tenant_id: ids.tenantA, p_request_id: officialMovementId,
+  });
+  const duplicateOfficialReturn = await employeeA.client.rpc('hris_mark_my_movement_returned', {
+    p_tenant_id: ids.tenantA, p_request_id: officialMovementId,
+  });
+  const officialHistory = queryAdmin(`SELECT jsonb_build_object('count',count(*),
+      'statuses',jsonb_agg(new_status ORDER BY created_at,id))
+    FROM public.service_request_status_history WHERE service_request_id=${sqlLiteral(officialMovementId)}::uuid`);
+  record('E11 employee sees approval status, only the owner can mark return, and return history survives duplicate retries',
+    approvedOfficialMovement.data?.status === 'approved'
+    && Boolean(wrongEmployeeReturn.error)
+    && returnedOfficialMovement.data?.status === 'approved'
+    && Boolean(returnedOfficialMovement.data?.returned_at)
+    && Boolean(duplicateOfficialReturn.error)
+    && officialHistory.count === 3
+    && JSON.stringify(officialHistory.statuses) === JSON.stringify(['pending','approved','approved'])
+    && auditCount(officialMovementId, 'movement.returned') === 1);
+
+  const personalMovement = await employeeA.client.rpc('hris_submit_my_movement_request', {
+    p_tenant_id: ids.tenantA,
+    p_payload: { movement_type: 'personal', date: localCurrentDate,
+      departure_time: '14:00', expected_return_time: '15:00',
+      destination: 'Synthetic personal destination', purpose: e11PurposePersonal },
+  });
+  if (personalMovement.error || typeof personalMovement.data?.id !== 'string') {
+    throw personalMovement.error || new Error('E11 personal movement did not return its saved request.');
+  }
+  const personalMovementId = personalMovement.data.id;
+  e11RequestIds.push(personalMovementId);
+  const rejectionWithoutNote = await managerA.client.rpc('hris_resolve_tenant_movement_request', {
+    p_tenant_id: ids.tenantA, p_request_id: personalMovementId,
+    p_expected_status: 'pending', p_next_status: 'rejected', p_note: null,
+  });
+  const rejectedPersonalMovement = await managerA.client.rpc('hris_resolve_tenant_movement_request', {
+    p_tenant_id: ids.tenantA, p_request_id: personalMovementId,
+    p_expected_status: 'pending', p_next_status: 'rejected', p_note: e11RejectionNote,
+  });
+  const personalRowAfterDecision = queryAdmin(`SELECT to_jsonb(r) FROM public.service_requests r
+    WHERE r.id=${sqlLiteral(personalMovementId)}::uuid`);
+  const rejectedReturn = await employeeA.client.rpc('hris_mark_my_movement_returned', {
+    p_tenant_id: ids.tenantA, p_request_id: personalMovementId,
+  });
+  record('E11 supported personal movement requires a rejection reason and cannot be marked returned after rejection',
+    Boolean(rejectionWithoutNote.error)
+    && rejectedPersonalMovement.data?.status === 'rejected'
+    && personalRowAfterDecision.resolution_note === e11RejectionNote
+    && Boolean(rejectedReturn.error)
+    && auditCount(personalMovementId, 'movement.request.rejected') === 1);
+
+  const clientMeeting = await employeeA.client.rpc('hris_submit_my_movement_request', {
+    p_tenant_id: ids.tenantA,
+    p_payload: { movement_type: 'client_meeting', from_date: localCurrentDate,
+      to_date: localCurrentDate, start_time: '16:00', end_time: '17:00',
+      client_name: 'Synthetic client', purpose: e11PurposeMeeting, remarks: e11PurposeMeeting },
+  });
+  if (clientMeeting.error || typeof clientMeeting.data?.id !== 'string') {
+    throw clientMeeting.error || new Error('E11 client meeting did not return its saved request.');
+  }
+  const clientMeetingId = clientMeeting.data.id;
+  e11RequestIds.push(clientMeetingId);
+  const approvedClientMeeting = await managerA.client.rpc('hris_resolve_tenant_movement_request', {
+    p_tenant_id: ids.tenantA, p_request_id: clientMeetingId,
+    p_expected_status: 'pending', p_next_status: 'approved', p_note: null,
+  });
+  if (approvedClientMeeting.error) throw approvedClientMeeting.error;
+  const updatedMeetingAttendance = tableRow('attendance_records', ids.attendanceRecord);
+  const meetingAttendancePeriod = await employeeA.client.rpc('hris_get_my_attendance_period', {
+    p_tenant_id: ids.tenantA, p_month_start: `${localCurrentDate.slice(0, 7)}-01`,
+  });
+  const meetingPeriodRow = meetingAttendancePeriod.data?.records?.find(row => row.attendance_date === localCurrentDate);
+  record('E11 approved client meeting updates only its existing attendance row and monthly employee attendance projection',
+    updatedMeetingAttendance.work_mode === 'client_meeting'
+    && updatedMeetingAttendance.client_name === 'Synthetic client'
+    && updatedMeetingAttendance.check_in === e11AttendanceBefore.check_in
+    && updatedMeetingAttendance.check_out === e11AttendanceBefore.check_out
+    && !meetingAttendancePeriod.error
+    && meetingPeriodRow?.work_mode === 'client_meeting'
+    && meetingPeriodRow?.client_name === 'Synthetic client');
+  const returnedMeeting = await employeeA.client.rpc('hris_mark_my_movement_returned', {
+    p_tenant_id: ids.tenantA, p_request_id: clientMeetingId,
+  });
+  record('E11 approved client meeting can complete its required return action',
+    returnedMeeting.data?.status === 'approved' && Boolean(returnedMeeting.data?.returned_at));
+} finally {
+  if (e11AttendanceBefore?.id) {
+    psqlSync(`UPDATE public.attendance_records SET work_mode=${sqlLiteral(e11AttendanceBefore.work_mode)},
+      client_name=${e11AttendanceBefore.client_name === null ? 'NULL' : sqlLiteral(e11AttendanceBefore.client_name)},
+      updated_at=${sqlLiteral(e11AttendanceBefore.updated_at)}::timestamptz
+      WHERE id='${ids.attendanceRecord}'::uuid AND tenant_id='${ids.tenantA}'::uuid;`);
+  }
+  if (e11RequestIds.length) {
+    const requestIds = e11RequestIds.map(id => sqlLiteral(id)).join(',');
+    psqlSync(`DELETE FROM public.admin_audit_logs
+      WHERE target_type='service_request' AND target_id IN (${requestIds});
+      DELETE FROM public.service_requests WHERE id IN (${requestIds})
+        AND tenant_id='${ids.tenantA}'::uuid;`);
+  }
+}
 
 const concurrent = await Promise.allSettled([
   psqlAsync(sessionSql(managerA, `SELECT public.admin_resolve_leave_request('${ids.leaveConcurrent}'::uuid,'approved','first concurrent call')::jsonb`)),

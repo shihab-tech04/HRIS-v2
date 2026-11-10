@@ -80,7 +80,8 @@ try {
   employee.on('request', request => {
     if (request.url().endsWith('/rest/v1/rpc/hris_employee_submit_attendance_correction') && request.method() === 'POST') {
       const payload = request.postDataJSON();
-      submitted.push({ tenantId: payload?.p_tenant_id, reason: payload?.p_payload?.reason });
+      submitted.push({ tenantId: payload?.p_tenant_id, reason: payload?.p_payload?.reason,
+        categories: payload?.p_payload?.correction_categories });
     }
   });
   await employee.route('**/*', async route => {
@@ -140,8 +141,8 @@ try {
   const correctionDate = dialog.getByLabel('Attendance date');
   await correctionDate.selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
   await dialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT);
-  await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
-  await dialog.getByRole('alert').filter({ hasText: 'Enter at least one attendance field to correct.' }).waitFor({ state: 'visible' });
+  const emptySubmit = dialog.getByRole('button', { name: 'Send request', exact: true });
+  if (!await emptySubmit.isDisabled()) throw new Error('An attendance correction with no category remained submittable.');
   if (submitted.length) throw new Error('An empty attendance correction reached the backend.');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await dialog.waitFor({ state: 'detached' });
@@ -151,6 +152,7 @@ try {
   if (await dialog.getByLabel('Reason').inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
     throw new Error('Cancel and reopen discarded the employee correction draft.');
   }
+  await dialog.getByLabel('Check-in time', { exact: true }).check();
   await dialog.getByLabel('Requested check-in', { exact: true }).fill('09:35');
 
   const rejectedFailure = correctionResponse(employee, 503);
@@ -182,6 +184,7 @@ try {
   await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
   const approvalDialog = employee.getByRole('dialog', { name: 'Request attendance correction', exact: true });
   await approvalDialog.getByLabel('Attendance date').selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
+  await approvalDialog.getByLabel('Check-in time', { exact: true }).check();
   await approvalDialog.getByLabel('Requested check-in', { exact: true }).fill('09:45');
   await approvalDialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE);
   const approvalSubmit = correctionResponse(employee, 200);
@@ -285,7 +288,9 @@ try {
   ];
   if (submitted.length !== expectedSubmissions.length
       || submitted.some((request, index) => request.tenantId !== process.env.HRIS_LOCAL_CORRECTION_TENANT_ID
-        || request.reason !== expectedSubmissions[index])) {
+        || request.reason !== expectedSubmissions[index]
+        || !Array.isArray(request.categories) || request.categories.length !== 1
+        || request.categories[0] !== 'check_in_time')) {
     throw new Error(`Attendance correction submissions were not bound to the active tenant and expected retry sequence: ${JSON.stringify(submitted)}.`);
   }
   await manager.setViewportSize({ width: 375, height: 812 });

@@ -39,7 +39,7 @@ test('Employee Dashboard shares the active locale with date, number, leave, and 
   assert.match(workspace, /function EmployeeOverview\(\{[^)]*onOpenPendingRequest[^)]*onOpenLeave[^)]*onOpenPayslips[^)]*onOpenRequests/);
   assert.match(workspace, /<EmployeeOverview tenantId=\{tenantId\} tenantName=\{tenantName\} userId=\{userId\} locale=\{locale\}[\s\S]*?onOpenLearning=\{\(\) => navigate\('my-learning'\)\}[\s\S]*?onOpenProjects=\{\(\) => navigate\('my-projects'\)\}[\s\S]*?onOpenPerformance=\{\(\) => navigate\('my-performance'\)\}[\s\S]*?onOpenAnnouncements=\{\(\) => navigate\('my-announcements'\)\}[\s\S]*?onOpenPendingRequest=\{kind => navigate\([\s\S]*?\} \/>/);
   assert.match(workspace, /showHistory=\{false\} locale=\{locale\} \/>/);
-  assert.ok(workspace.includes('onRefresh={() => load(false)} locale={locale} />'));
+  assert.match(workspace, /<PersonalAttendanceCorrections tenantId=\{tenantId\}[^>]*onRefresh=\{\(\) => load\(false\)\} locale=\{locale\}[^>]*userId=\{userId\} openRequested=\{attendanceCorrectionOpenRequested\}/);
   assert.match(workspace, /toLocaleString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
   assert.match(workspace, /toLocaleDateString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
   assert.match(workspace, /const noticeDate = \(value: string\) => locale === 'bn' \? employeeDate\(value\) : value;/);

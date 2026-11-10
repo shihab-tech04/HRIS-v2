@@ -137,6 +137,24 @@ type DashboardSummary = {
   attendance_last_30_days?: DashboardPoint[];
 };
 type AttendanceRecord = Record<string, unknown>;
+
+async function openAttendanceEvidenceFile(
+  path: string,
+  translate: (source: string) => string,
+  onError: (message: string) => void,
+) {
+  const tab = window.open('about:blank', '_blank');
+  if (tab) tab.opener = null;
+  try {
+    const { data, error } = await supabase.storage.from('attendance-evidence').createSignedUrl(path, 60);
+    if (error || !data?.signedUrl) throw error || new Error('Signed evidence link unavailable.');
+    if (tab) tab.location.href = data.signedUrl;
+    else window.location.assign(data.signedUrl);
+  } catch {
+    tab?.close();
+    onError(translate('Unable to open the private evidence file.'));
+  }
+}
 type LeaveRequest = Record<string, unknown>;
 type LeaveData = {
   requests: LeaveRequest[];
@@ -292,6 +310,9 @@ function displayAttendanceWorkLocation(value: unknown, locale: Locale): string {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase().replaceAll('_', ' ') : '';
   if (normalized === 'office' || normalized === 'work from office') return projectText(locale, 'Work from Office');
   if (normalized === 'home' || normalized === 'remote' || normalized === 'wfh' || normalized === 'work from home') return projectText(locale, 'Work from Home');
+  if (normalized === 'client meeting') return projectText(locale, 'Client meeting');
+  if (normalized === 'client') return projectText(locale, 'Client');
+  if (normalized === 'field') return projectText(locale, 'Field');
   return projectText(locale, displayWorkMode(value));
 }
 
@@ -1017,6 +1038,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
   const [rejectingCorrection, setRejectingCorrection] = useState<AttendanceRecord | null>(null);
   const [correctionResolutionNote, setCorrectionResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [correctionEvidenceError, setCorrectionEvidenceError] = useState('');
   const requestSequence = useRef(0);
   const rejectionDialogRef = useRef<HTMLDivElement>(null);
   const rejectionTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1155,7 +1177,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
       await load();
       if (decision === 'rejected') document.getElementById(view === 'requests' ? 'attendance-requests-heading' : 'attendance-report-heading')?.focus();
     } catch (cause) {
-      if (activeTenantId.current === actionTenantId) setError(cause instanceof Error ? cause.message : 'Unable to resolve this correction.');
+      if (activeTenantId.current === actionTenantId) setError(projectText(locale, cause instanceof Error ? cause.message : 'Unable to resolve this correction.'));
     } finally {
       if (activeTenantId.current === actionTenantId) setResolvingCorrectionId('');
     }
@@ -1255,6 +1277,7 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
     {actionMessage && currentTenantReady && <p role="status" className={requestView ? 'sr-only' : 'rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900'}>{actionMessage}</p>}
     {requestView && <section id="attendance-correction-requests" aria-labelledby="attendance-requests-heading" className="space-y-3">
       <h2 id="attendance-requests-heading" tabIndex={-1} className="text-2xl font-normal text-[#3D3D3D]">{projectText(locale, 'Attendance Requests')}</h2>
+      {correctionEvidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{correctionEvidenceError}</p>}
       {currentCorrections.length === 0
         ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No attendance correction requests were returned for this date range.</p>
         : <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -1272,9 +1295,20 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
                 <td className="px-3 py-3">{[
                   item.requested_check_in ? 'In ' + displayTime(item.requested_check_in) : '',
                   item.requested_check_out ? 'Out ' + displayTime(item.requested_check_out) : '',
-                  item.requested_work_mode ? 'Mode ' + String(item.requested_work_mode) : '',
+                  item.requested_work_mode ? 'Mode ' + displayWorkMode(item.requested_work_mode) : '',
+                  item.client_name ? `${projectText(locale, 'Client name')}: ${display(item.client_name)}` : '',
                 ].filter(Boolean).join(' · ') || '—'}</td>
-                <td className="px-3 py-3">{display(item.reason)}</td>
+                <td className="px-3 py-3">
+                  <span>{display(item.reason)}</span>
+                  {(item.original_check_in || item.original_check_out || item.original_work_mode) && <span className="mt-1 block text-xs text-slate-500">
+                    {projectText(locale, 'Original values')}: {[item.original_check_in ? `In ${displayTime(item.original_check_in)}` : '', item.original_check_out ? `Out ${displayTime(item.original_check_out)}` : '', item.original_work_mode ? displayWorkMode(item.original_work_mode) : '', item.original_client_name ? `${projectText(locale, 'Client name')}: ${display(item.original_client_name)}` : ''].filter(Boolean).join(' · ')}
+                  </span>}
+                  {Array.isArray(item.correction_categories) && <span className="mt-1 block text-xs text-slate-500">
+                    {item.correction_categories.map(value => projectText(locale, value === 'check_in_time' ? 'Check-in time' : value === 'check_out_time' ? 'Check-out time' : 'Work location')).join(' · ')}
+                  </span>}
+                  {Boolean(item.evidence_path) && <button type="button" onClick={() => void openAttendanceEvidenceFile(String(item.evidence_path), source => projectText(locale, source), setCorrectionEvidenceError)}
+                    className="mt-2 min-h-9 rounded-md border border-slate-300 px-3 text-xs font-medium text-[#085587]">{projectText(locale, 'Open evidence')}</button>}
+                </td>
                 <td className="px-3 py-3 capitalize"><span>{display(item.status)}</span>
                   {Boolean(item.resolution_note) && <span className="mt-1 block normal-case whitespace-normal text-xs font-normal text-slate-600">Decision note: {display(item.resolution_note)}</span>}
                 </td>
@@ -1304,15 +1338,15 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
         </div>
         <div className="space-y-3 p-5">
           {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
-          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">Decision note <span className="font-normal text-slate-500">(optional)</span></label>
-          <textarea id="attendance-rejection-note" rows={4} value={correctionResolutionNote} onChange={event => setCorrectionResolutionNote(event.target.value)} disabled={Boolean(resolvingCorrectionId)}
+          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">Decision note <span className="font-normal text-slate-500">(required when rejecting)</span></label>
+          <textarea id="attendance-rejection-note" rows={4} maxLength={1000} required value={correctionResolutionNote} onChange={event => setCorrectionResolutionNote(event.target.value)} disabled={Boolean(resolvingCorrectionId)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-60" />
           <p className="text-xs text-slate-500">The employee can see this note with the decision in their correction history.</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
           <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => { setRejectingCorrection(null); setCorrectionResolutionNote(''); }}
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">Cancel</button>
-          <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(rejectingCorrection.id), 'rejected', correctionResolutionNote)}
+          <button type="button" disabled={Boolean(resolvingCorrectionId) || !correctionResolutionNote.trim()} onClick={() => void resolveCorrection(String(rejectingCorrection.id), 'rejected', correctionResolutionNote)}
             className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{resolvingCorrectionId ? 'Saving…' : 'Reject correction'}</button>
         </div>
       </div>
@@ -1415,6 +1449,7 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
   const [rejectingCorrection, setRejectingCorrection] = useState<AttendanceRecord | null>(null);
   const [correctionResolutionNote, setCorrectionResolutionNote] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [correctionEvidenceError, setCorrectionEvidenceError] = useState('');
   const requestSequence = useRef(0);
   const rejectionDialogRef = useRef<HTMLDivElement>(null);
   const rejectionTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1550,7 +1585,7 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
       await load();
       if (decision === 'rejected') document.getElementById('attendance-report-heading')?.focus();
     } catch (cause) {
-      if (activeTenantId.current === actionTenantId) setError(cause instanceof Error ? cause.message : 'Unable to resolve this correction.');
+      if (activeTenantId.current === actionTenantId) setError(projectText(locale, cause instanceof Error ? cause.message : 'Unable to resolve this correction.'));
     } finally {
       if (activeTenantId.current === actionTenantId) setResolvingCorrectionId('');
     }
@@ -1675,6 +1710,7 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
       <button type="button" onClick={() => setSelectedStatuses([])} className="ml-auto min-h-9 rounded-md px-3 font-medium text-[#085587] hover:bg-[#EFF7F8]">{tx('Clear result')}</button>
     </div>}
     {correctionRequestsPage && showDetails && <section id="attendance-correction-requests" aria-labelledby="attendance-correction-requests-heading" className="[contain:paint] w-full min-w-0 max-w-full space-y-3 overflow-x-hidden">
+      {correctionEvidenceError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{correctionEvidenceError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-h-12 items-center gap-3">
           {['approved', 'rejected'].includes(correctionStatusFilter)
@@ -1758,6 +1794,15 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
                 <td className="max-w-[320px] whitespace-normal bg-white px-4 py-4">
                   <span>{display(item.reason)}</span>
                   {Boolean(item.requested_work_mode) && <span className="mt-1 block text-xs text-slate-500">{tx('Requested work mode')}: {displayWorkMode(item.requested_work_mode)}</span>}
+                  {Array.isArray(item.correction_categories) && <span className="mt-1 block text-xs text-slate-500">
+                    {item.correction_categories.map(value => tx(value === 'check_in_time' ? 'Check-in time' : value === 'check_out_time' ? 'Check-out time' : 'Work location')).join(' · ')}
+                  </span>}
+                  {Boolean(item.client_name) && <span className="mt-1 block text-xs text-slate-500">{tx('Client name')}: {display(item.client_name)}</span>}
+                  {(item.original_check_in || item.original_check_out || item.original_work_mode || item.original_client_name) && <span className="mt-1 block text-xs text-slate-500">
+                    {tx('Original values')}: {[item.original_check_in ? `In ${displayTime(item.original_check_in)}` : '', item.original_check_out ? `Out ${displayTime(item.original_check_out)}` : '', item.original_work_mode ? displayWorkMode(item.original_work_mode) : '', item.original_client_name ? `${tx('Client name')}: ${display(item.original_client_name)}` : ''].filter(Boolean).join(' · ')}
+                  </span>}
+                  {Boolean(item.evidence_path) && <button type="button" onClick={() => void openAttendanceEvidenceFile(String(item.evidence_path), tx, setCorrectionEvidenceError)}
+                    className="mt-2 min-h-9 rounded-md border border-slate-300 px-3 text-xs font-medium text-[#085587]">{tx('Open evidence')}</button>}
                   {Boolean(item.resolution_note) && <span className="mt-1 block text-xs text-slate-600">{tx('Decision note')}: {display(item.resolution_note)}</span>}
                 </td>
                 <td className="whitespace-nowrap bg-white px-4 py-4 last:rounded-r-lg">
@@ -1791,15 +1836,15 @@ function HrAttendanceReport({ tenantId, canView, canReport, canManage, locale, v
         </div>
         <div className="space-y-3 p-5">
           {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
-          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">{tx('Decision note (optional)')}</label>
-          <textarea id="attendance-rejection-note" rows={4} value={correctionResolutionNote} onChange={event => setCorrectionResolutionNote(event.target.value)} disabled={Boolean(resolvingCorrectionId)}
+          <label htmlFor="attendance-rejection-note" className="block text-sm font-medium text-slate-700">{tx('Decision note (required when rejecting)')}</label>
+          <textarea id="attendance-rejection-note" rows={4} maxLength={1000} required value={correctionResolutionNote} onChange={event => setCorrectionResolutionNote(event.target.value)} disabled={Boolean(resolvingCorrectionId)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[#085587] disabled:opacity-60" />
           <p className="text-xs text-slate-500">{tx('The employee can see this note with the decision in their correction history.')}</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
           <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => { setRejectingCorrection(null); setCorrectionResolutionNote(''); }}
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm disabled:opacity-50">{tx('Cancel')}</button>
-          <button type="button" disabled={Boolean(resolvingCorrectionId)} onClick={() => void resolveCorrection(String(rejectingCorrection.id), 'rejected', correctionResolutionNote)}
+          <button type="button" disabled={Boolean(resolvingCorrectionId) || !correctionResolutionNote.trim()} onClick={() => void resolveCorrection(String(rejectingCorrection.id), 'rejected', correctionResolutionNote)}
             className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-medium text-white disabled:opacity-50">{resolvingCorrectionId ? tx('Saving…') : tx('Reject correction')}</button>
         </div>
       </div>
@@ -4214,14 +4259,26 @@ function ProjectTimesheetReviewQueue({ tenantId, locale }: { tenantId: string; l
 
 type EmployeePanelId = 'working-hours' | 'work-location' | 'leave-type' | 'check-in-times';
 
+function attendanceCorrectionTimeInput(value: unknown, timeZone: string) {
+  if (typeof value !== 'string' || !value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || !timeZone) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(date);
+}
+
 function PersonalAttendanceCorrections({
-  tenantId, today, corrections, onRefresh, locale,
+  tenantId, today, corrections, onRefresh, locale, userId, openRequested, onOpenRequestedHandled,
 }: {
   tenantId: string;
   today: string;
   corrections: AttendanceRecord[];
   onRefresh: () => Promise<void>;
   locale: Locale;
+  userId: string;
+  openRequested?: boolean;
+  onOpenRequestedHandled?: () => void;
 }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
@@ -4237,7 +4294,21 @@ function PersonalAttendanceCorrections({
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [workMode, setWorkMode] = useState('');
+  const [clientName, setClientName] = useState('');
   const [reason, setReason] = useState('');
+  const [correctionCategories, setCorrectionCategories] = useState<string[]>([]);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [policy, setPolicy] = useState({
+    employee_can_edit_pending: false, employee_can_cancel_pending: false, evidence_required: false,
+  });
+  const [policyLoaded, setPolicyLoaded] = useState(false);
+  const [policyError, setPolicyError] = useState('');
+  const [tenantTimezone, setTenantTimezone] = useState('');
+  const [correctionHistory, setCorrectionHistory] = useState<Record<string, unknown>[]>(corrections);
+  const [contextRevision, setContextRevision] = useState(0);
+  const [editingCorrectionId, setEditingCorrectionId] = useState<string | null>(null);
+  const [cancelCorrectionId, setCancelCorrectionId] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState('');
@@ -4245,6 +4316,7 @@ function PersonalAttendanceCorrections({
   const requestButtonRef = useRef<HTMLButtonElement>(null);
   const submittingRef = useRef(false);
   const attendanceReadSequence = useRef(0);
+  const correctionContextSequence = useRef(0);
   const activeTenant = useRef(tenantId);
   activeTenant.current = tenantId;
 
@@ -4257,9 +4329,60 @@ function PersonalAttendanceCorrections({
     setCheckIn('');
     setCheckOut('');
     setWorkMode('');
+    setClientName('');
     setReason('');
+    setCorrectionCategories([]);
+    setEvidenceFile(null);
+    setCorrectionHistory([]);
+    setEvidenceError('');
+    setEditingCorrectionId(null);
+    setCancelCorrectionId(null);
     setFormError('');
   }, [tenantId, today]);
+
+  useEffect(() => {
+    if (!openRequested) return;
+    setFormError('');
+    setRequestOpen(true);
+    onOpenRequestedHandled?.();
+  }, [openRequested, onOpenRequestedHandled]);
+
+  useEffect(() => {
+    const requestId = ++correctionContextSequence.current;
+    const requestedTenant = tenantId;
+    const isCurrent = () => requestId === correctionContextSequence.current
+      && activeTenant.current === requestedTenant;
+    setPolicyLoaded(false);
+    setPolicyError('');
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc('hris_get_my_attendance_correction_context', {
+          p_tenant_id: requestedTenant,
+        });
+        if (error) throw error;
+        const context = asObject(data);
+        const policyData = asObject(context?.policy);
+        if (!context || context.tenant_id !== requestedTenant || !Array.isArray(context.requests)
+            || !policyData || typeof context.tenant_timezone !== 'string'
+            || typeof policyData.employee_can_edit_pending !== 'boolean'
+            || typeof policyData.employee_can_cancel_pending !== 'boolean'
+            || typeof policyData.evidence_required !== 'boolean') {
+          throw new Error('Attendance correction policy returned an invalid response.');
+        }
+        if (!isCurrent()) return;
+        setPolicy(policyData as typeof policy);
+        setTenantTimezone(context.tenant_timezone);
+        setCorrectionHistory(asRows(context.requests));
+        setPolicyLoaded(true);
+      } catch {
+        if (isCurrent()) {
+          setPolicyLoaded(false);
+          setPolicyError(tx('Unable to load attendance correction policy. Retry.'));
+        }
+      }
+    })();
+    return () => { correctionContextSequence.current += 1; };
+  }, [tenantId, contextRevision, locale]);
 
   useEffect(() => {
     const requestId = ++attendanceReadSequence.current;
@@ -4336,39 +4459,174 @@ function PersonalAttendanceCorrections({
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submittingRef.current) return;
+    if (!policyLoaded) {
+      setFormError(tx('Attendance correction policy is still loading. Retry before submitting.'));
+      return;
+    }
     if (!attendanceDate || !correctionAttendance.some(record => record.attendance_date === attendanceDate)) {
       setFormError(tx('Select an attendance record.')); return;
     }
-    if (!checkIn && !checkOut && !workMode) {
-      setFormError(tx('Enter at least one attendance field to correct.')); return;
+    if (!correctionCategories.length) {
+      setFormError(tx('Choose at least one correction category.')); return;
     }
-    if (checkIn && checkOut && checkOut < checkIn) {
+    if (correctionCategories.includes('check_in_time') !== Boolean(checkIn)
+        || correctionCategories.includes('check_out_time') !== Boolean(checkOut)
+        || correctionCategories.includes('work_location') !== Boolean(workMode)) {
+      setFormError(tx('Complete the fields selected for correction.')); return;
+    }
+    if ((workMode === 'client' || workMode === 'client_meeting') && !clientName.trim()) {
+      setFormError(tx('Enter the client name for the selected client work location.')); return;
+    }
+    const selectedRecord = correctionAttendance.find(record => record.attendance_date === attendanceDate);
+    const effectiveCheckIn = checkIn || attendanceCorrectionTimeInput(selectedRecord?.check_in, tenantTimezone);
+    const effectiveCheckOut = checkOut || attendanceCorrectionTimeInput(selectedRecord?.check_out, tenantTimezone);
+    if (effectiveCheckIn && effectiveCheckOut && effectiveCheckOut <= effectiveCheckIn) {
       setFormError(tx('Check-out must be after check-in.')); return;
+    }
+    if (policy.evidence_required && !evidenceFile
+        && !correctionHistory.find(item => item.id === editingCorrectionId)?.evidence_path) {
+      setFormError(tx('Attach the supporting evidence required by this organization.'));
+      return;
     }
     submittingRef.current = true;
     setSubmitting(true); setFormError(''); setSuccess('');
+    setEvidenceError('');
+    let uploadedEvidencePath: string | null = null;
     try {
-      const { data, error: rpcError } = await supabase.rpc('hris_employee_submit_attendance_correction', {
-        p_tenant_id: tenantId,
-        p_payload: {
-          attendance_date: attendanceDate || today,
-          check_in_time: checkIn || null,
-          check_out_time: checkOut || null,
-          work_mode: workMode || null,
-          reason: reason.trim(),
-        },
-      });
-      if (rpcError) throw rpcError;
-      if (!data) throw new Error(tx('The correction request was not confirmed. Refresh and check your request history.'));
-      setSuccess(tx('Attendance correction submitted for review.'));
-      setRequestOpen(false); setAttendanceDate(''); setCheckIn(''); setCheckOut(''); setWorkMode(''); setReason('');
+      if (evidenceFile) {
+        const extension = evidenceFile.name.split('.').pop()?.toLowerCase() || '';
+        if (!['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'].includes(extension) || evidenceFile.size > 10 * 1024 * 1024) {
+          throw new Error(tx('Choose a PDF, DOC, DOCX, JPG, or PNG file under 10 MB.'));
+        }
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError || !authData.user?.id || authData.user.id !== userId) {
+          throw new Error(tx('Your signed-in employee session could not be confirmed.'));
+        }
+        uploadedEvidencePath = `${userId}/${tenantId}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from('attendance-evidence').upload(
+          uploadedEvidencePath, evidenceFile, {
+            contentType: evidenceFile.type || ({
+              pdf: 'application/pdf', doc: 'application/msword',
+              docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+            } as Record<string, string>)[extension],
+            upsert: false,
+          },
+        );
+        if (uploadError) throw uploadError;
+      }
+      const payload = {
+        attendance_date: attendanceDate,
+        correction_categories: correctionCategories,
+        check_in_time: checkIn || null,
+        check_out_time: checkOut || null,
+        work_mode: workMode || null,
+        client_name: workMode === 'client_meeting' ? clientName.trim() : null,
+        reason: reason.trim(),
+        evidence_path: uploadedEvidencePath,
+      };
+      const result = editingCorrectionId
+        ? await supabase.rpc('hris_employee_update_attendance_correction', {
+          p_tenant_id: tenantId, p_request_id: editingCorrectionId, p_payload: payload,
+        })
+        : await supabase.rpc('hris_employee_submit_attendance_correction', {
+          p_tenant_id: tenantId, p_payload: payload,
+        });
+      if (result.error) throw result.error;
+      if (!result.data || (editingCorrectionId && asObject(result.data)?.success !== true)) {
+        throw new Error(tx('The correction request was not confirmed. Refresh and check your request history.'));
+      }
+      if (editingCorrectionId && uploadedEvidencePath) {
+        const previousPath = correctionHistory.find(item => item.id === editingCorrectionId)?.evidence_path;
+        if (typeof previousPath === 'string' && previousPath !== uploadedEvidencePath) {
+          await supabase.storage.from('attendance-evidence').remove([previousPath]);
+        }
+      }
+      uploadedEvidencePath = null;
+      setSuccess(tx(editingCorrectionId ? 'Attendance correction updated.' : 'Attendance correction submitted for review.'));
+      setRequestOpen(false);
+      setAttendanceDate(''); setCheckIn(''); setCheckOut(''); setWorkMode(''); setClientName('');
+      setReason(''); setCorrectionCategories([]); setEvidenceFile(null); setEditingCorrectionId(null);
+      setCancelCorrectionId(null);
+      setContextRevision(value => value + 1);
       await onRefresh();
     } catch (cause) {
+      if (uploadedEvidencePath) await supabase.storage.from('attendance-evidence').remove([uploadedEvidencePath]);
       setFormError(tx(cause instanceof Error ? cause.message : 'Unable to submit this attendance correction.'));
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
     }
+  }
+
+  function editCorrection(item: Record<string, unknown>) {
+    const categories = Array.isArray(item.correction_categories)
+      ? item.correction_categories.filter((value): value is string => typeof value === 'string') : [];
+    setEditingCorrectionId(String(item.id));
+    setCancelCorrectionId(null);
+    setCorrectionMonth(String(item.attendance_date || today).slice(0, 7));
+    setAttendanceDate(String(item.attendance_date || ''));
+    setCorrectionCategories(categories);
+    setCheckIn(attendanceCorrectionTimeInput(item.requested_check_in, tenantTimezone));
+    setCheckOut(attendanceCorrectionTimeInput(item.requested_check_out, tenantTimezone));
+    setWorkMode(typeof item.requested_work_mode === 'string' ? item.requested_work_mode : '');
+    setClientName(typeof item.client_name === 'string' ? item.client_name : '');
+    setReason(String(item.reason || ''));
+    setEvidenceFile(null);
+    setFormError('');
+    setRequestOpen(true);
+  }
+
+  async function cancelCorrection(item: Record<string, unknown>) {
+    const id = String(item.id || '');
+    if (!id || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setFormError('');
+    setEvidenceError('');
+    try {
+      const { data, error } = await supabase.rpc('hris_employee_cancel_attendance_correction', {
+        p_tenant_id: tenantId, p_request_id: id,
+      });
+      if (error) throw error;
+      if (asObject(data)?.success !== true) throw new Error(tx('The correction request was not confirmed. Refresh and check your request history.'));
+      setCancelCorrectionId(null);
+      setSuccess(tx('Attendance correction cancelled.'));
+      setContextRevision(value => value + 1);
+      await onRefresh();
+    } catch (cause) {
+      setEvidenceError(tx(cause instanceof Error ? cause.message : 'Unable to cancel this attendance correction.'));
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  async function openCorrectionEvidence(path: string) {
+    const tab = window.open('about:blank', '_blank');
+    if (tab) tab.opener = null;
+    setEvidenceError('');
+    try {
+      const { data, error } = await supabase.storage.from('attendance-evidence').createSignedUrl(path, 60);
+      if (error || !data?.signedUrl) throw error || new Error('The evidence link could not be created.');
+      if (tab) tab.location.href = data.signedUrl;
+      else window.location.assign(data.signedUrl);
+    } catch {
+      tab?.close();
+      setEvidenceError(tx('Unable to open the private evidence file.'));
+    }
+  }
+
+  const selectedAttendanceRecord = correctionAttendance.find(record => record.attendance_date === attendanceDate);
+  const existingEvidencePath = editingCorrectionId
+    ? correctionHistory.find(item => item.id === editingCorrectionId)?.evidence_path : null;
+  function toggleCorrectionCategory(category: string, enabled: boolean) {
+    setCorrectionCategories(current => enabled
+      ? [...new Set([...current, category])]
+      : current.filter(value => value !== category));
+    if (!enabled && category === 'check_in_time') setCheckIn('');
+    if (!enabled && category === 'check_out_time') setCheckOut('');
+    if (!enabled && category === 'work_location') { setWorkMode(''); setClientName(''); }
   }
 
   return <>
@@ -4382,33 +4640,73 @@ function PersonalAttendanceCorrections({
         </button>
       </div>
       {success && <p role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
-      {corrections.length ? <div role="region" aria-label={tx('Attendance correction history table')} tabIndex={0}
-        className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#08558B]"><table className="w-full min-w-[760px] text-left text-sm">
+      {policyError && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+        <span>{policyError}</span><button type="button" onClick={() => setContextRevision(value => value + 1)}
+          className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">{tx('Retry')}</button>
+      </div>}
+      {evidenceError && <p role="alert" className="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{evidenceError}</p>}
+      {!policyLoaded && !policyError ? <p role="status" className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{tx('Loading attendance correction history…')}</p>
+        : policyLoaded && correctionHistory.length ? <div role="region" aria-label={tx('Attendance correction history table')} tabIndex={0}
+        className="overflow-x-auto rounded-lg border border-slate-200 focus-visible:outline-2 focus-visible:outline-[#08558B]"><table className="w-full min-w-[1120px] text-left text-sm">
         <thead className="bg-[#EFF7F8] text-xs text-slate-600"><tr>
-          {['Date', 'Requested change', 'Reason', 'Status', 'Resolution'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}
+          {['Date', 'Correction category', 'Original values', 'Requested change', 'Reason', 'Evidence', 'Status', 'Resolution', 'Actions'].map(label => <th key={label} scope="col" className="px-3 py-3 font-medium">{tx(label)}</th>)}
         </tr></thead>
-        <tbody className="divide-y divide-slate-100">{corrections.map((item, index) => <tr key={String(item.id || index)}>
+        <tbody className="divide-y divide-slate-100">{correctionHistory.map((item, index) => <tr key={String(item.id || index)}>
           <td className="px-3 py-3">{employeeDate(item.attendance_date)}</td>
+          <td className="px-3 py-3">{Array.isArray(item.correction_categories)
+            ? item.correction_categories.map(value => tx(value === 'check_in_time' ? 'Check-in time' : value === 'check_out_time' ? 'Check-out time' : 'Work location')).join(' · ')
+            : '—'}</td>
+          <td className="max-w-56 px-3 py-3 text-xs text-slate-600">{[
+            item.original_check_in ? txf('In {time}', { time: employeeTime(item.original_check_in) }) : tx('No check-in recorded'),
+            item.original_check_out ? txf('Out {time}', { time: employeeTime(item.original_check_out) }) : tx('No check-out recorded'),
+            item.original_work_mode ? txf('Mode {mode}', { mode: tx(displayWorkMode(item.original_work_mode)) }) : '',
+            item.original_client_name ? `${tx('Client name')}: ${display(item.original_client_name)}` : '',
+          ].filter(Boolean).join(' · ')}</td>
           <td className="px-3 py-3">{[
             item.requested_check_in ? txf('In {time}', { time: employeeTime(item.requested_check_in) }) : '',
             item.requested_check_out ? txf('Out {time}', { time: employeeTime(item.requested_check_out) }) : '',
             item.requested_work_mode ? txf('Mode {mode}', { mode: tx(displayWorkMode(item.requested_work_mode)) }) : '',
+            item.client_name ? `${tx('Client name')}: ${display(item.client_name)}` : '',
           ].filter(Boolean).join(' · ') || '—'}</td>
           <td className="max-w-64 px-3 py-3"><span className="block truncate" title={String(item.reason || '')}>{display(item.reason)}</span></td>
+          <td className="px-3 py-3">{typeof item.evidence_path === 'string' && item.evidence_path
+            ? <button type="button" onClick={() => void openCorrectionEvidence(item.evidence_path as string)}
+                className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium text-[#08558B]">{tx('Open evidence')}</button>
+            : '—'}</td>
           <td className="px-3 py-3 capitalize">{tx(display(item.status))}</td>
           <td className="max-w-56 px-3 py-3"><span className="block truncate" title={String(item.resolution_note || '')}>{display(item.resolution_note)}</span></td>
+          <td className="px-3 py-3">{policyLoaded && item.status === 'pending'
+            && (policy.employee_can_edit_pending || policy.employee_can_cancel_pending) ? <div className="flex flex-wrap gap-2">
+              {policy.employee_can_edit_pending && <button type="button" onClick={() => editCorrection(item)}
+                className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-medium">{tx('Edit request')}</button>}
+              {policy.employee_can_cancel_pending && <button type="button" onClick={() => setCancelCorrectionId(String(item.id))}
+                className="min-h-10 rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-800">{tx('Cancel request')}</button>}
+              {cancelCorrectionId === item.id && <div role="group" aria-label={tx('Confirm cancellation')} className="basis-full rounded-md border border-amber-200 bg-amber-50 p-2">
+                <p className="text-xs text-amber-900">{tx('Cancel this pending attendance correction?')}</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={() => setCancelCorrectionId(null)} disabled={submitting}
+                    className="min-h-9 rounded-md border border-slate-300 bg-white px-2 text-xs">{tx('Keep request')}</button>
+                  <button type="button" onClick={() => void cancelCorrection(item)} disabled={submitting}
+                    className="min-h-9 rounded-md bg-rose-700 px-2 text-xs font-semibold text-white">{submitting ? tx('Saving…') : tx('Confirm cancellation')}</button>
+                </div>
+              </div>}
+            </div> : '—'}</td>
         </tr>)}</tbody>
-      </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No attendance correction requests yet.')}</p>}
+      </table></div> : policyLoaded ? <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No attendance correction requests yet.')}</p> : null}
     </section>
     {requestOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-3 sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget && !submitting) setRequestOpen(false); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="attendance-correction-dialog-heading" className="flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div><h3 id="attendance-correction-dialog-heading" className="text-lg font-semibold text-[#08263D]">{tx('Request attendance correction')}</h3>
+          <div><h3 id="attendance-correction-dialog-heading" className="text-lg font-semibold text-[#08263D]">{tx(editingCorrectionId ? 'Edit attendance correction' : 'Request attendance correction')}</h3>
             <p className="mt-1 text-xs text-slate-500">{tx('Times use the organization’s local time.')}</p></div>
           <button type="button" aria-label={tx('Close attendance correction request')} disabled={submitting} onClick={() => setRequestOpen(false)} className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={event => void submitRequest(event)} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
+            {!policyLoaded && !policyError && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx('Loading attendance correction policy…')}</p>}
+            {policyLoaded && <p className="rounded-lg bg-[#EFF7F8] p-3 text-xs text-slate-600">{policy.evidence_required
+              ? tx('This organization requires supporting evidence for attendance corrections.')
+              : tx('Supporting evidence is optional for this organization.')}</p>}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><label htmlFor="attendance-correction-month" className="mb-1 block text-sm font-medium text-slate-700">{tx('Attendance month')}</label>
                 <input id="attendance-correction-month" type="month" required max={today.slice(0, 7)} value={correctionMonth}
@@ -4436,23 +4734,83 @@ function PersonalAttendanceCorrections({
             </div>}
             {!correctionAttendanceLoading && !correctionAttendanceError && correctionAttendance.length === 0
               && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx('No attendance records are available for this month.')}</p>}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label htmlFor="attendance-correction-check-in" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-in')}</label>
-                <input id="attendance-correction-check-in" type="time" value={checkIn} onChange={event => setCheckIn(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-              <div><label htmlFor="attendance-correction-check-out" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-out')}</label>
-                <input id="attendance-correction-check-out" type="time" value={checkOut} onChange={event => setCheckOut(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" /></div>
-            </div>
-            <div><label htmlFor="attendance-correction-work-mode" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested work location')}</label>
-              <select id="attendance-correction-work-mode" value={workMode} onChange={event => setWorkMode(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
-                <option value="">{tx('No change')}</option><option value="office">{tx('Office')}</option><option value="home">{tx('Home')}</option><option value="client_meeting">{tx('Client Meeting')}</option>
-              </select></div>
+            {selectedAttendanceRecord && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="font-medium text-slate-800">{tx('Original attendance values')}</p>
+              <p className="mt-1 text-xs text-slate-600">{txf('Check-in: {time}', {
+                time: selectedAttendanceRecord.check_in ? employeeTime(selectedAttendanceRecord.check_in) : tx('Not recorded'),
+              })} · {txf('Check-out: {time}', {
+                time: selectedAttendanceRecord.check_out ? employeeTime(selectedAttendanceRecord.check_out) : tx('Not recorded'),
+              })} · {txf('Work location: {mode}', {
+                mode: selectedAttendanceRecord.work_mode ? tx(displayWorkMode(selectedAttendanceRecord.work_mode)) : tx('Not recorded'),
+              })}</p>
+            </div>}
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-slate-700">{tx('Correction category')} <span aria-hidden="true">*</span></legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  ['check_in_time', 'Check-in time'],
+                  ['check_out_time', 'Check-out time'],
+                  ['work_location', 'Work location'],
+                ].map(([value, label]) => <label key={value} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-700">
+                  <input type="checkbox" checked={correctionCategories.includes(value)}
+                    onChange={event => toggleCorrectionCategory(value, event.target.checked)}
+                    className="h-4 w-4 accent-[#08558B]" />
+                  {tx(label)}
+                </label>)}
+              </div>
+            </fieldset>
+            {(correctionCategories.includes('check_in_time') || correctionCategories.includes('check_out_time'))
+              && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {correctionCategories.includes('check_in_time') && <div>
+                  <label htmlFor="attendance-correction-check-in" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-in')}</label>
+                  <input id="attendance-correction-check-in" type="time" required value={checkIn} onChange={event => setCheckIn(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+                </div>}
+                {correctionCategories.includes('check_out_time') && <div>
+                  <label htmlFor="attendance-correction-check-out" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested check-out')}</label>
+                  <input id="attendance-correction-check-out" type="time" required value={checkOut} onChange={event => setCheckOut(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+                </div>}
+              </div>}
+            {correctionCategories.includes('work_location') && <div>
+              <label htmlFor="attendance-correction-work-mode" className="mb-1 block text-sm font-medium text-slate-700">{tx('Requested work location')}</label>
+              <select id="attendance-correction-work-mode" required value={workMode} onChange={event => setWorkMode(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                <option value="">{tx('Select work location')}</option><option value="office">{tx('Office')}</option><option value="home">{tx('Home')}</option>
+                <option value="client">{tx('Client')}</option><option value="client_meeting">{tx('Client meeting')}</option><option value="field">{tx('Field')}</option>
+              </select>
+            </div>}
+            {correctionCategories.includes('work_location') && (workMode === 'client' || workMode === 'client_meeting') && <div>
+              <label htmlFor="attendance-correction-client-name" className="mb-1 block text-sm font-medium text-slate-700">{tx('Client name')} <span aria-hidden="true">*</span></label>
+              <input id="attendance-correction-client-name" type="text" required maxLength={200} value={clientName}
+                onChange={event => setClientName(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+            </div>}
             <div><label htmlFor="attendance-correction-reason" className="mb-1 block text-sm font-medium text-slate-700">{tx('Reason')} <span aria-hidden="true">*</span></label>
               <textarea id="attendance-correction-reason" required maxLength={2000} rows={3} value={reason} onChange={event => setReason(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
+            <div>
+              <label htmlFor="attendance-correction-evidence" className="mb-1 block text-sm font-medium text-slate-700">
+                {tx('Supporting evidence')}{policy.evidence_required && !existingEvidencePath && <span aria-hidden="true"> *</span>}
+              </label>
+              {typeof existingEvidencePath === 'string' && existingEvidencePath && <p className="mb-2 text-xs text-slate-600">{tx('An evidence file is already attached. Uploading another will replace it.')}</p>}
+              <input id="attendance-correction-evidence" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+                required={policy.evidence_required && !existingEvidencePath} disabled={submitting}
+                onChange={event => {
+                  const file = event.target.files?.[0] || null;
+                  if (file && (file.size > 10 * 1024 * 1024 || !/\.(pdf|docx?|jpe?g|png)$/i.test(file.name))) {
+                    setEvidenceFile(null);
+                    event.currentTarget.value = '';
+                    setFormError(tx('Choose a PDF, DOC, DOCX, JPG, or PNG file under 10 MB.'));
+                    return;
+                  }
+                  setFormError('');
+                  setEvidenceFile(file);
+                }}
+                className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[#EFF7F8] file:px-3 file:py-1.5 file:text-xs file:font-medium" />
+              <p className="mt-1 text-xs text-slate-500">{tx('PDF, DOC, DOCX, JPG, or PNG · Maximum 10 MB')}</p>
+            </div>
             {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{formError}</p>}
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
             <button type="button" disabled={submitting} onClick={() => setRequestOpen(false)} className="min-h-11 rounded-lg px-4 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50">{tx('Cancel')}</button>
-            <button type="submit" disabled={submitting} className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white disabled:opacity-50">{submitting ? tx('Sending…') : tx('Send request')}</button>
+            <button type="submit" disabled={submitting || !policyLoaded || correctionAttendanceLoading || !correctionCategories.length || !reason.trim()}
+              className="min-h-11 rounded-lg bg-[#08558B] px-5 text-sm font-medium text-white disabled:opacity-50">{submitting ? tx('Sending…') : tx(editingCorrectionId ? 'Save changes' : 'Send request')}</button>
           </div>
         </form>
       </div>
@@ -4460,7 +4818,7 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest, onOpenLeave, onOpenPayslips, onOpenRequests }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void; onOpenLeave: () => void; onOpenPayslips: () => void; onOpenRequests: () => void }) {
+function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest, onOpenLeave, onOpenPayslips, onOpenRequests, onOpenClientMeeting }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void; onOpenLeave: () => void; onOpenPayslips: () => void; onOpenRequests: () => void; onOpenClientMeeting: () => void }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
@@ -4482,6 +4840,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
   const [attendanceActionError, setAttendanceActionError] = useState('');
   const [attendanceActionSuccess, setAttendanceActionSuccess] = useState('');
   const [activePanel, setActivePanel] = useState<EmployeePanelId>('working-hours');
+  const [attendanceCorrectionOpenRequested, setAttendanceCorrectionOpenRequested] = useState(false);
   const requestSequence = useRef(0);
   const attendanceMonthSequence = useRef(0);
   const activeTenantId = useRef(tenantId);
@@ -4665,7 +5024,9 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           heading?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           heading?.focus({ preventScroll: true });
         }}
-        onOpenRequests={onOpenRequests} />
+        onOpenRequests={onOpenRequests}
+        onOpenClientMeeting={onOpenClientMeeting}
+        onOpenOfficeEntry={() => setAttendanceCorrectionOpenRequested(true)} />
       <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(0,2fr)] xl:grid-cols-[278px_minmax(0,1fr)_360px] xl:gap-6">
         <section aria-labelledby="employee-profile-heading" className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
           <div className="mx-auto grid h-24 w-24 place-items-center rounded-xl bg-[#E7F1F3] text-2xl font-semibold text-[#08558B]" aria-hidden="true">{initials}</div>
@@ -4826,7 +5187,9 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
           </tr>)}</tbody>
         </table></div> : <p className="rounded-lg bg-[#EFF7F8] p-4 text-sm text-slate-600">{tx('No leave requests yet.')}</p>}
       </section>
-      <PersonalAttendanceCorrections tenantId={tenantId} today={today} corrections={asRows(attendance.corrections)} onRefresh={() => load(false)} locale={locale} />
+      <PersonalAttendanceCorrections tenantId={tenantId} today={today} corrections={asRows(attendance.corrections)} onRefresh={() => load(false)} locale={locale}
+        userId={userId} openRequested={attendanceCorrectionOpenRequested}
+        onOpenRequestedHandled={() => setAttendanceCorrectionOpenRequested(false)} />
     </>}
   </section>;
 }
@@ -4881,6 +5244,7 @@ export function LiveHrisWorkspace({
   const [travelFocusRequestId, setTravelFocusRequestId] = useState<string | null>(null);
   const [leaveFocusRequestId, setLeaveFocusRequestId] = useState<string | null>(null);
   const [serviceRequestFocusId, setServiceRequestFocusId] = useState<string | null>(null);
+  const [serviceRequestMovementPreset, setServiceRequestMovementPreset] = useState<'official' | 'personal' | 'client_meeting' | null>(null);
   const [rosterFocusDate, setRosterFocusDate] = useState<string | null>(null);
   const nav = useMemo(() => {
     const items: { id: PageId; label: string; icon: ReactNode; group: 'HRIS' | 'Personal' }[] = [];
@@ -5208,7 +5572,8 @@ export function LiveHrisWorkspace({
             onOpenPerformance={() => navigate('my-performance')} onOpenAnnouncements={() => navigate('my-announcements')}
             onOpenPendingRequest={kind => navigate(({ leave: 'my-leave', attendance: 'my-dashboard', expense: 'my-expenses', travel: 'my-travel', service: 'my-service-requests', learning: 'my-learning' } as const)[kind])}
             onOpenLeave={() => navigate('my-leave')} onOpenPayslips={() => navigate('my-payslips')}
-            onOpenRequests={() => navigate('my-service-requests')} />}
+            onOpenRequests={() => navigate('my-service-requests')}
+            onOpenClientMeeting={() => { setServiceRequestMovementPreset('client_meeting'); navigate('my-service-requests'); }} />}
           {page === 'my-projects' && isEmployee && <>
             <MyProjects tenantId={tenantId} locale={locale} />
             <ProjectTimesheetReviewQueue tenantId={tenantId} locale={locale} />
@@ -5232,7 +5597,9 @@ export function LiveHrisWorkspace({
             focusRequestId={travelFocusRequestId} onFocusHandled={clearTravelRequestFocus} />}
           {page === 'my-expenses' && isEmployee && <ExpenseClaims tenantId={tenantId} userId={userId} mode="personal" />}
           {page === 'my-service-requests' && isEmployee && <MyServiceRequests tenantId={tenantId} locale={locale}
-            focusRequestId={serviceRequestFocusId} onFocusHandled={clearServiceRequestFocus} />}
+            focusRequestId={serviceRequestFocusId} onFocusHandled={clearServiceRequestFocus}
+            initialMovementType={serviceRequestMovementPreset}
+            onInitialMovementHandled={() => setServiceRequestMovementPreset(null)} />}
           {!nav.length && <section className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[#08558B]" /><h2 className="mt-3 text-lg font-semibold">No HRIS modules are available for this account</h2>
             <p className="mt-2 text-sm text-slate-600">Your sign-in succeeded, but no active employee link or supported module permission was returned. No sample records are shown.</p>
