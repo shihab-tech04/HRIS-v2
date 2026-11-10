@@ -347,7 +347,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
   expect((dialogBounds?.x || 0) + (dialogBounds?.width || 0)).toBeLessThanOrEqual(376);
   expect((dialogBounds?.y || 0) + (dialogBounds?.height || 0)).toBeLessThanOrEqual(813);
   await page.screenshot({ path: path.join(shellEvidenceDir, 'attendance-rejection-overlay-en-375.png'), fullPage: false });
-  await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
+  await confirmedDialog.getByLabel('Decision note (required when rejecting)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Attendance correction rejected.' })).toHaveText('Attendance correction rejected.');
   // The pending queue removes rejected decisions; inspect the actual rejected Figma state.

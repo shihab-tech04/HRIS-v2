@@ -429,7 +429,7 @@ test('attendance information uses tenant-scoped detail rows and keeps filters, e
 
   await rejectionRow.getByRole('button', { name: 'Reject' }).click();
   const confirmedDialog = page.getByRole('dialog', { name: 'Reject attendance correction' });
-  await confirmedDialog.getByLabel('Decision note (optional)').fill('Please include the missing punch time.');
+  await confirmedDialog.getByLabel('Decision note (required when rejecting)').fill('Please include the missing punch time.');
   await confirmedDialog.getByRole('button', { name: 'Reject correction' }).click();
   await expect(page.getByText('Attendance correction rejected.', { exact: true })).toBeVisible();
   await (await ensureCorrectionStatusFilterOpen()).selectOption('rejected');
