@@ -442,7 +442,6 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261013143711_hris_expense_claims_employee_tenant_workflow.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013210500_hris_employee_service_request_self_service.sql'),
   path.join(mainRoot, 'supabase/migrations/20261016061104_hris_employee_service_request_review.sql'),
-  path.join(mainRoot, 'supabase/migrations/20261110120000_hris_work_from_home_request_parity.sql'),
   // The staged tenant-guard contract below replaces the same leave resolver.
   // Apply the newer submission-allocation contract after it so local acceptance
   // verifies the shipped resolver rather than the older staged replacement.
@@ -455,6 +454,9 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261014110000_hris_employee_payslip_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014120000_hris_tenant_payroll_register_read.sql'),
   path.join(mainRoot, 'supabase/migrations/20261013215431_employee_dashboard_attendance_period_read.sql'),
+  // Reapply WFH last so the compatibility attendance reader above cannot
+  // replace its approved-schedule projection in the isolated acceptance DB.
+  path.join(mainRoot, 'supabase/migrations/20261110120000_hris_work_from_home_request_parity.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014150000_hris_candidate_initial_application_history.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014012249_recruiter_application_stage_transition.sql'),
   path.join(mainRoot, 'supabase/migrations/20261014070848_hris_candidate_employee_activation.sql'),

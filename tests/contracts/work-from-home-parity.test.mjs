@@ -97,6 +97,11 @@ test('WFH employee and manager surfaces include Bengali labels and existing reco
 
 test('isolated browser acceptance covers WFH submit, edit, cancel, approve, and scheduled attendance', () => {
   assert.match(runner, /run-work-from-home-browser\.mjs/);
+  assert.ok(
+    runner.indexOf("20261110120000_hris_work_from_home_request_parity.sql")
+      > runner.indexOf("20261013215431_employee_dashboard_attendance_period_read.sql"),
+    'The isolated WFH migration must follow the legacy attendance reader replay.',
+  );
   assert.match(runner, /WORK_FROM_HOME_ACCEPTANCE_ID/);
   assert.match(runner, /browserWorkFromHome\?\.status === 'approved'/);
   assert.match(runner, /browserWorkFromHomeCancelled\?\.status === 'cancelled'/);
