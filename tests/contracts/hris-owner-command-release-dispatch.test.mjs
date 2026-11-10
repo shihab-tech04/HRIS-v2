@@ -20,7 +20,8 @@ test('stage dispatcher invokes original owner-approved protected workflows and w
   assert.match(bridge, /-f release_approved=true -f offsite_recovery_verified=true/);
   assert.match(bridge, /source_backup_run_id/);
   assert.match(bridge, /offsite_database_archive_sha256/);
-  assert.match(bridge, /success_on_main hris-service-requests-gated-sql\.yml/);
-  assert.match(bridge, /success_on_main hris-release1-platform-access-sql-release\.yml/);
+  assert.match(bridge, /success_on_main hris-wfh-gated-sql-release\.yml/);
+  assert.match(bridge, /hris-employee-avatar-sql-release\.yml\/runs/);
+  assert.match(bridge, /avatar_comparison.*compare/);
   assert.doesNotMatch(bridge, /supabase db push|psql |apply_migration|curl -X POST/);
 });
