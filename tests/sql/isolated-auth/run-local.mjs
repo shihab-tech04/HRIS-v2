@@ -1674,6 +1674,38 @@ if (attendanceGuardBucketBefore.error) {
 } else if (attendanceGuardBucketBefore.data.public) {
   throw new Error('Refusing isolated attendance evidence test: bucket is public.');
 }
+const employeeEvidenceUploadPath = `${employeeA.userId}/${ids.tenantA}/${randomUUID()}.pdf`;
+const employeeEvidenceForeignTenantPath = `${employeeA.userId}/${ids.tenantB}/${randomUUID()}.pdf`;
+const employeeEvidenceForeignOwnerPath = `${employeeB.userId}/${ids.tenantB}/${randomUUID()}.pdf`;
+const employeeEvidenceUpload = await employeeA.client.storage.from('attendance-evidence').upload(
+  employeeEvidenceUploadPath,
+  new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
+  { contentType:'application/pdf', upsert:false },
+);
+if (!employeeEvidenceUpload.error) attendanceTenantGuardStoragePaths.push(employeeEvidenceUploadPath);
+const employeeEvidenceForeignTenantUpload = await employeeA.client.storage.from('attendance-evidence').upload(
+  employeeEvidenceForeignTenantPath,
+  new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
+  { contentType:'application/pdf', upsert:false },
+);
+const employeeEvidenceForeignOwnerUpload = await employeeA.client.storage.from('attendance-evidence').upload(
+  employeeEvidenceForeignOwnerPath,
+  new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
+  { contentType:'application/pdf', upsert:false },
+);
+const employeeEvidenceCleanup = employeeEvidenceUpload.error
+  ? { error: new Error('No owner upload object was available for cleanup verification.') }
+  : await employeeA.client.storage.from('attendance-evidence').remove([employeeEvidenceUploadPath]);
+record('E06 attendance evidence Storage permits own-tenant upload and orphan cleanup only',
+  !employeeEvidenceUpload.error && !employeeEvidenceCleanup.error
+    && Boolean(employeeEvidenceForeignTenantUpload.error)
+    && Boolean(employeeEvidenceForeignOwnerUpload.error),
+  JSON.stringify({
+    ownTenantUploadAllowed: !employeeEvidenceUpload.error,
+    ownUnlinkedCleanupAllowed: !employeeEvidenceCleanup.error,
+    foreignTenantUploadDenied: Boolean(employeeEvidenceForeignTenantUpload.error),
+    foreignOwnerUploadDenied: Boolean(employeeEvidenceForeignOwnerUpload.error),
+  }));
 const evidenceObjectA = `${employeeA.userId}/ws02-attendance-a.pdf`;
 const evidenceObjectB = `${employeeB.userId}/ws02-attendance-b.pdf`;
 for (const objectPath of [evidenceObjectA,evidenceObjectB]) {

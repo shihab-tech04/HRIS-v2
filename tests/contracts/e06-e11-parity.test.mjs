@@ -46,6 +46,9 @@ test('E06 correction contract enforces tenant ownership, categories, time integr
   assert.match(migration, /storage\.objects/);
   assert.match(migration, /attendance-evidence/);
   assert.match(migration, /storage\.foldername\(v_evidence_path\)/);
+  assert.match(migration, /CREATE POLICY attendance_evidence_employee_upload[\s\S]+?FOR INSERT TO authenticated[\s\S]+?split_part\(name,'\/',1\)=\(SELECT auth\.uid\(\)\)::text[\s\S]+?hris_own_employee_for_tenant/);
+  assert.match(migration, /CREATE POLICY attendance_evidence_employee_delete_unattached[\s\S]+?FOR DELETE TO authenticated[\s\S]+?NOT EXISTS \([\s\S]+?attendance_corrections/);
+  assert.match(isolatedAcceptance, /E06 attendance evidence Storage permits own-tenant upload and orphan cleanup only/);
   assert.match(migration, /public\.admin_save_attendance\(uuid,date,jsonb\)/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.attendance_correction_settings/);
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
