@@ -45,6 +45,8 @@ test('trusted dispatcher explicitly dispatches restore only after successful mat
 const exactSourceBackup = readFileSync(new URL('../../.github/workflows/hris-current-main-source-backup.yml', import.meta.url), 'utf8');
 test('exact Main backup includes full Git history and local restoration proof', () => {
   assert.match(exactSourceBackup, /branches: \[main\]/);
+  assert.match(exactSourceBackup, /workflow_dispatch:/);
+  assert.match(exactSourceBackup, /- \.github\/workflows\/hris-current-main-source-backup\.yml/);
   assert.match(exactSourceBackup, /git bundle create/);
   assert.match(exactSourceBackup, /git clone -q/);
   assert.match(exactSourceBackup, /cat-file -e/);
