@@ -4470,7 +4470,8 @@ record('Tenant and employee RPC grants exclude anon and preserve each functionâ€
     && grants.authenticated === true
     && grants.service_role === (['public.hris_get_my_shift_roster(uuid,date,date)',
       'public.hris_change_tenant_employee_shift(uuid,uuid,uuid,uuid)',
-      'public.hris_get_my_shift_changes(uuid,date,date)'].includes(fn) ? false : true)),
+      'public.hris_get_my_shift_changes(uuid,date,date)',
+      'public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)'].includes(fn) ? false : true)),
   JSON.stringify(functionGrantMatrix));
 
 const rosterA = queryAs(managerA, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.assignment_date,r.full_name),'[]'::jsonb)
@@ -6404,6 +6405,12 @@ record('E10 Work From Home persists structured dates, times, tasks, reason and o
     wrongManager: wfhWrongTenantDecision.error?.code, employeeDecision: wfhEmployeeDecision.error?.code,
     genericReview: wfhGenericReviewBypass.error?.code, rejectWithoutReason: wfhRejectWithoutReason.error?.code,
     approval: wfhApproved.error?.code || wfhApproved.data?.status,
+    employeeMonthError: wfhMonth.error?.message,
+    employeeMonthRecords: wfhMonth.data?.records?.map(row => ({
+      id: row.id, attendance_date: row.attendance_date,
+      work_from_home_request_id: row.work_from_home_request_id,
+      status: row.status, work_mode: row.work_mode,
+    })),
     employeeAttendance: wfhEmployeeAttendanceRow, managerAttendance: wfhManagerAttendanceRow,
     cancelled: wfhCancelled.error?.code || wfhCancelled.data,
     history: wfhAudit.history, cancelHistory: wfhAudit.cancel_history, auditCount: wfhAudit.audit_count }));

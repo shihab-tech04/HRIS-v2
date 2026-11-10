@@ -156,14 +156,16 @@ function WorkFromHomeFields({ idPrefix, value, onChange, disabled, tx }: {
     <p className="text-sm text-slate-600 md:col-span-2"><span className="font-medium text-slate-800">{tx('Estimated duration')}:</span> {duration}</p>
     {invalidDates && <p role="alert" className="text-sm text-rose-700 md:col-span-2">{tx('Choose a valid date range.')}</p>}
     {invalidTimes && <p role="alert" className="text-sm text-rose-700 md:col-span-2">{tx('End time must be later than start time.')}</p>}
-    <label htmlFor={`${idPrefix}-tasks`} className="space-y-1.5 text-sm font-medium text-slate-800 md:col-span-2">
-      {tx('Task list')}
-      <textarea id={`${idPrefix}-tasks`} required disabled={disabled} value={value.tasksText} rows={3}
-        onChange={event => onChange({ ...value, tasksText: event.target.value })}
-        aria-describedby={`${idPrefix}-tasks-hint`}
-        className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal focus:outline-2 focus:outline-[#08558B] disabled:opacity-60" />
-      <span id={`${idPrefix}-tasks-hint`} className="block text-xs font-normal text-slate-500">{tx('List each task or work item on a separate line. At least one task is required.')}</span>
-    </label>
+    <div className="space-y-1.5 md:col-span-2">
+      <label htmlFor={`${idPrefix}-tasks`} className="block space-y-1.5 text-sm font-medium text-slate-800">
+        {tx('Task list')}
+        <textarea id={`${idPrefix}-tasks`} required disabled={disabled} value={value.tasksText} rows={3}
+          onChange={event => onChange({ ...value, tasksText: event.target.value })}
+          aria-describedby={`${idPrefix}-tasks-hint`}
+          className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal focus:outline-2 focus:outline-[#08558B] disabled:opacity-60" />
+      </label>
+      <p id={`${idPrefix}-tasks-hint`} className="text-xs text-slate-500">{tx('List each task or work item on a separate line. At least one task is required.')}</p>
+    </div>
     {noTasks && value.tasksText.trim() && <p role="alert" className="text-sm text-rose-700 md:col-span-2">{tx('Add at least one task or work item.')}</p>}
     <label htmlFor={`${idPrefix}-location`} className="space-y-1.5 text-sm font-medium text-slate-800 md:col-span-2">
       {tx('Work location (optional)')}
