@@ -1,4 +1,6 @@
 # One-time exact protected-Main source/history recovery alongside HRIS DB recovery.
+# Refresh the exact protected-Main source and encrypted database recovery set for
+# the explicit owner-command production release; no SQL release is auto-triggered.
 # No SQL writes, production deploys, Auth changes, or cross-account credentials.
 name: HRIS exact protected Main source history backup
 on:
