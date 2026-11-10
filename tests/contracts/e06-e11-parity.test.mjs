@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const workspace = readFileSync(new URL('../../src/live/LiveHrisWorkspace.tsx', import.meta.url), 'utf8');
 const quickAccess = readFileSync(new URL('../../src/live/EmployeeDashboardQuickAccess.tsx', import.meta.url), 'utf8');
@@ -11,6 +13,11 @@ const projectLocale = readFileSync(new URL('../../src/live/project-locale.ts', i
 const serviceLocale = readFileSync(new URL('../../src/live/service-request-locale.ts', import.meta.url), 'utf8');
 const isolatedAcceptance = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const correctionBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-attendance-correction-browser.mjs', import.meta.url), 'utf8');
+const releaseScriptPath = new URL('../../scripts/release/hris-attendance-gated-sql-release.sh', import.meta.url);
+const releaseScript = readFileSync(releaseScriptPath, 'utf8');
+const releaseWorkflow = readFileSync(new URL('../../.github/workflows/hris-attendance-gated-sql-release.yml', import.meta.url), 'utf8');
+const releaseDispatcher = readFileSync(new URL('../../.github/workflows/hris-owner-command-release-dispatch.yml', import.meta.url), 'utf8');
+const pagesWorkflow = readFileSync(new URL('../../.github/workflows/deploy-pages.yml', import.meta.url), 'utf8');
 
 test('E06 correction contract enforces tenant ownership, categories, time integrity, and evidence policy', () => {
   assert.match(migration, /public\.hris_get_my_attendance_correction_context/);
@@ -114,4 +121,22 @@ test('E06 and E11 SQL validation messages are translated in their employee flows
   const raisedMessages = source => [...new Set([...source.matchAll(/RAISE EXCEPTION '([^']+)'/g)].map(match => match[1]))];
   for (const message of raisedMessages(e06Sql)) assert.ok(projectKeys.has(message), `Missing Bengali E06 translation: ${message}`);
   for (const message of raisedMessages(e11Sql)) assert.ok(serviceKeys.has(message), `Missing Bengali E11 translation: ${message}`);
+});
+
+test('E06/E11 production release is pinned, protected, recovery-gated, and required before Pages', () => {
+  execFileSync('bash', ['-n', fileURLToPath(releaseScriptPath)], { encoding: 'utf8' });
+  assert.match(releaseScript, /20261110193754_hris_attendance_correction_movement_parity\.sql/);
+  assert.match(releaseScript, /f855936617a94f5e373af3fe4b337590401707fc5d7afe728dd9089a95760929/);
+  assert.match(releaseScript, /pulls\/196/);
+  assert.match(releaseScript, /supabase db push --db-url .*--dry-run/);
+  assert.match(releaseScript, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);
+  assert.match(releaseWorkflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(releaseWorkflow, /inputs\.release_approved == true/);
+  assert.match(releaseWorkflow, /inputs\.offsite_recovery_verified == true/);
+  assert.match(releaseDispatcher, /'attendance':rf'\/hris-prod attendance/);
+  assert.match(releaseDispatcher, /hris-attendance-gated-sql-release\.yml/);
+  assert.match(pagesWorkflow, /version='20261110193754' AND name='hris_attendance_correction_movement_parity'/);
+  assert.match(pagesWorkflow, /hris_get_my_attendance_correction_context/);
+  assert.match(pagesWorkflow, /hris_resolve_tenant_movement_request/);
+  assert.match(pagesWorkflow, /attendance_evidence_own_select/);
 });
