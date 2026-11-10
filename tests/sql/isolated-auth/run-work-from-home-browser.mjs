@@ -47,6 +47,10 @@ async function assertNoOverflow(page, label) {
   if (size.document > size.viewport) throw new Error(`${label} overflowed: ${JSON.stringify(size)}.`);
 }
 
+function requestStatusBadge(card, label) {
+  return card.locator('span.rounded-full').getByText(label, { exact: true });
+}
+
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
@@ -82,7 +86,7 @@ try {
   }
   const card = employee.locator(`[data-service-request="${saved.id}"]`);
   await card.getByText('Review local acceptance files', { exact: true }).waitFor({ state: 'visible' });
-  await card.getByText('Pending', { exact: true }).waitFor({ state: 'visible' });
+  await requestStatusBadge(card, 'Pending').waitFor({ state: 'visible' });
   await employee.getByRole('button', { name: 'Refresh my service requests', exact: true }).click();
   await card.getByText('Dhaka home office', { exact: true }).waitFor({ state: 'visible' });
 
@@ -132,7 +136,7 @@ try {
   if (!cancellationResponse.ok() || cancelled?.status !== 'cancelled') {
     throw new Error(`Pending WFH cancellation did not persist: ${JSON.stringify(cancelled)}.`);
   }
-  await cancelCard.getByText('বাতিল', { exact: true }).waitFor({ state: 'visible' });
+  await requestStatusBadge(cancelCard, 'বাতিল').waitFor({ state: 'visible' });
   await employee.getByRole('button', { name: 'Switch language to English', exact: true }).click();
   await employee.getByRole('heading', { name: 'My Service Requests', exact: true }).waitFor({ state: 'visible' });
   await employee.setViewportSize({ width: 1280, height: 900 });
@@ -163,12 +167,12 @@ try {
   if (!approvalResponse.ok() || approval?.status !== 'approved') {
     throw new Error(`Manager approval did not persist: ${JSON.stringify(approval)}.`);
   }
-  await managerCard.getByText('Approved', { exact: true }).waitFor({ state: 'visible' });
+  await requestStatusBadge(managerCard, 'Approved').waitFor({ state: 'visible' });
   await manager.getByRole('status').getByText('The Work From Home request was approved and added to attendance.', { exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(manager, 'WFH manager desktop');
 
   await employee.getByRole('button', { name: 'Refresh my service requests', exact: true }).click();
-  await card.getByText('Approved', { exact: true }).waitFor({ state: 'visible' });
+  await requestStatusBadge(card, 'Approved').waitFor({ state: 'visible' });
   const monthAttendancePromise = employee.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_attendance_period')
     && response.request().method() === 'POST');
   await employee.setViewportSize({ width: 375, height: 812 });
