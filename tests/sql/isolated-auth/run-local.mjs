@@ -6328,10 +6328,22 @@ const wfhApproved = concurrentWfhApprovals.find(result => !result.error);
 const duplicateWfhApproval = concurrentWfhApprovals.find(result => result.error);
 const wfhEmployeeHistory = await employeeA.client.rpc('hris_get_my_service_requests', { p_tenant_id: ids.tenantA });
 const wfhHistoryRow = wfhEmployeeHistory.data?.requests?.find(row => row.id === wfhRequestId);
+const wfhOwnEmployee = await employeeA.client.rpc('hris_own_employee_for_tenant', { p_tenant_id: ids.tenantA });
 const wfhMonth = await employeeA.client.rpc('hris_get_my_attendance_period', {
   p_tenant_id: ids.tenantA, p_month_start: `${wfhDate.slice(0, 7)}-01`,
 });
 const wfhEmployeeAttendanceRow = wfhMonth.data?.records?.find(row => row.work_from_home_request_id === wfhRequestId);
+const wfhAttendanceDirectProbe = queryAdmin(`SELECT jsonb_build_object(
+  'employee_id',r.employee_id,'status',r.status,'request_data',r.request_data,
+  'month_start','${wfhDate.slice(0, 7)}-01'::date,
+  'generated_dates',(SELECT coalesce(jsonb_agg(d.day::date),'[]'::jsonb)
+    FROM generate_series(greatest((r.request_data->>'from_date')::date,'${wfhDate.slice(0, 7)}-01'::date)::timestamp,
+      least((r.request_data->>'to_date')::date,
+        ('${wfhDate.slice(0, 7)}-01'::date+interval '1 month')::date-1)::timestamp,interval '1 day') d(day)),
+  'attendance_exists',EXISTS(SELECT 1 FROM public.attendance_records a
+    WHERE a.tenant_id=r.tenant_id AND a.employee_id=r.employee_id
+      AND a.attendance_date='${wfhDate}'::date))
+  FROM public.service_requests r WHERE r.id='${wfhRequestId}'::uuid`);
 const wfhManagerAttendance = await managerA.client.rpc('hris_get_tenant_attendance_data', {
   p_tenant_id: ids.tenantA, p_start: wfhDate, p_end: wfhDate,
   p_search: null, p_status: 'scheduled', p_report: false,
@@ -6405,6 +6417,8 @@ record('E10 Work From Home persists structured dates, times, tasks, reason and o
     wrongManager: wfhWrongTenantDecision.error?.code, employeeDecision: wfhEmployeeDecision.error?.code,
     genericReview: wfhGenericReviewBypass.error?.code, rejectWithoutReason: wfhRejectWithoutReason.error?.code,
     approval: wfhApproved.error?.code || wfhApproved.data?.status,
+    employeeOwnId: wfhOwnEmployee.error?.message || wfhOwnEmployee.data,
+    directAttendanceProbe: wfhAttendanceDirectProbe,
     employeeMonthError: wfhMonth.error?.message,
     employeeMonthRecords: wfhMonth.data?.records?.map(row => ({
       id: row.id, attendance_date: row.attendance_date,
