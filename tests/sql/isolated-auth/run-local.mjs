@@ -1702,7 +1702,11 @@ record('E06 attendance evidence Storage permits own-tenant upload and orphan cle
     && Boolean(employeeEvidenceForeignOwnerUpload.error),
   JSON.stringify({
     ownTenantUploadAllowed: !employeeEvidenceUpload.error,
+    ownTenantUploadError: employeeEvidenceUpload.error
+      ? { statusCode: employeeEvidenceUpload.error.statusCode, message: employeeEvidenceUpload.error.message } : null,
     ownUnlinkedCleanupAllowed: !employeeEvidenceCleanup.error,
+    ownCleanupError: employeeEvidenceCleanup.error
+      ? { statusCode: employeeEvidenceCleanup.error.statusCode, message: employeeEvidenceCleanup.error.message } : null,
     foreignTenantUploadDenied: Boolean(employeeEvidenceForeignTenantUpload.error),
     foreignOwnerUploadDenied: Boolean(employeeEvidenceForeignOwnerUpload.error),
   }));

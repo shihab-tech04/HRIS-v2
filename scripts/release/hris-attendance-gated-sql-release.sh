@@ -13,7 +13,7 @@ test -n "$PGPASSWORD" || { echo 'HRIS DB credential unavailable'; exit 1; }
 migration='20261110193754_hris_attendance_correction_movement_parity.sql'
 source_sql="supabase/migrations/$migration"
 test -s "$source_sql"
-test "$(sha256sum "$source_sql" | cut -d ' ' -f1)" = 'dc9429c1a8953b1e7c73f78dfcc217507c404896e8d85a5f7debdd07dcf813d5' || {
+test "$(sha256sum "$source_sql" | cut -d ' ' -f1)" = 'ea8bcec380837da54f3696815239b2a03e5796f8faf599c99d8a31718dd143b1' || {
   echo 'Reviewed E06/E11 SQL bytes changed; no release'; exit 1;
 }
 

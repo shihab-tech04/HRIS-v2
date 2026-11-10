@@ -36,11 +36,10 @@ CREATE POLICY attendance_evidence_employee_upload
     AND split_part(name,'/',1)=(SELECT auth.uid())::text
     AND name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](pdf|doc|docx|jpg|jpeg|png)$'
     AND EXISTS (
-      SELECT 1 FROM public.employees e
-      JOIN public.tenants t ON t.id=e.tenant_id AND t.is_active IS TRUE
-      WHERE e.user_id=(SELECT auth.uid())
-        AND e.tenant_id::text=split_part(name,'/',2)
-        AND e.id=public.hris_own_employee_for_tenant(e.tenant_id)
+      SELECT 1 FROM public.tenants t
+      WHERE t.id::text=split_part(name,'/',2)
+        AND t.is_active IS TRUE
+        AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL
     )
   );
 
@@ -56,11 +55,10 @@ CREATE POLICY attendance_evidence_employee_delete_unattached
     AND split_part(name,'/',1)=(SELECT auth.uid())::text
     AND name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](pdf|doc|docx|jpg|jpeg|png)$'
     AND EXISTS (
-      SELECT 1 FROM public.employees e
-      JOIN public.tenants t ON t.id=e.tenant_id AND t.is_active IS TRUE
-      WHERE e.user_id=(SELECT auth.uid())
-        AND e.tenant_id::text=split_part(name,'/',2)
-        AND e.id=public.hris_own_employee_for_tenant(e.tenant_id)
+      SELECT 1 FROM public.tenants t
+      WHERE t.id::text=split_part(name,'/',2)
+        AND t.is_active IS TRUE
+        AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL
     )
     AND NOT EXISTS (
       SELECT 1 FROM public.attendance_corrections c
