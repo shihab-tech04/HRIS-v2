@@ -647,6 +647,80 @@ BEGIN
 END
 $function$;
 
+-- Keep the approved client name visible on the employee's own monthly
+-- attendance projection after an E11 client meeting is converted to an
+-- attendance work mode. WFH schedule rows have no client name.
+CREATE OR REPLACE FUNCTION public.hris_get_my_attendance_period(
+  p_tenant_id uuid,p_month_start date
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = '' AS $function$
+DECLARE
+  v_employee_id uuid;
+  v_timezone text;
+  v_today date;
+  v_month_end date;
+  v_records jsonb;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_live_session() THEN
+    RAISE EXCEPTION 'Active employee session required.' USING errcode='42501';
+  END IF;
+  SELECT t.timezone INTO v_timezone FROM public.tenants t
+  WHERE t.id=p_tenant_id AND t.is_active IS TRUE;
+  IF NOT FOUND OR v_timezone IS NULL THEN
+    RAISE EXCEPTION 'Active employee organization required.' USING errcode='42501';
+  END IF;
+  v_employee_id := public.hris_own_employee_for_tenant(p_tenant_id);
+  IF v_employee_id IS NULL THEN
+    RAISE EXCEPTION 'Linked employee record required.' USING errcode='42501';
+  END IF;
+  v_today := (now() AT TIME ZONE v_timezone)::date;
+  IF p_month_start IS NULL OR extract(day FROM p_month_start)<>1
+     OR p_month_start>date_trunc('month',v_today::timestamp)::date THEN
+    RAISE EXCEPTION 'Choose a calendar month up to the current organization month.' USING errcode='22023';
+  END IF;
+  v_month_end := (p_month_start + interval '1 month')::date - 1;
+
+  WITH attendance_rows AS (
+    SELECT a.id::text AS id,a.attendance_date,a.check_in,a.check_out,a.work_mode,
+      a.client_name,a.status,
+      CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NOT NULL AND a.check_out>=a.check_in
+        THEN round((extract(epoch FROM (a.check_out-a.check_in))/3600)::numeric,2) ELSE NULL END AS work_hours,
+      NULL::text AS work_from_home_request_id,NULL::time AS work_from_home_start_time,
+      NULL::time AS work_from_home_end_time,NULL::jsonb AS work_from_home_tasks,
+      NULL::text AS work_from_home_location
+    FROM public.attendance_records a
+    WHERE a.tenant_id=p_tenant_id AND a.employee_id=v_employee_id
+      AND a.attendance_date BETWEEN p_month_start AND v_month_end
+    UNION ALL
+    SELECT 'wfh:'||r.id::text||':'||d.day::date::text,d.day::date,NULL::timestamptz,NULL::timestamptz,
+      'home'::text,NULL::text,'scheduled'::text,NULL::numeric,r.id::text,
+      nullif(r.request_data->>'start_time','')::time,nullif(r.request_data->>'end_time','')::time,
+      r.request_data->'tasks',nullif(r.request_data->>'location','')
+    FROM public.service_requests r
+    CROSS JOIN LATERAL generate_series(
+      greatest((r.request_data->>'from_date')::date,p_month_start)::timestamp,
+      least((r.request_data->>'to_date')::date,v_month_end)::timestamp,interval '1 day'
+    ) d(day)
+    WHERE r.tenant_id=p_tenant_id AND r.employee_id=v_employee_id
+      AND r.request_type='work_from_home' AND r.status='approved'
+      AND nullif(r.request_data->>'from_date','') IS NOT NULL
+      AND nullif(r.request_data->>'to_date','') IS NOT NULL
+      AND (r.request_data->>'from_date')::date<=(r.request_data->>'to_date')::date
+      AND (r.request_data->>'to_date')::date>=p_month_start
+      AND (r.request_data->>'from_date')::date<=v_month_end
+      AND NOT EXISTS (
+        SELECT 1 FROM public.attendance_records a
+        WHERE a.tenant_id=r.tenant_id AND a.employee_id=r.employee_id AND a.attendance_date=d.day::date
+      )
+  )
+  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.attendance_date),'[]'::jsonb)
+  INTO v_records FROM attendance_rows x;
+  RETURN jsonb_build_object('tenant_id',p_tenant_id,'month_start',p_month_start,
+    'month_end',v_month_end,'records',v_records);
+END
+$function$;
+
 REVOKE ALL ON FUNCTION public.hris_get_my_attendance_correction_context(uuid)
   FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION public.hris_employee_submit_attendance_correction(uuid,jsonb)
@@ -678,6 +752,10 @@ GRANT EXECUTE ON FUNCTION public.hris_submit_my_movement_request(uuid,jsonb)
 GRANT EXECUTE ON FUNCTION public.hris_resolve_tenant_movement_request(uuid,uuid,text,text,text)
   TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.hris_mark_my_movement_returned(uuid,uuid)
+  TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.hris_get_my_attendance_period(uuid,date)
+  FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.hris_get_my_attendance_period(uuid,date)
   TO authenticated,service_role;
 
 COMMIT;
