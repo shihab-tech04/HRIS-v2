@@ -174,7 +174,7 @@ function queryAdmin(sql) {
 
 function cleanupAttendanceCorrectionBrowserFixture() {
   if (!attendanceCorrectionBrowserFixtureId || !attendanceCorrectionBrowserDate
-      || attendanceCorrectionBrowserReasons.length !== 2) return;
+      || attendanceCorrectionBrowserReasons.length === 0) return;
   const reasons = attendanceCorrectionBrowserReasons.map(sqlLiteral).join(',');
   psqlSync(`DELETE FROM public.admin_audit_logs
     WHERE (target_type='attendance_correction' AND target_id IN (
@@ -335,6 +335,7 @@ let attendanceCorrectionBrowserFixtureId = null;
 let attendanceCorrectionBrowserDate = null;
 let attendanceCorrectionBrowserReasons = [];
 let attendanceCorrectionBrowserRequestIds = [];
+let attendanceCorrectionBrowserEvidencePaths = [];
 const password = randomBytes(24).toString('base64url');
 try {
   for (const email of emails) {
@@ -8797,8 +8798,11 @@ if (!attendanceCorrectionFreeDate) {
   attendanceCorrectionBrowserFixtureId = randomUUID();
   const rejectReason = `Synthetic E06 rejection ${randomUUID()}`;
   const approveReason = `Synthetic E06 approval ${randomUUID()}`;
+  const editReason = `Synthetic E06 pending edit ${randomUUID()}`;
+  const editedReason = `Synthetic E06 edited and cancelled ${randomUUID()}`;
+  const missingEvidenceReason = `Synthetic E06 missing evidence ${randomUUID()}`;
   const rejectionNote = `Synthetic E06 correction note ${randomUUID()}`;
-  attendanceCorrectionBrowserReasons = [rejectReason, approveReason];
+  attendanceCorrectionBrowserReasons = [rejectReason, approveReason, editReason, editedReason, missingEvidenceReason];
   psqlSync(`INSERT INTO public.attendance_records(
       id,tenant_id,employee_id,attendance_date,check_in,check_out,work_mode,client_name,status,source,remarks
     ) VALUES (
@@ -8808,6 +8812,94 @@ if (!attendanceCorrectionFreeDate) {
       ((${sqlLiteral(attendanceCorrectionBrowserDate)}::date + time '17:00') AT TIME ZONE 'Asia/Dhaka'),
       'office','Synthetic preserved client','present','employee','Synthetic E06 correction baseline'
     );`);
+  const attendanceCorrectionSettingsBefore = queryAdmin(`SELECT coalesce((
+    SELECT jsonb_build_object(
+      'employee_can_edit_pending',s.employee_can_edit_pending,
+      'employee_can_cancel_pending',s.employee_can_cancel_pending,
+      'evidence_required',s.evidence_required)
+    FROM public.attendance_correction_settings s WHERE s.tenant_id='${ids.tenantA}'::uuid
+  ),'null'::jsonb);`);
+  const defaultCorrectionContext = await employeeA.client.rpc('hris_get_my_attendance_correction_context', {
+    p_tenant_id: ids.tenantA,
+  });
+  record('E06 attendance correction defaults keep evidence optional and pending edit/cancel disabled without a tenant rule',
+    !defaultCorrectionContext.error && attendanceCorrectionSettingsBefore === null
+      && defaultCorrectionContext.data?.policy?.evidence_required === false
+      && defaultCorrectionContext.data?.policy?.employee_can_edit_pending === false
+      && defaultCorrectionContext.data?.policy?.employee_can_cancel_pending === false,
+    JSON.stringify({ policy: defaultCorrectionContext.data?.policy, settingsRowBefore: attendanceCorrectionSettingsBefore }));
+  const optionalEvidenceReason = `Synthetic E06 optional evidence ${randomUUID()}`;
+  const optionalEvidenceAttempt = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
+    p_tenant_id: ids.tenantA,
+    p_payload: {
+      attendance_date: attendanceCorrectionBrowserDate,
+      correction_categories: ['check_in_time'], check_in_time: '09:25',
+      reason: optionalEvidenceReason, evidence_path: null,
+    },
+  });
+  const optionalEvidenceRow = optionalEvidenceAttempt.data
+    ? queryAdmin(`SELECT to_jsonb(c) FROM public.attendance_corrections c
+        WHERE c.id=${sqlLiteral(optionalEvidenceAttempt.data)}::uuid`)
+    : null;
+  record('E06 employee can submit without evidence when no tenant rule requires it',
+    attendanceCorrectionSettingsBefore === null && !optionalEvidenceAttempt.error
+      && optionalEvidenceRow?.status === 'pending' && optionalEvidenceRow?.evidence_path === null,
+    JSON.stringify({ settingsRowBefore: attendanceCorrectionSettingsBefore,
+      errorCode: optionalEvidenceAttempt.error?.code, evidencePath: optionalEvidenceRow?.evidence_path }));
+  if (optionalEvidenceAttempt.data) {
+    const disabledEditAttempt = await employeeA.client.rpc('hris_employee_update_attendance_correction', {
+      p_tenant_id: ids.tenantA,
+      p_request_id: optionalEvidenceAttempt.data,
+      p_payload: {},
+    });
+    const disabledCancelAttempt = await employeeA.client.rpc('hris_employee_cancel_attendance_correction', {
+      p_tenant_id: ids.tenantA,
+      p_request_id: optionalEvidenceAttempt.data,
+    });
+    const disabledLifecycleState = queryAdmin(`SELECT jsonb_build_object(
+      'status',c.status,
+      'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
+        WHERE target_type='attendance_correction' AND target_id=c.id::text))
+      FROM public.attendance_corrections c WHERE c.id=${sqlLiteral(optionalEvidenceAttempt.data)}::uuid`);
+    record('E06 pending edit and cancellation are denied when organization policy is disabled',
+      disabledEditAttempt.error?.code === '42501' && disabledCancelAttempt.error?.code === '42501'
+        && disabledLifecycleState?.status === 'pending' && disabledLifecycleState?.audit_count === 1,
+      JSON.stringify({ editError: disabledEditAttempt.error?.code, cancelError: disabledCancelAttempt.error?.code,
+        state: disabledLifecycleState }));
+    psqlSync(`DELETE FROM public.admin_audit_logs WHERE target_type='attendance_correction'
+      AND target_id=${sqlLiteral(optionalEvidenceAttempt.data)};
+      DELETE FROM public.attendance_corrections WHERE id=${sqlLiteral(optionalEvidenceAttempt.data)}::uuid;`);
+  }
+  psqlSync(`INSERT INTO public.attendance_correction_settings(
+      tenant_id,employee_can_edit_pending,employee_can_cancel_pending,evidence_required
+    ) VALUES ('${ids.tenantA}'::uuid,true,true,true)
+    ON CONFLICT (tenant_id) DO UPDATE SET employee_can_edit_pending=true,
+      employee_can_cancel_pending=true,evidence_required=true,updated_at=clock_timestamp();`);
+  const configuredCorrectionContext = await employeeA.client.rpc('hris_get_my_attendance_correction_context', {
+    p_tenant_id: ids.tenantA,
+  });
+  record('E06 isolated tenant policy enables required evidence and pending edit/cancel for end-to-end acceptance',
+    !configuredCorrectionContext.error && configuredCorrectionContext.data?.policy?.evidence_required === true
+      && configuredCorrectionContext.data?.policy?.employee_can_edit_pending === true
+      && configuredCorrectionContext.data?.policy?.employee_can_cancel_pending === true,
+    JSON.stringify(configuredCorrectionContext.data?.policy));
+  const missingEvidenceAttempt = await employeeA.client.rpc('hris_employee_submit_attendance_correction', {
+    p_tenant_id: ids.tenantA,
+    p_payload: {
+      attendance_date: attendanceCorrectionBrowserDate,
+      correction_categories: ['check_in_time'], check_in_time: '09:20',
+      reason: missingEvidenceReason, evidence_path: null,
+    },
+  });
+  const missingEvidencePersistence = queryAdmin(`SELECT jsonb_build_object(
+    'request_count',(SELECT count(*)::integer FROM public.attendance_corrections
+      WHERE tenant_id='${ids.tenantA}'::uuid AND reason=${sqlLiteral(missingEvidenceReason)}),
+    'audit_count',(SELECT count(*)::integer FROM public.admin_audit_logs
+      WHERE action='attendance.correction.submitted' AND details->>'reason'=${sqlLiteral(missingEvidenceReason)}));`);
+  record('E06 backend rejects a required-evidence correction without persisting a request or audit event',
+    Boolean(missingEvidenceAttempt.error)
+      && missingEvidencePersistence.request_count === 0 && missingEvidencePersistence.audit_count === 0,
+    JSON.stringify({ errorCode: missingEvidenceAttempt.error?.code, persistence: missingEvidencePersistence }));
   try {
     attendanceCorrectionBrowserOutput = execFileSync('node', [path.join(here, 'run-employee-attendance-correction-browser.mjs')], {
       cwd: mainRoot,
@@ -8823,6 +8915,8 @@ if (!attendanceCorrectionFreeDate) {
         HRIS_LOCAL_CORRECTION_DATE: attendanceCorrectionBrowserDate,
         HRIS_LOCAL_CORRECTION_REASON_REJECT: rejectReason,
         HRIS_LOCAL_CORRECTION_REASON_APPROVE: approveReason,
+        HRIS_LOCAL_CORRECTION_REASON_EDIT: editReason,
+        HRIS_LOCAL_CORRECTION_REASON_EDITED: editedReason,
         HRIS_LOCAL_CORRECTION_REJECTION_NOTE: rejectionNote,
       },
       encoding: 'utf8',
@@ -8836,7 +8930,8 @@ if (!attendanceCorrectionFreeDate) {
     'requests',COALESCE((SELECT jsonb_agg(jsonb_build_object(
       'id',c.id::text,'tenant_id',c.tenant_id::text,'employee_id',c.employee_id::text,
       'reason',c.reason,'status',c.status,'requested_check_in',c.requested_check_in,
-      'resolved_by',c.resolved_by::text,'resolution_note',c.resolution_note)
+      'resolved_by',c.resolved_by::text,'resolution_note',c.resolution_note,
+      'evidence_path',c.evidence_path)
       ORDER BY c.requested_at,c.id)
       FROM public.attendance_corrections c
       WHERE c.tenant_id='${ids.tenantA}'::uuid
@@ -8857,15 +8952,24 @@ if (!attendanceCorrectionFreeDate) {
         AND a.employee_id='55555555-5555-4555-8555-555555555555'::uuid))`);
   const correctionRequests = attendanceCorrectionBrowserPersistence.requests || [];
   attendanceCorrectionBrowserRequestIds = correctionRequests.map(row => row.id).filter(Boolean);
+  attendanceCorrectionBrowserEvidencePaths = correctionRequests.map(row => row.evidence_path).filter(Boolean);
   const rejectedCorrection = correctionRequests.find(row => row.reason === rejectReason);
   const approvedCorrection = correctionRequests.find(row => row.reason === approveReason);
+  const editedCancelledCorrection = correctionRequests.find(row => row.reason === editedReason);
+  const correctionEvidencePathPattern = new RegExp(`^${employeeA.userId}/${ids.tenantA}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.pdf$`);
+  const evidencePathsValid = correctionRequests.length === 3
+    && correctionRequests.every(row => typeof row.evidence_path === 'string'
+      && correctionEvidencePathPattern.test(row.evidence_path));
   const correctedAttendance = attendanceCorrectionBrowserPersistence.attendance;
-  const correctionSnapshotValid = correctionRequests.length === 2
+  const correctionSnapshotValid = correctionRequests.length === 3
     && rejectedCorrection?.status === 'rejected' && Boolean(rejectedCorrection.resolved_by)
     && rejectedCorrection.resolution_note === rejectionNote
+    && typeof rejectedCorrection.evidence_path === 'string'
     && approvedCorrection?.status === 'approved' && Boolean(approvedCorrection.resolved_by)
     && Date.parse(approvedCorrection.requested_check_in) === Date.parse(`${attendanceCorrectionBrowserDate}T03:45:00Z`)
-    && attendanceCorrectionBrowserPersistence.audit_count === 4
+    && editedCancelledCorrection?.status === 'cancelled' && Boolean(editedCancelledCorrection.resolved_by)
+    && Date.parse(editedCancelledCorrection.requested_check_in) === Date.parse(`${attendanceCorrectionBrowserDate}T04:00:00Z`)
+    && evidencePathsValid && attendanceCorrectionBrowserPersistence.audit_count === 7
     && correctedAttendance?.tenant_id === ids.tenantA
     && correctedAttendance?.employee_id === '55555555-5555-4555-8555-555555555555'
     && correctedAttendance?.attendance_date === attendanceCorrectionBrowserDate
@@ -8884,16 +8988,37 @@ if (!attendanceCorrectionFreeDate) {
     JSON.stringify({ savedValue: approvedCorrection?.requested_check_in, auditCount: attendanceCorrectionBrowserPersistence.audit_count }));
   record('E06-03 correction reason is required and persists with each employee request',
     attendanceCorrectionBrowserOutput.includes('E06-03_REASON_BROWSER_PASS')
-      && rejectedCorrection?.reason === rejectReason && approvedCorrection?.reason === approveReason,
+      && rejectedCorrection?.reason === rejectReason && approvedCorrection?.reason === approveReason
+      && editedCancelledCorrection?.reason === editedReason,
     JSON.stringify({ requestCount: correctionRequests.length, reasonsPersisted: correctionRequests.every(row => Boolean(row.reason)) }));
-  record('E06-04 partial: no approved rule says when evidence is required, so employee evidence upload remains unresolved',
-    true, 'Attendance correction evidence_path exists in the record contract, but no approved upload requirement was supplied.');
+  record('E06-04 employee evidence is optional by default, required by tenant policy, uploaded privately, and read through a signed URL',
+    !defaultCorrectionContext.error && defaultCorrectionContext.data?.policy?.evidence_required === false
+      && !configuredCorrectionContext.error && configuredCorrectionContext.data?.policy?.evidence_required === true
+      && Boolean(missingEvidenceAttempt.error) && missingEvidencePersistence.request_count === 0
+      && missingEvidencePersistence.audit_count === 0
+      && attendanceCorrectionBrowserOutput.includes('E06-04_PRIVATE_EVIDENCE_UPLOAD_AND_SIGNED_READ_BROWSER_PASS')
+      && evidencePathsValid,
+    JSON.stringify({ defaultPolicy: defaultCorrectionContext.data?.policy,
+      configuredPolicy: configuredCorrectionContext.data?.policy, missingEvidencePersistence,
+      evidencePathsValid, storedPaths: attendanceCorrectionBrowserEvidencePaths.length }));
   record('E06-05 employee submits a correction, recovers a transient outage, and saves only one request after retry',
     attendanceCorrectionBrowserOutput.includes('E06-05_RETRY_SUBMISSION_BROWSER_PASS')
-      && correctionRequests.length === 2 && attendanceCorrectionBrowserPersistence.audit_count === 4,
-    JSON.stringify({ persistedRequests: correctionRequests.length, auditCount: attendanceCorrectionBrowserPersistence.audit_count }));
-  record('E06-06 partial: pending edit or cancellation is not implemented because the approved policy does not define it',
-    true, 'The modal Cancel action closes the unsent form; it does not alter an already submitted request.');
+      && correctionRequests.filter(row => row.reason === rejectReason).length === 1
+      && attendanceCorrectionBrowserPersistence.audit_count === 7,
+    JSON.stringify({ persistedRejectionRequests: correctionRequests.filter(row => row.reason === rejectReason).length,
+      submittedAttempts: attendanceCorrectionBrowserOutput.includes('E06-05_RETRY_SUBMISSION_BROWSER_PASS'),
+      auditCount: attendanceCorrectionBrowserPersistence.audit_count }));
+  record('E06-06 pending edits and cancellation work only under their tenant policy and preserve the owner’s updated request',
+    !configuredCorrectionContext.error
+      && configuredCorrectionContext.data?.policy?.employee_can_edit_pending === true
+      && configuredCorrectionContext.data?.policy?.employee_can_cancel_pending === true
+      && attendanceCorrectionBrowserOutput.includes('E06-06_POLICY_ENABLED_PENDING_EDIT_CANCEL_AND_RECOVERY_BROWSER_PASS')
+      && editedCancelledCorrection?.status === 'cancelled'
+      && editedCancelledCorrection.reason === editedReason
+      && Date.parse(editedCancelledCorrection.requested_check_in) === Date.parse(`${attendanceCorrectionBrowserDate}T04:00:00Z`),
+    JSON.stringify({ policy: configuredCorrectionContext.data?.policy,
+      status: editedCancelledCorrection?.status, reason: editedCancelledCorrection?.reason,
+      requestedCheckIn: editedCancelledCorrection?.requested_check_in }));
   record('E06-07 employee sees pending, approved and rejected status after refresh in their own tenant',
     attendanceCorrectionBrowserOutput.includes('E06-07_PENDING_STATUS_BROWSER_PASS')
       && attendanceCorrectionBrowserOutput.includes('E06-08_REJECTION_REASON_BENGALI_REFRESH_BROWSER_PASS')
@@ -8912,6 +9037,20 @@ if (!attendanceCorrectionFreeDate) {
     attendanceCorrectionBrowserOutput.includes('E06-ATTENDANCE_CORRECTION_FORM_BENGALI_BROWSER_PASS')
       && attendanceCorrectionBrowserOutput.includes('E06-ATTENDANCE_CORRECTION_BROWSER_ACCEPTANCE=PASS'),
     attendanceCorrectionBrowserError);
+  if (attendanceCorrectionSettingsBefore === null) {
+    psqlSync(`DELETE FROM public.attendance_correction_settings WHERE tenant_id='${ids.tenantA}'::uuid;`);
+  } else {
+    psqlSync(`INSERT INTO public.attendance_correction_settings(
+        tenant_id,employee_can_edit_pending,employee_can_cancel_pending,evidence_required
+      ) VALUES ('${ids.tenantA}'::uuid,
+        ${attendanceCorrectionSettingsBefore.employee_can_edit_pending ? 'true' : 'false'},
+        ${attendanceCorrectionSettingsBefore.employee_can_cancel_pending ? 'true' : 'false'},
+        ${attendanceCorrectionSettingsBefore.evidence_required ? 'true' : 'false'})
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        employee_can_edit_pending=EXCLUDED.employee_can_edit_pending,
+        employee_can_cancel_pending=EXCLUDED.employee_can_cancel_pending,
+        evidence_required=EXCLUDED.evidence_required,updated_at=clock_timestamp();`);
+  }
   cleanupAttendanceCorrectionBrowserFixture();
   const correctionAuditTargetIds = attendanceCorrectionBrowserRequestIds.map(sqlLiteral).join(',') || "''";
   const attendanceCorrectionCleanup = queryAdmin(`SELECT jsonb_build_object(
@@ -9628,6 +9767,11 @@ if (failed.length) process.exitCode = 1;
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');
     if (deletedBucket.error) throw deletedBucket.error;
+  }
+  if (attendanceCorrectionBrowserEvidencePaths.length) {
+    const correctionEvidenceStorage = adminAuth.storage.from('attendance-evidence');
+    const removed = await correctionEvidenceStorage.remove(attendanceCorrectionBrowserEvidencePaths);
+    if (removed.error) throw removed.error;
   }
   if (attendanceTenantGuardStoragePaths.length) {
     const attendanceStorage = adminAuth.storage.from('attendance-evidence');

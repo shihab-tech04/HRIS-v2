@@ -110,6 +110,14 @@ test('isolated acceptance applies E06/E11 SQL and exercises movement decisions a
   assert.match(isolatedAcceptance, /E11 movement decisions deny a foreign-tenant manager/);
   assert.match(isolatedAcceptance, /E11 approved client meeting updates only its existing attendance row/);
   assert.match(correctionBrowser, /correction_categories/);
+  assert.match(isolatedAcceptance, /E06-04 employee evidence is optional by default, required by tenant policy/);
+  assert.match(isolatedAcceptance, /E06-06 pending edits and cancellation work only under their tenant policy/);
+  assert.match(isolatedAcceptance, /E06 pending edit and cancellation are denied when organization policy is disabled/);
+  assert.doesNotMatch(isolatedAcceptance, /E06-0[46] partial:/);
+  assert.match(correctionBrowser, /E06-04_PRIVATE_EVIDENCE_UPLOAD_AND_SIGNED_READ_BROWSER_PASS/);
+  assert.match(correctionBrowser, /E06-06_POLICY_ENABLED_PENDING_EDIT_CANCEL_AND_RECOVERY_BROWSER_PASS/);
+  assert.match(correctionBrowser, /hris_employee_update_attendance_correction/);
+  assert.match(correctionBrowser, /hris_employee_cancel_attendance_correction/);
   assert.match(correctionBrowser, /Check-in time/);
   assert.match(correctionBrowser, /Decision note \(required when rejecting\)/);
   assert.match(correctionBrowser, /চেক-ইনের সময়/);
