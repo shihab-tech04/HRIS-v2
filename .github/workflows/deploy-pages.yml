@@ -55,6 +55,21 @@ jobs:
               AND NOT has_function_privilege('anon','public.employee_set_my_avatar_v1(uuid,text,text)','EXECUTE')
               AND has_function_privilege('authenticated','public.employee_get_my_avatar_v1(uuid)','EXECUTE')
               AND has_function_privilege('authenticated','public.employee_set_my_avatar_v1(uuid,text,text)','EXECUTE')
+              AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations
+                   WHERE version='20261110120000') = 1
+              AND to_regprocedure('public.hris_submit_my_work_from_home_request(uuid,date,date,time,time,jsonb,text,text)') IS NOT NULL
+              AND to_regprocedure('public.hris_update_my_work_from_home_request(uuid,uuid,date,date,time,time,jsonb,text,text)') IS NOT NULL
+              AND to_regprocedure('public.hris_cancel_my_work_from_home_request(uuid,uuid)') IS NOT NULL
+              AND to_regprocedure('public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)') IS NOT NULL
+              AND NOT has_function_privilege('anon','public.hris_submit_my_work_from_home_request(uuid,date,date,time,time,jsonb,text,text)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_update_my_work_from_home_request(uuid,uuid,date,date,time,time,jsonb,text,text)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_cancel_my_work_from_home_request(uuid,uuid)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_submit_my_work_from_home_request(uuid,date,date,time,time,jsonb,text,text)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_update_my_work_from_home_request(uuid,uuid,date,date,time,time,jsonb,text,text)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_cancel_my_work_from_home_request(uuid,uuid)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)','EXECUTE')
+              AND NOT has_function_privilege('service_role','public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)','EXECUTE')
               AND EXISTS (SELECT 1 FROM storage.buckets
                           WHERE id='employee-avatars' AND public=false)
               AND to_regprocedure('public.employee_delete_my_profile_record_v1(uuid,text,uuid)') IS NOT NULL

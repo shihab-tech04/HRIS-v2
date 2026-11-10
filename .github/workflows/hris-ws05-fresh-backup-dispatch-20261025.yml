@@ -11,6 +11,7 @@ on:
       - .github/workflows/hris-step1-offline-restore-proof.yml
       - .github/workflows/hris-current-main-source-backup.yml
       - .github/workflows/hris-employee-avatar-sql-release.yml
+      - .github/workflows/hris-wfh-gated-sql-release.yml
       - .github/scripts/hris-legacy-auth-fk-counts.sql
 
 permissions:

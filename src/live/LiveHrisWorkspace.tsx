@@ -1342,7 +1342,8 @@ function AttendanceReport({ tenantId, tenantTimeZone, canView, canReport, canMan
             const cellClass = 'h-20 border-y border-white bg-white px-4 py-[15px] align-middle text-[#424242]';
             const normalizedStatus = String(row.status || '').trim().toLowerCase().replaceAll('_', ' ');
             const attendanceStatus = managerReportView
-              ? (typeof row.status === 'string' && row.status.trim() ? row.status.trim() : 'Not recorded')
+              ? (normalizedStatus === 'scheduled' ? projectText(locale, 'Scheduled')
+                : typeof row.status === 'string' && row.status.trim() ? row.status.trim() : 'Not recorded')
               : projectText(locale, normalizedStatus === 'present' ? 'On Time'
                 : normalizedStatus === 'early and late' || normalizedStatus === 'early late' ? 'Early & Late' : displayAttendanceStatus(row.status));
             const statusTone = normalizedStatus === 'late' ? 'text-[#B59A00]'
@@ -4593,13 +4594,16 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
     .map(part => part.slice(0, 1).toLocaleUpperCase()).join('') || '—';
   const today = typeof leave?.dashboard_date === 'string' ? leave.dashboard_date : '';
   const attendanceRecords = asRows(attendance?.records);
-  const todayRecord = attendanceRecords.find(item => item.attendance_date === today);
   const balances = asRows(leave?.balances);
   const holidays = asRows(leave?.holidays);
   const requests = asRows(leave?.requests);
   const attendanceMonthKey = `${tenantId}:${selectedAttendanceMonth}`;
   const attendanceMonthReady = loadedAttendanceMonth === attendanceMonthKey;
   const monthAttendanceRows = attendanceMonthReady ? monthlyAttendance : [];
+  const recordedToday = attendanceRecords.find(item => item.attendance_date === today);
+  const scheduledTodayWorkFromHome = monthAttendanceRows.find(item => item.attendance_date === today
+    && item.status === 'scheduled' && item.work_mode === 'home');
+  const todayRecord = recordedToday || scheduledTodayWorkFromHome;
   const monthParts = selectedAttendanceMonth.split('-').map(Number);
   const monthDayCount = monthParts.length === 2 && monthParts.every(Number.isFinite)
     ? new Date(Date.UTC(monthParts[0], monthParts[1], 0)).getUTCDate() : 31;

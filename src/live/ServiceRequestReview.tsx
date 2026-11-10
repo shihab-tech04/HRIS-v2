@@ -4,6 +4,7 @@ import { ClipboardList, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
 import { serviceRequestText } from './service-request-locale';
+import { WorkFromHomeSummary } from './MyServiceRequests';
 
 type RequestStatus = 'pending' | 'in_progress' | 'completed' | 'rejected' | 'approved' | 'cancelled';
 type RequestType = 'employment_certificate' | 'noc_letter' | 'salary_certificate' | 'other'
@@ -27,9 +28,10 @@ type ServiceRequest = {
   resolved_at: string | null;
   resolution_note: string | null;
   result_url: string | null;
+  request_data?: Record<string, unknown> | null;
   history: StatusEvent[];
 };
-type QueueFilter = 'all' | 'pending' | 'in_progress' | 'completed' | 'rejected';
+type QueueFilter = 'all' | 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'cancelled';
 type DecisionDraft = { requestId: string; nextStatus: 'completed' | 'rejected'; note: string };
 
 const statusLabels: Record<RequestStatus, string> = {
@@ -121,10 +123,36 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
     }
   }
 
+  async function resolveWorkFromHome(request: ServiceRequest, nextStatus: 'approved' | 'rejected', note?: string) {
+    setSavingId(request.id);
+    setActionError('');
+    setSuccessMessage('');
+    try {
+      const { error } = await supabase.rpc('hris_resolve_tenant_work_from_home_request', {
+        p_tenant_id: tenantId,
+        p_request_id: request.id,
+        p_expected_status: request.status,
+        p_next_status: nextStatus,
+        p_note: note ?? null,
+      });
+      if (error) throw error;
+      setDecision(null);
+      setSuccessMessage(nextStatus === 'approved'
+        ? tx('The Work From Home request was approved and added to attendance.')
+        : tx('The Work From Home request was rejected.'));
+      await loadRequests(true);
+    } catch {
+      setActionError(tx('This action could not be saved. Refresh the queue and try again.'));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   function submitDecision(event: FormEvent<HTMLFormElement>, request: ServiceRequest) {
     event.preventDefault();
     if (!decision || decision.requestId !== request.id || !decision.note.trim()) return;
-    void changeStatus(request, decision.nextStatus, decision.note);
+    if (request.request_type === 'work_from_home') void resolveWorkFromHome(request, 'rejected', decision.note);
+    else void changeStatus(request, decision.nextStatus, decision.note);
   }
 
   const requestType = (value: RequestType) => tx(({
@@ -162,7 +190,7 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
           {tx('Filter by status')}
           <select aria-label={tx('Filter by status')} value={filter} onChange={event => setFilter(event.target.value as QueueFilter)}
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 focus:outline-2 focus:outline-[#08558B]">
-            {(['all', 'pending', 'in_progress', 'completed', 'rejected'] as const).map(value => <option key={value} value={value}>
+            {(['all', 'pending', 'in_progress', 'completed', 'approved', 'rejected', 'cancelled'] as const).map(value => <option key={value} value={value}>
               {tx(value === 'all' ? 'All requests' : statusLabels[value])}
             </option>)}
           </select>
@@ -184,9 +212,10 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
                 <p className="mt-1 break-words text-sm text-slate-600">{request.employee_name} · {tx('Employee ID')} {request.employee_number}</p>
                 <p className="mt-1 text-xs text-slate-500">{tx('Submitted')} {dateLabel(request.submitted_at, locale, tx)}</p>
               </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(request.status)}`}>{tx(statusLabels[request.status])}</span>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(request.status)}`}>{tx(statusLabels[request.status] || request.status)}</span>
             </div>
             <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{request.reason}</p>
+            {request.request_type === 'work_from_home' && <WorkFromHomeSummary request={request} locale={locale} tx={tx} />}
             {request.resolution_note && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{tx(request.status === 'rejected' ? 'Rejection reason' : 'Resolution outcome')}</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-slate-600">{request.resolution_note}</p>
@@ -196,7 +225,7 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
               <summary className="cursor-pointer py-1 text-sm font-medium text-slate-700">{tx('Status history')} ({request.history.length})</summary>
               <ol className="mt-2 space-y-2 border-l border-slate-200 pl-3">
                 {request.history.map(event => <li key={event.id} className="text-xs text-slate-600">
-                  <p className="font-medium text-slate-800">{event.previous_status ? `${tx(statusLabels[event.previous_status])} → ` : ''}{tx(statusLabels[event.new_status])}</p>
+                  <p className="font-medium text-slate-800">{event.previous_status ? `${tx(statusLabels[event.previous_status] || event.previous_status)} → ` : ''}{tx(statusLabels[event.new_status] || event.new_status)}</p>
                   <p>{dateLabel(event.created_at, locale, tx)}</p>
                   {event.note && <p className="mt-1 whitespace-pre-wrap break-words">{event.note}</p>}
                 </li>)}
@@ -205,13 +234,19 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
 
             {safeResultHref(request.result_url) && <a className="mt-3 inline-flex min-h-10 items-center text-sm font-medium text-[#08558B] underline" href={safeResultHref(request.result_url) || undefined} target="_blank" rel="noreferrer">{tx('Open attached result')}</a>}
 
-            {request.status === 'pending' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            {request.request_type === 'work_from_home' && ['pending', 'in_progress'].includes(request.status) && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+              <button type="button" disabled={savingId === request.id} onClick={() => void resolveWorkFromHome(request, 'approved')}
+                className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-semibold text-white disabled:opacity-60">{savingId === request.id ? tx('Saving…') : tx('Approve Work From Home')}</button>
+              <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
+                className="min-h-11 rounded-lg border border-rose-300 px-4 text-sm font-semibold text-rose-800 disabled:opacity-60">{tx('Reject')}</button>
+            </div>}
+            {request.request_type !== 'work_from_home' && request.status === 'pending' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
               <button type="button" disabled={savingId === request.id} onClick={() => void changeStatus(request, 'in_progress')}
                 className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-semibold text-white disabled:opacity-60">{savingId === request.id ? tx('Saving…') : tx('Start review')}</button>
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
                 className="min-h-11 rounded-lg border border-rose-300 px-4 text-sm font-semibold text-rose-800 disabled:opacity-60">{tx('Reject')}</button>
             </div>}
-            {request.status === 'in_progress' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            {request.request_type !== 'work_from_home' && request.status === 'in_progress' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'completed', note: '' }); setActionError(''); }}
                 className="min-h-11 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{tx('Complete request')}</button>
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
