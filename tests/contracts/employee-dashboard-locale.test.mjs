@@ -48,9 +48,11 @@ test('Employee Dashboard shares the active locale with date, number, leave, and 
 test('real Auth/Postgres browser journey checks Bengali persistence, validation, cancellation, and both viewport sizes', () => {
   for (const phrase of [
     'Switch language to Bengali', 'ব্যক্তিগত ড্যাশবোর্ড', 'synesis-hris-locale',
-    'উপস্থিতির মাস', 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।',
+    'উপস্থিতির মাস', 'An attendance correction with no selected category remained submittable.',
     'Employee attendance month Bengali mobile', 'page.reload()',
   ]) assert.ok(browser.includes(phrase), `browser acceptance is missing ${phrase}`);
+  assert.equal(localeSource.includes("'Enter at least one attendance field to correct.': 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।',"), true,
+    'the Bengali correction validation message remains available in the locale dictionary');
 });
 
 test('employee attendance chart exposes its computed weekly values as an accessible table', () => {
