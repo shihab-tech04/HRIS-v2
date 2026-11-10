@@ -137,9 +137,9 @@ jobs:
                        'employee_profile_certificate_insert_namespace_guard',
                        'employee_profile_certificate_update_namespace_guard',
                        'employee_profile_certificate_delete_namespace_guard')) = 4
-            THEN 'HRIS_REQUIRED_HOSTED_SQL_READY' ELSE 'HRIS_REQUIRED_HOSTED_SQL_NOT_READY' END;
+            THEN 'HRIS_PROFILE_HOSTED_READY' ELSE 'HRIS_PROFILE_HOSTED_NOT_READY' END;
           ")"
-          test "$result" = 'HRIS_REQUIRED_HOSTED_SQL_READY' || {
+          test "$result" = 'HRIS_PROFILE_HOSTED_READY' || {
             echo '::error::Hosted SQL migration/RLS/storage gate failed; Pages not deployed'
             exit 1
           }

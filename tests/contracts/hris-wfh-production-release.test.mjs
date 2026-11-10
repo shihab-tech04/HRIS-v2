@@ -34,11 +34,12 @@ test('release checks exact PR/Auth/browser evidence and forbids role or table pe
   assert.match(release, /NOT has_function_privilege\('service_role'/);
 });
 
-test('owner release path cannot publish Pages until WFH SQL is verified on exact Main', () => {
+test('owner release path cannot publish Pages until WFH SQL is on Main ancestry and E06/E11 SQL is current', () => {
   assert.match(dispatcher, /'wfh':rf'\/hris-prod wfh/);
   assert.match(dispatcher, /hris-wfh-gated-sql-release\.yml/);
   assert.match(dispatcher, /wfh\)\s+gh workflow run hris-wfh-gated-sql-release\.yml/);
-  assert.match(dispatcher, /pages\)[\s\S]*success_on_main hris-wfh-gated-sql-release\.yml/);
+  assert.match(dispatcher, /pages\)[\s\S]*success_on_main hris-attendance-gated-sql-release\.yml/);
+  assert.match(dispatcher, /success_on_ancestor hris-wfh-gated-sql-release\.yml/);
   assert.match(pages, /version='20261110120000'/);
   assert.match(pages, /public\.hris_submit_my_work_from_home_request/);
   assert.match(pages, /public\.hris_resolve_tenant_work_from_home_request/);
