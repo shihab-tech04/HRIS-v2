@@ -157,7 +157,7 @@ test('E06 and E11 SQL validation messages are translated in their employee flows
 test('E06/E11 production release is pinned, protected, recovery-gated, and required before Pages', () => {
   execFileSync('bash', ['-n', fileURLToPath(releaseScriptPath)], { encoding: 'utf8' });
   assert.match(releaseScript, /20261110193754_hris_attendance_correction_movement_parity\.sql/);
-  assert.match(releaseScript, /8e2b1009d083b02e011c0bd0ce23c58b9a31ceaf08cdffbca236d07d9be225c4/);
+  assert.match(releaseScript, /dc9429c1a8953b1e7c73f78dfcc217507c404896e8d85a5f7debdd07dcf813d5/);
   assert.match(releaseScript, /pulls\/196/);
   assert.match(releaseScript, /supabase db push --db-url .*--dry-run/);
   assert.match(releaseScript, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);
