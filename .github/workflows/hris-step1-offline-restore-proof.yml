@@ -327,7 +327,20 @@ jobs:
                   JOIN pg_class rel ON rel.oid=con.conrelid
                   JOIN pg_namespace ns ON ns.oid=rel.relnamespace
                   WHERE con.contype='f' AND con.confrelid='auth.users'::regclass
-                    AND ns.nspname='public') = 58
+                    AND ns.nspname='public') = 58 +
+                      CASE WHEN EXISTS (
+                        SELECT 1 FROM supabase_migrations.schema_migrations
+                        WHERE version='20261109174000'
+                      ) THEN 1 ELSE 0 END
+             AND (NOT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations
+                               WHERE version='20261109174000')
+                  OR EXISTS (
+                    SELECT 1 FROM pg_constraint con
+                    JOIN pg_class rel ON rel.oid=con.conrelid
+                    WHERE rel.relname='service_request_status_history'
+                      AND con.conname='service_request_status_history_actor_user_id_fkey'
+                      AND con.confrelid='auth.users'::regclass
+                      AND con.convalidated))
              AND (SELECT COUNT(*) FROM pg_constraint con
                   JOIN pg_class rel ON rel.oid=con.conrelid
                   JOIN pg_namespace ns ON ns.oid=rel.relnamespace
