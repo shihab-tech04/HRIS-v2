@@ -82,7 +82,7 @@ function correctionCancelResponse(page, status) {
     && response.status() === status);
 }
 async function attachEvidence(dialog, name = 'attendance-correction-proof.pdf') {
-  await dialog.getByLabel('Supporting evidence', { exact: true }).setInputFiles({
+  await dialog.getByLabel('Supporting evidence').setInputFiles({
     name,
     mimeType: 'application/pdf',
     buffer: Buffer.from('%PDF-1.4\n% isolated HRIS attendance-correction evidence\n%%EOF\n'),
@@ -171,7 +171,7 @@ try {
   }
   await dialog.getByLabel('Check-in time', { exact: true }).check();
   await dialog.getByLabel('Requested check-in', { exact: true }).fill('09:35');
-  const evidenceInput = dialog.getByLabel('Supporting evidence', { exact: true });
+  const evidenceInput = dialog.getByLabel('Supporting evidence');
   if (!await evidenceInput.evaluate(element => element.required && element.validity.valueMissing)) {
     throw new Error('Required evidence did not block an attendance correction before upload.');
   }
