@@ -280,8 +280,9 @@ test('linked employee can complete the private evidence leave request on mobile'
   expect(correctionPayload).toEqual({
     p_tenant_id: tenantId,
     p_payload: {
-      attendance_date: '2026-10-12', check_in_time: '09:15', check_out_time: null,
-      work_mode: null, reason: 'Synthetic missed punch correction',
+      attendance_date: '2026-10-12', correction_categories: ['check_in_time'],
+      check_in_time: '09:15', check_out_time: null, work_mode: null, client_name: null,
+      reason: 'Synthetic missed punch correction', evidence_path: null,
     },
   });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(376);
