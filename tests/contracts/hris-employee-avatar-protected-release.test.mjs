@@ -50,7 +50,9 @@ test('owner-only issue 191 adds an exact SHA avatar release, keeps existing serv
   assert.match(bridge, /github\.event\.comment\.author_association == 'OWNER'/);
   assert.match(bridge, /github\.event\.issue\.number == 191/);
   assert.match(bridge, /'avatar':rf'\/hris-prod avatar /);
-  assert.match(bridge, /success_on_main hris-employee-avatar-sql-release\.yml/);
+  assert.match(bridge, /avatar_sha.*gh api.*hris-employee-avatar-sql-release\.yml/);
+  assert.match(bridge, /avatar_comparison.*compare/);
+  assert.match(bridge, /ahead \|\|.*identical/);
   assert.match(bridge, /gh workflow run hris-employee-avatar-sql-release\.yml/);
   assert.match(bridge, /gh workflow run hris-service-requests-gated-sql\.yml/);
   assert.match(bridge, /gh workflow run hris-release1-platform-access-sql-release\.yml/);
