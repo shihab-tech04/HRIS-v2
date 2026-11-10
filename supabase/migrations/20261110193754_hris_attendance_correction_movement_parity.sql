@@ -409,9 +409,6 @@ BEGIN
   SELECT a.* INTO v_current FROM public.attendance_records a
   WHERE a.tenant_id=v_tenant AND a.employee_id=v_request.employee_id
     AND a.attendance_date=v_request.attendance_date FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Attendance record not found for correction.' USING errcode='P0002';
-  END IF;
   IF p_decision='approved' THEN
     v_record := public.admin_save_attendance(
       v_request.employee_id,v_request.attendance_date,
@@ -419,8 +416,7 @@ BEGIN
         'check_in',coalesce(v_request.requested_check_in,v_current.check_in),
         'check_out',coalesce(v_request.requested_check_out,v_current.check_out),
         'work_mode',coalesce(v_request.requested_work_mode,v_current.work_mode,'office'),
-        'client_name',CASE WHEN v_request.requested_work_mode IS NOT NULL
-          THEN coalesce(v_request.client_name,'') ELSE coalesce(v_current.client_name,'') END,
+        'client_name',coalesce(v_request.client_name,v_current.client_name,''),
         'status',coalesce(nullif(v_current.status,''),'present'),
         'remarks',coalesce(v_note,'Approved attendance correction')
       )
