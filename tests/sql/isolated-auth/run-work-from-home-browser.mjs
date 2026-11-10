@@ -201,7 +201,7 @@ try {
       || scheduled?.check_in !== null || scheduled?.check_out !== null) {
     throw new Error(`Approved WFH was not returned as a scheduled attendance row: ${JSON.stringify(scheduled)}.`);
   }
-  await employee.getByText('Scheduled', { exact: true }).waitFor({ state: 'visible' });
+  // The approved WFH day can be in the future; today's dashboard must not\n  // misrepresent that future scheduled row as today's check-in status.\n  await employee.getByRole('heading', { name: 'Attendance and leave', exact: true }).waitFor({ state: 'visible' });
   await assertNoOverflow(employee, 'WFH attendance mobile');
   await employee.setViewportSize({ width: 1280, height: 900 });
   await assertNoOverflow(employee, 'WFH attendance desktop');
