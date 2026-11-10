@@ -55,9 +55,9 @@ jobs:
       RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
       OFFSITE_SOURCE_ARCHIVE_SHA256: ${{ inputs.offsite_source_archive_sha256 }}
       OFFSITE_DATABASE_ARCHIVE_SHA256: ${{ inputs.offsite_database_archive_sha256 }}
-      SOURCE_BACKUP_DIR: ${{ runner.temp }}/hris-source-backup
-      DATABASE_BACKUP_DIR: ${{ runner.temp }}/hris-database-backup
-      RESTORE_PROOF_DIR: ${{ runner.temp }}/hris-restore-proof
+      SOURCE_BACKUP_DIR: /tmp/hris-wfh-release-source
+      DATABASE_BACKUP_DIR: /tmp/hris-wfh-release-database
+      RESTORE_PROOF_DIR: /tmp/hris-wfh-release-restore
       PGHOST: ${{ inputs.session_pooler_host }}
       PGPORT: '5432'
       PGDATABASE: postgres
