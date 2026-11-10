@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml
+      - .github/workflows/hris-current-main-source-backup.yml
 permissions:
   contents: read
 jobs:
