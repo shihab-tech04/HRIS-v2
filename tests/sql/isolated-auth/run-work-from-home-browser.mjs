@@ -81,13 +81,28 @@ try {
   const saved = await firstResponse.json();
   if (!firstResponse.ok() || !saved?.id || saved.status !== 'pending'
       || saved.request_data?.start_time !== '09:00:00'
-      || saved.request_data?.tasks?.length !== 2) {
+      || saved.request_data?.tasks?.length !== 2
+      || saved.request_data?.location !== 'Dhaka home office') {
     throw new Error(`Structured WFH submission did not persist: ${JSON.stringify(saved)}.`);
   }
   const card = employee.locator(`[data-service-request="${saved.id}"]`);
   await card.getByText('Review local acceptance files', { exact: true }).waitFor({ state: 'visible' });
   await requestStatusBadge(card, 'Pending').waitFor({ state: 'visible' });
+  const employeeListRefresh = employee.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_get_my_service_requests')
+    && response.request().method() === 'POST');
   await employee.getByRole('button', { name: 'Refresh my service requests', exact: true }).click();
+  const employeeListResponse = await employeeListRefresh;
+  const employeeListData = await employeeListResponse.json();
+  const refreshedRequest = employeeListData?.requests?.find(request => request.id === saved.id);
+  if (!employeeListResponse.ok() || refreshedRequest?.request_data?.location !== 'Dhaka home office') {
+    throw new Error(`WFH employee history did not return the persisted location: ${JSON.stringify({
+      status: employeeListResponse.status(), request: refreshedRequest, response: employeeListData,
+    })}.`);
+  }
+  const refreshedCardText = await card.innerText();
+  if (!refreshedCardText.includes('Dhaka home office')) {
+    throw new Error(`WFH employee history data was returned but not rendered: ${JSON.stringify({ request: refreshedRequest, cardText: refreshedCardText })}.`);
+  }
   await card.getByText('Dhaka home office', { exact: true }).waitFor({ state: 'visible' });
 
   await employee.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
