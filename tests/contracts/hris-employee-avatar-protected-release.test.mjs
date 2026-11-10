@@ -7,6 +7,7 @@ const avatar = fromRoot('.github/workflows/hris-employee-avatar-sql-release.yml'
 const bridge = fromRoot('.github/workflows/hris-owner-command-release-dispatch.yml');
 const source = fromRoot('.github/workflows/hris-current-main-source-backup.yml');
 const database = fromRoot('.github/workflows/hris-ws05-fresh-backup-dispatch-20261025.yml');
+const pages = fromRoot('.github/workflows/deploy-pages.yml');
 const sql = fromRoot('supabase/migrations/20261109130637_hris_employee_avatar_existing_system_parity.sql');
 
 test('avatar release is manual-only with explicit owner/recovery gates, never a push SQL deploy', () => {
@@ -66,4 +67,13 @@ test('the approved source and database backups refresh on protected Main merge o
   assert.match(source, /bundle verify/);
   assert.match(database, /hris-step1-encrypted-db-export\.yml/);
   assert.match(database, /hris-step1-offline-restore-proof\.yml/);
+});
+
+test('published Pages assets are gated on hosted avatar SQL migration and denied anonymous avatar RPC access', () => {
+  assert.match(pages, /version='20261109130637'/);
+  assert.match(pages, /to_regprocedure\('public\.employee_get_my_avatar_v1\(uuid\)'\) IS NOT NULL/);
+  assert.match(pages, /to_regprocedure\('public\.employee_set_my_avatar_v1\(uuid,text,text\)'\) IS NOT NULL/);
+  assert.match(pages, /NOT has_function_privilege\('anon','public\.employee_set_my_avatar_v1\(uuid,text,text\)','EXECUTE'\)/);
+  assert.match(pages, /WHERE id='employee-avatars' AND public=false/);
+  assert.match(pages, /Verify published HRIS compiled assets match exact protected Main/);
 });
