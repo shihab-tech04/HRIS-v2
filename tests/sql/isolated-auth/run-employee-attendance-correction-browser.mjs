@@ -204,6 +204,7 @@ try {
   const bengaliDialog = employee.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
   await bengaliDialog.getByLabel('উপস্থিতির মাস', { exact: true }).waitFor({ state: 'visible' });
   await bengaliDialog.getByLabel('উপস্থিতির তারিখ').waitFor({ state: 'visible' });
+  await bengaliDialog.getByLabel('চেক-ইনের সময়', { exact: true }).check();
   await bengaliDialog.getByLabel('অনুরোধকৃত চেক-ইন', { exact: true }).waitFor({ state: 'visible' });
   await employee.keyboard.press('Escape');
   await bengaliDialog.waitFor({ state: 'detached' });
@@ -232,7 +233,7 @@ try {
   const rejectedManagerRow = correctionSection.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT });
   await rejectedManagerRow.getByRole('button', { name: 'Reject', exact: true }).click();
   const rejectDialog = manager.getByRole('dialog', { name: 'Reject attendance correction', exact: true });
-  await rejectDialog.getByLabel('Decision note (optional)').fill(process.env.HRIS_LOCAL_CORRECTION_REJECTION_NOTE);
+  await rejectDialog.getByLabel('Decision note (required when rejecting)').fill(process.env.HRIS_LOCAL_CORRECTION_REJECTION_NOTE);
   const rejectedAttendanceRead = manager.waitForResponse(response => {
     if (!response.url().endsWith('/rest/v1/rpc/hris_get_tenant_attendance_data') || response.request().method() !== 'POST') return false;
     const body = response.request().postDataJSON();

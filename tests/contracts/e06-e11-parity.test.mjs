@@ -13,6 +13,7 @@ const projectLocale = readFileSync(new URL('../../src/live/project-locale.ts', i
 const serviceLocale = readFileSync(new URL('../../src/live/service-request-locale.ts', import.meta.url), 'utf8');
 const isolatedAcceptance = readFileSync(new URL('../sql/isolated-auth/run-local.mjs', import.meta.url), 'utf8');
 const correctionBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-attendance-correction-browser.mjs', import.meta.url), 'utf8');
+const dashboardAttendanceBrowser = readFileSync(new URL('../sql/isolated-auth/run-employee-dashboard-attendance-browser.mjs', import.meta.url), 'utf8');
 const releaseScriptPath = new URL('../../scripts/release/hris-attendance-gated-sql-release.sh', import.meta.url);
 const releaseScript = readFileSync(releaseScriptPath, 'utf8');
 const releaseWorkflow = readFileSync(new URL('../../.github/workflows/hris-attendance-gated-sql-release.yml', import.meta.url), 'utf8');
@@ -98,6 +99,7 @@ test('E11 manager decisions use the tenant-scoped approval path and keep unrelat
   assert.match(managerRequests, /The movement request was approved\./);
   assert.match(migration, /public\.has_tenant_permission\(p_tenant_id,'employees\.manage'\)/);
   assert.match(migration, /p_next_status NOT IN \('approved','rejected'\)/);
+  assert.match(migration, /a\.work_mode IN \('office','home','client','field','client_meeting'\)/);
 });
 
 test('isolated acceptance applies E06/E11 SQL and exercises movement decisions and attendance projection', () => {
@@ -107,6 +109,9 @@ test('isolated acceptance applies E06/E11 SQL and exercises movement decisions a
   assert.match(isolatedAcceptance, /E11 approved client meeting updates only its existing attendance row/);
   assert.match(correctionBrowser, /correction_categories/);
   assert.match(correctionBrowser, /Check-in time/);
+  assert.match(correctionBrowser, /Decision note \(required when rejecting\)/);
+  assert.match(correctionBrowser, /চেক-ইনের সময়/);
+  assert.match(dashboardAttendanceBrowser, /An attendance correction with no selected category remained submittable/);
 });
 
 test('new E06 and E11 labels have Bengali translations', () => {
@@ -138,7 +143,7 @@ test('E06 and E11 SQL validation messages are translated in their employee flows
 test('E06/E11 production release is pinned, protected, recovery-gated, and required before Pages', () => {
   execFileSync('bash', ['-n', fileURLToPath(releaseScriptPath)], { encoding: 'utf8' });
   assert.match(releaseScript, /20261110193754_hris_attendance_correction_movement_parity\.sql/);
-  assert.match(releaseScript, /92d0364a4814ba1f1c047023924afd394a41cb9e6bfc237026ad4a5f0f759988/);
+  assert.match(releaseScript, /6f9a6e6e3afbcac3493b878911b58215495fb045bda889a833791ebd34f74351/);
   assert.match(releaseScript, /pulls\/196/);
   assert.match(releaseScript, /supabase db push --db-url .*--dry-run/);
   assert.match(releaseScript, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);

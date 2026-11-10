@@ -664,8 +664,10 @@ try {
   // part of Playwright's associated-label text; match the translated label
   // without requiring an exact text-node match.
   await correctionDialog.getByLabel('কারণ').fill('synthetic validation check');
-  await correctionDialog.getByRole('button', { name: 'আবেদন জমা দিন', exact: true }).click();
-  await page.getByRole('alert').filter({ hasText: 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।' }).waitFor({ state: 'visible' });
+  const emptyCorrectionSubmit = correctionDialog.getByRole('button', { name: 'আবেদন জমা দিন', exact: true });
+  if (!await emptyCorrectionSubmit.isDisabled()) {
+    throw new Error('An attendance correction with no selected category remained submittable.');
+  }
   await correctionDialog.getByRole('button', { name: 'বাতিল', exact: true }).click();
   await correctionDialog.waitFor({ state: 'detached' });
 

@@ -579,7 +579,7 @@ BEGIN
     WHERE a.tenant_id=p_tenant_id AND a.employee_id=v_request.employee_id
       AND a.attendance_date BETWEEN (v_request.request_data->>'from_date')::date
         AND (v_request.request_data->>'to_date')::date
-      AND a.work_mode IN ('office','client','client_meeting');
+      AND a.work_mode IN ('office','home','client','field','client_meeting');
   END IF;
   UPDATE public.service_requests SET status=p_next_status,resolved_by=auth.uid(),
     resolved_at=v_changed_at,resolution_note=v_note,updated_at=v_changed_at
