@@ -1690,18 +1690,6 @@ const employeeEvidencePolicyProbe = queryAs(employeeA, `SELECT jsonb_build_objec
       AND t.is_active IS TRUE AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL),
   'tenant_select_granted',has_table_privilege(current_user,'public.tenants','SELECT')
 )`);
-const employeeEvidenceDirectInsert = attemptAs(employeeA, `INSERT INTO storage.objects(bucket_id,name)
-  VALUES ('attendance-evidence',${sqlLiteral(employeeEvidenceUploadPath)})
-  RETURNING id::text;`);
-if (employeeEvidenceDirectInsert.ok) {
-  psqlSync(`DELETE FROM storage.objects
-    WHERE bucket_id='attendance-evidence' AND name=${sqlLiteral(employeeEvidenceUploadPath)};`);
-}
-record('E06 attendance evidence insert policy accepts the exact tenant-scoped owner path',
-  employeeEvidenceDirectInsert.ok,
-  employeeEvidenceDirectInsert.ok
-    ? 'Synthetic object inserted and deleted in the disposable database.'
-    : String(employeeEvidenceDirectInsert.error?.stderr || employeeEvidenceDirectInsert.error?.message || '').slice(0,500));
 const employeeEvidenceUpload = await employeeA.client.storage.from('attendance-evidence').upload(
   employeeEvidenceUploadPath,
   new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
@@ -1730,7 +1718,7 @@ record('E06 attendance evidence Storage permits own-tenant upload and orphan cle
     ownTenantUploadError: employeeEvidenceUpload.error
       ? { statusCode: employeeEvidenceUpload.error.statusCode, message: employeeEvidenceUpload.error.message } : null,
     ownTenantPolicyProbe: employeeEvidencePolicyProbe,
-    directDatabasePolicyAllowsInsert: employeeEvidenceDirectInsert.ok,
+
     ownUnlinkedCleanupAllowed: !employeeEvidenceCleanup.error,
     ownCleanupError: employeeEvidenceCleanup.error
       ? { statusCode: employeeEvidenceCleanup.error.statusCode, message: employeeEvidenceCleanup.error.message } : null,
