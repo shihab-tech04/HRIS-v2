@@ -9750,6 +9750,9 @@ const failed = results.filter((result) => !result.ok);
 console.log(`\nLocal Auth/RLS acceptance: ${results.length - failed.length}/${results.length} passed; ${failed.length} failed.`);
 console.log('Tenant-isolation failures are release blockers; this test uses only a disposable local database.');
 if (failed.length) process.exitCode = 1;
+} catch (error) {
+  console.error('Local Auth/RLS acceptance failed before cleanup:', error instanceof Error ? error.stack || error.message : String(error));
+  throw error;
 } finally {
   if (uploadedEvidencePaths.length) {
     const removed = await adminAuth.storage.from('leave-evidence').remove(uploadedEvidencePaths);
@@ -9762,7 +9765,7 @@ if (failed.length) process.exitCode = 1;
     const emptiedBucket = await adminAuth.storage.emptyBucket('leave-evidence');
     if (emptiedBucket.error) throw emptiedBucket.error;
     const deletedBucket = await adminAuth.storage.deleteBucket('leave-evidence');
-    if (deletedBucket.error) throw deletedBucket.error;
+    if (deletedBucket.error) throw new Error(`Disposable leave-evidence bucket cleanup failed: ${deletedBucket.error.message}`);
   }
   const expenseStorage = adminAuth.storage.from('expense-receipts');
   if (expenseBucketSafeToClean) {
@@ -9784,7 +9787,7 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdExpenseBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('expense-receipts');
-    if (deletedBucket.error) throw deletedBucket.error;
+    if (deletedBucket.error) throw new Error(`Disposable expense-receipts bucket cleanup failed: ${deletedBucket.error.message}`);
   }
   const referralStorage = adminAuth.storage.from('employee-referral-files');
   if (referralBucketSafeToClean) {
@@ -9806,7 +9809,7 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdReferralBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('employee-referral-files');
-    if (deletedBucket.error) throw deletedBucket.error;
+    if (deletedBucket.error) throw new Error(`Disposable employee-referral-files bucket cleanup failed: ${deletedBucket.error.message}`);
   }
   const learningEvidenceStorage = adminAuth.storage.from('learning-completion-evidence');
   if (learningEvidenceBucketSafeToClean) {
@@ -9834,7 +9837,7 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdLearningEvidenceBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('learning-completion-evidence');
-    if (deletedBucket.error) throw deletedBucket.error;
+    if (deletedBucket.error) throw new Error(`Disposable learning-completion-evidence bucket cleanup failed: ${deletedBucket.error.message}`);
   }
   if (attendanceCorrectionBrowserEvidencePaths.length) {
     const correctionEvidenceStorage = adminAuth.storage.from('attendance-evidence');
@@ -9848,7 +9851,7 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdAttendanceTenantGuardBucket) {
     const deleted = await adminAuth.storage.deleteBucket('attendance-evidence');
-    if (deleted.error) throw deleted.error;
+    if (deleted.error) throw new Error(`Disposable attendance-evidence bucket cleanup failed: ${deleted.error.message}`);
   }
   if (candidateTenantGuardStoragePaths.length) {
     const candidateStorage = adminAuth.storage.from('candidate-documents');
@@ -9857,7 +9860,7 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdCandidateTenantGuardBucket) {
     const deleted = await adminAuth.storage.deleteBucket('candidate-documents');
-    if (deleted.error) throw deleted.error;
+    if (deleted.error) throw new Error(`Disposable candidate-documents bucket cleanup failed: ${deleted.error.message}`);
   }
   const employeeDocumentStorage = adminAuth.storage.from('employee-documents');
   if (employeeDocumentsBucketSafeToClean && employeeDocumentStoragePaths.length) {
@@ -9866,7 +9869,7 @@ if (failed.length) process.exitCode = 1;
   }
   if (createdEmployeeDocumentsBucket) {
     const deletedBucket = await adminAuth.storage.deleteBucket('employee-documents');
-    if (deletedBucket.error) throw deletedBucket.error;
+    if (deletedBucket.error) throw new Error(`Disposable employee-documents bucket cleanup failed: ${deletedBucket.error.message}`);
   }
   cleanupAttendanceCorrectionBrowserFixture();
   // Remove the exact HR01-01 synthetic activation rows before deleting their
