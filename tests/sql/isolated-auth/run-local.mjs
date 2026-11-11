@@ -1690,22 +1690,6 @@ const employeeEvidencePolicyProbe = queryAs(employeeA, `SELECT jsonb_build_objec
       AND t.is_active IS TRUE AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL),
   'tenant_select_granted',has_table_privilege(current_user,'public.tenants','SELECT')
 )`);
-const employeeEvidenceStoragePolicies = queryAdmin(`SELECT COALESCE(jsonb_agg(
-  jsonb_build_object(
-    'policyname',policyname,
-    'permissive',permissive,
-    'roles',roles,
-    'cmd',cmd,
-    'qual',qual,
-    'with_check',with_check
-  ) ORDER BY policyname
-),'[]'::jsonb)
-FROM pg_policies
-WHERE schemaname='storage' AND tablename='objects'
-  AND (cmd IN ('INSERT','ALL')
-    OR (cmd='SELECT' AND policyname IN ('attendance_evidence_own_select','hris_private_storage_tenant_read_guard')))`);
-const employeeEvidenceAuthCheck = await employeeA.client.auth.getUser();
-const employeeEvidenceTokenClaims = JSON.parse(Buffer.from(employeeA.accessToken.split('.')[1], 'base64url').toString('utf8'));
 const employeeEvidenceDirectInsert = attemptAs(employeeA, `INSERT INTO storage.objects(bucket_id,name)
   VALUES ('attendance-evidence',${sqlLiteral(employeeEvidenceUploadPath)})
   RETURNING id::text;`);
@@ -1713,8 +1697,11 @@ if (employeeEvidenceDirectInsert.ok) {
   psqlSync(`DELETE FROM storage.objects
     WHERE bucket_id='attendance-evidence' AND name=${sqlLiteral(employeeEvidenceUploadPath)};`);
 }
-const employeeEvidenceStorageInsertGrant = queryAdmin(`SELECT jsonb_build_object(
-  'granted',has_table_privilege('authenticated','storage.objects','INSERT'))`);
+record('E06 attendance evidence insert policy accepts the exact tenant-scoped owner path',
+  employeeEvidenceDirectInsert.ok,
+  employeeEvidenceDirectInsert.ok
+    ? 'Synthetic object inserted and deleted in the disposable database.'
+    : String(employeeEvidenceDirectInsert.error?.stderr || employeeEvidenceDirectInsert.error?.message || '').slice(0,500));
 const employeeEvidenceUpload = await employeeA.client.storage.from('attendance-evidence').upload(
   employeeEvidenceUploadPath,
   new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
@@ -1743,19 +1730,7 @@ record('E06 attendance evidence Storage permits own-tenant upload and orphan cle
     ownTenantUploadError: employeeEvidenceUpload.error
       ? { statusCode: employeeEvidenceUpload.error.statusCode, message: employeeEvidenceUpload.error.message } : null,
     ownTenantPolicyProbe: employeeEvidencePolicyProbe,
-    storagePolicies: employeeEvidenceStoragePolicies,
-    storageInsertGrant: employeeEvidenceStorageInsertGrant.granted,
-    authUserMatches: employeeEvidenceAuthCheck.data?.user?.id === employeeA.userId,
-    authUserErrorStatus: employeeEvidenceAuthCheck.error?.status ?? null,
-    tokenClaims: {
-      sub: employeeEvidenceTokenClaims.sub,
-      role: employeeEvidenceTokenClaims.role,
-      sessionIdPresent: Boolean(employeeEvidenceTokenClaims.session_id),
-      expirationPresent: Number.isFinite(employeeEvidenceTokenClaims.exp),
-    },
-    directPostgresInsertAllowed: employeeEvidenceDirectInsert.ok,
-    directPostgresInsertOutput: employeeEvidenceDirectInsert.ok ? employeeEvidenceDirectInsert.value
-      : String(employeeEvidenceDirectInsert.error?.stderr || employeeEvidenceDirectInsert.error?.message || '').slice(0,500),
+    directDatabasePolicyAllowsInsert: employeeEvidenceDirectInsert.ok,
     ownUnlinkedCleanupAllowed: !employeeEvidenceCleanup.error,
     ownCleanupError: employeeEvidenceCleanup.error
       ? { statusCode: employeeEvidenceCleanup.error.statusCode, message: employeeEvidenceCleanup.error.message } : null,
