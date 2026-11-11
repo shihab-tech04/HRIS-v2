@@ -87,7 +87,7 @@ if subprocess.run(['sha256sum','--check','--status','restore.sha256'],
     raise SystemExit('Source backup SHA-256 verification failed')
 source_sha=subprocess.check_output(['sha256sum',bundle],cwd=source,text=True).split()[0]
 if source_sha.lower()!=os.environ['OFFSITE_SOURCE_ARCHIVE_SHA256'].lower():
-    raise SystemExit('Drive source bundle hash does not match the verified exact-Main archive')
+    raise SystemExit('Offsite source bundle hash does not match the verified exact-Main archive')
 source_manifest=open(os.path.join(source,'restore-manifest.txt'),encoding='utf-8').read().splitlines()
 for line in ('repo='+repo,'main='+main,'restored_main='+main):
     if line not in source_manifest:
@@ -100,7 +100,7 @@ if subprocess.run(['sha256sum','--check','--status','encrypted.sha256'],
     raise SystemExit('Encrypted database backup SHA-256 verification failed')
 database_sha=subprocess.check_output(['sha256sum',encrypted],cwd=database,text=True).split()[0]
 if database_sha.lower()!=os.environ['OFFSITE_DATABASE_ARCHIVE_SHA256'].lower():
-    raise SystemExit('Drive database archive hash does not match the encrypted export')
+    raise SystemExit('Offsite database archive hash does not match the encrypted export')
 backup_manifest=open(os.path.join(database,'backup-manifest.txt'),encoding='utf-8').read().splitlines()
 if ('source_project=xfuxnljfrgvusbrpvxpa' not in backup_manifest
     or 'github_run_id='+ids['DATABASE_BACKUP_RUN_ID'] not in backup_manifest):

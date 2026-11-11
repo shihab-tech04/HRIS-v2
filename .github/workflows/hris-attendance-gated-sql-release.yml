@@ -10,7 +10,7 @@ on:
         required: true
         default: false
       offsite_recovery_verified:
-        description: Confirm exact-Main source and encrypted database backups are in Drive and restore-tested
+        description: Confirm exact-Main source and encrypted database backups are in the authorized offsite recovery archive and restore-tested
         type: boolean
         required: true
         default: false
@@ -27,11 +27,11 @@ on:
         type: string
         required: true
       offsite_source_archive_sha256:
-        description: SHA-256 of the source bundle independently stored in Drive
+        description: SHA-256 of the source bundle independently stored in the authorized offsite recovery archive
         type: string
         required: true
       offsite_database_archive_sha256:
-        description: SHA-256 of the encrypted database archive independently stored in Drive
+        description: SHA-256 of the encrypted database archive independently stored in the authorized offsite recovery archive
         type: string
         required: true
       session_pooler_host:
