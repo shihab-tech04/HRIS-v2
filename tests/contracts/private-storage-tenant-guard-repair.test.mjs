@@ -48,6 +48,17 @@ test('the protected attendance release supports repair-only after E06 is already
   assert.match(release, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);
 });
 
+test('the production postcheck preserves empty search_path quotes through Bash expansion', () => {
+  const postcheckMatch = release.match(/if ! postcheck="\$\(db_psql -c "([\s\S]*?)"\)"; then/);
+  assert.ok(postcheckMatch, 'The release must capture the postcheck SQL output.');
+  const postcheckSql = postcheckMatch[1];
+  assert.doesNotMatch(postcheckSql, /["$`]/, 'The SQL passed inside Bash double quotes must not contain unescaped shell metacharacters.');
+
+  const expandedSql = execFileSync('bash', ['-c', `query="${postcheckSql}"\nprintf '%s' "$query"`], { encoding: 'utf8' });
+  assert.match(expandedSql, /p\.proconfig @> ARRAY\['search_path=' \|\| chr\(34\) \|\| chr\(34\)\]/);
+  assert.doesNotMatch(expandedSql, /p\.proconfig @> ARRAY\['search_path='\s*\]/);
+});
+
 test('isolated Auth/Postgres acceptance applies the repair after the E06/E11 migration', () => {
   assert.match(isolatedHarness, /20261110193754_hris_attendance_correction_movement_parity\.sql'[\s\S]*?20261111031236_hris_restore_private_storage_tenant_read_guard\.sql/);
 });

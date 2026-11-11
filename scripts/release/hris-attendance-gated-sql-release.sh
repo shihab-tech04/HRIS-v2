@@ -415,7 +415,7 @@ if ! postcheck="$(db_psql -c "SELECT CASE WHEN
   AND NOT has_function_privilege('anon','private.hris_storage_owner_tenant_read(text,text)','EXECUTE')
   AND EXISTS (SELECT 1 FROM pg_proc p
               WHERE p.oid='private.hris_storage_owner_tenant_read(text,text)'::regprocedure
-                AND p.prosecdef AND p.proconfig @> ARRAY['search_path=""'])
+                AND p.prosecdef AND p.proconfig @> ARRAY['search_path=' || chr(34) || chr(34)])
   AND (SELECT count(*) FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
        AND policyname IN ('candidate_documents_own_select','employee_documents_own_select',
          'attendance_evidence_own_select') AND permissive='PERMISSIVE'
