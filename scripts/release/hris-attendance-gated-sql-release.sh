@@ -190,7 +190,7 @@ db_psql -c "SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablen
       OR (p.schemaname='storage' AND p.tablename='objects'
           AND p.policyname NOT IN ('candidate_documents_own_select','employee_documents_own_select',
             'attendance_evidence_own_select','hris_private_storage_tenant_read_guard',
-            'employee_documents_storage_owner_guard'))));" > "$scratch/policies-before.txt"
+            'employee_documents_storage_owner_guard')));" > "$scratch/policies-before.txt"
 db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM information_schema.role_table_grants
   WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
   ORDER BY table_name,grantee,privilege_type;" > "$scratch/grants-before.txt"
@@ -270,7 +270,7 @@ db_psql -c "SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablen
       OR (p.schemaname='storage' AND p.tablename='objects'
           AND p.policyname NOT IN ('candidate_documents_own_select','employee_documents_own_select',
             'attendance_evidence_own_select','hris_private_storage_tenant_read_guard',
-            'employee_documents_storage_owner_guard'))));" > "$scratch/policies-after.txt"
+            'employee_documents_storage_owner_guard')));" > "$scratch/policies-after.txt"
 cmp "$scratch/policies-before.txt" "$scratch/policies-after.txt"
 db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM information_schema.role_table_grants
   WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
