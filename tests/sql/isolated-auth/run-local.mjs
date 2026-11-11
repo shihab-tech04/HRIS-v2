@@ -9756,6 +9756,11 @@ if (failed.length) process.exitCode = 1;
     if (removed.error) throw removed.error;
   }
   if (createdEvidenceBucket) {
+    // Only this runner's newly-created disposable bucket may be emptied here.
+    // Browser acceptance can upload additional nested evidence outside the tracked
+    // paths, which otherwise leaves the bucket nonempty and masks test failures.
+    const emptiedBucket = await adminAuth.storage.emptyBucket('leave-evidence');
+    if (emptiedBucket.error) throw emptiedBucket.error;
     const deletedBucket = await adminAuth.storage.deleteBucket('leave-evidence');
     if (deletedBucket.error) throw deletedBucket.error;
   }
