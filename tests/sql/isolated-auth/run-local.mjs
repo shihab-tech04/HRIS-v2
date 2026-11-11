@@ -495,6 +495,8 @@ for (const file of [
   path.join(mainRoot, 'supabase/migrations/20261030114500_employee_profile_certificate_policy_guards.sql'),
   // Apply the newly tracked E06/E11 contract after all historical schema and RPC fixtures.
   path.join(mainRoot, 'supabase/migrations/20261110193754_hris_attendance_correction_movement_parity.sql'),
+  // Prove the tenant-aware private-storage guard repairs hosted drift after E06.
+  path.join(mainRoot, 'supabase/migrations/20261111031236_hris_restore_private_storage_tenant_read_guard.sql'),
 ]) {
   const noticesPolicyMigration = file.endsWith(
     '20261017030000_hris_employee_announcement_audience.sql',

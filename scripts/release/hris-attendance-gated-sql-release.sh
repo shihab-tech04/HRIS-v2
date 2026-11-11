@@ -17,6 +17,13 @@ test "$(sha256sum "$source_sql" | cut -d ' ' -f1)" = 'f1831efabdcaf5e451868e73e5
   echo 'Reviewed E06/E11 SQL bytes changed; no release'; exit 1;
 }
 
+guard_migration='20261111031236_hris_restore_private_storage_tenant_read_guard.sql'
+guard_source="supabase/migrations/$guard_migration"
+test -s "$guard_source"
+test "$(sha256sum "$guard_source" | cut -d ' ' -f1)" = 'b7d4c5265a05341d37371197cba560c118e39bbfc8175a5332d586d16816765b' || {
+  echo 'Reviewed private-storage tenant guard SQL bytes changed; no release'; exit 1;
+}
+
 python3 - <<'PY'
 import json, os, re, subprocess, urllib.request
 repo='shihab-tech04/HRIS-v2'
@@ -130,7 +137,17 @@ db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migration
 grep -Fxq '20261110120000|hris_work_from_home_request_parity' "$scratch/before.tsv" || {
   echo 'The prerequisite Work From Home migration is missing'; exit 1;
 }
-! grep -q '^20261110193754|' "$scratch/before.tsv" || { echo 'E06/E11 migration is already installed'; exit 1; }
+if grep -q '^20261110193754|' "$scratch/before.tsv"; then
+  grep -Fxq '20261110193754|hris_attendance_correction_movement_parity' "$scratch/before.tsv" || {
+    echo 'E06/E11 migration version exists under an unexpected name'; exit 1;
+  }
+  apply_e06=false
+else
+  apply_e06=true
+fi
+! grep -q '^20261111031236|' "$scratch/before.tsv" || {
+  echo 'Private-storage tenant guard repair migration is already installed'; exit 1;
+}
 
 db_psql -c "SELECT CASE WHEN
   to_regclass('public.attendance_corrections') IS NOT NULL
@@ -140,17 +157,20 @@ db_psql -c "SELECT CASE WHEN
   AND to_regclass('public.attendance_correction_settings') IS NOT NULL
   AND to_regclass('public.admin_audit_logs') IS NOT NULL
   AND to_regclass('public.tenants') IS NOT NULL
+  AND to_regclass('public.employees') IS NOT NULL
+  AND to_regclass('public.employee_documents') IS NOT NULL
+  AND to_regclass('public.candidate_profiles') IS NOT NULL
   AND to_regnamespace('private') IS NOT NULL
   AND to_regclass('storage.objects') IS NOT NULL
   AND to_regprocedure('storage.foldername(text)') IS NOT NULL
   AND to_regprocedure('public.is_live_session()') IS NOT NULL
   AND to_regprocedure('public.hris_own_employee_for_tenant(uuid)') IS NOT NULL
   AND to_regprocedure('public.has_tenant_permission(uuid,text)') IS NOT NULL
-  AND to_regprocedure('public.admin_save_attendance(uuid,date,jsonb)') IS NOT NULL
   AND to_regprocedure('public.hris_submit_my_work_from_home_request(uuid,date,date,time,time,jsonb,text,text)') IS NOT NULL
   AND to_regprocedure('public.hris_update_my_work_from_home_request(uuid,uuid,date,date,time,time,jsonb,text,text)') IS NOT NULL
   AND to_regprocedure('public.hris_cancel_my_work_from_home_request(uuid,uuid)') IS NOT NULL
   AND to_regprocedure('public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)') IS NOT NULL
+  AND to_regprocedure('public.admin_save_attendance(uuid,date,jsonb)') IS NOT NULL
   AND EXISTS (SELECT 1 FROM storage.buckets WHERE id='attendance-evidence' AND public=false)
   THEN 'ATTENDANCE_PRODUCTION_PRECHECK_PASS' ELSE 'ATTENDANCE_PRODUCTION_PRECHECK_FAIL' END;" |
   grep -Fxq 'ATTENDANCE_PRODUCTION_PRECHECK_PASS'
@@ -167,7 +187,10 @@ db_psql -c "SELECT 'users='||(SELECT count(*) FROM auth.users)::text
 db_psql -c "SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname),'[]'::jsonb)
   FROM pg_policies p WHERE p.schemaname IN ('public','storage')
     AND ((p.schemaname='public' AND p.tablename IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings'))
-      OR (p.schemaname='storage' AND p.tablename='objects' AND p.policyname IN ('attendance_evidence_own_select','hris_private_storage_tenant_read_guard')));" > "$scratch/policies-before.txt"
+      OR (p.schemaname='storage' AND p.tablename='objects'
+          AND p.policyname NOT IN ('candidate_documents_own_select','employee_documents_own_select',
+            'attendance_evidence_own_select','hris_private_storage_tenant_read_guard',
+            'employee_documents_storage_owner_guard'))));" > "$scratch/policies-before.txt"
 db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM information_schema.role_table_grants
   WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
   ORDER BY table_name,grantee,privilege_type;" > "$scratch/grants-before.txt"
@@ -178,9 +201,26 @@ while IFS='|' read -r version name; do
   [[ "$version" =~ ^[0-9]{14}$ && "$name" =~ ^[a-z0-9_]+$ ]] || exit 1
   : > "$scratch/supabase/migrations/${version}_${name}.sql"
 done < "$scratch/before.tsv"
-cp "$source_sql" "$scratch/supabase/migrations/$migration"
-test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq "$(( $(wc -l < "$scratch/before.tsv") + 1 ))"
-cmp "$source_sql" "$scratch/supabase/migrations/$migration"
+if [[ "$apply_e06" == true ]]; then
+  cp "$source_sql" "$scratch/supabase/migrations/$migration"
+fi
+cp "$guard_source" "$scratch/supabase/migrations/$guard_migration"
+expected_migrations="$scratch/expected-migrations.txt"
+expected_history="$scratch/expected-history.tsv"
+if [[ "$apply_e06" == true ]]; then
+  printf '%s\n' "$migration" "$guard_migration" | sort > "$expected_migrations"
+  printf '%s\n' \
+    '20261110193754|hris_attendance_correction_movement_parity' \
+    '20261111031236|hris_restore_private_storage_tenant_read_guard' | sort > "$expected_history"
+else
+  printf '%s\n' "$guard_migration" > "$expected_migrations"
+  printf '%s\n' '20261111031236|hris_restore_private_storage_tenant_read_guard' > "$expected_history"
+fi
+expected_new_count="$(wc -l < "$expected_migrations")"
+test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq "$(( $(wc -l < "$scratch/before.tsv") + expected_new_count ))"
+while IFS= read -r expected_migration; do
+  cmp "supabase/migrations/$expected_migration" "$scratch/supabase/migrations/$expected_migration"
+done < "$expected_migrations"
 
 db_url="$(python3 - <<'PY'
 import os, urllib.parse
@@ -193,9 +233,8 @@ PY
   echo 'Attendance SQL dry run failed; production database unchanged'; exit 1;
 }
 grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/plan.txt" | sort -u > "$scratch/planned.txt"
-printf '%s\n' "$migration" > "$scratch/expected.txt"
-diff -u "$scratch/expected.txt" "$scratch/planned.txt" || {
-  echo 'Dry run selected more than the approved E06/E11 migration'; exit 1;
+diff -u "$expected_migrations" "$scratch/planned.txt" || {
+  echo 'Dry run selected migrations outside the approved E06/E11 and private-storage guard set'; exit 1;
 }
 
 test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -206,10 +245,13 @@ cmp "$scratch/before.tsv" "$scratch/pre-apply.tsv" || { echo 'Hosted migration h
 }
 
 db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/after.tsv"
-test "$(wc -l < "$scratch/after.tsv")" -eq "$(( $(wc -l < "$scratch/before.tsv") + 1 ))"
+test "$(wc -l < "$scratch/after.tsv")" -eq "$(( $(wc -l < "$scratch/before.tsv") + expected_new_count ))"
 grep -Fxq '20261110120000|hris_work_from_home_request_parity' "$scratch/after.tsv"
-grep -Fxq '20261110193754|hris_attendance_correction_movement_parity' "$scratch/after.tsv"
-grep -v '^20261110193754|' "$scratch/after.tsv" > "$scratch/unchanged.tsv"
+if [[ "$apply_e06" == true ]]; then
+  grep -Fxq '20261110193754|hris_attendance_correction_movement_parity' "$scratch/after.tsv"
+fi
+grep -Fxq '20261111031236|hris_restore_private_storage_tenant_read_guard' "$scratch/after.tsv"
+grep -Fv -f "$expected_history" "$scratch/after.tsv" > "$scratch/unchanged.tsv"
 cmp "$scratch/before.tsv" "$scratch/unchanged.tsv"
 
 db_psql -c "SELECT 'users='||(SELECT count(*) FROM auth.users)::text
@@ -225,7 +267,10 @@ cmp "$scratch/counts-before.txt" "$scratch/counts-after.txt"
 db_psql -c "SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname),'[]'::jsonb)
   FROM pg_policies p WHERE p.schemaname IN ('public','storage')
     AND ((p.schemaname='public' AND p.tablename IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings'))
-      OR (p.schemaname='storage' AND p.tablename='objects' AND p.policyname IN ('attendance_evidence_own_select','hris_private_storage_tenant_read_guard')));" > "$scratch/policies-after.txt"
+      OR (p.schemaname='storage' AND p.tablename='objects'
+          AND p.policyname NOT IN ('candidate_documents_own_select','employee_documents_own_select',
+            'attendance_evidence_own_select','hris_private_storage_tenant_read_guard',
+            'employee_documents_storage_owner_guard'))));" > "$scratch/policies-after.txt"
 cmp "$scratch/policies-before.txt" "$scratch/policies-after.txt"
 db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM information_schema.role_table_grants
   WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
@@ -296,9 +341,22 @@ db_psql -c "SELECT CASE WHEN
        AND conname='attendance_corrections_requested_work_mode_check' AND pg_get_constraintdef(oid) LIKE '%client_meeting%')
   AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.attendance_corrections'::regclass
        AND conname='attendance_corrections_categories_allowed')
+  AND to_regprocedure('private.hris_storage_owner_tenant_read(text,text)') IS NOT NULL
+  AND has_function_privilege('authenticated','private.hris_storage_owner_tenant_read(text,text)','EXECUTE')
+  AND NOT has_function_privilege('anon','private.hris_storage_owner_tenant_read(text,text)','EXECUTE')
+  AND EXISTS (SELECT 1 FROM pg_proc p
+              WHERE p.oid='private.hris_storage_owner_tenant_read(text,text)'::regprocedure
+                AND p.prosecdef AND p.proconfig @> ARRAY['search_path=""'])
   AND (SELECT count(*) FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
-       AND policyname IN ('attendance_evidence_own_select','hris_private_storage_tenant_read_guard'))=2
+       AND policyname IN ('candidate_documents_own_select','employee_documents_own_select',
+         'attendance_evidence_own_select') AND permissive='PERMISSIVE'
+       AND qual LIKE '%hris_storage_owner_tenant_read%')=3
+  AND EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+       AND policyname='hris_private_storage_tenant_read_guard' AND permissive='RESTRICTIVE'
+       AND roles @> ARRAY['authenticated']::name[] AND qual LIKE '%hris_storage_owner_tenant_read%')
+  AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+       AND policyname='employee_documents_storage_owner_guard')
   THEN 'ATTENDANCE_PRODUCTION_POSTCHECK_PASS' ELSE 'ATTENDANCE_PRODUCTION_POSTCHECK_FAIL' END;" |
   grep -Fxq 'ATTENDANCE_PRODUCTION_POSTCHECK_PASS'
 
-echo 'PASS: exactly the pinned E06/E11 migration applied; existing data, WFH, policies, grants, and RLS were preserved.'
+echo 'PASS: approved E06/E11 and tenant-aware private-storage migrations applied; existing data, WFH, unrelated policies, grants, and RLS were preserved.'
