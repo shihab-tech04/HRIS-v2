@@ -37,7 +37,7 @@ CREATE POLICY attendance_evidence_employee_upload
     AND name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](pdf|doc|docx|jpg|jpeg|png)$'
     AND EXISTS (
       SELECT 1 FROM public.tenants t
-      WHERE t.id::text=split_part(name,'/',2)
+      WHERE t.id::text=split_part(storage.objects.name,'/',2)
         AND t.is_active IS TRUE
         AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL
     )
@@ -56,7 +56,7 @@ CREATE POLICY attendance_evidence_employee_delete_unattached
     AND name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](pdf|doc|docx|jpg|jpeg|png)$'
     AND EXISTS (
       SELECT 1 FROM public.tenants t
-      WHERE t.id::text=split_part(name,'/',2)
+      WHERE t.id::text=split_part(storage.objects.name,'/',2)
         AND t.is_active IS TRUE
         AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL
     )
