@@ -1713,8 +1713,8 @@ if (employeeEvidenceDirectInsert.ok) {
   psqlSync(`DELETE FROM storage.objects
     WHERE bucket_id='attendance-evidence' AND name=${sqlLiteral(employeeEvidenceUploadPath)};`);
 }
-const employeeEvidenceStorageInsertGrant = queryAdmin(`SELECT has_table_privilege(
-  'authenticated','storage.objects','INSERT') AS granted`);
+const employeeEvidenceStorageInsertGrant = queryAdmin(`SELECT jsonb_build_object(
+  'granted',has_table_privilege('authenticated','storage.objects','INSERT'))`);
 const employeeEvidenceUpload = await employeeA.client.storage.from('attendance-evidence').upload(
   employeeEvidenceUploadPath,
   new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
