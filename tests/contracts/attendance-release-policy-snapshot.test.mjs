@@ -7,6 +7,18 @@ const releaseScript = readFileSync(
   'utf8',
 );
 
+function policySnapshotQuery(phase) {
+  const outputMarker = ` > "$scratch/policies-${phase}.txt"`;
+  const outputIndex = releaseScript.indexOf(outputMarker);
+  assert.notEqual(outputIndex, -1, `${phase} policy snapshot output must exist`);
+
+  const commandStart = releaseScript.lastIndexOf('db_psql -c "', outputIndex);
+  assert.notEqual(commandStart, -1, `${phase} policy snapshot command must exist`);
+
+  const queryStart = commandStart + 'db_psql -c "'.length;
+  return releaseScript.slice(queryStart, outputIndex).trimEnd();
+}
+
 function assertBalancedSqlParentheses(query, name) {
   let depth = 0;
   let inString = false;
@@ -34,15 +46,9 @@ function assertBalancedSqlParentheses(query, name) {
 }
 
 test('attendance release policy snapshots keep balanced, matching SQL', () => {
-  const snapshots = [
-    ...releaseScript.matchAll(
-      /db_psql -c "(SELECT[\\s\\S]*?)" > "\\$scratch\\/policies-(before|after)\\.txt"/g,
-    ),
-  ];
+  const before = policySnapshotQuery('before');
+  const after = policySnapshotQuery('after');
 
-  assert.equal(snapshots.length, 2, 'both before and after snapshots must exist');
-  const byPhase = Object.fromEntries(snapshots.map(([, query, phase]) => [phase, query]));
-  assert.deepEqual(Object.keys(byPhase).sort(), ['after', 'before']);
-  assert.equal(byPhase.before, byPhase.after, 'before/after policy snapshots must query the same state');
-  assertBalancedSqlParentheses(byPhase.before, 'policy snapshot');
+  assert.equal(before, after, 'before/after policy snapshots must query the same state');
+  assertBalancedSqlParentheses(before, 'policy snapshot');
 });
