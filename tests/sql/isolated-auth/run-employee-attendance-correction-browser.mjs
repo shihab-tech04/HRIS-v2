@@ -11,6 +11,7 @@ const required = [
   'HRIS_LOCAL_CORRECTION_OTHER_MANAGER_EMAIL',
   'HRIS_LOCAL_CORRECTION_TENANT_ID', 'HRIS_LOCAL_CORRECTION_DATE',
   'HRIS_LOCAL_CORRECTION_REASON_REJECT', 'HRIS_LOCAL_CORRECTION_REASON_APPROVE',
+  'HRIS_LOCAL_CORRECTION_REASON_EDIT', 'HRIS_LOCAL_CORRECTION_REASON_EDITED',
   'HRIS_LOCAL_CORRECTION_REJECTION_NOTE',
 ];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing isolated correction setting ${key}.`);
@@ -72,6 +73,21 @@ function correctionResponse(page, status) {
   return page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_submit_attendance_correction')
     && response.status() === status);
 }
+function correctionUpdateResponse(page, status) {
+  return page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_update_attendance_correction')
+    && response.status() === status);
+}
+function correctionCancelResponse(page, status) {
+  return page.waitForResponse(response => response.url().endsWith('/rest/v1/rpc/hris_employee_cancel_attendance_correction')
+    && response.status() === status);
+}
+async function attachEvidence(dialog, name = 'attendance-correction-proof.pdf') {
+  await dialog.getByLabel('Supporting evidence').setInputFiles({
+    name,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n% isolated HRIS attendance-correction evidence\n%%EOF\n'),
+  });
+}
 
 try {
   await waitForServer();
@@ -80,7 +96,9 @@ try {
   employee.on('request', request => {
     if (request.url().endsWith('/rest/v1/rpc/hris_employee_submit_attendance_correction') && request.method() === 'POST') {
       const payload = request.postDataJSON();
-      submitted.push({ tenantId: payload?.p_tenant_id, reason: payload?.p_payload?.reason });
+      submitted.push({ tenantId: payload?.p_tenant_id, reason: payload?.p_payload?.reason,
+        categories: payload?.p_payload?.correction_categories,
+        evidencePath: payload?.p_payload?.evidence_path });
     }
   });
   await employee.route('**/*', async route => {
@@ -140,8 +158,8 @@ try {
   const correctionDate = dialog.getByLabel('Attendance date');
   await correctionDate.selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
   await dialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT);
-  await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
-  await dialog.getByRole('alert').filter({ hasText: 'Enter at least one attendance field to correct.' }).waitFor({ state: 'visible' });
+  const emptySubmit = dialog.getByRole('button', { name: 'Send request', exact: true });
+  if (!await emptySubmit.isDisabled()) throw new Error('An attendance correction with no category remained submittable.');
   if (submitted.length) throw new Error('An empty attendance correction reached the backend.');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await dialog.waitFor({ state: 'detached' });
@@ -151,7 +169,18 @@ try {
   if (await dialog.getByLabel('Reason').inputValue() !== process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT) {
     throw new Error('Cancel and reopen discarded the employee correction draft.');
   }
+  await dialog.getByLabel('Check-in time', { exact: true }).check();
   await dialog.getByLabel('Requested check-in', { exact: true }).fill('09:35');
+  const evidenceInput = dialog.getByLabel('Supporting evidence');
+  if (!await evidenceInput.evaluate(element => element.required && element.validity.valueMissing)) {
+    throw new Error('Required evidence did not block an attendance correction before upload.');
+  }
+  await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  if (submitted.length) throw new Error('The missing-evidence correction reached the RPC.');
+  await attachEvidence(dialog);
+  if (!await evidenceInput.evaluate(element => element.validity.valid)) {
+    throw new Error('The accepted private evidence file did not satisfy the required evidence field.');
+  }
 
   const rejectedFailure = correctionResponse(employee, 503);
   await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
@@ -173,17 +202,28 @@ try {
   const history = employee.getByRole('region', { name: 'Attendance correction history table', exact: true });
   const rejectedHistory = history.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT });
   await rejectedHistory.getByText('pending', { exact: true }).waitFor({ state: 'visible' });
+  const signedEvidenceResponse = employee.waitForResponse(response =>
+    response.url().includes('/storage/v1/object/sign/attendance-evidence/') && response.status() === 200);
+  await rejectedHistory.getByRole('button', { name: 'Open evidence', exact: true }).click();
+  const signedEvidence = await (await signedEvidenceResponse).json();
+  if (typeof signedEvidence?.signedURL !== 'string'
+      || !signedEvidence.signedURL.includes('/object/sign/attendance-evidence/')) {
+    throw new Error('The employee evidence action did not return a private signed URL.');
+  }
   console.log('E06-01_SELECTED_EXISTING_ATTENDANCE_DATE_BROWSER_PASS');
   console.log('E06-02_REQUESTED_PUNCH_BROWSER_PASS');
   console.log('E06-03_REASON_BROWSER_PASS');
+  console.log('E06-04_PRIVATE_EVIDENCE_UPLOAD_AND_SIGNED_READ_BROWSER_PASS');
   console.log('E06-05_RETRY_SUBMISSION_BROWSER_PASS');
   console.log('E06-07_PENDING_STATUS_BROWSER_PASS');
 
   await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
   const approvalDialog = employee.getByRole('dialog', { name: 'Request attendance correction', exact: true });
   await approvalDialog.getByLabel('Attendance date').selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
+  await approvalDialog.getByLabel('Check-in time', { exact: true }).check();
   await approvalDialog.getByLabel('Requested check-in', { exact: true }).fill('09:45');
   await approvalDialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE);
+  await attachEvidence(approvalDialog, 'approval-proof.pdf');
   const approvalSubmit = correctionResponse(employee, 200);
   await approvalDialog.getByRole('button', { name: 'Send request', exact: true }).click();
   const approvalSubmitResponse = await approvalSubmit;
@@ -192,6 +232,48 @@ try {
   await approvalDialog.waitFor({ state: 'detached' });
   const approvalHistory = history.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE });
   await approvalHistory.getByText('pending', { exact: true }).waitFor({ state: 'visible' });
+
+  await employee.getByRole('button', { name: 'Request a correction', exact: true }).click();
+  const lifecycleDialog = employee.getByRole('dialog', { name: 'Request attendance correction', exact: true });
+  await lifecycleDialog.getByLabel('Attendance date').selectOption(process.env.HRIS_LOCAL_CORRECTION_DATE);
+  await lifecycleDialog.getByLabel('Check-in time', { exact: true }).check();
+  await lifecycleDialog.getByLabel('Requested check-in', { exact: true }).fill('09:50');
+  await lifecycleDialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_EDIT);
+  await attachEvidence(lifecycleDialog, 'edit-cancel-proof.pdf');
+  const lifecycleSubmit = correctionResponse(employee, 200);
+  await lifecycleDialog.getByRole('button', { name: 'Send request', exact: true }).click();
+  const lifecycleId = await (await lifecycleSubmit).json();
+  if (typeof lifecycleId !== 'string') throw new Error('The pending lifecycle correction did not return a persisted ID.');
+  await lifecycleDialog.waitFor({ state: 'detached' });
+  const lifecycleRow = history.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_EDIT });
+  await lifecycleRow.getByText('pending', { exact: true }).waitFor({ state: 'visible' });
+  await lifecycleRow.getByRole('button', { name: 'Edit request', exact: true }).click();
+  const editDialog = employee.getByRole('dialog', { name: 'Edit attendance correction', exact: true });
+  await editDialog.getByLabel('Requested check-in', { exact: true }).fill('10:00');
+  await editDialog.getByLabel('Reason').fill(process.env.HRIS_LOCAL_CORRECTION_REASON_EDITED);
+  const editResponse = correctionUpdateResponse(employee, 200);
+  await editDialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+  const editResult = await (await editResponse).json();
+  if (editResult?.success !== true) throw new Error('The employee could not update their pending attendance correction.');
+  await editDialog.waitFor({ state: 'detached' });
+  const editedRow = history.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_EDITED });
+  await editedRow.getByText('pending', { exact: true }).waitFor({ state: 'visible' });
+  await editedRow.getByRole('button', { name: 'Cancel request', exact: true }).click();
+  const cancellation = employee.getByRole('group', { name: 'Confirm cancellation', exact: true });
+  await cancellation.getByText('Cancel this pending attendance correction?', { exact: true }).waitFor({ state: 'visible' });
+  await cancellation.getByRole('button', { name: 'Keep request', exact: true }).click();
+  await cancellation.waitFor({ state: 'detached' });
+  await editedRow.getByText('pending', { exact: true }).waitFor({ state: 'visible' });
+  await editedRow.getByRole('button', { name: 'Cancel request', exact: true }).click();
+  const confirmCancellation = employee.getByRole('group', { name: 'Confirm cancellation', exact: true });
+  const cancellationResponse = correctionCancelResponse(employee, 200);
+  await confirmCancellation.getByRole('button', { name: 'Confirm cancellation', exact: true }).click();
+  const cancellationResult = await (await cancellationResponse).json();
+  if (cancellationResult?.success !== true || cancellationResult?.status !== 'cancelled') {
+    throw new Error('The employee could not cancel their pending attendance correction.');
+  }
+  await editedRow.getByText('cancelled', { exact: true }).waitFor({ state: 'visible' });
+  console.log('E06-06_POLICY_ENABLED_PENDING_EDIT_CANCEL_AND_RECOVERY_BROWSER_PASS');
   await assertNoOverflow(employee, 'Employee correction request 375px mobile');
   await employee.getByRole('button', { name: 'Switch language to Bengali', exact: true }).click();
   await employee.getByRole('heading', { name: 'আমার উপস্থিতি সংশোধনের আবেদন', exact: true }).waitFor({ state: 'visible' });
@@ -201,6 +283,7 @@ try {
   const bengaliDialog = employee.getByRole('dialog', { name: 'উপস্থিতি সংশোধনের আবেদন', exact: true });
   await bengaliDialog.getByLabel('উপস্থিতির মাস', { exact: true }).waitFor({ state: 'visible' });
   await bengaliDialog.getByLabel('উপস্থিতির তারিখ').waitFor({ state: 'visible' });
+  await bengaliDialog.getByLabel('চেক-ইনের সময়', { exact: true }).check();
   await bengaliDialog.getByLabel('অনুরোধকৃত চেক-ইন', { exact: true }).waitFor({ state: 'visible' });
   await employee.keyboard.press('Escape');
   await bengaliDialog.waitFor({ state: 'detached' });
@@ -213,7 +296,8 @@ try {
     .getByRole('button', { name: 'Attendance Requests', exact: true }).click();
   await otherManager.getByRole('heading', { name: 'Attendance Requests', exact: true }).waitFor({ state: 'visible' });
   if (await otherManager.getByText(process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT, { exact: true }).count()
-      || await otherManager.getByText(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE, { exact: true }).count()) {
+      || await otherManager.getByText(process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE, { exact: true }).count()
+      || await otherManager.getByText(process.env.HRIS_LOCAL_CORRECTION_REASON_EDITED, { exact: true }).count()) {
     throw new Error('A manager in another tenant could read the synthetic attendance correction requests.');
   }
   await otherManager.close();
@@ -229,7 +313,7 @@ try {
   const rejectedManagerRow = correctionSection.getByRole('row').filter({ hasText: process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT });
   await rejectedManagerRow.getByRole('button', { name: 'Reject', exact: true }).click();
   const rejectDialog = manager.getByRole('dialog', { name: 'Reject attendance correction', exact: true });
-  await rejectDialog.getByLabel('Decision note (optional)').fill(process.env.HRIS_LOCAL_CORRECTION_REJECTION_NOTE);
+  await rejectDialog.getByLabel('Decision note (required when rejecting)').fill(process.env.HRIS_LOCAL_CORRECTION_REJECTION_NOTE);
   const rejectedAttendanceRead = manager.waitForResponse(response => {
     if (!response.url().endsWith('/rest/v1/rpc/hris_get_tenant_attendance_data') || response.request().method() !== 'POST') return false;
     const body = response.request().postDataJSON();
@@ -282,10 +366,16 @@ try {
     process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT,
     process.env.HRIS_LOCAL_CORRECTION_REASON_REJECT,
     process.env.HRIS_LOCAL_CORRECTION_REASON_APPROVE,
+    process.env.HRIS_LOCAL_CORRECTION_REASON_EDIT,
   ];
+  const evidencePathPattern = new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/${process.env.HRIS_LOCAL_CORRECTION_TENANT_ID}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.pdf$`);
   if (submitted.length !== expectedSubmissions.length
       || submitted.some((request, index) => request.tenantId !== process.env.HRIS_LOCAL_CORRECTION_TENANT_ID
-        || request.reason !== expectedSubmissions[index])) {
+        || request.reason !== expectedSubmissions[index]
+        || !Array.isArray(request.categories) || request.categories.length !== 1
+        || request.categories[0] !== 'check_in_time'
+        || typeof request.evidencePath !== 'string'
+        || !evidencePathPattern.test(request.evidencePath))) {
     throw new Error(`Attendance correction submissions were not bound to the active tenant and expected retry sequence: ${JSON.stringify(submitted)}.`);
   }
   await manager.setViewportSize({ width: 375, height: 812 });
@@ -293,7 +383,7 @@ try {
   console.log('E06-08_REJECTION_REASON_BENGALI_REFRESH_BROWSER_PASS');
   console.log('E06-CORRECTION_FORM_EMPTY_RETRY_CANCEL_AND_ENROLLMENT_SCOPE_BROWSER_PASS');
   console.log('E06-ATTENDANCE_CORRECTION_BROWSER_ACCEPTANCE=PASS');
-  console.log(JSON.stringify({ rejectedId, approvedId, submittedAttempts: submitted,
+  console.log(JSON.stringify({ rejectedId, approvedId, lifecycleId, submittedAttempts: submitted,
     localeAfterRefresh: await employee.locator('html').getAttribute('lang') }));
 } finally {
   await browser?.close();

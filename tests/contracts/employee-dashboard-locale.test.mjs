@@ -39,7 +39,7 @@ test('Employee Dashboard shares the active locale with date, number, leave, and 
   assert.match(workspace, /function EmployeeOverview\(\{[^)]*onOpenPendingRequest[^)]*onOpenLeave[^)]*onOpenPayslips[^)]*onOpenRequests/);
   assert.match(workspace, /<EmployeeOverview tenantId=\{tenantId\} tenantName=\{tenantName\} userId=\{userId\} locale=\{locale\}[\s\S]*?onOpenLearning=\{\(\) => navigate\('my-learning'\)\}[\s\S]*?onOpenProjects=\{\(\) => navigate\('my-projects'\)\}[\s\S]*?onOpenPerformance=\{\(\) => navigate\('my-performance'\)\}[\s\S]*?onOpenAnnouncements=\{\(\) => navigate\('my-announcements'\)\}[\s\S]*?onOpenPendingRequest=\{kind => navigate\([\s\S]*?\} \/>/);
   assert.match(workspace, /showHistory=\{false\} locale=\{locale\} \/>/);
-  assert.ok(workspace.includes('onRefresh={() => load(false)} locale={locale} />'));
+  assert.match(workspace, /<PersonalAttendanceCorrections tenantId=\{tenantId\}[^>]*onRefresh=\{\(\) => load\(false\)\} locale=\{locale\}[^>]*userId=\{userId\} openRequested=\{attendanceCorrectionOpenRequested\}/);
   assert.match(workspace, /toLocaleString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
   assert.match(workspace, /toLocaleDateString\(locale === 'bn' \? 'bn-BD' : 'en-US'/);
   assert.match(workspace, /const noticeDate = \(value: string\) => locale === 'bn' \? employeeDate\(value\) : value;/);
@@ -48,9 +48,11 @@ test('Employee Dashboard shares the active locale with date, number, leave, and 
 test('real Auth/Postgres browser journey checks Bengali persistence, validation, cancellation, and both viewport sizes', () => {
   for (const phrase of [
     'Switch language to Bengali', 'ব্যক্তিগত ড্যাশবোর্ড', 'synesis-hris-locale',
-    'উপস্থিতির মাস', 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।',
+    'উপস্থিতির মাস', 'An attendance correction with no selected category remained submittable.',
     'Employee attendance month Bengali mobile', 'page.reload()',
   ]) assert.ok(browser.includes(phrase), `browser acceptance is missing ${phrase}`);
+  assert.equal(localeSource.includes("'Enter at least one attendance field to correct.': 'সংশোধনের জন্য অন্তত একটি উপস্থিতির তথ্য দিন।',"), true,
+    'the Bengali correction validation message remains available in the locale dictionary');
 });
 
 test('employee attendance chart exposes its computed weekly values as an accessible table', () => {

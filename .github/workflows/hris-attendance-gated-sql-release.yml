@@ -1,0 +1,88 @@
+# Protected exact-Main release of the reviewed E06/E11 migration only.
+# This workflow is dispatched by the OWNER command gate and never from a PR.
+name: HRIS E06 and E11 gated SQL release
+on:
+  workflow_dispatch:
+    inputs:
+      release_approved:
+        description: Approve this exact E06/E11 SQL release
+        type: boolean
+        required: true
+        default: false
+      offsite_recovery_verified:
+        description: Confirm exact-Main source and encrypted database backups are in the authorized offsite recovery archive and restore-tested
+        type: boolean
+        required: true
+        default: false
+      source_backup_run_id:
+        description: Exact protected-Main source backup run ID
+        type: string
+        required: true
+      database_backup_run_id:
+        description: Exact protected-Main encrypted database export run ID
+        type: string
+        required: true
+      restore_run_id:
+        description: Exact protected-Main isolated restore proof run ID
+        type: string
+        required: true
+      offsite_source_archive_sha256:
+        description: SHA-256 of the source bundle independently stored in the authorized offsite recovery archive
+        type: string
+        required: true
+      offsite_database_archive_sha256:
+        description: SHA-256 of the encrypted database archive independently stored in the authorized offsite recovery archive
+        type: string
+        required: true
+      session_pooler_host:
+        description: HRIS Supabase session-pooler hostname only
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hris-attendance-sql-production
+  cancel-in-progress: false
+jobs:
+  release:
+    if: ${{ github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/main' && inputs.release_approved == true && inputs.offsite_recovery_verified == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOURCE_BACKUP_RUN_ID: ${{ inputs.source_backup_run_id }}
+      DATABASE_BACKUP_RUN_ID: ${{ inputs.database_backup_run_id }}
+      RESTORE_RUN_ID: ${{ inputs.restore_run_id }}
+      OFFSITE_SOURCE_ARCHIVE_SHA256: ${{ inputs.offsite_source_archive_sha256 }}
+      OFFSITE_DATABASE_ARCHIVE_SHA256: ${{ inputs.offsite_database_archive_sha256 }}
+      SOURCE_BACKUP_DIR: /tmp/hris-attendance-release-source
+      DATABASE_BACKUP_DIR: /tmp/hris-attendance-release-database
+      RESTORE_PROOF_DIR: /tmp/hris-attendance-release-restore
+      PGHOST: ${{ inputs.session_pooler_host }}
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.xfuxnljfrgvusbrpvxpa
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.HRIS_DB_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download exact-Main source, encrypted database and restore evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 -p "$SOURCE_BACKUP_DIR" "$DATABASE_BACKUP_DIR" "$RESTORE_PROOF_DIR"
+          gh run download "$SOURCE_BACKUP_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "hris-exact-main-source-${GITHUB_SHA}" --dir "$SOURCE_BACKUP_DIR"
+          gh run download "$DATABASE_BACKUP_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "hris-db-encrypted-${DATABASE_BACKUP_RUN_ID}" --dir "$DATABASE_BACKUP_DIR"
+          gh run download "$RESTORE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "hris-restore-proof-${RESTORE_RUN_ID}" --dir "$RESTORE_PROOF_DIR"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Validate exact recovery evidence and apply one pinned migration
+        run: bash scripts/release/hris-attendance-gated-sql-release.sh

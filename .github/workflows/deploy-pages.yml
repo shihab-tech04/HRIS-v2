@@ -70,6 +70,57 @@ jobs:
               AND has_function_privilege('authenticated','public.hris_cancel_my_work_from_home_request(uuid,uuid)','EXECUTE')
               AND has_function_privilege('authenticated','public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)','EXECUTE')
               AND NOT has_function_privilege('service_role','public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)','EXECUTE')
+              AND (SELECT COUNT(*) FROM supabase_migrations.schema_migrations
+                   WHERE version='20261110193754' AND name='hris_attendance_correction_movement_parity') = 1
+              AND to_regprocedure('public.hris_get_my_attendance_correction_context(uuid)') IS NOT NULL
+              AND to_regprocedure('public.hris_employee_submit_attendance_correction(uuid,jsonb)') IS NOT NULL
+              AND to_regprocedure('public.hris_employee_update_attendance_correction(uuid,uuid,jsonb)') IS NOT NULL
+              AND to_regprocedure('public.hris_employee_cancel_attendance_correction(uuid,uuid)') IS NOT NULL
+              AND to_regprocedure('public.admin_resolve_attendance_correction(uuid,text,text)') IS NOT NULL
+              AND to_regprocedure('public.hris_submit_my_movement_request(uuid,jsonb)') IS NOT NULL
+              AND to_regprocedure('public.hris_resolve_tenant_movement_request(uuid,uuid,text,text,text)') IS NOT NULL
+              AND to_regprocedure('public.hris_mark_my_movement_returned(uuid,uuid)') IS NOT NULL
+              AND NOT has_function_privilege('anon','public.hris_get_my_attendance_correction_context(uuid)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_employee_submit_attendance_correction(uuid,jsonb)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_employee_update_attendance_correction(uuid,uuid,jsonb)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_employee_cancel_attendance_correction(uuid,uuid)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.admin_resolve_attendance_correction(uuid,text,text)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_submit_my_movement_request(uuid,jsonb)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_resolve_tenant_movement_request(uuid,uuid,text,text,text)','EXECUTE')
+              AND NOT has_function_privilege('anon','public.hris_mark_my_movement_returned(uuid,uuid)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_get_my_attendance_correction_context(uuid)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_employee_submit_attendance_correction(uuid,jsonb)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_employee_update_attendance_correction(uuid,uuid,jsonb)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_employee_cancel_attendance_correction(uuid,uuid)','EXECUTE')
+              AND has_function_privilege('authenticated','public.admin_resolve_attendance_correction(uuid,text,text)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_submit_my_movement_request(uuid,jsonb)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_resolve_tenant_movement_request(uuid,uuid,text,text,text)','EXECUTE')
+              AND has_function_privilege('authenticated','public.hris_mark_my_movement_returned(uuid,uuid)','EXECUTE')
+              AND NOT has_function_privilege('anon','private.hris_attendance_correction_values(uuid,uuid,jsonb,text)','EXECUTE')
+              AND NOT has_function_privilege('authenticated','private.hris_attendance_correction_values(uuid,uuid,jsonb,text)','EXECUTE')
+              AND NOT has_function_privilege('service_role','private.hris_attendance_correction_values(uuid,uuid,jsonb,text)','EXECUTE')
+              AND COALESCE((SELECT relrowsecurity FROM pg_class
+                            WHERE oid=to_regclass('public.attendance_correction_settings')),false)
+              AND NOT has_table_privilege('anon','public.attendance_correction_settings','SELECT')
+              AND NOT has_table_privilege('anon','public.attendance_correction_settings','INSERT')
+              AND NOT has_table_privilege('anon','public.attendance_correction_settings','UPDATE')
+              AND NOT has_table_privilege('anon','public.attendance_correction_settings','DELETE')
+              AND NOT has_table_privilege('authenticated','public.attendance_correction_settings','SELECT')
+              AND NOT has_table_privilege('authenticated','public.attendance_correction_settings','INSERT')
+              AND NOT has_table_privilege('authenticated','public.attendance_correction_settings','UPDATE')
+              AND NOT has_table_privilege('authenticated','public.attendance_correction_settings','DELETE')
+              AND EXISTS (SELECT 1 FROM storage.buckets WHERE id='attendance-evidence' AND public=false)
+              AND (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='attendance_corrections'
+                     AND column_name IN ('correction_categories','original_check_in','original_check_out','original_work_mode','original_client_name')) = 5
+              AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.attendance_records'::regclass
+                          AND conname='attendance_records_work_mode_check' AND pg_get_constraintdef(oid) LIKE '%client_meeting%')
+              AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.attendance_corrections'::regclass
+                          AND conname='attendance_corrections_requested_work_mode_check' AND pg_get_constraintdef(oid) LIKE '%client_meeting%')
+              AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.attendance_corrections'::regclass
+                          AND conname='attendance_corrections_categories_allowed')
+              AND (SELECT COUNT(*) FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+                   AND policyname IN ('attendance_evidence_own_select','hris_private_storage_tenant_read_guard')) = 2
               AND EXISTS (SELECT 1 FROM storage.buckets
                           WHERE id='employee-avatars' AND public=false)
               AND to_regprocedure('public.employee_delete_my_profile_record_v1(uuid,text,uuid)') IS NOT NULL
@@ -92,7 +143,7 @@ jobs:
             echo '::error::Hosted SQL migration/RLS/storage gate failed; Pages not deployed'
             exit 1
           }
-          echo 'PASS: hosted Profile SQL, bank RLS, and certificate guards verified before Pages build'
+          echo 'PASS: hosted Profile, WFH, E06/E11 SQL, access controls, RLS and storage guards verified before Pages build'
       - name: Checkout deployed Candidate contract source for cross-repository tests
         shell: bash
         run: |

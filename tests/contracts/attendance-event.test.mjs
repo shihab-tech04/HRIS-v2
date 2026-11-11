@@ -97,8 +97,12 @@ test('E06 links attendance correction stories to existing date records, backend 
     assert.match(correctionBrowser, new RegExp(`${id}_[A-Z0-9_]+_BROWSER_PASS`));
     assert.ok(runtime.includes(`record('${id} `), `${id} must have an isolated runtime story record`);
   }
-  assert.match(runtime, /E06-04 partial: no approved rule says when evidence is required/);
-  assert.match(runtime, /E06-06 partial: pending edit or cancellation is not implemented/);
+  assert.match(runtime, /E06-04 employee evidence is optional by default, required by tenant policy/);
+  assert.match(runtime, /E06-06 pending edits and cancellation work only under their tenant policy/);
+  assert.match(runtime, /E06 pending edit and cancellation are denied when organization policy is disabled/);
+  assert.match(correctionBrowser, /E06-04_PRIVATE_EVIDENCE_UPLOAD_AND_SIGNED_READ_BROWSER_PASS/);
+  assert.match(correctionBrowser, /E06-06_POLICY_ENABLED_PENDING_EDIT_CANCEL_AND_RECOVERY_BROWSER_PASS/);
+  assert.doesNotMatch(runtime, /E06-0[46] partial:/);
   assert.match(runtime, /cleanupAttendanceCorrectionBrowserFixture/);
   assert.match(correctionMigration, /a\.tenant_id=p_tenant_id AND a\.employee_id=v_employee[\s\S]+?a\.attendance_date=v_date[\s\S]+?FOR SHARE/);
   assert.match(correctionMigration, /Attendance record not found for correction\.' USING errcode='P0002'/);

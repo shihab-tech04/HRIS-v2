@@ -47,6 +47,7 @@ jobs:
             'access':rf'/hris-prod access ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
             'avatar':rf'/hris-prod avatar ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
             'wfh':rf'/hris-prod wfh ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
+            'attendance':rf'/hris-prod attendance ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
             'pages':rf'/hris-prod pages ({sha})',
           }
           matched=[(stage,re.fullmatch(regex,command)) for stage,regex in patterns.items()]
@@ -56,7 +57,7 @@ jobs:
           if m.group(1)!=os.environ['GITHUB_SHA']: raise SystemExit('Command is not for exact current protected Main')
           with open(os.environ['GITHUB_OUTPUT'],'a') as f:
               print('stage='+stage,file=f)
-              if stage in ('access','avatar','wfh'):
+              if stage in ('access','avatar','wfh','attendance'):
                   for name,value in zip(('source_run','database_run','restore_run','source_sha','database_sha'),m.groups()[1:]):
                       print(name+'='+value,file=f)
           print('PASS: repository OWNER command, issue 191, exact Main, and strict input validation')
@@ -73,6 +74,16 @@ jobs:
             gh api "repos/shihab-tech04/HRIS-v2/actions/workflows/$1/runs?event=workflow_dispatch&per_page=40" \
               | jq -e --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .status == "completed" and .conclusion == "success")] | length > 0' >/dev/null
           }
+          success_on_ancestor() {
+            local workflow="$1" candidate comparison
+            while IFS= read -r candidate; do
+              test -n "$candidate" || continue
+              comparison="$(gh api "repos/shihab-tech04/HRIS-v2/compare/${candidate}...${GITHUB_SHA}" --jq '.status')"
+              if [[ "$comparison" == ahead || "$comparison" == identical ]]; then return 0; fi
+            done < <(gh api "repos/shihab-tech04/HRIS-v2/actions/workflows/$workflow/runs?event=workflow_dispatch&per_page=40" \
+              | jq -r '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success") | .head_sha] | unique | .[]')
+            return 1
+          }
           case "$STAGE" in
             service) echo 'PASS: service recovery requires its independent SQL and backup gates' ;;
             access) success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; } ;;
@@ -84,8 +95,19 @@ jobs:
               pr_checks="$(gh api "repos/shihab-tech04/HRIS-v2/commits/$pr_head/check-runs?per_page=100")"
               jq -e '[.check_runs[] | select((.name == "check" or .name == "isolated-hris") and .status == "completed" and .conclusion == "success")] | (map(.name) | unique | sort) == ["check","isolated-hris"]' <<< "$pr_checks" >/dev/null
               echo 'PASS: PR #195 is merged and its build plus isolated Auth/Postgres/browser checks passed' ;;
+            attendance)
+              pr="$(gh api repos/shihab-tech04/HRIS-v2/pulls/196)"
+              test "$(jq -r '.merged_at != null and .base.ref == "main" and .merge_commit_sha != null' <<< "$pr")" = true
+              pr_head="$(jq -r '.head.sha' <<< "$pr")"
+              merge_sha="$(jq -r '.merge_commit_sha' <<< "$pr")"
+              comparison="$(gh api "repos/shihab-tech04/HRIS-v2/compare/${merge_sha}...${GITHUB_SHA}" --jq '.status')"
+              [[ "$comparison" == ahead || "$comparison" == identical ]] || { echo '::error::PR #196 merge is not an ancestor of protected Main'; exit 1; }
+              pr_checks="$(gh api "repos/shihab-tech04/HRIS-v2/commits/$pr_head/check-runs?per_page=100")"
+              jq -e '[.check_runs[] | select((.name == "check" or .name == "isolated-hris") and .status == "completed" and .conclusion == "success")] | (map(.name) | unique | sort) == ["check","isolated-hris"]' <<< "$pr_checks" >/dev/null
+              echo 'PASS: PR #196 is merged into protected Main and both PR verification gates passed' ;;
             pages)
-              success_on_main hris-wfh-gated-sql-release.yml || { echo '::error::WFH SQL release not confirmed'; exit 1; }
+              success_on_main hris-attendance-gated-sql-release.yml || { echo '::error::E06/E11 SQL release not confirmed for exact Main'; exit 1; }
+              success_on_ancestor hris-wfh-gated-sql-release.yml || { echo '::error::WFH SQL release is not on protected Main ancestry'; exit 1; }
               # The avatar migration is applied once, prior to the WFH merge.
               # Its reviewed successful run must be an ancestor of this exact
               # protected Main. The Pages job also verifies hosted avatar SQL.
@@ -133,6 +155,13 @@ jobs:
                 -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
             wfh)
               gh workflow run hris-wfh-gated-sql-release.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f release_approved=true -f offsite_recovery_verified=true \
+                -f source_backup_run_id="$SOURCE_RUN" -f database_backup_run_id="$DATABASE_RUN" \
+                -f restore_run_id="$RESTORE_RUN" \
+                -f offsite_source_archive_sha256="$SOURCE_SHA" -f offsite_database_archive_sha256="$DATABASE_SHA" \
+                -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
+            attendance)
+              gh workflow run hris-attendance-gated-sql-release.yml --repo shihab-tech04/HRIS-v2 --ref main \
                 -f release_approved=true -f offsite_recovery_verified=true \
                 -f source_backup_run_id="$SOURCE_RUN" -f database_backup_run_id="$DATABASE_RUN" \
                 -f restore_run_id="$RESTORE_RUN" \

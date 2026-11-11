@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardList, Receipt, UserRound, type LucideIcon } from 'lucide-react';
+import { CalendarDays, ClipboardList, Clock3, MapPin, Receipt, UserRound, type LucideIcon } from 'lucide-react';
 import { projectText, type Locale } from './project-locale';
 
 type QuickAccessAction = {
@@ -7,13 +7,15 @@ type QuickAccessAction = {
   onOpen: () => void;
 };
 
-export function EmployeeDashboardQuickAccess({ locale, onOpenAttendance, onOpenLeave, onOpenPayslips, onOpenProfile, onOpenRequests }: {
+export function EmployeeDashboardQuickAccess({ locale, onOpenAttendance, onOpenLeave, onOpenPayslips, onOpenProfile, onOpenRequests, onOpenClientMeeting, onOpenOfficeEntry }: {
   locale: Locale;
   onOpenAttendance: () => void;
   onOpenLeave: () => void;
   onOpenPayslips: () => void;
   onOpenProfile: () => void;
   onOpenRequests: () => void;
+  onOpenClientMeeting: () => void;
+  onOpenOfficeEntry: () => void;
 }) {
   const actions: QuickAccessAction[] = [
     { label: 'Attendance', icon: CalendarDays, onOpen: onOpenAttendance },
@@ -21,6 +23,8 @@ export function EmployeeDashboardQuickAccess({ locale, onOpenAttendance, onOpenL
     { label: 'My Payslips', icon: Receipt, onOpen: onOpenPayslips },
     { label: 'My profile', icon: UserRound, onOpen: onOpenProfile },
     { label: 'My Requests', icon: ClipboardList, onOpen: onOpenRequests },
+    { label: 'Client Meeting', icon: MapPin, onOpen: onOpenClientMeeting },
+    { label: 'Office Entry', icon: Clock3, onOpen: onOpenOfficeEntry },
   ];
 
   return <nav aria-label={projectText(locale, 'Quick access')} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

@@ -4,7 +4,7 @@ import { ClipboardList, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
 import { serviceRequestText } from './service-request-locale';
-import { WorkFromHomeSummary } from './MyServiceRequests';
+import { MovementSummary, WorkFromHomeSummary } from './MyServiceRequests';
 
 type RequestStatus = 'pending' | 'in_progress' | 'completed' | 'rejected' | 'approved' | 'cancelled';
 type RequestType = 'employment_certificate' | 'noc_letter' | 'salary_certificate' | 'other'
@@ -148,10 +148,42 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
     }
   }
 
+  async function resolveMovement(request: ServiceRequest, nextStatus: 'approved' | 'rejected', note?: string) {
+    setSavingId(request.id);
+    setActionError('');
+    setSuccessMessage('');
+    try {
+      const { data, error } = await supabase.rpc('hris_resolve_tenant_movement_request', {
+        p_tenant_id: tenantId,
+        p_request_id: request.id,
+        p_expected_status: request.status,
+        p_next_status: nextStatus,
+        p_note: note ?? null,
+      });
+      if (error) throw error;
+      const saved = data && typeof data === 'object' ? data as Record<string, unknown> : null;
+      if (!saved || saved.id !== request.id || saved.tenant_id !== tenantId || saved.status !== nextStatus) {
+        throw new Error('The movement decision was not confirmed.');
+      }
+      setDecision(null);
+      setSuccessMessage(nextStatus === 'approved'
+        ? tx('The movement request was approved.')
+        : tx('The movement request was rejected.'));
+      await loadRequests(true);
+    } catch {
+      setActionError(tx('This action could not be saved. Refresh the queue and try again.'));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   function submitDecision(event: FormEvent<HTMLFormElement>, request: ServiceRequest) {
     event.preventDefault();
     if (!decision || decision.requestId !== request.id || !decision.note.trim()) return;
     if (request.request_type === 'work_from_home') void resolveWorkFromHome(request, 'rejected', decision.note);
+    else if (request.request_type === 'movement' && request.request_data?.form_version === 'e11_v1') {
+      void resolveMovement(request, 'rejected', decision.note);
+    }
     else void changeStatus(request, decision.nextStatus, decision.note);
   }
 
@@ -216,6 +248,8 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
             </div>
             <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{request.reason}</p>
             {request.request_type === 'work_from_home' && <WorkFromHomeSummary request={request} locale={locale} tx={tx} />}
+            {request.request_type === 'movement' && request.request_data?.form_version === 'e11_v1'
+              && <MovementSummary request={request} locale={locale} tx={tx} />}
             {request.resolution_note && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{tx(request.status === 'rejected' ? 'Rejection reason' : 'Resolution outcome')}</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-slate-600">{request.resolution_note}</p>
@@ -240,13 +274,24 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
                 className="min-h-11 rounded-lg border border-rose-300 px-4 text-sm font-semibold text-rose-800 disabled:opacity-60">{tx('Reject')}</button>
             </div>}
-            {request.request_type !== 'work_from_home' && request.status === 'pending' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            {request.request_type === 'movement' && request.request_data?.form_version === 'e11_v1'
+              && request.status === 'pending' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                <button type="button" disabled={savingId === request.id}
+                  onClick={() => void resolveMovement(request, 'approved')}
+                  className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-semibold text-white disabled:opacity-60">
+                  {savingId === request.id ? tx('Saving…') : tx('Approve movement')}
+                </button>
+                <button type="button" disabled={savingId === request.id}
+                  onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
+                  className="min-h-11 rounded-lg border border-rose-300 px-4 text-sm font-semibold text-rose-800 disabled:opacity-60">{tx('Reject')}</button>
+              </div>}
+            {request.request_type !== 'work_from_home' && !(request.request_type === 'movement' && request.request_data?.form_version === 'e11_v1') && request.status === 'pending' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
               <button type="button" disabled={savingId === request.id} onClick={() => void changeStatus(request, 'in_progress')}
                 className="min-h-11 rounded-lg bg-[#08558B] px-4 text-sm font-semibold text-white disabled:opacity-60">{savingId === request.id ? tx('Saving…') : tx('Start review')}</button>
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
                 className="min-h-11 rounded-lg border border-rose-300 px-4 text-sm font-semibold text-rose-800 disabled:opacity-60">{tx('Reject')}</button>
             </div>}
-            {request.request_type !== 'work_from_home' && request.status === 'in_progress' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            {request.request_type !== 'work_from_home' && !(request.request_type === 'movement' && request.request_data?.form_version === 'e11_v1') && request.status === 'in_progress' && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'completed', note: '' }); setActionError(''); }}
                 className="min-h-11 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{tx('Complete request')}</button>
               <button type="button" disabled={savingId === request.id} onClick={() => { setDecision({ requestId: request.id, nextStatus: 'rejected', note: '' }); setActionError(''); }}
@@ -257,7 +302,8 @@ export function ServiceRequestReview({ tenantId, locale }: { tenantId: string; l
               <h5 className="font-semibold text-slate-900">{tx(decision.nextStatus === 'rejected' ? 'Rejection reason' : 'Resolution outcome')}</h5>
               <label className="block space-y-1.5 text-sm font-medium text-slate-800">
                 {tx(decision.nextStatus === 'rejected' ? 'Reason for rejection' : 'Record the resolution outcome')}
-                <textarea required value={decision.note} onChange={event => setDecision(current => current?.requestId === request.id ? { ...current, note: event.target.value } : current)}
+                <textarea required maxLength={request.request_type === 'movement' && request.request_data?.form_version === 'e11_v1' ? 1000 : undefined}
+                  value={decision.note} onChange={event => setDecision(current => current?.requestId === request.id ? { ...current, note: event.target.value } : current)}
                   rows={3} aria-label={tx(decision.nextStatus === 'rejected' ? 'Reason for rejection' : 'Record the resolution outcome')}
                   className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal focus:outline-2 focus:outline-[#08558B]" />
               </label>
