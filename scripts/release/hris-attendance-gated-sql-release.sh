@@ -139,17 +139,30 @@ grep -Fxq '20261110120000|hris_work_from_home_request_parity' "$scratch/before.t
 }
 if grep -q '^20261110193754|' "$scratch/before.tsv"; then
   grep -Fxq '20261110193754|hris_attendance_correction_movement_parity' "$scratch/before.tsv" || {
-    echo 'E06/E11 migration version exists under an unexpected name'; exit 1;
+    echo 'FAIL: E06/E11 migration version exists under an unexpected name'; exit 1;
   }
   apply_e06=false
 else
   apply_e06=true
 fi
-! grep -q '^20261111031236|' "$scratch/before.tsv" || {
-  echo 'Private-storage tenant guard repair migration is already installed'; exit 1;
-}
+if grep -q '^20261111031236|' "$scratch/before.tsv"; then
+  grep -Fxq '20261111031236|hris_restore_private_storage_tenant_read_guard' "$scratch/before.tsv" || {
+    echo 'FAIL: private-storage guard migration version exists under an unexpected name'; exit 1;
+  }
+  apply_guard=false
+else
+  apply_guard=true
+fi
+if [[ "$apply_guard" == false && "$apply_e06" == true ]]; then
+  echo 'FAIL: private-storage guard is installed without its required E06/E11 migration; refusing out-of-order repair'
+  exit 1
+fi
+verify_only=false
+if [[ "$apply_e06" == false && "$apply_guard" == false ]]; then
+  verify_only=true
+fi
 
-db_psql -c "SELECT CASE WHEN
+if ! precheck="$(db_psql -c "SELECT CASE WHEN
   to_regclass('public.attendance_corrections') IS NOT NULL
   AND to_regclass('public.attendance_records') IS NOT NULL
   AND to_regclass('public.service_requests') IS NOT NULL
@@ -172,8 +185,13 @@ db_psql -c "SELECT CASE WHEN
   AND to_regprocedure('public.hris_resolve_tenant_work_from_home_request(uuid,uuid,text,text,text)') IS NOT NULL
   AND to_regprocedure('public.admin_save_attendance(uuid,date,jsonb)') IS NOT NULL
   AND EXISTS (SELECT 1 FROM storage.buckets WHERE id='attendance-evidence' AND public=false)
-  THEN 'ATTENDANCE_PRODUCTION_PRECHECK_PASS' ELSE 'ATTENDANCE_PRODUCTION_PRECHECK_FAIL' END;" |
-  grep -Fxq 'ATTENDANCE_PRODUCTION_PRECHECK_PASS'
+  THEN 'ATTENDANCE_PRODUCTION_PRECHECK_PASS' ELSE 'ATTENDANCE_PRODUCTION_PRECHECK_FAIL' END;")"; then
+  echo 'FAIL: production dependency precheck query could not execute'; exit 1;
+fi
+if [[ "$precheck" != 'ATTENDANCE_PRODUCTION_PRECHECK_PASS' ]]; then
+  echo 'FAIL: required production tables, WFH functions, private schema, or attendance bucket are missing'; exit 1;
+fi
+echo 'PASS: production base dependencies and WFH entry points validated.'
 
 db_psql -c "SELECT 'users='||(SELECT count(*) FROM auth.users)::text
   ||'|employees='||(SELECT count(*) FROM public.employees)::text
@@ -195,89 +213,140 @@ db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM informatio
   WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
   ORDER BY table_name,grantee,privilege_type;" > "$scratch/grants-before.txt"
 
-supabase init --workdir "$scratch" --force >/dev/null
-mkdir -p "$scratch/supabase/migrations"
-while IFS='|' read -r version name; do
-  [[ "$version" =~ ^[0-9]{14}$ && "$name" =~ ^[a-z0-9_]+$ ]] || exit 1
-  : > "$scratch/supabase/migrations/${version}_${name}.sql"
-done < "$scratch/before.tsv"
-if [[ "$apply_e06" == true ]]; then
-  cp "$source_sql" "$scratch/supabase/migrations/$migration"
-fi
-cp "$guard_source" "$scratch/supabase/migrations/$guard_migration"
 expected_migrations="$scratch/expected-migrations.txt"
 expected_history="$scratch/expected-history.tsv"
+: > "$expected_migrations"
+: > "$expected_history"
 if [[ "$apply_e06" == true ]]; then
-  printf '%s\n' "$migration" "$guard_migration" | sort > "$expected_migrations"
-  printf '%s\n' \
-    '20261110193754|hris_attendance_correction_movement_parity' \
-    '20261111031236|hris_restore_private_storage_tenant_read_guard' | sort > "$expected_history"
-else
-  printf '%s\n' "$guard_migration" > "$expected_migrations"
-  printf '%s\n' '20261111031236|hris_restore_private_storage_tenant_read_guard' > "$expected_history"
+  printf '%s\n' "$migration" >> "$expected_migrations"
+  printf '%s\n' '20261110193754|hris_attendance_correction_movement_parity' >> "$expected_history"
 fi
+if [[ "$apply_guard" == true ]]; then
+  printf '%s\n' "$guard_migration" >> "$expected_migrations"
+  printf '%s\n' '20261111031236|hris_restore_private_storage_tenant_read_guard' >> "$expected_history"
+fi
+sort -o "$expected_migrations" "$expected_migrations"
+sort -o "$expected_history" "$expected_history"
 expected_new_count="$(wc -l < "$expected_migrations")"
-test "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -eq "$(( $(wc -l < "$scratch/before.tsv") + expected_new_count ))"
-while IFS= read -r expected_migration; do
-  cmp "supabase/migrations/$expected_migration" "$scratch/supabase/migrations/$expected_migration"
-done < "$expected_migrations"
+test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-db_url="$(python3 - <<'PY'
+if [[ "$verify_only" == true ]]; then
+  echo 'PASS: both approved migrations are already installed; continuing with production verification only.'
+else
+  supabase init --workdir "$scratch" --force >/dev/null
+  mkdir -p "$scratch/supabase/migrations"
+  while IFS='|' read -r version name; do
+    [[ "$version" =~ ^[0-9]{14}$ && "$name" =~ ^[a-z0-9_]+$ ]] || {
+      echo 'FAIL: hosted migration history contains an invalid version or name'; exit 1;
+    }
+    : > "$scratch/supabase/migrations/${version}_${name}.sql"
+  done < "$scratch/before.tsv"
+  if [[ "$apply_e06" == true ]]; then
+    cp "$source_sql" "$scratch/supabase/migrations/$migration"
+  fi
+  if [[ "$apply_guard" == true ]]; then
+    cp "$guard_source" "$scratch/supabase/migrations/$guard_migration"
+  fi
+  if [[ "$(find "$scratch/supabase/migrations" -type f -name '*.sql' | wc -l)" -ne "$(( $(wc -l < "$scratch/before.tsv") + expected_new_count ))" ]]; then
+    echo 'FAIL: isolated migration set does not match the approved history plus pinned migrations'; exit 1;
+  fi
+  while IFS= read -r expected_migration; do
+    cmp "supabase/migrations/$expected_migration" "$scratch/supabase/migrations/$expected_migration" || {
+      echo "FAIL: approved migration bytes differ from exact Main: $expected_migration"; exit 1;
+    }
+  done < "$expected_migrations"
+
+  db_url="$(python3 - <<'PY'
 import os, urllib.parse
 username=urllib.parse.quote(os.environ['PGUSER'],safe='')
 password=urllib.parse.quote(os.environ['PGPASSWORD'],safe='')
 print('postgresql://'+username+':'+password+'@'+os.environ['PGHOST']+':5432/postgres?sslmode=require')
 PY
 )"
-(cd "$scratch" && supabase db push --db-url "$db_url" --include-all --dry-run > "$scratch/plan.txt" 2>&1) || {
-  echo 'Attendance SQL dry run failed; production database unchanged'; exit 1;
-}
-grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/plan.txt" | sort -u > "$scratch/planned.txt"
-diff -u "$expected_migrations" "$scratch/planned.txt" || {
-  echo 'Dry run selected migrations outside the approved E06/E11 and private-storage guard set'; exit 1;
-}
+  (cd "$scratch" && supabase db push --db-url "$db_url" --include-all --dry-run > "$scratch/plan.txt" 2>&1) || {
+    echo 'FAIL: attendance SQL dry run failed; production database unchanged'; exit 1;
+  }
+  grep -Eo '[0-9]{14}_[a-z0-9_]+[.]sql' "$scratch/plan.txt" | sort -u > "$scratch/planned.txt"
+  diff -u "$expected_migrations" "$scratch/planned.txt" || {
+    echo 'FAIL: Dry run selected migrations outside the approved E06/E11 and private-storage guard set'; exit 1;
+  }
 
-test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/pre-apply.tsv"
-cmp "$scratch/before.tsv" "$scratch/pre-apply.tsv" || { echo 'Hosted migration history changed before apply'; exit 1; }
-(cd "$scratch" && supabase --yes db push --db-url "$db_url" --include-all > "$scratch/apply.txt" 2>&1) || {
-  echo 'Scoped E06/E11 SQL apply failed; inspect the protected workflow result'; exit 1;
-}
-
-db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/after.tsv"
-test "$(wc -l < "$scratch/after.tsv")" -eq "$(( $(wc -l < "$scratch/before.tsv") + expected_new_count ))"
-grep -Fxq '20261110120000|hris_work_from_home_request_parity' "$scratch/after.tsv"
-if [[ "$apply_e06" == true ]]; then
-  grep -Fxq '20261110193754|hris_attendance_correction_movement_parity' "$scratch/after.tsv"
+  db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/pre-apply.tsv"
+  if ! cmp -s "$scratch/before.tsv" "$scratch/pre-apply.tsv"; then
+    echo 'FAIL: hosted migration history changed before apply';
+    diff -u "$scratch/before.tsv" "$scratch/pre-apply.tsv" || true
+    exit 1
+  fi
+  (cd "$scratch" && supabase --yes db push --db-url "$db_url" --include-all > "$scratch/apply.txt" 2>&1) || {
+    echo 'FAIL: scoped E06/E11 SQL apply failed; inspect the protected workflow result'; exit 1;
+  }
+  echo 'PASS: exact-Main pinned migrations applied.'
 fi
-grep -Fxq '20261111031236|hris_restore_private_storage_tenant_read_guard' "$scratch/after.tsv"
-grep -Fv -f "$expected_history" "$scratch/after.tsv" > "$scratch/unchanged.tsv"
-cmp "$scratch/before.tsv" "$scratch/unchanged.tsv"
+db_psql -F '|' -c 'SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version' > "$scratch/after.tsv"
+after_count="$(wc -l < "$scratch/after.tsv")"
+before_count="$(wc -l < "$scratch/before.tsv")"
+expected_after_count="$(( before_count + expected_new_count ))"
+if [[ "$after_count" -ne "$expected_after_count" ]]; then
+  echo "FAIL: migration history count mismatch (expected $expected_after_count, found $after_count)"; exit 1;
+fi
+for expected_row in \
+  '20261110120000|hris_work_from_home_request_parity' \
+  '20261110193754|hris_attendance_correction_movement_parity' \
+  '20261111031236|hris_restore_private_storage_tenant_read_guard'; do
+  if ! grep -Fxq "$expected_row" "$scratch/after.tsv"; then
+    echo "FAIL: required production migration row missing: $expected_row"; exit 1;
+  fi
+done
+if ! grep -Fv -f "$expected_history" "$scratch/after.tsv" > "$scratch/unchanged.tsv"; then
+  echo 'FAIL: unable to derive unchanged hosted migration history'; exit 1;
+fi
+if ! cmp -s "$scratch/before.tsv" "$scratch/unchanged.tsv"; then
+  echo 'FAIL: an unapproved hosted migration history row changed';
+  diff -u "$scratch/before.tsv" "$scratch/unchanged.tsv" || true
+  exit 1
+fi
+echo 'PASS: hosted migration history contains the exact approved E06/E11 and storage-guard rows.'
 
-db_psql -c "SELECT 'users='||(SELECT count(*) FROM auth.users)::text
-  ||'|employees='||(SELECT count(*) FROM public.employees)::text
-  ||'|tenants='||(SELECT count(*) FROM public.tenants)::text
-  ||'|service_requests='||(SELECT count(*) FROM public.service_requests)::text
-  ||'|request_history='||(SELECT count(*) FROM public.service_request_status_history)::text
-  ||'|attendance='||(SELECT count(*) FROM public.attendance_records)::text
-  ||'|attendance_corrections='||(SELECT count(*) FROM public.attendance_corrections)::text
-  ||'|correction_settings='||(SELECT count(*) FROM public.attendance_correction_settings)::text
-  ||'|audit='||(SELECT count(*) FROM public.admin_audit_logs)::text;" > "$scratch/counts-after.txt"
-cmp "$scratch/counts-before.txt" "$scratch/counts-after.txt"
-db_psql -c "SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname),'[]'::jsonb)
+if [[ "$verify_only" != true ]]; then
+  db_psql -c "SELECT 'users='||(SELECT count(*) FROM auth.users)::text
+    ||'|employees='||(SELECT count(*) FROM public.employees)::text
+    ||'|tenants='||(SELECT count(*) FROM public.tenants)::text
+    ||'|service_requests='||(SELECT count(*) FROM public.service_requests)::text
+    ||'|request_history='||(SELECT count(*) FROM public.service_request_status_history)::text
+    ||'|attendance='||(SELECT count(*) FROM public.attendance_records)::text
+    ||'|attendance_corrections='||(SELECT count(*) FROM public.attendance_corrections)::text
+    ||'|correction_settings='||(SELECT count(*) FROM public.attendance_correction_settings)::text
+    ||'|audit='||(SELECT count(*) FROM public.admin_audit_logs)::text;" > "$scratch/counts-after.txt"
+  if ! cmp -s "$scratch/counts-before.txt" "$scratch/counts-after.txt"; then
+    echo 'FAIL: protected migration changed one or more guarded table row counts';
+    diff -u "$scratch/counts-before.txt" "$scratch/counts-after.txt" || true
+    exit 1
+  fi
+  db_psql -c "SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname),'[]'::jsonb)
   FROM pg_policies p WHERE p.schemaname IN ('public','storage')
     AND ((p.schemaname='public' AND p.tablename IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings'))
       OR (p.schemaname='storage' AND p.tablename='objects'
           AND p.policyname NOT IN ('candidate_documents_own_select','employee_documents_own_select',
             'attendance_evidence_own_select','hris_private_storage_tenant_read_guard',
             'employee_documents_storage_owner_guard')));" > "$scratch/policies-after.txt"
-cmp "$scratch/policies-before.txt" "$scratch/policies-after.txt"
-db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM information_schema.role_table_grants
-  WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
-  ORDER BY table_name,grantee,privilege_type;" > "$scratch/grants-after.txt"
-cmp "$scratch/grants-before.txt" "$scratch/grants-after.txt"
+  if ! cmp -s "$scratch/policies-before.txt" "$scratch/policies-after.txt"; then
+    echo 'FAIL: unrelated RLS or Storage policies changed';
+    diff -u "$scratch/policies-before.txt" "$scratch/policies-after.txt" || true
+    exit 1
+  fi
+  db_psql -c "SELECT table_name||'|'||grantee||'|'||privilege_type FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND table_name IN ('service_requests','service_request_status_history','attendance_records','attendance_corrections','attendance_correction_settings')
+    ORDER BY table_name,grantee,privilege_type;" > "$scratch/grants-after.txt"
+  if ! cmp -s "$scratch/grants-before.txt" "$scratch/grants-after.txt"; then
+    echo 'FAIL: existing public table grants changed';
+    diff -u "$scratch/grants-before.txt" "$scratch/grants-after.txt" || true
+    exit 1
+  fi
+  echo 'PASS: data counts, unrelated policies, and existing table grants were preserved during apply.'
+fi
 
-db_psql -c "SELECT CASE WHEN
+
+if ! postcheck="$(db_psql -c "SELECT CASE WHEN
   to_regprocedure('public.hris_submit_my_work_from_home_request(uuid,date,date,time,time,jsonb,text,text)') IS NOT NULL
   AND to_regprocedure('public.hris_update_my_work_from_home_request(uuid,uuid,date,date,time,time,jsonb,text,text)') IS NOT NULL
   AND to_regprocedure('public.hris_cancel_my_work_from_home_request(uuid,uuid)') IS NOT NULL
@@ -356,7 +425,16 @@ db_psql -c "SELECT CASE WHEN
        AND roles @> ARRAY['authenticated']::name[] AND qual LIKE '%hris_storage_owner_tenant_read%')
   AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
        AND policyname='employee_documents_storage_owner_guard')
-  THEN 'ATTENDANCE_PRODUCTION_POSTCHECK_PASS' ELSE 'ATTENDANCE_PRODUCTION_POSTCHECK_FAIL' END;" |
-  grep -Fxq 'ATTENDANCE_PRODUCTION_POSTCHECK_PASS'
+  THEN 'ATTENDANCE_PRODUCTION_POSTCHECK_PASS' ELSE 'ATTENDANCE_PRODUCTION_POSTCHECK_FAIL' END;")"; then
+  echo 'FAIL: production function, grant, RLS, and Storage postcheck query could not execute'; exit 1;
+fi
+if [[ "$postcheck" != 'ATTENDANCE_PRODUCTION_POSTCHECK_PASS' ]]; then
+  echo 'FAIL: production function, grant, RLS, or tenant-aware Storage policy postcheck failed'; exit 1;
+fi
+echo 'PASS: production function grants, RLS, attendance evidence, and tenant-aware Storage policies verified.'
 
-echo 'PASS: approved E06/E11 and tenant-aware private-storage migrations applied; existing data, WFH, unrelated policies, grants, and RLS were preserved.'
+if [[ "$verify_only" == true ]]; then
+  echo 'PASS: E06/E11 attendance and movement policies, WFH, and tenant-aware private-storage access verified; no SQL migration was re-applied.'
+else
+  echo 'PASS: approved E06/E11 and tenant-aware private-storage migrations applied; existing data, WFH, unrelated policies, grants, and RLS were preserved.'
+fi

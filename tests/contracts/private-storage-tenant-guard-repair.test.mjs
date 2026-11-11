@@ -33,10 +33,18 @@ test('the protected attendance release supports repair-only after E06 is already
   assert.match(release, /guard_migration='20261111031236_hris_restore_private_storage_tenant_read_guard\.sql'/);
   assert.ok(release.includes(migrationHash), 'The release script must pin the exact recovery migration bytes.');
   assert.match(release, /apply_e06=false/);
+  assert.match(release, /apply_guard=false/);
+  assert.match(release, /verify_only=false/);
+  assert.match(release, /if \[\[ \"\$verify_only\" == true \]\]; then\s+echo 'PASS: both approved migrations are already installed; continuing with production verification only\.'\s+else\s+supabase init/);
+  assert.match(release, /no SQL migration was re-applied/);
+  assert.match(release, /FAIL: production dependency precheck query could not execute/);
+  assert.match(release, /FAIL: production function, grant, RLS, or tenant-aware Storage policy postcheck failed/);
+  assert.doesNotMatch(release, /Private-storage tenant guard repair migration is already installed/);
   assert.match(release, /20261111031236\|hris_restore_private_storage_tenant_read_guard/);
   assert.match(release, /Dry run selected migrations outside the approved E06\/E11 and private-storage guard set/);
+  assert.match(release, /FAIL: an unapproved hosted migration history row changed/);
+  assert.match(release, /FAIL: protected migration changed one or more guarded table row counts/);
   assert.match(release, /hris_private_storage_tenant_read_guard' AND permissive='RESTRICTIVE'/);
-  assert.match(release, /Private-storage tenant guard repair migration is already installed/);
   assert.match(release, /ATTENDANCE_PRODUCTION_POSTCHECK_PASS/);
 });
 
