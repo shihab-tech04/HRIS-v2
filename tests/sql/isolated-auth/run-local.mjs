@@ -1677,6 +1677,19 @@ if (attendanceGuardBucketBefore.error) {
 const employeeEvidenceUploadPath = `${employeeA.userId}/${ids.tenantA}/${randomUUID()}.pdf`;
 const employeeEvidenceForeignTenantPath = `${employeeA.userId}/${ids.tenantB}/${randomUUID()}.pdf`;
 const employeeEvidenceForeignOwnerPath = `${employeeB.userId}/${ids.tenantB}/${randomUUID()}.pdf`;
+const employeeEvidencePathPattern = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.](pdf|doc|docx|jpg|jpeg|png)$';
+const employeeEvidencePolicyProbe = queryAs(employeeA, `SELECT jsonb_build_object(
+  'live_session',public.is_live_session(),
+  'owner_path_matches',split_part(${sqlLiteral(employeeEvidenceUploadPath)},'/',1)=(SELECT auth.uid())::text,
+  'path_shape_matches',${sqlLiteral(employeeEvidenceUploadPath)} ~ ${sqlLiteral(employeeEvidencePathPattern)},
+  'tenant_active_and_visible',EXISTS (SELECT 1 FROM public.tenants t
+    WHERE t.id::text=split_part(${sqlLiteral(employeeEvidenceUploadPath)},'/',2) AND t.is_active IS TRUE),
+  'own_employee_id',public.hris_own_employee_for_tenant('${ids.tenantA}'::uuid),
+  'owner_tenant_policy_matches',EXISTS (SELECT 1 FROM public.tenants t
+    WHERE t.id::text=split_part(${sqlLiteral(employeeEvidenceUploadPath)},'/',2)
+      AND t.is_active IS TRUE AND public.hris_own_employee_for_tenant(t.id) IS NOT NULL),
+  'tenant_select_granted',has_table_privilege(current_user,'public.tenants','SELECT')
+)`);
 const employeeEvidenceUpload = await employeeA.client.storage.from('attendance-evidence').upload(
   employeeEvidenceUploadPath,
   new Blob(['%PDF-1.4\nSynthetic attendance evidence\n'], { type:'application/pdf' }),
@@ -1704,6 +1717,7 @@ record('E06 attendance evidence Storage permits own-tenant upload and orphan cle
     ownTenantUploadAllowed: !employeeEvidenceUpload.error,
     ownTenantUploadError: employeeEvidenceUpload.error
       ? { statusCode: employeeEvidenceUpload.error.statusCode, message: employeeEvidenceUpload.error.message } : null,
+    ownTenantPolicyProbe: employeeEvidencePolicyProbe,
     ownUnlinkedCleanupAllowed: !employeeEvidenceCleanup.error,
     ownCleanupError: employeeEvidenceCleanup.error
       ? { statusCode: employeeEvidenceCleanup.error.statusCode, message: employeeEvidenceCleanup.error.message } : null,
