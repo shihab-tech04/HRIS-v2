@@ -1193,6 +1193,8 @@ const bengali: Record<string, string> = {
   'Timesheet not found.': 'টাইমশিট পাওয়া যায়নি।',
   'An active employee session is required.': 'কর্মীর একটি সক্রিয় সেশন প্রয়োজন।',
   'No active employee link exists for this organization.': 'এই প্রতিষ্ঠানের সঙ্গে কোনো সক্রিয় কর্মী সংযোগ নেই।',
+  'Choose valid timesheet period dates.': 'টাইমশিটের জন্য সঠিক সময়সীমার তারিখ বেছে নিন।',
+  'Add at least one timesheet entry.': 'অন্তত একটি টাইমশিট এন্ট্রি যোগ করুন।',
   'The period end date must be on or after its start date.': 'সময়সীমার শেষ তারিখ শুরুর তারিখের সমান বা পরের হতে হবে।',
   'A daily timesheet must use one date.': 'দৈনিক টাইমশিটে একটি তারিখই ব্যবহার করতে হবে।',
   'A weekly timesheet can cover up to seven consecutive dates.': 'সাপ্তাহিক টাইমশিটে পরপর সর্বোচ্চ সাত দিনের তারিখ থাকতে পারে।',

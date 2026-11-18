@@ -48,6 +48,7 @@ import { PlatformTenantWorkspace } from './PlatformTenantWorkspace';
 import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
+import { isValidIsoCalendarDate } from './iso-calendar-date.mjs';
 import {
   Activity, ArrowLeft, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarCheck,
   CalendarDays, Check, CheckCircle2, ClipboardList, Clock3, Download, FileText, House, Info, LayoutDashboard, LogOut,
@@ -3926,8 +3927,14 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
   }
 
   function validateEntries(): { activity_id: string; project_allocation_id: string | null; work_date: string; hours: number; note: string | null }[] | null {
-    if (!periodStart || !periodEnd || periodStart > periodEnd) {
+    if (!isValidIsoCalendarDate(periodStart) || !isValidIsoCalendarDate(periodEnd)) {
+      setFormError(tx('Choose valid timesheet period dates.')); return null;
+    }
+    if (periodStart > periodEnd) {
       setFormError(tx('The period end date must be on or after its start date.')); return null;
+    }
+    if (entries.length === 0) {
+      setFormError(tx('Add at least one timesheet entry.')); return null;
     }
     const spanDays = (Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86_400_000;
     if (periodType === 'daily' && spanDays !== 0) {
@@ -3961,7 +3968,8 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     if (normalized.some(entry => !Number.isFinite(entry.hours) || entry.hours <= 0 || entry.hours > 24)) {
       setFormError(tx('Enter hours greater than zero and no more than 24 per entry.')); return null;
     }
-    if (normalized.some(entry => entry.work_date < periodStart || entry.work_date > periodEnd)) {
+    if (normalized.some(entry => !isValidIsoCalendarDate(entry.work_date)
+      || entry.work_date < periodStart || entry.work_date > periodEnd)) {
       setFormError(tx('Each work date must fall inside the selected period.')); return null;
     }
     const totals = new Map<string, number>();
