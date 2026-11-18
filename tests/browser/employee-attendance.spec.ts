@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-// The tenant's saved timezone is Asia/Dhaka; keep displayed attendance times
-// deterministic on hosted runners whose default browser timezone is UTC.
-test.use({ timezoneId: 'Asia/Dhaka' });
+// Exercise a UTC browser against a tenant in Asia/Dhaka: E05 and M02 must
+// display the same recorded punch irrespective of employee device timezone.
+test.use({ timezoneId: 'UTC' });
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const employeeId = 'e3333333-3333-4333-8333-333333333333';
@@ -125,6 +125,7 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await expect(attendance.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   await expect(attendance.getByText(/^(Home|বাসা)$/).first()).toBeVisible();
   await expect(attendance.getByText(/^09:00\s*AM$/).first()).toBeVisible();
+  await expect(attendance.getByText(/^03:00\s*AM$/)).toHaveCount(0);
   await expect(attendance.getByText('—', { exact: true })).toBeVisible();
   expect(dashboardRpcPayload).toEqual({ p_tenant_id: tenantId });
   expect(attendancePeriodRpcPayloads[0]).toMatchObject({
