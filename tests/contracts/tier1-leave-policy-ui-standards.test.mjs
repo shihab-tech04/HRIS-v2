@@ -22,3 +22,10 @@ test('HR08 form retains actual tenant-scoped policy operations, history-safe beh
   assert.match(policy, /min-w-\[900px\]/);
   assert.match(policy, /onClick=\{\(\) => void setActive\(item\)\}/);
 });
+
+test('HR08 policy activation requires a matching server response before reporting success', () => {
+  assert.match(policy, /const updated = result\.data && typeof result\.data === 'object'/);
+  assert.match(policy, /updated\.id !== item\.id \|\| updated\.active === item\.active/);
+  assert.match(policy, /throw new Error\(tx\('The leave policy response could not be verified\./);
+  assert.match(policy, /setMessage\(item\.active \? tx\('Leave type deactivated\.'/);
+});
