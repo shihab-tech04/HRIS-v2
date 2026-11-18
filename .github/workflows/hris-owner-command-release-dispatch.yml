@@ -45,6 +45,7 @@ jobs:
           patterns={
             'source-backup':rf'/hris-prod source-backup ({sha})',
             'database-backup':rf'/hris-prod database-backup ({sha})',
+            'restore-proof':rf'/hris-prod restore-proof ({sha}) ({run})',
             'service':rf'/hris-prod service ({sha})',
             'access':rf'/hris-prod access ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
             'avatar':rf'/hris-prod avatar ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
@@ -59,6 +60,8 @@ jobs:
           if m.group(1)!=os.environ['GITHUB_SHA']: raise SystemExit('Command is not for exact current protected Main')
           with open(os.environ['GITHUB_OUTPUT'],'a') as f:
               print('stage='+stage,file=f)
+              if stage == 'restore-proof':
+                  print('database_run='+m.group(2),file=f)
               if stage in ('access','avatar','wfh','attendance'):
                   for name,value in zip(('source_run','database_run','restore_run','source_sha','database_sha'),m.groups()[1:]):
                       print(name+'='+value,file=f)
@@ -68,6 +71,7 @@ jobs:
         shell: bash
         env:
           STAGE: ${{ steps.command.outputs.stage }}
+          DATABASE_RUN: ${{ steps.command.outputs.database_run }}
         run: |
           set -euo pipefail
           main_checks="$(gh api "repos/shihab-tech04/HRIS-v2/commits/$GITHUB_SHA/check-runs?per_page=100")"
@@ -88,6 +92,16 @@ jobs:
           }
           case "$STAGE" in
             source-backup|database-backup) echo 'PASS: approved exact-Main read-only recovery workflow only; no hosted SQL mutation' ;;
+            restore-proof)
+              backup="$(gh api "repos/shihab-tech04/HRIS-v2/actions/runs/$DATABASE_RUN")"
+              jq -e --arg sha "$GITHUB_SHA" '.head_sha == $sha and .status == "completed" and .conclusion == "success" and .name == "HRIS Step 1 - Encrypted database export" and .event == "workflow_dispatch"' <<< "$backup" >/dev/null || {
+                echo '::error::Exact-Main encrypted backup run is not successful'; exit 1;
+              }
+              gh api "repos/shihab-tech04/HRIS-v2/actions/runs/$DATABASE_RUN/artifacts" --jq '.artifacts[].name' \
+                | grep -Fxq "hris-db-encrypted-${DATABASE_RUN}" || {
+                  echo '::error::Exact encrypted backup artifact missing'; exit 1;
+                }
+              echo 'PASS: exact-Main encrypted database backup is completed and accessible for isolated restore' ;;
             service) echo 'PASS: service recovery requires its independent SQL and backup gates' ;;
             access) success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; } ;;
             avatar) echo 'PASS: avatar SQL release performs strict production-baseline and offsite recovery checks' ;;
@@ -143,6 +157,9 @@ jobs:
             database-backup)
               gh workflow run hris-step1-encrypted-db-export.yml --repo shihab-tech04/HRIS-v2 --ref main \
                 -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
+            restore-proof)
+              gh workflow run hris-step1-offline-restore-proof.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f backup_run_id="$DATABASE_RUN" ;;
             service)
               gh workflow run hris-service-requests-gated-sql.yml --repo shihab-tech04/HRIS-v2 --ref main \
                 -f release_approved=true -f offsite_recovery_verified=true \
