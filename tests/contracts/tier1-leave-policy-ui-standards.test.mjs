@@ -29,3 +29,13 @@ test('HR08 policy activation requires a matching server response before reportin
   assert.match(policy, /throw new Error\(tx\('The leave policy response could not be verified\./);
   assert.match(policy, /setMessage\(item\.active \? tx\('Leave type deactivated\.'/);
 });
+
+test('HR08 confirmed policy writes retain success and show retryable list refresh recovery in EN/BN', () => {
+  const writes = policy.split("supabase.rpc('hris_save_leave_type'");
+  assert.equal(writes.length, 3, 'create/update and toggle must use existing RPC');
+  for (const operation of writes.slice(1)) {
+    assert.match(operation, /try \{\s*await onRefresh\(\);\s*\} catch \{\s*setError\(tx\('Leave policy saved, but the list could not be refreshed/);
+  }
+  const locale = readFileSync(new URL('../../src/live/project-locale.ts', import.meta.url), 'utf8');
+  assert.match(locale, /'Leave policy saved, but the list could not be refreshed\. Select Refresh to try again\.':/);
+});
