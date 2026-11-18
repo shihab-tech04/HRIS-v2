@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
+import { isValidRosterDate, rosterRangeIssue, isDateWithinRosterRange } from './roster-date-utils.mjs';
 
 type ShiftAssignment = {
   assignment_id: string;
@@ -41,8 +42,7 @@ function tx(locale: Locale, value: string) {
 }
 
 function validDate(value: string | null | undefined): value is string {
-  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && !Number.isNaN(new Date(`${value}T12:00:00`).valueOf()));
+  return isValidRosterDate(value);
 }
 
 function localIsoDate(value: Date) {
@@ -94,9 +94,9 @@ function formatTime(value: string | null, locale: Locale) {
 }
 
 function rangeError(start: string, end: string, locale: Locale) {
-  if (!validDate(start) || !validDate(end) || start > end) return tx(locale, 'Choose a valid roster date range.');
-  const difference = (new Date(`${end}T12:00:00Z`).valueOf() - new Date(`${start}T12:00:00Z`).valueOf()) / 86_400_000;
-  return difference > 30 ? tx(locale, 'Roster ranges can include up to 31 days.') : '';
+  const issue = rosterRangeIssue(start, end);
+  if (issue === 'invalid') return tx(locale, 'Choose a valid roster date range.');
+  return issue === 'too_long' ? tx(locale, 'Roster ranges can include up to 31 days.') : '';
 }
 
 export function MyEmployeeRoster({ tenantId, locale, focusDate }: {
@@ -164,10 +164,12 @@ export function MyEmployeeRoster({ tenantId, locale, focusDate }: {
         if (!data || data.tenant_id !== requestedTenant || data.start_date !== rangeStart
             || data.end_date !== rangeEnd || !Array.isArray(data.assignments)
             || data.assignments.some(row => !row || typeof row.assignment_id !== 'string'
-              || !validDate(row.assignment_date) || typeof row.shift_name !== 'string')
+              || !isDateWithinRosterRange(row.assignment_date, rangeStart, rangeEnd)
+              || typeof row.shift_name !== 'string')
             || !Array.isArray(changeRows) || changeRows.some(row => !row
               || typeof row.change_id !== 'string' || typeof row.assignment_id !== 'string'
-              || !validDate(row.assignment_date) || typeof row.previous_shift_name !== 'string'
+              || !isDateWithinRosterRange(row.assignment_date, rangeStart, rangeEnd)
+              || typeof row.previous_shift_name !== 'string'
               || typeof row.new_shift_name !== 'string' || Number.isNaN(Date.parse(row.changed_at)))) {
           throw new Error('Roster returned an invalid response.');
         }
