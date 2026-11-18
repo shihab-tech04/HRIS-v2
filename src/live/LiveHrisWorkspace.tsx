@@ -4915,6 +4915,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
     }
 
     setAttendanceMonthLoading(true);
+    setLoadedAttendanceMonth('');
     setAttendanceMonthError('');
     void (async () => {
       try {
@@ -4925,7 +4926,8 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
         if (result.error) throw result.error;
         const data = asObject(result.data);
         const rows = asRows(data?.records);
-        if (!data || data.tenant_id !== tenantId || data.month_start !== `${selectedAttendanceMonth}-01` || !Array.isArray(data.records)) {
+        if (!data || data.tenant_id !== tenantId || data.month_start !== `${selectedAttendanceMonth}-01` || !Array.isArray(data.records)
+          || rows.some(row => typeof row.attendance_date !== 'string' || !row.attendance_date.startsWith(`${selectedAttendanceMonth}-`))) {
           throw new Error(tx('Monthly attendance returned an invalid response.'));
         }
         if (!isCurrent()) return;
@@ -4958,7 +4960,8 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
   const requests = asRows(leave?.requests);
   const attendanceMonthKey = `${tenantId}:${selectedAttendanceMonth}`;
   const attendanceMonthReady = loadedAttendanceMonth === attendanceMonthKey;
-  const monthAttendanceRows = attendanceMonthReady ? monthlyAttendance : [];
+  const monthAttendanceRows = attendanceMonthReady
+    ? [...monthlyAttendance].sort((left, right) => String(right.attendance_date).localeCompare(String(left.attendance_date))) : [];
   const recordedToday = attendanceRecords.find(item => item.attendance_date === today);
   const scheduledTodayWorkFromHome = monthAttendanceRows.find(item => item.attendance_date === today
     && item.status === 'scheduled' && item.work_mode === 'home');
@@ -5130,7 +5133,15 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
                 </div>)}</div> : <p className="mt-3 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
               </div>}
               {activePanel === 'check-in-times' && <div>
-                <h4 className="font-medium text-slate-800">{tx('Check-in history')} · {attendanceMonthLabel}</h4>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <h4 className="font-medium text-slate-800">{tx('Check-in history')} · {attendanceMonthLabel}</h4>
+                  <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                    <span>{tx('Attendance month')}</span>
+                    <input aria-label={tx('Attendance month')} type="month" value={selectedAttendanceMonth}
+                      max={today.slice(0, 7)} onChange={event => setSelectedAttendanceMonth(event.target.value)}
+                      className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#08558B] focus:outline-none focus:ring-2 focus:ring-[#08558B]/20" />
+                  </label>
+                </div>
                 {attendanceMonthReady && (monthAttendanceRows.length ? <ul className="mt-2 divide-y divide-slate-100">{monthAttendanceRows.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                   <span><strong>{employeeDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{tx(displayAttendanceStatus(row.status))}</span>
                     {Boolean(row.client_name) && <span className="mt-1 block text-xs text-slate-500">{tx('Client name')}: {display(row.client_name)}</span>}</span>
