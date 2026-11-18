@@ -36,7 +36,7 @@ const fieldName = (locale: Locale, key: string) => {
 };
 const formatDate = (value: string, locale: Locale) => new Intl.DateTimeFormat(locale === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: 'medium' }).format(new Date(value));
 
-export function EmployeeProfileChangeRequests({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+function EmployeeProfileChangeRequestsByTenant({ tenantId, locale }: { tenantId: string; locale: Locale }) {
   const [fieldKey, setFieldKey] = useState('');
   const [proposed, setProposed] = useState('');
   const [reason, setReason] = useState('');
@@ -142,7 +142,12 @@ export function EmployeeProfileChangeRequests({ tenantId, locale }: { tenantId: 
   </div>;
 }
 
-export function ProfileChangeReview({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+// Remount on tenant changes so the previous employee's form draft/history is never shown.
+export function EmployeeProfileChangeRequests({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+  return <EmployeeProfileChangeRequestsByTenant key={tenantId} tenantId={tenantId} locale={locale} />;
+}
+
+function ProfileChangeReviewByTenant({ tenantId, locale }: { tenantId: string; locale: Locale }) {
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -200,4 +205,10 @@ export function ProfileChangeReview({ tenantId, locale }: { tenantId: string; lo
           <div className="flex flex-wrap gap-2"><button type="button" disabled={Boolean(busyId)} onClick={() => void decide(row, 'approved')} className="min-h-11 rounded-lg bg-[#085587] px-4 text-sm font-medium text-white disabled:opacity-50">{busyId === row.id ? tx(locale, 'Saving…') : tx(locale, 'Approve correction')}</button><button type="button" disabled={Boolean(busyId)} onClick={() => void decide(row, 'rejected')} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm disabled:opacity-50">{tx(locale, 'Reject correction')}</button></div>
         </li>)}</ul>}
   </section>;
+}
+
+
+// A reviewer's notes and pending decisions are likewise tenant-specific.
+export function ProfileChangeReview({ tenantId, locale }: { tenantId: string; locale: Locale }) {
+  return <ProfileChangeReviewByTenant key={tenantId} tenantId={tenantId} locale={locale} />;
 }
