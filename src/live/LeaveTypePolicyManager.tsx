@@ -129,6 +129,11 @@ export function LeaveTypePolicyManager({
         p_payload: { ...expected(item), active: !item.active }, p_expected: expected(item),
       });
       if (result.error) throw result.error;
+      const updated = result.data && typeof result.data === 'object'
+        ? row(result.data as Record<string, unknown>) : null;
+      if (!updated?.id || updated.id !== item.id || updated.active === item.active) {
+        throw new Error(tx('The leave policy response could not be verified. Refresh and check the leave type list.'));
+      }
       setMessage(item.active ? tx('Leave type deactivated.') : tx('Leave type activated.'));
       await onRefresh();
     } catch (cause) {
