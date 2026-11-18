@@ -83,3 +83,10 @@ test('dashboard attendance history checks the persisted day, not an exact number
   assert.match(browser, /!persistedDayText\.includes\('Present'\)/);
   assert.doesNotMatch(browser, /history\.locator\('li'\)\.count\(\) !== 1/);
 });
+
+
+test('E01-07 does not render assigned work from a previous employee, tenant or dashboard date', () => {
+  assert.ok(component.includes('itemsContext === `${tenantId}:${employeeId}:${dashboardDate}`'));
+  assert.ok(component.includes('setItemsContext(`${requestedTenant}:${employeeId}:${dashboardDate}`)'));
+  assert.ok(component.includes('visibleItems.map(item =>'));
+});
