@@ -245,10 +245,17 @@ function localizedEmployeeNumber(value: unknown, locale: Locale, fractionDigits 
   });
 }
 
-function localizedEmployeeTime(value: unknown, locale: Locale): string {
+function localizedEmployeeTime(value: unknown, locale: Locale, timeZone?: string | null): string {
   if (typeof value !== 'string' || !value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString(locale === 'bn' ? 'bn-BD' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  if (Number.isNaN(date.getTime())) return value;
+  const language = locale === 'bn' ? 'bn-BD' : 'en-US';
+  const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: timeZone || 'UTC' };
+  try {
+    return date.toLocaleTimeString(language, options);
+  } catch {
+    return date.toLocaleTimeString(language, { ...options, timeZone: 'UTC' });
+  }
 }
 
 function localizedEmployeeDate(value: unknown, locale: Locale): string {
@@ -4283,7 +4290,7 @@ function PersonalAttendanceCorrections({
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
-  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
+  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale, tenantTimezone);
   const [requestOpen, setRequestOpen] = useState(false);
   const [attendanceDate, setAttendanceDate] = useState('');
   const [correctionMonth, setCorrectionMonth] = useState(today.slice(0, 7));
@@ -4818,11 +4825,11 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest, onOpenLeave, onOpenPayslips, onOpenRequests, onOpenClientMeeting }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void; onOpenLeave: () => void; onOpenPayslips: () => void; onOpenRequests: () => void; onOpenClientMeeting: () => void }) {
+function EmployeeOverview({ tenantId, tenantName, tenantTimeZone, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest, onOpenLeave, onOpenPayslips, onOpenRequests, onOpenClientMeeting }: { tenantId: string; tenantName: string; tenantTimeZone: string | null; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void; onOpenLeave: () => void; onOpenPayslips: () => void; onOpenRequests: () => void; onOpenClientMeeting: () => void }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
-  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
+  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale, tenantTimeZone);
   const employeeWorkMode = (value: unknown) => tx(displayWorkMode(value));
   const employeeNumber = (value: unknown, fractionDigits = 0) => localizedEmployeeNumber(value, locale, fractionDigits);
   const [attendance, setAttendance] = useState<Record<string, unknown> | null>(null);
@@ -5579,7 +5586,7 @@ export function LiveHrisWorkspace({
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
-          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale}
+          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} tenantTimeZone={tenantTimeZone} userId={userId} locale={locale}
             onOpenLearning={() => navigate('my-learning')} onOpenProjects={() => navigate('my-projects')}
             onOpenPerformance={() => navigate('my-performance')} onOpenAnnouncements={() => navigate('my-announcements')}
             onOpenPendingRequest={kind => navigate(({ leave: 'my-leave', attendance: 'my-dashboard', expense: 'my-expenses', travel: 'my-travel', service: 'my-service-requests', learning: 'my-learning' } as const)[kind])}
