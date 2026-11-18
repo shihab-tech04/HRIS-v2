@@ -26,3 +26,15 @@ test('stage dispatcher invokes original owner-approved protected workflows and w
   assert.match(bridge, /avatar_comparison.*compare/);
   assert.doesNotMatch(bridge, /supabase db push|psql |apply_migration|curl -X POST/);
 });
+
+test('owner can initiate exact-Main read-only source and encrypted database recovery without bypassing release gates', () => {
+  assert.match(bridge, /'source-backup':rf'\/hris-prod source-backup \(\{sha\}\)'/);
+  assert.match(bridge, /'database-backup':rf'\/hris-prod database-backup \(\{sha\}\)'/);
+  assert.match(bridge, /source-backup\|database-backup\) echo 'PASS: approved exact-Main read-only recovery workflow only/);
+  assert.match(bridge, /gh workflow run hris-current-main-source-backup\.yml --repo shihab-tech04\/HRIS-v2 --ref main/);
+  assert.match(bridge, /gh workflow run hris-step1-encrypted-db-export\.yml --repo shihab-tech04\/HRIS-v2 --ref main/);
+  assert.match(bridge, /-f session_pooler_host="\$APPROVED_SESSION_POOLER_HOST"/);
+  assert.match(bridge, /success_on_main hris-attendance-gated-sql-release\.yml/);
+  assert.match(bridge, /test "\$current" = "\$GITHUB_SHA"/);
+  assert.doesNotMatch(bridge, /\n  push:/);
+});
