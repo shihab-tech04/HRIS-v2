@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, Megaphone, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { projectText, type Locale } from './project-locale';
+import { safeAnnouncementAttachmentUrl } from './announcement-attachment-url.mjs';
 
 type Announcement = {
   id: string;
@@ -33,6 +34,7 @@ export function MyEmployeeAnnouncements({ tenantId, locale, compact = false, onO
   onOpen?: () => void;
 }) {
   const [items, setItems] = useState<Announcement[]>([]);
+  const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -40,6 +42,7 @@ export function MyEmployeeAnnouncements({ tenantId, locale, compact = false, onO
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setItems([]);
     setError('');
     void (async () => {
       try {
@@ -70,12 +73,18 @@ export function MyEmployeeAnnouncements({ tenantId, locale, compact = false, onO
           setError(tx(locale, 'Announcements are unavailable. Refresh to try again.'));
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoadedTenantId(tenantId);
+          setLoading(false);
+        }
       }
     })();
     return () => { active = false; };
   }, [tenantId, locale, revision, compact]);
 
+  const currentTenantLoaded = loadedTenantId === tenantId;
+  const showingLoading = loading || !currentTenantLoaded;
+  const visibleError = currentTenantLoaded ? error : '';
   const Heading = compact ? 'h3' : 'h2';
   return <section aria-labelledby="my-announcements-heading" className={compact
     ? 'min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'
@@ -94,12 +103,12 @@ export function MyEmployeeAnnouncements({ tenantId, locale, compact = false, onO
       </button>
     </div>
 
-    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-      <span>{error}</span>
+    {visibleError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+      <span>{visibleError}</span>
       <button type="button" onClick={() => setRevision(value => value + 1)} className="min-h-10 rounded-md border border-red-300 px-3 font-medium">{tx(locale, 'Retry')}</button>
     </div>}
-    {loading ? <p role="status" className={`mt-3 rounded-lg border border-slate-200 bg-white ${compact ? 'p-3' : 'p-5'} text-sm text-slate-600`}>{tx(locale, 'Loading announcements…')}</p>
-      : error ? null
+    {showingLoading ? <p role="status" className={`mt-3 rounded-lg border border-slate-200 bg-white ${compact ? 'p-3' : 'p-5'} text-sm text-slate-600`}>{tx(locale, 'Loading announcements…')}</p>
+      : visibleError ? null
         : items.length === 0 ? <p className={`mt-3 rounded-lg border border-slate-200 bg-white ${compact ? 'p-3' : 'p-5'} text-sm text-slate-600`}>{tx(locale, 'No active announcements are available.')}</p>
           : <ul className={`mt-3 grid min-w-0 gap-3 ${compact ? '' : 'lg:grid-cols-2'}`}>
             {items.map(item => <li key={item.id} data-announcement-id={item.id}
@@ -120,7 +129,7 @@ export function MyEmployeeAnnouncements({ tenantId, locale, compact = false, onO
                   </div>
                 </div>
                 {!compact && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{item.body}</p>}
-                {!compact && item.attachment_url && <a href={item.attachment_url} target="_blank" rel="noopener noreferrer"
+                {!compact && safeAnnouncementAttachmentUrl(item.attachment_url) && <a href={safeAnnouncementAttachmentUrl(item.attachment_url) || undefined} target="_blank" rel="noopener noreferrer"
                   className="mt-4 inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-[#085587] hover:bg-slate-50">
                   <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="break-all">{tx(locale, 'Open attachment')}</span>
                 </a>}

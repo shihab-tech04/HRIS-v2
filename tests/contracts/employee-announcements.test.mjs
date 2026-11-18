@@ -74,3 +74,19 @@ test('announcement outage injection starts only after the employee opens the ann
   assert.match(browser, /fullNoticeReadCount !== fullNoticeReadCountBeforeFailure \+ failureRetryCounts\.length/);
   assert.match(browser, /refresh-triggered 503 retry sequence completed, but the employee UI did not show its retry alert/);
 });
+
+test('E35 announcement attachment links are safe and tenant switches never render previous-tenant records', async () => {
+  const { safeAnnouncementAttachmentUrl } = await import('../../src/live/announcement-attachment-url.mjs');
+  assert.equal(safeAnnouncementAttachmentUrl('https://example.org/policy.pdf'), 'https://example.org/policy.pdf');
+  assert.equal(safeAnnouncementAttachmentUrl('/storage/v1/object/public/notices/abc.pdf'), '/storage/v1/object/public/notices/abc.pdf');
+  for (const url of ['javascript:alert(1)', 'data:text/html,hello', '//example.org/policy.pdf',
+    'file:///etc/passwd', 'ftp://example.org/a', 'https://', '', null]) {
+    assert.equal(safeAnnouncementAttachmentUrl(url), null, String(url));
+  }
+  const source = readFileSync(new URL('../../src/live/MyEmployeeAnnouncements.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const showingLoading = loading \|\| !currentTenantLoaded/);
+  assert.match(source, /const visibleError = currentTenantLoaded \? error : ''/);
+  assert.match(source, /setItems\(\[\]\)/);
+  assert.match(source, /setLoadedTenantId\(tenantId\)/);
+  assert.match(source, /safeAnnouncementAttachmentUrl\(item\.attachment_url\)/);
+});
