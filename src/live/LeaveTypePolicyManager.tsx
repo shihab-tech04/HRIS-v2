@@ -109,7 +109,11 @@ export function LeaveTypePolicyManager({
       if (!saved?.id || saved.id !== draft.id) throw new Error(tx('The leave policy response could not be verified. Refresh and check the leave type list.'));
       setMessage(editing ? tx('Leave type updated.') : tx('Leave type added.'));
       setDraft(null); setEditing(null);
-      await onRefresh();
+      try {
+        await onRefresh();
+      } catch {
+        setError(tx('Leave policy saved, but the list could not be refreshed. Select Refresh to try again.'));
+      }
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : tx('Unable to save this leave type. Refresh and retry.');
       setError(detail);
@@ -135,7 +139,11 @@ export function LeaveTypePolicyManager({
         throw new Error(tx('The leave policy response could not be verified. Refresh and check the leave type list.'));
       }
       setMessage(item.active ? tx('Leave type deactivated.') : tx('Leave type activated.'));
-      await onRefresh();
+      try {
+        await onRefresh();
+      } catch {
+        setError(tx('Leave policy saved, but the list could not be refreshed. Select Refresh to try again.'));
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : tx('Unable to update this leave type. Refresh and retry.'));
       await onRefresh();
