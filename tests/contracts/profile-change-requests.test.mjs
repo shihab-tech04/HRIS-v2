@@ -90,3 +90,11 @@ test('synthetic employee identities are active tenant members without management
   const permissionAssignments = fixture.slice(fixture.indexOf('INSERT INTO public.role_permissions'), fixture.indexOf('INSERT INTO public.admin_users'));
   assert.doesNotMatch(permissionAssignments, /['"]qa_tenant_employee['"]/);
 });
+
+
+test('E02 protected-change drafts and HR review queues remount for the selected tenant', () => {
+  assert.match(ui, /<EmployeeProfileChangeRequestsByTenant key=\{tenantId\} tenantId=\{tenantId\} locale=\{locale\} \/>/);
+  assert.match(ui, /<ProfileChangeReviewByTenant key=\{tenantId\} tenantId=\{tenantId\} locale=\{locale\} \/>/);
+  assert.match(ui, /supabase\.rpc\('employee_submit_profile_change_request'/);
+  assert.match(ui, /supabase\.rpc\('admin_review_profile_change_request'/);
+});
