@@ -3590,20 +3590,22 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
 
   async function load(showLoading = true) {
     const requestId = ++requestSequence.current;
+    const requestedTenantId = tenantId;
     if (showLoading) setLoading(true);
     setError('');
     try {
-      const { data, error: rpcError } = await supabase.rpc('hris_get_my_dashboard_data', { p_tenant_id: tenantId });
+      const { data, error: rpcError } = await supabase.rpc('hris_get_my_dashboard_data', { p_tenant_id: requestedTenantId });
       if (rpcError) throw rpcError;
       const value = asObject(data);
       if (!value || !asObject(value.employee)) throw new Error('Personal leave service returned an invalid response.');
-      if (requestId === requestSequence.current) setLeave(value);
+      if (requestId !== requestSequence.current || activeTenantId.current !== requestedTenantId) return;
+      setLeave(value);
     } catch (cause) {
-      if (requestId !== requestSequence.current) return;
+      if (requestId !== requestSequence.current || activeTenantId.current !== requestedTenantId) return;
       setLeave(null);
       setError(cause instanceof Error ? cause.message : 'Unable to load your leave information.');
     } finally {
-      if (requestId === requestSequence.current) setLoading(false);
+      if (requestId === requestSequence.current && activeTenantId.current === requestedTenantId) setLoading(false);
     }
   }
 
