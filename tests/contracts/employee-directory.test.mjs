@@ -166,3 +166,10 @@ test('contact RPCs are tenant-scoped, employees.manage-only, field-allowlisted, 
   assert.match(contactBrowser, /managerContactReadCalls < 3/);
   assert.match(contactBrowser, /375px mobile\/1280px desktop layouts/);
 });
+
+
+test('HR01/E37 directory cannot retain another tenant employee details or revoked edit permissions', () => {
+  assert.match(page, /<OrganizationEmployeeDirectoryForContext[\s\S]*?key=\{`\$\{tenantId\}:\$\{employeesManage\}`\}/);
+  assert.match(page, /hris_get_tenant_employee_directory_v2/);
+  assert.match(page, /employeesManage=\{employeesManage\}/);
+});
