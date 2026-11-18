@@ -34,6 +34,8 @@ const tenantDateParts = new Intl.DateTimeFormat('en-US', {
   return parts;
 }, {});
 const dashboardDate = `${tenantDateParts.year}-${tenantDateParts.month}-${tenantDateParts.day}`;
+const previousMonth = new Date(Date.UTC(Number(tenantDateParts.year), Number(tenantDateParts.month) - 2, 1)).toISOString().slice(0, 7);
+const previousDate = `${previousMonth}-12`;
 
 test('employee attendance dashboard uses the tenant RPCs and renders organization-local records', async ({ page }) => {
   let dashboardCalls = 0;
@@ -88,9 +90,13 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
       const payload = route.request().postDataJSON() as Record<string, unknown>;
       attendancePeriodRpcPayloads.push(payload);
       data = { tenant_id: tenantId, month_start: payload.p_month_start,
-        records: [{ id: 'ec888888-8888-4888-8888-888888888888', attendance_date: dashboardDate,
-          status: 'late', work_mode: 'home', check_in: `${dashboardDate}T03:00:00.000Z`,
-          check_out: null, work_hours: null }] };
+        records: payload.p_month_start === `${previousMonth}-01`
+          ? [{ id: 'ec777777-7777-4777-8777-777777777777', attendance_date: previousDate,
+            status: 'present', work_mode: 'office', check_in: `${previousDate}T03:15:00.000Z`,
+            check_out: `${previousDate}T11:00:00.000Z`, work_hours: 7.75 }]
+          : [{ id: 'ec888888-8888-4888-8888-888888888888', attendance_date: dashboardDate,
+            status: 'late', work_mode: 'home', check_in: `${dashboardDate}T03:00:00.000Z`,
+            check_out: null, work_hours: null }] };
     } else if (endpoint === 'tenant_memberships') {
       data = [{ tenant_id: tenantId, role: 'employee', status: 'active' }];
     } else if (endpoint === 'employees') {
@@ -130,6 +136,18 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await dashboardViews.getByRole('button', { name: 'Work location' }).click();
   await expect(page.getByText(/^(Home|বাসা)$/).first()).toBeVisible();
   await dashboardViews.getByRole('button', { name: 'Check-in times' }).click();
+  await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
+  // E05-04 / E05-05: history month changes from the history view itself and
+  // never presents a previous month as the current month's result.
+  const monthPicker = page.getByLabel('Attendance month', { exact: true });
+  await expect(monthPicker).toBeVisible();
+  await monthPicker.fill(previousMonth);
+  await expect.poll(() => attendancePeriodRpcPayloads.some(request =>
+    request.p_month_start === `${previousMonth}-01`)).toBe(true);
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toBeVisible();
+  await expect(monthPicker).toHaveValue(previousMonth);
+  await monthPicker.fill(dashboardDate.slice(0, 7));
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
