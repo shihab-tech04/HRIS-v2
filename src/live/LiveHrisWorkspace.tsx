@@ -48,6 +48,7 @@ import { PlatformTenantWorkspace } from './PlatformTenantWorkspace';
 import { platformTenantFeatureAvailable } from './platformTenantApi';
 import { downloadCsv } from './csv';
 import { projectText, type Locale } from './project-locale';
+import { isValidIsoCalendarDate } from './iso-calendar-date.mjs';
 import {
   Activity, ArrowLeft, ArrowUpRight, Bell, BookOpen, BookOpenCheck, BriefcaseBusiness, Building2, CalendarCheck,
   CalendarDays, Check, CheckCircle2, ClipboardList, Clock3, Download, FileText, House, Info, LayoutDashboard, LogOut,
@@ -245,10 +246,17 @@ function localizedEmployeeNumber(value: unknown, locale: Locale, fractionDigits 
   });
 }
 
-function localizedEmployeeTime(value: unknown, locale: Locale): string {
+function localizedEmployeeTime(value: unknown, locale: Locale, timeZone?: string | null): string {
   if (typeof value !== 'string' || !value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString(locale === 'bn' ? 'bn-BD' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  if (Number.isNaN(date.getTime())) return value;
+  const language = locale === 'bn' ? 'bn-BD' : 'en-US';
+  const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: timeZone || 'UTC' };
+  try {
+    return date.toLocaleTimeString(language, options);
+  } catch {
+    return date.toLocaleTimeString(language, { ...options, timeZone: 'UTC' });
+  }
 }
 
 function localizedEmployeeDate(value: unknown, locale: Locale): string {
@@ -3360,6 +3368,7 @@ function PersonalLeaveRequests({
     submittingRef.current = true;
     setSubmitting(true); setFormError(''); setSuccess('');
     let uploadedPath = '';
+    let requestConfirmed = false;
     try {
       if (evidence) {
         const extensionByMime: Record<string, string> = {
@@ -3388,15 +3397,15 @@ function PersonalLeaveRequests({
       });
       if (rpcError) throw rpcError;
       if (!data) throw new Error(tx('The leave request was not confirmed. Refresh and check your request history.'));
+      requestConfirmed = true;
       setSuccess(tx('Leave request submitted. You can follow its status in your history.'));
       if (evidenceInputRef.current) evidenceInputRef.current.value = '';
       setRequestOpen(false);
       setLeaveTypeId(''); setFromDate(''); setToDate(''); setDayPortion('full');
       setReason(''); setEvidence(null);
-      await onRefresh();
     } catch (cause) {
       let cleanupFailed = false;
-      if (uploadedPath) {
+      if (uploadedPath && !requestConfirmed) {
         try {
           const cleanup = await supabase.storage.from('leave-evidence').remove([uploadedPath]);
           cleanupFailed = Boolean(cleanup.error);
@@ -3429,6 +3438,15 @@ function PersonalLeaveRequests({
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
+    }
+    // A confirmed write must not be reclassified as a failed submission if refresh fails.
+    // In particular, do not remove evidence already referenced by the persisted request.
+    if (requestConfirmed) {
+      try {
+        await onRefresh();
+      } catch {
+        setSuccess(tx('Leave request submitted, but the latest history could not be refreshed. Select Refresh to try again.'));
+      }
     }
   }
 
@@ -3580,20 +3598,22 @@ function EmployeePersonalLeave({ tenantId, userId, tenantName, focusRequestId, o
 
   async function load(showLoading = true) {
     const requestId = ++requestSequence.current;
+    const requestedTenantId = tenantId;
     if (showLoading) setLoading(true);
     setError('');
     try {
-      const { data, error: rpcError } = await supabase.rpc('hris_get_my_dashboard_data', { p_tenant_id: tenantId });
+      const { data, error: rpcError } = await supabase.rpc('hris_get_my_dashboard_data', { p_tenant_id: requestedTenantId });
       if (rpcError) throw rpcError;
       const value = asObject(data);
       if (!value || !asObject(value.employee)) throw new Error('Personal leave service returned an invalid response.');
-      if (requestId === requestSequence.current) setLeave(value);
+      if (requestId !== requestSequence.current || activeTenantId.current !== requestedTenantId) return;
+      setLeave(value);
     } catch (cause) {
-      if (requestId !== requestSequence.current) return;
+      if (requestId !== requestSequence.current || activeTenantId.current !== requestedTenantId) return;
       setLeave(null);
       setError(cause instanceof Error ? cause.message : 'Unable to load your leave information.');
     } finally {
-      if (requestId === requestSequence.current) setLoading(false);
+      if (requestId === requestSequence.current && activeTenantId.current === requestedTenantId) setLoading(false);
     }
   }
 
@@ -3926,8 +3946,14 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
   }
 
   function validateEntries(): { activity_id: string; project_allocation_id: string | null; work_date: string; hours: number; note: string | null }[] | null {
-    if (!periodStart || !periodEnd || periodStart > periodEnd) {
+    if (!isValidIsoCalendarDate(periodStart) || !isValidIsoCalendarDate(periodEnd)) {
+      setFormError(tx('Choose valid timesheet period dates.')); return null;
+    }
+    if (periodStart > periodEnd) {
       setFormError(tx('The period end date must be on or after its start date.')); return null;
+    }
+    if (entries.length === 0) {
+      setFormError(tx('Add at least one timesheet entry.')); return null;
     }
     const spanDays = (Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86_400_000;
     if (periodType === 'daily' && spanDays !== 0) {
@@ -3961,7 +3987,8 @@ function EmployeeTimesheets({ tenantId, tenantName, locale }: { tenantId: string
     if (normalized.some(entry => !Number.isFinite(entry.hours) || entry.hours <= 0 || entry.hours > 24)) {
       setFormError(tx('Enter hours greater than zero and no more than 24 per entry.')); return null;
     }
-    if (normalized.some(entry => entry.work_date < periodStart || entry.work_date > periodEnd)) {
+    if (normalized.some(entry => !isValidIsoCalendarDate(entry.work_date)
+      || entry.work_date < periodStart || entry.work_date > periodEnd)) {
       setFormError(tx('Each work date must fall inside the selected period.')); return null;
     }
     const totals = new Map<string, number>();
@@ -4283,7 +4310,7 @@ function PersonalAttendanceCorrections({
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
-  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
+  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale, tenantTimezone);
   const [requestOpen, setRequestOpen] = useState(false);
   const [attendanceDate, setAttendanceDate] = useState('');
   const [correctionMonth, setCorrectionMonth] = useState(today.slice(0, 7));
@@ -4818,11 +4845,11 @@ function PersonalAttendanceCorrections({
   </>;
 }
 
-function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest, onOpenLeave, onOpenPayslips, onOpenRequests, onOpenClientMeeting }: { tenantId: string; tenantName: string; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void; onOpenLeave: () => void; onOpenPayslips: () => void; onOpenRequests: () => void; onOpenClientMeeting: () => void }) {
+function EmployeeOverview({ tenantId, tenantName, tenantTimeZone, userId, locale, onOpenLearning, onOpenProjects, onOpenPerformance, onOpenAnnouncements, onOpenPendingRequest, onOpenLeave, onOpenPayslips, onOpenRequests, onOpenClientMeeting }: { tenantId: string; tenantName: string; tenantTimeZone: string | null; userId: string; locale: Locale; onOpenLearning: () => void; onOpenProjects: () => void; onOpenPerformance: () => void; onOpenAnnouncements: () => void; onOpenPendingRequest: (kind: PendingRequestKind) => void; onOpenLeave: () => void; onOpenPayslips: () => void; onOpenRequests: () => void; onOpenClientMeeting: () => void }) {
   const tx = (source: string) => projectText(locale, source);
   const txf = (source: string, values: Record<string, string | number>) => localizedProjectText(locale, source, values);
   const employeeDate = (value: unknown) => localizedEmployeeDate(value, locale);
-  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale);
+  const employeeTime = (value: unknown) => localizedEmployeeTime(value, locale, tenantTimeZone);
   const employeeWorkMode = (value: unknown) => tx(displayWorkMode(value));
   const employeeNumber = (value: unknown, fractionDigits = 0) => localizedEmployeeNumber(value, locale, fractionDigits);
   const [attendance, setAttendance] = useState<Record<string, unknown> | null>(null);
@@ -4915,6 +4942,7 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
     }
 
     setAttendanceMonthLoading(true);
+    setLoadedAttendanceMonth('');
     setAttendanceMonthError('');
     void (async () => {
       try {
@@ -4925,7 +4953,8 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
         if (result.error) throw result.error;
         const data = asObject(result.data);
         const rows = asRows(data?.records);
-        if (!data || data.tenant_id !== tenantId || data.month_start !== `${selectedAttendanceMonth}-01` || !Array.isArray(data.records)) {
+        if (!data || data.tenant_id !== tenantId || data.month_start !== `${selectedAttendanceMonth}-01` || !Array.isArray(data.records)
+          || rows.some(row => typeof row.attendance_date !== 'string' || !row.attendance_date.startsWith(`${selectedAttendanceMonth}-`))) {
           throw new Error(tx('Monthly attendance returned an invalid response.'));
         }
         if (!isCurrent()) return;
@@ -4958,7 +4987,8 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
   const requests = asRows(leave?.requests);
   const attendanceMonthKey = `${tenantId}:${selectedAttendanceMonth}`;
   const attendanceMonthReady = loadedAttendanceMonth === attendanceMonthKey;
-  const monthAttendanceRows = attendanceMonthReady ? monthlyAttendance : [];
+  const monthAttendanceRows = attendanceMonthReady
+    ? [...monthlyAttendance].sort((left, right) => String(right.attendance_date).localeCompare(String(left.attendance_date))) : [];
   const recordedToday = attendanceRecords.find(item => item.attendance_date === today);
   const scheduledTodayWorkFromHome = monthAttendanceRows.find(item => item.attendance_date === today
     && item.status === 'scheduled' && item.work_mode === 'home');
@@ -5130,7 +5160,15 @@ function EmployeeOverview({ tenantId, tenantName, userId, locale, onOpenLearning
                 </div>)}</div> : <p className="mt-3 text-sm text-slate-600">{tx('No leave balance records are available.')}</p>}
               </div>}
               {activePanel === 'check-in-times' && <div>
-                <h4 className="font-medium text-slate-800">{tx('Check-in history')} · {attendanceMonthLabel}</h4>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <h4 className="font-medium text-slate-800">{tx('Check-in history')} · {attendanceMonthLabel}</h4>
+                  <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                    <span>{tx('Attendance month')}</span>
+                    <input aria-label={tx('Attendance month')} type="month" value={selectedAttendanceMonth}
+                      max={today.slice(0, 7)} onChange={event => setSelectedAttendanceMonth(event.target.value)}
+                      className="min-h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm focus:border-[#08558B] focus:outline-none focus:ring-2 focus:ring-[#08558B]/20" />
+                  </label>
+                </div>
                 {attendanceMonthReady && (monthAttendanceRows.length ? <ul className="mt-2 divide-y divide-slate-100">{monthAttendanceRows.map((row, index) => <li key={String(row.id || index)} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                   <span><strong>{employeeDate(row.attendance_date)}</strong><span className="ml-2 text-slate-500">{tx(displayAttendanceStatus(row.status))}</span>
                     {Boolean(row.client_name) && <span className="mt-1 block text-xs text-slate-500">{tx('Client name')}: {display(row.client_name)}</span>}</span>
@@ -5568,7 +5606,7 @@ export function LiveHrisWorkspace({
           {page === 'expenses' && permissions.expenses && <ExpenseClaims tenantId={tenantId} userId={userId} mode="queue" canManage={permissions.expensesManage} />}
           {page === 'payroll-register' && permissions.payroll && <PayrollRegister tenantId={tenantId} />}
           {page === 'platform-tenants' && isSuperAdmin && platformTenantFeatureAvailable && <PlatformTenantWorkspace locale={locale} />}
-          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} userId={userId} locale={locale}
+          {page === 'my-dashboard' && isEmployee && <EmployeeOverview tenantId={tenantId} tenantName={tenantName} tenantTimeZone={tenantTimeZone} userId={userId} locale={locale}
             onOpenLearning={() => navigate('my-learning')} onOpenProjects={() => navigate('my-projects')}
             onOpenPerformance={() => navigate('my-performance')} onOpenAnnouncements={() => navigate('my-announcements')}
             onOpenPendingRequest={kind => navigate(({ leave: 'my-leave', attendance: 'my-dashboard', expense: 'my-expenses', travel: 'my-travel', service: 'my-service-requests', learning: 'my-learning' } as const)[kind])}

@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-test.use({ timezoneId: 'Asia/Dhaka' });
+// M02 must format stored punches in the tenant timezone even when the manager's browser is UTC.
+test.use({ timezoneId: 'UTC' });
 
 const userId = 'f1111111-1111-4111-8111-111111111111';
 const tenantId = 'f2222222-2222-4222-8222-222222222222';

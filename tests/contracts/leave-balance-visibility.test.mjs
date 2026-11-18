@@ -54,3 +54,12 @@ test('E07-08 explains existing leave eligibility without exposing profile values
   assert.match(browser, /unavailable leave type appeared in the request form options/);
   assert.match(browser, /Employee leave availability explanation mobile after refresh/);
 });
+
+test("E07 employee leave reads never apply a previous organization's result after tenant switch", () => {
+  const employeeLeave = workspace.slice(workspace.indexOf('function EmployeePersonalLeave('), workspace.indexOf('type TimesheetDraftEntry'));
+  assert.match(employeeLeave, /const requestedTenantId = tenantId;/);
+  assert.match(employeeLeave, /hris_get_my_dashboard_data', \{ p_tenant_id: requestedTenantId \}/);
+  assert.match(employeeLeave, /if \(requestId !== requestSequence\.current \|\| activeTenantId\.current !== requestedTenantId\) return;\s*setLeave\(value\);/);
+  assert.match(employeeLeave, /if \(requestId !== requestSequence\.current \|\| activeTenantId\.current !== requestedTenantId\) return;\s*setLeave\(null\);/);
+  assert.match(employeeLeave, /requestId === requestSequence\.current && activeTenantId\.current === requestedTenantId\) setLoading\(false\)/);
+});

@@ -22,6 +22,9 @@ const draft = () => ({
 
 test('requisition title and numeric requirements validate before an RPC call', () => {
   assert.equal(validateRequisitionDraft(draft()), null);
+  assert.equal(validateRequisitionDraft({ ...draft(), desiredJoiningDate: '2026-02-31' }), 'Enter a valid desired joining date.');
+  assert.equal(validateRequisitionDraft({ ...draft(), desiredJoiningDate: '2028-02-29' }), null);
+  assert.equal(validateRequisitionDraft({ ...draft(), desiredJoiningDate: '' }), null);
   assert.equal(validateRequisitionDraft({ ...draft(), title: '  ' }), 'Enter a requisition title.');
   assert.equal(validateRequisitionDraft({ ...draft(), title: '  ' + 'x'.repeat(500) + '  ' }), null);
   assert.equal(validateRequisitionDraft({ ...draft(), requiredPositions: '0' }), 'Required positions must be a positive whole number.');

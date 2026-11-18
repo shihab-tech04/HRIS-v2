@@ -32,6 +32,7 @@ export function EmployeeDashboardPendingRequests({ tenantId, employeeId, locale,
   onOpen: (kind: PendingRequestKind) => void;
 }) {
   const [requests, setRequests] = useState<PendingRequest[]>([]);
+  const [requestsContext, setRequestsContext] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -44,6 +45,7 @@ export function EmployeeDashboardPendingRequests({ tenantId, employeeId, locale,
     const requestedTenant = tenantId;
     const current = () => requestId === sequence.current && activeTenant.current === requestedTenant;
     setRequests([]);
+    setRequestsContext('');
     setError('');
     setLoading(true);
     if (!employeeId) {
@@ -68,10 +70,14 @@ export function EmployeeDashboardPendingRequests({ tenantId, employeeId, locale,
             && (row.requested_at === null || typeof row.requested_at === 'string');
         });
         if (rows.length !== response.requests.length) throw new Error('Pending requests returned an invalid row.');
-        if (current()) setRequests(rows);
+        if (current()) {
+          setRequests(rows);
+          setRequestsContext(`${requestedTenant}:${employeeId}`);
+        }
       } catch {
         if (current()) {
           setRequests([]);
+          setRequestsContext('');
           setError(tx(locale, 'Unable to load your pending requests. Refresh to try again.'));
         }
       } finally {
@@ -81,7 +87,9 @@ export function EmployeeDashboardPendingRequests({ tenantId, employeeId, locale,
     return () => { sequence.current += 1; };
   }, [tenantId, employeeId, locale, revision]);
 
-  const count = new Intl.NumberFormat(locale === 'bn' ? 'bn-BD' : 'en-US').format(requests.length);
+  // Counts and rows must belong to the employee currently displayed.
+  const visibleRequests = requestsContext === `${tenantId}:${employeeId}` ? requests : [];
+  const count = new Intl.NumberFormat(locale === 'bn' ? 'bn-BD' : 'en-US').format(visibleRequests.length);
   return <section aria-labelledby="employee-pending-requests-heading" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="flex items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-2">
@@ -104,9 +112,9 @@ export function EmployeeDashboardPendingRequests({ tenantId, employeeId, locale,
     </div>}
     {loading ? <p role="status" className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx(locale, 'Loading pending requests…')}</p>
       : error ? null
-        : requests.length === 0 ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx(locale, 'No pending requests.')}</p>
+        : visibleRequests.length === 0 ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{tx(locale, 'No pending requests.')}</p>
           : <ul className="mt-2 max-h-72 divide-y divide-slate-100 overflow-y-auto">
-            {requests.map(request => <li key={`${request.kind}:${request.id}`} data-pending-request-kind={request.kind} data-pending-request-id={request.id}
+            {visibleRequests.map(request => <li key={`${request.kind}:${request.id}`} data-pending-request-kind={request.kind} data-pending-request-id={request.id}
               className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 py-3 first:pt-1">
               <div className="min-w-0 flex-1">
                 <p className="break-words text-sm font-medium text-slate-800">{tx(locale, kindLabels[request.kind])} · {tx(locale, statusLabels[request.status])}</p>

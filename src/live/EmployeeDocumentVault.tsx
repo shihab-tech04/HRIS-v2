@@ -74,7 +74,7 @@ function safeDownloadName(name: string, id: string, objectPath: string) {
   return /\.[a-z0-9]{1,10}$/i.test(safeBase) ? safeBase : `${safeBase}${extension}`;
 }
 
-export function EmployeeDocumentVault({ tenantId, userId, locale }: {
+function EmployeeDocumentVaultForContext({ tenantId, userId, locale }: {
   tenantId: string;
   userId: string;
   locale: Locale;
@@ -212,4 +212,10 @@ export function EmployeeDocumentVault({ tenantId, userId, locale }: {
           })}
         </div>}
   </section>;
+}
+
+
+// Separate state by tenant and authenticated account before effects and downloads run.
+export function EmployeeDocumentVault({ tenantId, userId, locale }: { tenantId: string; userId: string; locale: Locale }) {
+  return <EmployeeDocumentVaultForContext key={`${tenantId}:${userId}`} tenantId={tenantId} userId={userId} locale={locale} />;
 }

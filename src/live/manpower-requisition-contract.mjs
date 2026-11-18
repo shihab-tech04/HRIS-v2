@@ -1,3 +1,5 @@
+import { isValidIsoCalendarDate } from './iso-calendar-date.mjs';
+
 /** @typedef {{ title: string, employmentType: string, projectName: string, requiredPositions: string, desiredJoiningDate: string, yearsExperience: string, educationQualifications: string, certifications: string, jobDescription: string, reason: string }} RequisitionDraft */
 
 /** @param {RequisitionDraft} draft */
@@ -8,6 +10,10 @@ export function validateRequisitionDraft(draft) {
   const positions = Number(draft.requiredPositions);
   if (!Number.isInteger(positions) || positions < 1) {
     return 'Required positions must be a positive whole number.';
+  }
+
+  if (draft.desiredJoiningDate && !isValidIsoCalendarDate(draft.desiredJoiningDate)) {
+    return 'Enter a valid desired joining date.';
   }
 
   if (draft.yearsExperience !== '') {

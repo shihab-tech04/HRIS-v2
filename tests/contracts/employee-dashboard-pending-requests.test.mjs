@@ -60,3 +60,11 @@ test('dashboard acceptance fixture parses its synthetic pending-request ID from 
   assert.match(runner, /E01-04 browser uses a request that remains pending after earlier leave-decision checks/);
   assert.match(runner, /HRIS_LOCAL_DASHBOARD_PENDING_LEAVE_ID: ids\.leaveMissingLedger/);
 });
+
+
+test('E01-04 hides prior employee requests and count when tenant or employee changes', () => {
+  assert.ok(component.includes('requestsContext === `${tenantId}:${employeeId}`'));
+  assert.ok(component.includes('setRequestsContext(`${requestedTenant}:${employeeId}`)'));
+  assert.ok(component.includes('format(visibleRequests.length)'));
+  assert.ok(component.includes('visibleRequests.map(request =>'));
+});

@@ -44,6 +44,8 @@ test('employees can open, retry, refresh, and close their translated identity ca
   assert.match(workspace, /<EmployeeIdentityCard tenantId=\{tenantId\} tenantName=\{tenantName\} locale=\{locale\} \/>/);
   assert.match(component, /supabase\.rpc\('hris_get_my_employee_identity_card'/);
   assert.match(component, /value\.tenant_id !== requestedTenant/);
+  // The old tenant's card must never render while a new tenant's request is starting.
+  assert.match(component, /\{identity && identity\.tenant_id === tenantId && <article data-employee-id-card/);
   assert.match(component, /role="dialog" aria-modal="true"/);
   assert.match(component, /setRevision\(value => value \+ 1\)/);
   assert.match(component, /identity\.employment_status\.toLowerCase\(\) === 'active'/);

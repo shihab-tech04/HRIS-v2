@@ -153,6 +153,9 @@ test('linked employee completes the timesheet journey in Bengali and English wit
 
   await page.getByRole('button', { name: 'নতুন টাইমশিট', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'নতুন টাইমশিট খসড়া', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('অন্তত একটি টাইমশিট এন্ট্রি যোগ করুন।');
+  expect(rpcPayloads).toHaveLength(0);
   await page.getByRole('button', { name: 'এন্ট্রি যোগ করুন', exact: true }).click();
   await page.getByRole('button', { name: 'খসড়া সংরক্ষণ করুন', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('প্রতিটি এন্ট্রির কার্যক্রম, কাজের তারিখ ও ঘণ্টা পূরণ করুন।');
