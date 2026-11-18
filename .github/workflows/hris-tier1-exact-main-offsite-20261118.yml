@@ -18,7 +18,7 @@ jobs:
       - name: Verify exact Main and prove clean full-history restoration
         shell: bash
         env:
-          EXPECTED_MAIN: 6e3e4c4dfb813dc176a98e54a395cda4fdead02b
+          EXPECTED_MAIN: 4492bc352fe7b93d8c3a4182e7423ec733488a81
         run: |
           set -euo pipefail
           umask 077
@@ -28,7 +28,7 @@ jobs:
           git cat-file -e "$EXPECTED_MAIN^{commit}"
           dest="$RUNNER_TEMP/hris-tier1-source-recovery"
           mkdir -p "$dest"
-          archive="$dest/hris-full-history-pre-tier1-6e3e4c4dfb813dc176a98e54a395cda4fdead02b.bundle"
+          archive="$dest/hris-full-history-pre-tier1-4492bc352fe7b93d8c3a4182e7423ec733488a81.bundle"
           git bundle create "$archive" --all HEAD
           git init -q --bare "$RUNNER_TEMP/hris-bundle-verify.git"
           git -C "$RUNNER_TEMP/hris-bundle-verify.git" bundle verify "$archive" > "$dest/bundle-verify.txt" 2>&1
@@ -43,7 +43,7 @@ jobs:
           echo 'PASS: exact Main Git history bundle created, checksummed and restored'
       - uses: actions/upload-artifact@v4
         with:
-          name: hris-tier1-exact-main-offsite-6e3e4c4dfb813dc176a98e54a395cda4fdead02b
+          name: hris-tier1-exact-main-offsite-4492bc352fe7b93d8c3a4182e7423ec733488a81
           path: ${{ runner.temp }}/hris-tier1-source-recovery/
           retention-days: 7
           if-no-files-found: error
