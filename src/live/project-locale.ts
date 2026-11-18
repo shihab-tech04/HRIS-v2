@@ -966,6 +966,7 @@ const bengali: Record<string, string> = {
   'Use a PDF, Word document, JPG, or PNG up to 10 MB.': 'সর্বোচ্চ ১০ MB-এর PDF, Word, JPG বা PNG ব্যবহার করুন।',
   'The leave request was not confirmed. Refresh and check your request history.': 'ছুটির আবেদন নিশ্চিত হয়নি। রিফ্রেশ করে আবেদনের ইতিহাস দেখুন।',
   'Leave request submitted. You can follow its status in your history.': 'ছুটির আবেদন জমা হয়েছে। ইতিহাসে এর অবস্থা দেখতে পারবেন।',
+  'Leave request submitted, but the latest history could not be refreshed. Select Refresh to try again.': 'ছুটির আবেদন জমা হয়েছে, কিন্তু সর্বশেষ ইতিহাস রিফ্রেশ করা যায়নি। আবার চেষ্টা করতে রিফ্রেশ নির্বাচন করুন।',
   'Unable to submit this leave request.': 'ছুটির আবেদন জমা দেওয়া যায়নি।',
   'The private evidence upload could not be removed; please contact HRIS support.': 'ব্যক্তিগত প্রমাণপত্রের আপলোড সরানো যায়নি; HRIS সহায়তায় যোগাযোগ করুন।',
   'Leave request history': 'ছুটির আবেদনের ইতিহাস',
