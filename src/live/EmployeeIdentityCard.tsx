@@ -121,7 +121,7 @@ export function EmployeeIdentityCard({ tenantId, tenantName, locale }: {
             <span>{error}</span><button type="button" onClick={() => setRevision(value => value + 1)}
               className="min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">{tx(locale, 'Retry')}</button>
           </div>}
-          {identity && <article data-employee-id-card data-employment-status={identity.employment_status} className="overflow-hidden rounded-xl border border-[#C6DDE5] bg-[#F1F8FA]">
+          {identity && identity.tenant_id === tenantId && <article data-employee-id-card data-employment-status={identity.employment_status} className="overflow-hidden rounded-xl border border-[#C6DDE5] bg-[#F1F8FA]">
             <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#C6DDE5] bg-white px-4 py-4">
               <div className="flex min-w-0 items-center gap-3"><span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#DCEFF4] text-[#08558B]">
                 <IdCard className="h-6 w-6" /></span><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[#615E83]">{tx(locale, 'Employee ID')}</p>
