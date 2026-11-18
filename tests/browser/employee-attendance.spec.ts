@@ -35,6 +35,7 @@ const tenantDateParts = new Intl.DateTimeFormat('en-US', {
 }, {});
 const dashboardDate = `${tenantDateParts.year}-${tenantDateParts.month}-${tenantDateParts.day}`;
 const previousMonth = new Date(Date.UTC(Number(tenantDateParts.year), Number(tenantDateParts.month) - 2, 1)).toISOString().slice(0, 7);
+const wrongPeriodMonth = new Date(Date.UTC(Number(tenantDateParts.year), Number(tenantDateParts.month) - 3, 1)).toISOString().slice(0, 7);
 const previousDate = `${previousMonth}-12`;
 
 test('employee attendance dashboard uses the tenant RPCs and renders organization-local records', async ({ page }) => {
@@ -146,6 +147,12 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
     request.p_month_start === `${previousMonth}-01`)).toBe(true);
   await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toBeVisible();
   await expect(monthPicker).toHaveValue(previousMonth);
+  // A mis-scoped RPC response must not be shown under a different month.
+  await monthPicker.fill(wrongPeriodMonth);
+  await expect(page.getByText('Monthly attendance returned an invalid response.')).toBeVisible();
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toHaveCount(0);
+  await monthPicker.fill(previousMonth);
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toBeVisible();
   await monthPicker.fill(dashboardDate.slice(0, 7));
   await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
@@ -156,4 +163,14 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await page.reload();
   await expect(page.getByRole('region', { name: 'Today’s attendance', exact: true }).getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   expect(legacyAttendanceRestReads).toBe(0);
+
+  await page.getByRole('group', { name: 'Personal dashboard views' })
+    .getByRole('button', { name: 'Check-in times' }).click();
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const bengaliMonthPicker = page.getByLabel('উপস্থিতির মাস', { exact: true });
+  await expect(bengaliMonthPicker).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(bengaliMonthPicker).toBeVisible();
+  const insights = page.locator('[aria-labelledby="employee-insights-heading"]');
+  expect(await insights.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
 });
