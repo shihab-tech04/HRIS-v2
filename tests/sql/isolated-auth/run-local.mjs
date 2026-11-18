@@ -8648,6 +8648,22 @@ const dashboardAppraisalBaseline = queryAdmin(`SELECT jsonb_build_object(
   'manager_overall_comment',manager_overall_comment,'updated_at',updated_at::text)
   FROM public.performance_appraisals WHERE id='${appraisalAEmployeeId}'::uuid`);
 if (!dashboardAppraisalBaseline?.status) throw new Error('The dashboard appraisal fixture could not be snapshotted.');
+// The seed's November 15, 2026 self-review deadline is now historical. Keep
+// the production dashboard's overdue filtering intact and give this disposable
+// browser acceptance a future deadline, restoring the original date below.
+const dashboardCycleDeadlineBaseline = queryAdmin(`SELECT jsonb_build_object(
+  'self_review_deadline',self_review_deadline::text,'end_date',end_date::text)
+  FROM public.performance_cycles WHERE id='88888888-8888-4888-8888-888888888901'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid`);
+if (!dashboardCycleDeadlineBaseline?.self_review_deadline || !dashboardCycleDeadlineBaseline?.end_date) {
+  throw new Error('The dashboard review-cycle fixture could not be snapshotted.');
+}
+const dashboardBrowserReviewDeadline = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+psqlSync(`UPDATE public.performance_cycles
+  SET self_review_deadline=${sqlLiteral(dashboardBrowserReviewDeadline)}::date,
+      end_date=GREATEST(end_date,${sqlLiteral(dashboardBrowserReviewDeadline)}::date)
+  WHERE id='88888888-8888-4888-8888-888888888901'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid`);
 psqlSync(`UPDATE public.performance_appraisals SET status='draft',self_overall_comment=NULL,
   manager_overall_comment=NULL WHERE id='${appraisalAEmployeeId}'::uuid`);
 const employeeDashboardTask = await employeeA.client.rpc('hris_create_project_task', {
@@ -8739,6 +8755,11 @@ try {
   employeeAttendanceBrowserError = String(error.stderr || error.message || 'local employee attendance browser run failed').slice(-1800);
   employeeAttendanceBrowserOutput = String(error.stdout || '');
 }
+psqlSync(`UPDATE public.performance_cycles
+  SET self_review_deadline=${sqlLiteral(dashboardCycleDeadlineBaseline.self_review_deadline)}::date,
+      end_date=${sqlLiteral(dashboardCycleDeadlineBaseline.end_date)}::date
+  WHERE id='88888888-8888-4888-8888-888888888901'::uuid
+    AND tenant_id='${ids.tenantA}'::uuid`);
 psqlSync(`UPDATE public.performance_appraisals SET
   status=${sqlLiteral(dashboardAppraisalBaseline.status)},
   self_overall_comment=${dashboardAppraisalBaseline.self_overall_comment === null ? 'NULL' : sqlLiteral(dashboardAppraisalBaseline.self_overall_comment)},
