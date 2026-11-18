@@ -103,7 +103,7 @@ function statusLabel(value: string, locale: Locale) {
   return projectText(locale, label);
 }
 
-export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManage = false }: { tenantId: string; locale: Locale; employeesManage?: boolean }) {
+function OrganizationEmployeeDirectoryForContext({ tenantId, locale, employeesManage = false }: { tenantId: string; locale: Locale; employeesManage?: boolean }) {
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string; department_id: string | null }[]>([]);
@@ -820,4 +820,16 @@ export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManag
       </div>
     </div>}
   </section>;
+}
+
+
+// Reset directory rows, edit drawers, invitation drafts and pending actions whenever
+// the tenant or active management permission changes. The underlying RPCs remain unchanged.
+export function OrganizationEmployeeDirectory({ tenantId, locale, employeesManage = false }: {
+  tenantId: string; locale: Locale; employeesManage?: boolean;
+}) {
+  return <OrganizationEmployeeDirectoryForContext
+    key={`${tenantId}:${employeesManage}`}
+    tenantId={tenantId} locale={locale} employeesManage={employeesManage}
+  />;
 }
