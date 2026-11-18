@@ -38,3 +38,15 @@ test('owner can initiate exact-Main read-only source and encrypted database reco
   assert.match(bridge, /test "\$current" = "\$GITHUB_SHA"/);
   assert.doesNotMatch(bridge, /\n  push:/);
 });
+
+test('isolated restore dispatch only accepts a successful exact-Main encrypted backup artifact', () => {
+  assert.match(bridge, /'restore-proof':rf'\/hris-prod restore-proof \(\{sha\}\) \(\{run\}\)'/);
+  assert.match(bridge, /if stage == 'restore-proof':/);
+  assert.match(bridge, /print\('database_run='\+m\.group\(2\),file=f\)/);
+  assert.match(bridge, /gh api "repos\/shihab-tech04\/HRIS-v2\/actions\/runs\/\$DATABASE_RUN"/);
+  assert.match(bridge, /head_sha == \$sha/);
+  assert.match(bridge, /hris-db-encrypted-\$\{DATABASE_RUN\}/);
+  assert.match(bridge, /gh workflow run hris-step1-offline-restore-proof\.yml --repo shihab-tech04\/HRIS-v2 --ref main/);
+  assert.match(bridge, /-f backup_run_id="\$DATABASE_RUN"/);
+  assert.doesNotMatch(bridge, /\n  push:/);
+});
