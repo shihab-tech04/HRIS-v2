@@ -3360,6 +3360,7 @@ function PersonalLeaveRequests({
     submittingRef.current = true;
     setSubmitting(true); setFormError(''); setSuccess('');
     let uploadedPath = '';
+    let requestConfirmed = false;
     try {
       if (evidence) {
         const extensionByMime: Record<string, string> = {
@@ -3388,15 +3389,15 @@ function PersonalLeaveRequests({
       });
       if (rpcError) throw rpcError;
       if (!data) throw new Error(tx('The leave request was not confirmed. Refresh and check your request history.'));
+      requestConfirmed = true;
       setSuccess(tx('Leave request submitted. You can follow its status in your history.'));
       if (evidenceInputRef.current) evidenceInputRef.current.value = '';
       setRequestOpen(false);
       setLeaveTypeId(''); setFromDate(''); setToDate(''); setDayPortion('full');
       setReason(''); setEvidence(null);
-      await onRefresh();
     } catch (cause) {
       let cleanupFailed = false;
-      if (uploadedPath) {
+      if (uploadedPath && !requestConfirmed) {
         try {
           const cleanup = await supabase.storage.from('leave-evidence').remove([uploadedPath]);
           cleanupFailed = Boolean(cleanup.error);
@@ -3429,6 +3430,15 @@ function PersonalLeaveRequests({
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
+    }
+    // A confirmed write must not be reclassified as a failed submission if refresh fails.
+    // In particular, do not remove evidence already referenced by the persisted request.
+    if (requestConfirmed) {
+      try {
+        await onRefresh();
+      } catch {
+        setSuccess(tx('Leave request submitted, but the latest history could not be refreshed. Select Refresh to try again.'));
+      }
     }
   }
 
