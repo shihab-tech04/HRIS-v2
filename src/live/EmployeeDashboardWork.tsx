@@ -63,6 +63,7 @@ export function EmployeeDashboardWork({ tenantId, employeeId, dashboardDate, loc
   onOpenPerformance: () => void;
 }) {
   const [items, setItems] = useState<ActionItem[]>([]);
+  const [itemsContext, setItemsContext] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -75,6 +76,7 @@ export function EmployeeDashboardWork({ tenantId, employeeId, dashboardDate, loc
     const requestedTenant = tenantId;
     const isCurrent = () => request === sequence.current && activeTenant.current === requestedTenant;
     setItems([]);
+    setItemsContext('');
     setError('');
     setLoading(true);
     if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(dashboardDate)) {
@@ -133,10 +135,14 @@ export function EmployeeDashboardWork({ tenantId, employeeId, dashboardDate, loc
           if (!right.dueDate) return -1;
           return left.dueDate.localeCompare(right.dueDate);
         });
-        if (isCurrent()) setItems(nextItems.slice(0, 4));
+        if (isCurrent()) {
+          setItems(nextItems.slice(0, 4));
+          setItemsContext(`${requestedTenant}:${employeeId}:${dashboardDate}`);
+        }
       } catch {
         if (isCurrent()) {
           setItems([]);
+          setItemsContext('');
           setError(tx(locale, 'Unable to load your assigned work. Refresh to try again.'));
         }
       } finally {
@@ -146,6 +152,8 @@ export function EmployeeDashboardWork({ tenantId, employeeId, dashboardDate, loc
     return () => { sequence.current += 1; };
   }, [tenantId, employeeId, dashboardDate, locale, revision]);
 
+  // Never display the preceding employee's work before the new request effect runs.
+  const visibleItems = itemsContext === `${tenantId}:${employeeId}:${dashboardDate}` ? items : [];
   return <section aria-labelledby="employee-dashboard-work-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="flex min-w-0 items-start justify-between gap-3">
       <div className="flex min-w-0 items-start gap-3">
@@ -167,8 +175,8 @@ export function EmployeeDashboardWork({ tenantId, employeeId, dashboardDate, loc
       <div className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>{error}</p></div>
       <button type="button" onClick={() => setRevision(value => value + 1)} className="mt-2 min-h-10 rounded-md border border-rose-300 bg-white px-3 font-medium">{tx(locale, 'Retry')}</button>
     </div>}
-    {!loading && !error && (items.length ? <ul className="mt-3 divide-y divide-slate-100">
-      {items.map(item => <li key={item.id} data-employee-dashboard-work={item.kind.toLowerCase()} data-overdue={item.overdue ? 'true' : 'false'} className="flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0">
+    {!loading && !error && (visibleItems.length ? <ul className="mt-3 divide-y divide-slate-100">
+      {visibleItems.map(item => <li key={item.id} data-employee-dashboard-work={item.kind.toLowerCase()} data-overdue={item.overdue ? 'true' : 'false'} className="flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0">
         <span className="mt-0.5 shrink-0 text-[#085587]" aria-hidden="true">{item.kind === 'Goal' ? <Target className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">

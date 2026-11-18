@@ -68,3 +68,10 @@ test('E03 read, download, retry, refresh and responsive bilingual journeys are m
   assert.match(runner, /20261017010000_hris_employee_document_self_service\.sql/);
   assert.match(runner, /Employee document self-service browser reads, recovers, downloads, localizes, and stays responsive/);
 });
+
+
+test('E03 vault never reuses another tenant or account document state on transition', () => {
+  assert.match(component, /<EmployeeDocumentVaultForContext key=\{`\$\{tenantId\}:\$\{userId\}`\}/);
+  assert.match(component, /activeContext\.current !== actionContext/);
+  assert.match(component, /ownerDocumentPath\(document\.file_url, userId\)/);
+});

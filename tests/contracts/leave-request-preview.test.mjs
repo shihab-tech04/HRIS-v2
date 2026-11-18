@@ -145,3 +145,14 @@ test('E08-15 and E08-16 remain explicitly gated without invented employee edit o
   assert.equal(stories.get('E08-16')?.verbatim_requirement, 'As an employee, I want to cancel or withdraw a request where allowed.');
   assert.doesNotMatch(sql, /CREATE OR REPLACE FUNCTION public\.hris_employee_(?:edit|withdraw|cancel)_leave_request/);
 });
+
+test('E08-12 confirmed request survives a failed history refresh without deleting persisted evidence', () => {
+  assert.match(leaveForm, /let requestConfirmed = false;/);
+  assert.match(leaveForm, /if \(!data\) throw new Error[\s\S]+?requestConfirmed = true;/);
+  assert.match(leaveForm, /if \(uploadedPath && !requestConfirmed\)/);
+  assert.match(leaveForm, /if \(requestConfirmed\) \{[\s\S]+?await onRefresh\(\);[\s\S]+?catch \{[\s\S]+?setSuccess\(tx\('Leave request submitted, but the latest history could not be refreshed/);
+  const refreshGuard = leaveForm.indexOf('if (requestConfirmed) {');
+  const submissionCatch = leaveForm.indexOf('} catch (cause) {', leaveForm.indexOf("hris_employee_submit_leave_request"));
+  assert.ok(refreshGuard > submissionCatch, 'post-confirmation refresh must run outside the submit/upload cleanup catch');
+  assert.match(locale, /'Leave request submitted, but the latest history could not be refreshed\. Select Refresh to try again\.':/);
+});

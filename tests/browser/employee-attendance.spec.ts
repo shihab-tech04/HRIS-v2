@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-// The tenant's saved timezone is Asia/Dhaka; keep displayed attendance times
-// deterministic on hosted runners whose default browser timezone is UTC.
-test.use({ timezoneId: 'Asia/Dhaka' });
+// Exercise a UTC browser against a tenant in Asia/Dhaka: E05 and M02 must
+// display the same recorded punch irrespective of employee device timezone.
+test.use({ timezoneId: 'UTC' });
 
 const userId = 'e1111111-1111-4111-8111-111111111111';
 const employeeId = 'e3333333-3333-4333-8333-333333333333';
@@ -34,6 +34,9 @@ const tenantDateParts = new Intl.DateTimeFormat('en-US', {
   return parts;
 }, {});
 const dashboardDate = `${tenantDateParts.year}-${tenantDateParts.month}-${tenantDateParts.day}`;
+const previousMonth = new Date(Date.UTC(Number(tenantDateParts.year), Number(tenantDateParts.month) - 2, 1)).toISOString().slice(0, 7);
+const wrongPeriodMonth = new Date(Date.UTC(Number(tenantDateParts.year), Number(tenantDateParts.month) - 3, 1)).toISOString().slice(0, 7);
+const previousDate = `${previousMonth}-12`;
 
 test('employee attendance dashboard uses the tenant RPCs and renders organization-local records', async ({ page }) => {
   let dashboardCalls = 0;
@@ -88,9 +91,13 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
       const payload = route.request().postDataJSON() as Record<string, unknown>;
       attendancePeriodRpcPayloads.push(payload);
       data = { tenant_id: tenantId, month_start: payload.p_month_start,
-        records: [{ id: 'ec888888-8888-4888-8888-888888888888', attendance_date: dashboardDate,
-          status: 'late', work_mode: 'home', check_in: `${dashboardDate}T03:00:00.000Z`,
-          check_out: null, work_hours: null }] };
+        records: payload.p_month_start === `${previousMonth}-01`
+          ? [{ id: 'ec777777-7777-4777-8777-777777777777', attendance_date: previousDate,
+            status: 'present', work_mode: 'office', check_in: `${previousDate}T03:15:00.000Z`,
+            check_out: `${previousDate}T11:00:00.000Z`, work_hours: 7.75 }]
+          : [{ id: 'ec888888-8888-4888-8888-888888888888', attendance_date: dashboardDate,
+            status: 'late', work_mode: 'home', check_in: `${dashboardDate}T03:00:00.000Z`,
+            check_out: null, work_hours: null }] };
     } else if (endpoint === 'tenant_memberships') {
       data = [{ tenant_id: tenantId, role: 'employee', status: 'active' }];
     } else if (endpoint === 'employees') {
@@ -118,6 +125,7 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await expect(attendance.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   await expect(attendance.getByText(/^(Home|বাসা)$/).first()).toBeVisible();
   await expect(attendance.getByText(/^09:00\s*AM$/).first()).toBeVisible();
+  await expect(attendance.getByText(/^03:00\s*AM$/)).toHaveCount(0);
   await expect(attendance.getByText('—', { exact: true })).toBeVisible();
   expect(dashboardRpcPayload).toEqual({ p_tenant_id: tenantId });
   expect(attendancePeriodRpcPayloads[0]).toMatchObject({
@@ -131,6 +139,24 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await expect(page.getByText(/^(Home|বাসা)$/).first()).toBeVisible();
   await dashboardViews.getByRole('button', { name: 'Check-in times' }).click();
   await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
+  // E05-04 / E05-05: history month changes from the history view itself and
+  // never presents a previous month as the current month's result.
+  const monthPicker = page.getByLabel('Attendance month', { exact: true });
+  await expect(monthPicker).toBeVisible();
+  await monthPicker.fill(previousMonth);
+  await expect.poll(() => attendancePeriodRpcPayloads.some(request =>
+    request.p_month_start === `${previousMonth}-01`)).toBe(true);
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toBeVisible();
+  await expect(monthPicker).toHaveValue(previousMonth);
+  // A mis-scoped RPC response must not be shown under a different month.
+  await monthPicker.fill(wrongPeriodMonth);
+  await expect(page.getByText('Monthly attendance returned an invalid response.')).toBeVisible();
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toHaveCount(0);
+  await monthPicker.fill(previousMonth);
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toBeVisible();
+  await monthPicker.fill(dashboardDate.slice(0, 7));
+  await expect(page.getByText('09:15 AM – 05:00 PM', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/^(Late|দেরি)$/).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => dashboardCalls).toBeGreaterThan(1);
@@ -138,4 +164,14 @@ test('employee attendance dashboard uses the tenant RPCs and renders organizatio
   await page.reload();
   await expect(page.getByRole('region', { name: 'Today’s attendance', exact: true }).getByText(/^(Late|দেরি)$/).first()).toBeVisible();
   expect(legacyAttendanceRestReads).toBe(0);
+
+  await page.getByRole('group', { name: 'Personal dashboard views' })
+    .getByRole('button', { name: 'Check-in times' }).click();
+  await page.getByRole('button', { name: 'Switch language to Bengali' }).click();
+  const bengaliMonthPicker = page.getByLabel('উপস্থিতির মাস', { exact: true });
+  await expect(bengaliMonthPicker).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(bengaliMonthPicker).toBeVisible();
+  const insights = page.locator('[aria-labelledby="employee-insights-heading"]');
+  expect(await insights.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
 });
