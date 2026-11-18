@@ -43,6 +43,8 @@ jobs:
           run=r'[1-9][0-9]{7,11}'
           hash_=r'[0-9a-f]{64}'
           patterns={
+            'source-backup':rf'/hris-prod source-backup ({sha})',
+            'database-backup':rf'/hris-prod database-backup ({sha})',
             'service':rf'/hris-prod service ({sha})',
             'access':rf'/hris-prod access ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
             'avatar':rf'/hris-prod avatar ({sha}) ({run}) ({run}) ({run}) ({hash_}) ({hash_})',
@@ -85,6 +87,7 @@ jobs:
             return 1
           }
           case "$STAGE" in
+            source-backup|database-backup) echo 'PASS: approved exact-Main read-only recovery workflow only; no hosted SQL mutation' ;;
             service) echo 'PASS: service recovery requires its independent SQL and backup gates' ;;
             access) success_on_main hris-service-requests-gated-sql.yml || { echo '::error::Service SQL release not confirmed'; exit 1; } ;;
             avatar) echo 'PASS: avatar SQL release performs strict production-baseline and offsite recovery checks' ;;
@@ -135,6 +138,11 @@ jobs:
           set -euo pipefail
           test "$(gh api repos/shihab-tech04/HRIS-v2/branches/main --jq '.commit.sha')" = "$GITHUB_SHA"
           case "$STAGE" in
+            source-backup)
+              gh workflow run hris-current-main-source-backup.yml --repo shihab-tech04/HRIS-v2 --ref main ;;
+            database-backup)
+              gh workflow run hris-step1-encrypted-db-export.yml --repo shihab-tech04/HRIS-v2 --ref main \
+                -f session_pooler_host="$APPROVED_SESSION_POOLER_HOST" ;;
             service)
               gh workflow run hris-service-requests-gated-sql.yml --repo shihab-tech04/HRIS-v2 --ref main \
                 -f release_approved=true -f offsite_recovery_verified=true \
