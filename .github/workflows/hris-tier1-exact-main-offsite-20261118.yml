@@ -1,0 +1,49 @@
+# No production writes. Backup of exact protected Main, from isolated recovery branch.
+name: HRIS exact Main offsite transfer bundle 2026-11-18
+on:
+  push:
+    branches: [recovery/hris-exact-main-backup-20261118]
+permissions:
+  contents: read
+jobs:
+  archive:
+    if: github.repository == 'shihab-tech04/HRIS-v2' && github.ref == 'refs/heads/recovery/hris-exact-main-backup-20261118'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact Main and prove clean full-history restoration
+        shell: bash
+        env:
+          EXPECTED_MAIN: ffc883d219605dc037a4a0ee30ff307f6e3a7879
+        run: |
+          set -euo pipefail
+          umask 077
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          current_main="$(git rev-parse refs/remotes/origin/main)"
+          test "$current_main" = "$EXPECTED_MAIN" || { echo "::error::Protected Main moved"; exit 1; }
+          git cat-file -e "$EXPECTED_MAIN^{commit}"
+          dest="$RUNNER_TEMP/hris-tier1-source-recovery"
+          mkdir -p "$dest"
+          archive="$dest/hris-full-history-pre-tier1-ffc883d219605dc037a4a0ee30ff307f6e3a7879.bundle"
+          git bundle create "$archive" --all HEAD
+          git init -q --bare "$RUNNER_TEMP/hris-bundle-verify.git"
+          git -C "$RUNNER_TEMP/hris-bundle-verify.git" bundle verify "$archive" > "$dest/bundle-verify.txt" 2>&1
+          git clone -q "$archive" "$RUNNER_TEMP/hris-restored-source"
+          git -C "$RUNNER_TEMP/hris-restored-source" checkout -q --detach "$EXPECTED_MAIN"
+          restored="$(git -C "$RUNNER_TEMP/hris-restored-source" rev-parse HEAD)"
+          test "$restored" = "$EXPECTED_MAIN"
+          git -C "$RUNNER_TEMP/hris-restored-source" fsck --full --no-reflogs
+          printf 'repo=%s\nprotected_main=%s\nrestored_main=%s\nbackup_branch_sha=%s\n' \
+            "$GITHUB_REPOSITORY" "$EXPECTED_MAIN" "$restored" "$GITHUB_SHA" > "$dest/restore-manifest.txt"
+          (cd "$dest" && sha256sum "$(basename "$archive")" restore-manifest.txt > restore.sha256)
+          echo 'PASS: exact Main Git history bundle created, checksummed and restored'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hris-tier1-exact-main-offsite-ffc883d219605dc037a4a0ee30ff307f6e3a7879
+          path: ${{ runner.temp }}/hris-tier1-source-recovery/
+          retention-days: 7
+          if-no-files-found: error
