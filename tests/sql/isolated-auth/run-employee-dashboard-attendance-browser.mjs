@@ -703,8 +703,10 @@ try {
     .format(new Date(Date.UTC(year, month - 1, 1)));
   await page.getByRole('button', { name: 'Check-in times', exact: true }).click();
   await page.getByRole('heading', { name: `Check-in history · ${label}`, exact: true }).waitFor({ state: 'visible' });
+  // The month control shares the heading row; the persisted history list is a sibling
+  // of that header row, not a child of the heading's immediate parent.
   const history = page.getByRole('heading', { name: `Check-in history · ${label}`, exact: true })
-    .locator('xpath=..').locator('ul');
+    .locator('xpath=../..').locator(':scope > ul');
   await history.waitFor({ state: 'visible' });
   const expectedHistoryDate = new Date(`${process.env.HRIS_LOCAL_ATTENDANCE_PREVIOUS_DATE}T12:00:00`)
     .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
