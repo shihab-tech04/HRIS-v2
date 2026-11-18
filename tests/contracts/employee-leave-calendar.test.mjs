@@ -112,3 +112,9 @@ test('E09-03 and E09-05 stay partial until permitted team absence visibility rul
   assert.doesNotMatch(migration, /team_id|department_id|other_employee|team_absence/);
   assert.match(migration, /r\.employee_id = v_employee_id/);
 });
+
+test('E09 calendar rejects invalid ISO dates instead of rolling them into another month', () => {
+  assert.match(calendar, /\^\\d\{4\}-\(0\[1-9\]\|1\[0-2\]\)/);
+  assert.match(calendar, /Number\.isFinite\(date\.getTime\(\)\) && date\.toISOString\(\)\.slice\(0, 10\) === value/);
+  assert.match(calendar, /isIsoDate\(row\.from_date\) && isIsoDate\(row\.to_date\)/);
+});
