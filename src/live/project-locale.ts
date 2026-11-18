@@ -69,6 +69,7 @@ const bengali: Record<string, string> = {
   'Job description': 'কাজের বিবরণ',
   'Reason for request': 'অনুরোধের কারণ',
   'Enter a requisition title.': 'জনবল চাহিদার শিরোনাম লিখুন।',
+  'Enter a valid desired joining date.': 'যোগদানের সম্ভাব্য সঠিক তারিখ লিখুন।',
   'Required positions must be a positive whole number.': 'প্রয়োজনীয় পদের সংখ্যা ধনাত্মক পূর্ণসংখ্যা হতে হবে।',
   'Years of experience must be zero or greater.': 'অভিজ্ঞতার বছর শূন্য বা তার বেশি হতে হবে।',
   'Unable to save this requisition. Refresh before retrying if the response was interrupted.': 'জনবল চাহিদা সংরক্ষণ করা যায়নি। ফলাফল অনিশ্চিত হলে আবার চেষ্টা করার আগে রিফ্রেশ করুন।',
