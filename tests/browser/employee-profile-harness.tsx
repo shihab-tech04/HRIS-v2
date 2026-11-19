@@ -20,7 +20,7 @@ const state = query.get('state') || 'sparse';
 const tenantId = query.get('tenant') || 'local-visual-tenant';
 document.documentElement.lang = locale;
 
-const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' || state === 'save-error' || state === 'avatar' || state === 'avatar-error' ? {
+const employee = state === 'synthetic' || state === 'tenant-switch' || state === 'employment-details' || state === 'save-error' || state === 'avatar' || state === 'avatar-error' || state === 'avatar-tenant-switch' ? {
   full_name: 'Synthetic QA Employee',
   employee_number: 'QA-EMP-001',
   official_email: 'qa.employee@example.invalid',
@@ -67,6 +67,9 @@ Object.defineProperty(supabase.storage, 'from', {
     download: async (path: string) => {
       if (bucket === 'employee-avatars') {
         avatarActions.push({ action: 'download', bucket, path });
+        if (state === 'avatar-tenant-switch' && path.split('/')[1] === tenantId) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
         return path === avatarPath
           ? { data: new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg=='), c => c.charCodeAt(0))], { type: 'image/png' }), error: null }
           : { data: null, error: new Error('Private avatar not found') };
@@ -102,7 +105,7 @@ Object.defineProperty(client, 'rpc', {
   value: async (name: string, args: unknown): Promise<FixtureResult> => {
     calls.push({ name, args });
     if (name === 'employee_get_my_avatar_v1') {
-      if (state !== 'avatar' && state !== 'avatar-error') {
+      if (state !== 'avatar' && state !== 'avatar-error' && state !== 'avatar-tenant-switch') {
         return { data: null, error: new Error('Photo RPC intentionally unavailable for this other fixture state') };
       }
       const requestedTenant = (args as { p_tenant_id?: string }).p_tenant_id;
@@ -199,7 +202,7 @@ function EmployeeProfileFixture() {
   const [activeTenant, setActiveTenant] = React.useState(tenantId);
   return <div className="min-h-screen bg-[#EFF7F8]">
     <div data-testid="fixture-note" className="sr-only">Local visual fixture only. No production employee data is loaded.</div>
-    {state === 'tenant-switch' && <button type="button" onClick={() => setActiveTenant('switched-local-tenant')}
+    {(state === 'tenant-switch' || state === 'avatar-tenant-switch') && <button type="button" onClick={() => setActiveTenant('switched-local-tenant')}
       className="absolute left-2 top-2 z-10 min-h-10 rounded border border-slate-400 bg-white px-3 text-sm">
       Switch local fixture tenant
     </button>}

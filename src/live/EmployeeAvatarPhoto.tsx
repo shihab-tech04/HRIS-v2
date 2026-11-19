@@ -83,8 +83,11 @@ export function EmployeeAvatarPhoto({
         setSavedPath(path);
         const { data: blob, error: downloadError } = await supabase.storage.from(PHOTO_BUCKET).download(path);
         if (downloadError || !blob) throw new Error('Private avatar retrieval denied');
+        // The user may have switched tenants while the private download was in flight.
+        // A late result must not allocate an object URL after the effect's cleanup.
+        if (!active) return;
         objectUrl = URL.createObjectURL(blob);
-        if (active) setPhotoUrl(objectUrl);
+        setPhotoUrl(objectUrl);
       } catch {
         if (active) setError(t.unavailable);
       } finally {
