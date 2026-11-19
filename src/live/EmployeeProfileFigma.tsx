@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import type { Locale } from './project-locale';
 import { EmployeeProfileEditModal, type ProfileEditKind } from './EmployeeProfileEditModal';
 import { EmployeeAvatarPhoto } from './EmployeeAvatarPhoto';
+import { EmployeeStructuredAddressesModal, formatStructuredAddress, getStructuredAddresses } from './EmployeeStructuredAddresses';
 import addressBookIcon from '../assets/employee-figma/address-book.svg';
 import documentCheckIcon from '../assets/employee-figma/document-check.svg';
 import editPenIcon from '../assets/employee-figma/edit-pen.svg';
@@ -47,6 +48,9 @@ const copy = {
     personalDetails: 'Personal Details',
     contactDetails: 'Personal Details',
     editContactDetails: 'Edit Contact Details',
+    editAddresses: 'Edit addresses',
+    structuredPresentAddress: 'Structured present address',
+    structuredPermanentAddress: 'Structured permanent address',
     verification: 'Verification',
     educationDetails: 'Education Information',
     employeeName: 'Employee Name',
@@ -168,6 +172,9 @@ const copy = {
     personalDetails: 'ব্যক্তিগত বিবরণ',
     contactDetails: 'ব্যক্তিগত বিবরণ',
     editContactDetails: 'যোগাযোগের তথ্য সম্পাদনা',
+    editAddresses: 'ঠিকানা সম্পাদনা',
+    structuredPresentAddress: 'বিস্তারিত বর্তমান ঠিকানা',
+    structuredPermanentAddress: 'বিস্তারিত স্থায়ী ঠিকানা',
     verification: 'যাচাইকরণ',
     educationDetails: 'শিক্ষাগত তথ্য',
     employeeName: 'কর্মীর নাম',
@@ -352,6 +359,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
   const [status, setStatus] = useState<LoadState>('loading');
   const [revision, setRevision] = useState(0);
   const [edit, setEdit] = useState<{ kind: ProfileEditKind; initial?: Profile } | null>(null);
+  const [addressEditorOpen, setAddressEditorOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'education' | 'experience' | 'family'; id: string } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -364,6 +372,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     setShowSensitive(false);
     setShowBankAccount(false);
     setEdit(null);
+    setAddressEditorOpen(false);
     setPendingDelete(null);
     setDeleteError('');
     setNotice('');
@@ -507,6 +516,7 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
       </span>,
     },
   ];
+  const addressRows = getStructuredAddresses(currentTenant ? profile?.addresses : null);
   const contactFields: DetailField[] = [
     { id: 'phone-number', label: words.phoneNumber, value: value('phone') },
     { id: 'personal-email', label: words.personalEmail, value: value('personal_email') },
@@ -514,6 +524,14 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     { id: 'work-location', label: words.workLocation, value: employmentValue('work_location_name') },
     { id: 'present-address', label: words.presentAddress, value: value('address') },
     { id: 'permanent-address', label: words.permanentAddress, value: value('mailing_address') },
+    ...addressRows.filter(row => row.address_type === 'Present').map((row, index) => ({
+      id: 'structured-present-' + String(row.id || index), label: words.structuredPresentAddress,
+      value: formatStructuredAddress(row, words.unavailable),
+    })),
+    ...addressRows.filter(row => row.address_type === 'Permanent').map((row, index) => ({
+      id: 'structured-permanent-' + String(row.id || index), label: words.structuredPermanentAddress,
+      value: formatStructuredAddress(row, words.unavailable),
+    })),
   ];
   const verificationFields: DetailField[] = [
     { id: 'nid', label: words.nid, value: maskValue('nid_number') },
@@ -702,9 +720,13 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
               <section className="min-w-0 rounded-xl border border-[#DEE0E3] bg-white p-4 sm:p-6" aria-labelledby="employee-figma-contact-title">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7EEF2] pb-4">
                   <SectionHeading id="employee-figma-contact-title" title={words.contactDetails} icon={<img src={addressBookIcon} alt="" aria-hidden="true" className="h-[18px] w-[18px]" />} />
-                  <button type="button" aria-label={words.editContactDetails} onClick={() => setEdit({ kind:'request-contact', initial:currentEmployee || {} })} className={actionClass}>
-                    {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {Array.isArray(profile?.addresses) && <button type="button" aria-label={words.editAddresses}
+                      onClick={() => setAddressEditorOpen(true)} className={actionClass}>{words.editAddresses}</button>}
+                    <button type="button" aria-label={words.editContactDetails} onClick={() => setEdit({ kind:'request-contact', initial:currentEmployee || {} })} className={actionClass}>
+                      {words.edit}<img src={editPenIcon} alt="" aria-hidden="true" className="h-[15px] w-[15px]" />
+                    </button>
+                  </div>
                 </div>
                 <DetailRows fields={contactFields} />
               </section>
@@ -850,5 +872,9 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     </div>}
     {edit && <EmployeeProfileEditModal kind={edit.kind} tenantId={tenantId} locale={locale} initial={edit.initial}
       onClose={() => setEdit(null)} onSaved={afterProfileSave} />}
+    {addressEditorOpen && <EmployeeStructuredAddressesModal key={tenantId} tenantId={tenantId} locale={locale}
+      addresses={currentTenant ? profile?.addresses : null}
+      onClose={() => setAddressEditorOpen(false)}
+      onSaved={() => { setNotice(words.profileSaved); setRevision(current => current + 1); }} />}
   </section>;
 }
