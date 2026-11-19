@@ -49,6 +49,8 @@ const copy = {
     contactDetails: 'Personal Details',
     editContactDetails: 'Edit Contact Details',
     editAddresses: 'Edit addresses',
+    structuredPresentAddress: 'Structured present address',
+    structuredPermanentAddress: 'Structured permanent address',
     verification: 'Verification',
     educationDetails: 'Education Information',
     employeeName: 'Employee Name',
@@ -171,6 +173,8 @@ const copy = {
     contactDetails: 'ব্যক্তিগত বিবরণ',
     editContactDetails: 'যোগাযোগের তথ্য সম্পাদনা',
     editAddresses: 'ঠিকানা সম্পাদনা',
+    structuredPresentAddress: 'বিস্তারিত বর্তমান ঠিকানা',
+    structuredPermanentAddress: 'বিস্তারিত স্থায়ী ঠিকানা',
     verification: 'যাচাইকরণ',
     educationDetails: 'শিক্ষাগত তথ্য',
     employeeName: 'কর্মীর নাম',
@@ -513,15 +517,21 @@ export function EmployeeProfileFigma({ tenantId, locale }: { tenantId: string; l
     },
   ];
   const addressRows = getStructuredAddresses(currentTenant ? profile?.addresses : null);
-  const verifiedAddress = (type: 'Present' | 'Permanent', fallback: string) =>
-    formatStructuredAddress(addressRows.find(row => row.address_type === type), fallback);
   const contactFields: DetailField[] = [
     { id: 'phone-number', label: words.phoneNumber, value: value('phone') },
     { id: 'personal-email', label: words.personalEmail, value: value('personal_email') },
     { id: 'official-phone', label: words.officialPhone, value: value('official_phone') },
     { id: 'work-location', label: words.workLocation, value: employmentValue('work_location_name') },
-    { id: 'present-address', label: words.presentAddress, value: verifiedAddress('Present', value('address')) },
-    { id: 'permanent-address', label: words.permanentAddress, value: verifiedAddress('Permanent', value('mailing_address')) },
+    { id: 'present-address', label: words.presentAddress, value: value('address') },
+    { id: 'permanent-address', label: words.permanentAddress, value: value('mailing_address') },
+    ...addressRows.filter(row => row.address_type === 'Present').map((row, index) => ({
+      id: 'structured-present-' + String(row.id || index), label: words.structuredPresentAddress,
+      value: formatStructuredAddress(row, words.unavailable),
+    })),
+    ...addressRows.filter(row => row.address_type === 'Permanent').map((row, index) => ({
+      id: 'structured-permanent-' + String(row.id || index), label: words.structuredPermanentAddress,
+      value: formatStructuredAddress(row, words.unavailable),
+    })),
   ];
   const verificationFields: DetailField[] = [
     { id: 'nid', label: words.nid, value: maskValue('nid_number') },
