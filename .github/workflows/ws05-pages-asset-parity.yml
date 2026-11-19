@@ -32,6 +32,7 @@ jobs:
       - name: Build the exact Pages asset set
         env:
           GITHUB_PAGES: 'true'
+          VITE_ENABLE_PLATFORM_TENANTS: 'true'
         run: |
           npm run lint
           npm run build
