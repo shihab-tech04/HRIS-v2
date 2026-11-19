@@ -63,3 +63,34 @@ test('avatar SQL not installed fails closed without interrupting the existing pr
   await expect(page.getByRole('tab', { name: 'Family & Nominee' })).toBeEnabled();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
+
+
+test('late private photo download is discarded before object URL allocation after a tenant switch', async ({ page }) => {
+  // First establish an existing synthetic avatar without touching hosted Auth or Storage.
+  await page.goto('/tests/browser/employee-profile-harness.html?state=avatar&locale=en');
+  await expect(page.getByRole('button', { name: 'Change photo' })).toBeEnabled();
+  await page.locator('input[type=file]').setInputFiles(imgFile);
+  await expect(profileImg(page).locator('img')).toBeVisible();
+
+  await page.addInitScript(() => {
+    const trackedWindow = window as Window & { __avatarCreatedObjectUrls: string[] };
+    trackedWindow.__avatarCreatedObjectUrls = [];
+    const original = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob: Blob | MediaSource) => {
+      const url = original(blob);
+      trackedWindow.__avatarCreatedObjectUrls.push(url);
+      return url;
+    };
+  });
+  await page.goto('/tests/browser/employee-profile-harness.html?state=avatar-tenant-switch&locale=en');
+  await expect.poll(() => page.evaluate(() =>
+    window.__profileAvatarActions.filter(action => action.action === 'download').length,
+  )).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Switch local fixture tenant' }).click();
+  await expect(profileImg(page)).toBeVisible();
+  await page.waitForTimeout(700); // Complete the intentionally delayed former-tenant read.
+  expect(await page.evaluate(() =>
+    (window as Window & { __avatarCreatedObjectUrls: string[] }).__avatarCreatedObjectUrls,
+  )).toHaveLength(0);
+  await expect(profileImg(page).locator('img')).toHaveCount(0);
+});
