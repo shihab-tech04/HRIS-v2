@@ -73,7 +73,7 @@ test('late private photo download is discarded before object URL allocation afte
   await expect(profileImg(page).locator('img')).toBeVisible();
 
   await page.addInitScript(() => {
-    const trackedWindow = window as Window & { __avatarCreatedObjectUrls: string[] };
+    const trackedWindow = window as unknown as Window & { __avatarCreatedObjectUrls: string[] };
     trackedWindow.__avatarCreatedObjectUrls = [];
     const original = URL.createObjectURL.bind(URL);
     URL.createObjectURL = (blob: Blob | MediaSource) => {
@@ -90,7 +90,7 @@ test('late private photo download is discarded before object URL allocation afte
   await expect(profileImg(page)).toBeVisible();
   await page.waitForTimeout(700); // Complete the intentionally delayed former-tenant read.
   expect(await page.evaluate(() =>
-    (window as Window & { __avatarCreatedObjectUrls: string[] }).__avatarCreatedObjectUrls,
+    (window as unknown as Window & { __avatarCreatedObjectUrls: string[] }).__avatarCreatedObjectUrls,
   )).toHaveLength(0);
   await expect(profileImg(page).locator('img')).toHaveCount(0);
 });
